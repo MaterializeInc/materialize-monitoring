@@ -83,7 +83,7 @@ alerting:
           - url: https://tickets.example.internal/hooks/alertmanager
 ```
 
-A receiver's `route.mute_time_intervals` mutes it wherever the matrix routes to it.
+A receiver's `route.mute_time_intervals` mutes it wherever the preset routes to it.
 A route under `alerting.routes.extra` takes `mute_time_intervals` the same way, and `active_time_intervals` inverts it:
 the route notifies only during the interval.
 The render fails when a route names an interval `alerting.timeIntervals` does not define.

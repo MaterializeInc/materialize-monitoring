@@ -396,7 +396,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `pipeline.env.CLUSTER_NAME`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
-| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (`alerting.matrix` is values, one entry per criticality; a class the selected entry names with no receiver fails the render) |
+| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
 | Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ⬜ |
 | Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | ⬜ |
 | Alert and recording-rule names added to the committed surface | OO-M2 | ⬜ |
@@ -411,7 +411,7 @@ Until they land the alerting story is "we route alerts you write", which is half
 A default install runs the Thanos ruler stateless against Thanos Query, runs the Loki ruler against Loki, and points both at the bundled Alertmanager.
 Both remote-write their results to the alloy-gateway, which is what puts `ALERTS` in front of the destination fan-out that [call-home](../design-docs/20260917-call-home-self-managed/) needs.
 What is still missing is the rules themselves: `pre-rendered/rules/` is empty and `gen-rules` does not exist.
-The Alertmanager the rulers notify now routes by severity and criticality to whatever receivers an operator configures,
+The Alertmanager the rulers notify now routes by severity and preset to whatever receivers an operator configures,
 and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
 
@@ -446,7 +446,7 @@ A CockroachDB rule is for a deployment running CockroachDB, and a Cilium rule is
 Rules should declare capability tags (`crdb-dedicated`, `cilium`, `aws`, …) describing what they require, with applicability checked at build time against the extracted metric set, so that no rule is deleted and selection follows what a deployment contains rather than who operates it.
 
 **Severity is a property of the alert and urgency is a property of the deployment**, and conflating them is what makes one rule set unable to serve both a customer for whom Materialize is critical infrastructure and one who is evaluating it.
-The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment, with a severity-to-receiver-class matrix between them.
+The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment (built as `alerting.preset`), with a severity-to-receiver-class matrix between them.
 
 **Alert names become a committed surface, which closes an open naming decision.**
 [Stamping 1.0](#versioning-changelog-and-releases) records the alert and recording-rule naming decision as free only until the alerting path ships.

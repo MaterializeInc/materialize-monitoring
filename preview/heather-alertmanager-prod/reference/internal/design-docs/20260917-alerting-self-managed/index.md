@@ -378,6 +378,11 @@ This is the requirement that a Materialize deployment can be critical infrastruc
 
 **Decision: rules carry `severity`; a single values key selects the severity-to-route mapping.**
 
+> [!NOTE]
+>   **As built, the key is `alerting.preset`, selecting an entry of `alerting.presets`**, rather than `alerting.criticality` and `alerting.matrix`.
+>   The entries are user-extensible, and a deployment's own entry named after its criticality reads oddly.
+>   The three shipped presets are still the three criticalities below, and this section's reasoning is unchanged.
+
 The rules already carry `severity`, with three values.
 Their meanings should be written down, because a label with an intuitive name and no definition drifts within two releases.
 

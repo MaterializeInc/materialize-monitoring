@@ -14,7 +14,7 @@ The other pages in this section cover each part in depth:
 | Page | Covers |
 |---|---|
 | [Configuring](../configuring/) | The two rule evaluators, what each reads, and how each is wired |
-| [Alert Channels](../channels/) | Receivers, receiver classes, the criticality matrix, credentials, and extra routes |
+| [Alert Channels](../channels/) | Receivers, receiver classes, severity presets, credentials, and extra routes |
 | [Maintenance Windows](../maintenance/) | Silences, recurring mute windows, and inhibition |
 
 The production checklist for this component is [Production Best Practices > Alertmanager](../../operating/production-best-practices/#alertmanager).
@@ -233,7 +233,7 @@ Left at its default, `default`, on several clusters, the label is present and di
 The chart renders Alertmanager's configuration itself, from `alerting`, rather than passing it to the subchart.
 
 The subchart renders its `config` block into a ConfigMap with `toYaml`, so nothing in it can be computed.
-The severity matrix, the receiver classes and the render-time checks all have to be.
+The severity presets, the receiver classes and the render-time checks all have to be.
 So `alertmanager.config.enabled` is off, and the chart renders the `alertmanager-config` Secret and mounts it at `/etc/alertmanager/config`.
 
 ```mermaid
@@ -264,7 +264,7 @@ The rendered tree has the same shape in every install.
 | Order | Route | Source |
 |---|---|---|
 | 1 | Each route in `alerting.routes.extra`, verbatim | The operator |
-| 2 | One route per severity in the selected `alerting.matrix` entry, delivering that severity's class | `alerting.criticality` and the receivers' `class` |
+| 2 | One route per severity in the selected preset, delivering that severity's class | `alerting.preset`, `alerting.presets` and the receivers' `class` |
 | 3 | A catch-all delivering the class of `alerting.unknownSeverity` | So an alert with no recognised `severity` still reaches somebody |
 
 The root route's receiver is `mzmon-null`, which notifies nobody.
@@ -349,5 +349,5 @@ The render warns when the rulers' addresses and the pinned name disagree.
 | Rollout-signal inhibition | Upgrade noise is suppressed with a silence or a mute window, by hand. See [Maintenance Windows](../maintenance/) |
 | `alerting.alertmanager.mode: external` | A deployment with its own Alertmanager overrides both rulers' addresses by hand. See [Configuring](../configuring/#what-an-operator-configures-today) |
 | TLS on Alertmanager's own listener | The chart issues a certificate for it, and nothing serves it yet |
-| Terraform inputs for receivers and criticality | The Terraform path configures `alerting` through `additional_values` |
+| Terraform inputs for receivers and the preset | The Terraform path configures `alerting` through `additional_values` |
 
