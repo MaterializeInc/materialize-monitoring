@@ -2,7 +2,7 @@
 title: "A Tenant-Scoped Query API for Console and Customer Grafana"
 weight: 20260916
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-16
 lastmod: 2026-09-16
@@ -10,7 +10,7 @@ lastmod: 2026-09-16
 params:
   author: Heather Lapointe
   agent: Claude Opus 5
-  status: "Draft"
+  status: "Ready"
 ---
 
 # A Tenant-Scoped Query API for Console and Customer Grafana

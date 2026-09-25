@@ -2,14 +2,14 @@
 title: "In-cluster TLS and Certificate Authentication"
 weight: 20260816
 # draft=false makes it render as a page
-# params.status=Draft is to indicate that the design is not final
+# params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-08-16
 lastmod: 2026-08-16
 # custom parameters
 params:
   author: Heather Lapointe
-  status: "Draft"
+  status: "Shipped"
 ---
 
 # In-cluster TLS and Certificate Authentication
