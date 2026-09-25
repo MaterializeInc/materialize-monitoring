@@ -1,0 +1,43 @@
+# https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1alpha1.ScrapeConfig
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: mz-kubelet-cadvisor
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: mz-kubelet-cadvisor
+spec:
+  # https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1alpha1.KubernetesSDConfig
+  kubernetesSDConfigs:
+    - role: Node
+      # default apiServer uses expected endpoint, ca, and token locations
+  # https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.RelabelConfig
+  relabelings:
+    # Node-label allowlist. Replaces a blanket
+    # `labelmap __meta_kubernetes_node_label_(.+)`, which promoted every node
+    # label (karpenter scheduling hints, cluster-autoscaler flags, hostname, …)
+    # onto every cAdvisor series. Only the dimensions the dashboards actually
+    # use are kept; target names match the old labelmap output, so this is a
+    # pure reduction (nothing downstream is renamed). Add rows as needed.
+    # Missing source → empty value → Prometheus drops the label, so these are
+    # harmless on nodes lacking a given label.
+    - sourceLabels: [__meta_kubernetes_node_label_topology_kubernetes_io_region]
+      targetLabel: topology_kubernetes_io_region
+    - sourceLabels: [__meta_kubernetes_node_label_topology_kubernetes_io_zone]
+      targetLabel: topology_kubernetes_io_zone
+    - sourceLabels: [__meta_kubernetes_node_label_karpenter_sh_nodepool]
+      targetLabel: karpenter_sh_nodepool
+    - sourceLabels: [__meta_kubernetes_node_label_karpenter_sh_capacity_type]
+      targetLabel: karpenter_sh_capacity_type
+    - sourceLabels: [__meta_kubernetes_node_label_node_kubernetes_io_instance_type]
+      targetLabel: node_kubernetes_io_instance_type
+    # Node identity: __address__ is the apiserver proxy (identical for every
+    # node), so the node name is the only real identity — promote it explicitly.
+    - sourceLabels: [__meta_kubernetes_node_name]
+      targetLabel: node
+    - targetLabel: __address__
+      replacement: kubernetes.default.svc:443
+    - sourceLabels: [__meta_kubernetes_node_name]
+      regex: (.+)
+      targetLabel: __metrics_path__
+      replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
