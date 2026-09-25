@@ -299,6 +299,79 @@ main.container {
   }
 }
 
+// Mermaid expand button and full-window view; see assets/mermaid-zoom.js.
+.mermaid-zoom-wrapper {
+  position: relative;
+}
+
+.mermaid-zoom-open,
+.mermaid-zoom-close {
+  position: absolute;
+  top: rem(1.2);
+  right: rem(1.2);
+  z-index: 1;
+  width: rem(3.6);
+  height: rem(3.6);
+  padding: 0;
+  font-size: rem(2.2);
+  line-height: 1;
+  color: var(--body-font-color);
+  background: var(--body-background);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--mz-brand);
+    outline: none;
+  }
+}
+
+// Out of the way until the reader points at the diagram. Devices with no
+// hover keep it in view.
+@media (hover: hover) {
+  .mermaid-zoom-open {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .mermaid-zoom-wrapper:hover .mermaid-zoom-open,
+  .mermaid-zoom-open:focus-visible {
+    opacity: 1;
+  }
+}
+
+.mermaid-zoom {
+  width: calc(100vw - 2rem);
+  height: calc(100vh - 2rem);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  // Match the inline diagram, which sits in a regular <pre>.
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+
+  &::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+  }
+}
+
+.mermaid-zoom-stage {
+  width: 100%;
+  height: 100%;
+
+  svg {
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+}
+
 .warning,
 .note,
 .info,
