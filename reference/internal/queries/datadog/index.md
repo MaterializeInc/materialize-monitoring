@@ -13,7 +13,7 @@ These are **translations, not a tested dashboard set** — there is no Datadog t
 been run against a real Datadog account.
 Treat them as a starting point you copy into a widget or monitor and correct, not as something that works unedited.
 
-The native Datadog dashboard set is [DEP-115](https://linear.app/materializeinc/issue/DEP-115), scheduled for OO-M3 on
+The native Datadog dashboard set is [DEP-115](https://linear.app/materializeinc/issue/DEP-115), in the OO-M3 backlog on
 the [roadmap](/materialize-monitoring/reference/internal/roadmap/).
 
 ## What language these are in

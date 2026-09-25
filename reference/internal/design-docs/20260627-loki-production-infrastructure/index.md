@@ -23,7 +23,7 @@ date: 2026-06-27
         </tr>
         <tr>
           <th>status</th>
-          <td>Preview</td>
+          <td>Shipped</td>
         </tr>
   </tbody>
 </table>

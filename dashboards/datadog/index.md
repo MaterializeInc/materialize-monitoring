@@ -7,7 +7,7 @@
 
 > [!NOTE]
 >   **There is no Materialize dashboard set for Datadog yet.**
->   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and scheduled for **OO-M3**, alongside the Google Cloud Monitoring and Honeycomb sets.
+>   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
 >   See the [Dashboards workstream](/materialize-monitoring/reference/internal/roadmap/#dashboards) for where it sits against the rest of the work.
 
 What exists today is the query material to build one yourself.

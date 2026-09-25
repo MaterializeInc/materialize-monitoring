@@ -27,7 +27,7 @@ date: 2026-09-24
         </tr>
         <tr>
           <th>status</th>
-          <td>Draft</td>
+          <td>Ready</td>
         </tr>
   </tbody>
 </table>
