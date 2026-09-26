@@ -21,8 +21,9 @@ The [external-dependency design](../../../reference/internal/design-docs/2026092
 <!--
 Agent note: the pull is rendered by charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl,
 not pre-rendered, because CloudWatch needs one `static` block per resource. The numbers on this page
-(series counts, API calls, sample ages) were measured on 2026-09-26 against the heather-mzmon test
-resources with Alloy v1.20.0 and are the ones to re-measure if the exporters are bumped.
+(series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
+GKE and EKS test installs, with Alloy v1.20.0 locally and v1.19.2 in-cluster, and are the ones to
+re-measure if the exporters are bumped.
 -->
 
 ## What is pulled

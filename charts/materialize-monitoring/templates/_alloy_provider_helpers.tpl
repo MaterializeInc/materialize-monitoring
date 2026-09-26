@@ -149,7 +149,7 @@ Render the CloudWatch pull.
 One `static` job per resource. The job label becomes the series' `name`
 label, and Alloy requires it to be an identifier, so it is the resource name
 with every other character mapped to `_` and a service prefix
-(`rds_heather_mzmon_db`). The resource's real name is on the series as
+(`rds_mz_prod_db`). The resource's real name is on the series as
 `dimension_DBInstanceIdentifier` or `dimension_BucketName`, and that is what
 to join on. S3 reports size per storage class and count across all classes,
 under different `StorageType` dimensions, so each bucket takes one job per
