@@ -39,18 +39,19 @@ Grafana stores nothing itself; the silence lives in Alertmanager.
 
 ### Through `amtool`
 
-`amtool` ships in the Alertmanager image and reaches it on localhost.
+`amtool` ships in the Alertmanager image.
+The chart mounts its configuration at `/etc/amtool/config.yml`, which points it at the local Alertmanager.
+The configuration speaks TLS when Alertmanager does; see [TLS](../architecture/#tls).
 
 ```bash
 kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
   amtool silence add namespace=materialize-environment \
-    --duration=2h --author="$USER" --comment="Planned Materialize upgrade" \
-    --alertmanager.url=http://127.0.0.1:9093
+    --duration=2h --author="$USER" --comment="Planned Materialize upgrade"
 ```
 
 ```bash
 kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
-  amtool silence query --alertmanager.url=http://127.0.0.1:9093
+  amtool silence query
 ```
 
 `amtool silence expire <id>` ends one early.

@@ -5607,6 +5607,44 @@ It also fails when a `*_file` path falls under no mounted volume, since that not
 Amazon SNS is the one integration that uses the pod's cloud identity instead, through IRSA or EKS Pod Identity on the `alertmanager` ServiceAccount.
 [Cloud provider services](../channels/#cloud) lists the permissions for it and for the cloud email services.
 
+## TLS {#tls}
+
+Alertmanager serves plaintext on its API port, 9093, by default.
+`alerting.server.tls` moves that port to TLS, and `profiles/mtls.values.yaml` turns it on along with the settings that have to move with it.
+The chart renders the listener settings into `web.yml` in the `alertmanager-config` Secret, which Alertmanager reads through `--web.config.file`.
+
+Eight clients dial the port, and each one needs a matching change:
+
+| Client | How it follows |
+|---|---|
+| Grafana's datasource | The chart's default URL follows the switch; the profile supplies the CA |
+| `amtool` inside the pod | The chart renders `/etc/amtool/config.yml` with the URL and the CA that issued Alertmanager's certificate |
+| Liveness and readiness probes | `scheme: HTTPS`, set by the profile |
+| The config reloader | `reload-url`, set by the profile |
+| The ServiceMonitor | `scheme` and a CA, set by the profile |
+| Both rulers | Their addresses and TLS settings, set by the profile |
+
+The render fails on each client left on the other scheme.
+Alertmanager reads its certificate, client CA and client-auth policy on every connection, so a renewal takes effect without a restart.
+Whether TLS is on at all is decided at startup, so turning it on or off rolls the replicas.
+It also rolls every Loki component, because the Loki ruler's settings live in the configuration all of Loki shares.
+
+Both rulers address the headless Service and reach each replica by pod IP (Thanos) or per-pod name (Loki).
+The certificate carries neither, so each ruler verifies Alertmanager as `alertmanager`, one of the Service names the certificate does carry.
+Each ruler presents its own component's certificate from phase 1.
+
+| Phase | Profile | Alertmanager's API port |
+|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client certificate requested |
+| 2 | `+ mtls-phase2.values.yaml` | `VerifyClientCertIfGiven`: a presented certificate is verified, and a client presenting none is served |
+| 3 | `+ mtls-phase3.values.yaml` | Unchanged from phase 2 |
+
+Phase 2 is as far as this port goes.
+The kubelet's probes and the config reloader dial it and cannot present a client certificate.
+The render refuses `RequireAndVerifyClientCert` while either is in place.
+Gossip between replicas, on 9094, stays plaintext.
+[Securing](../../operating/securing/#the-phases-and-where-each-hop-can-actually-end-up) covers the phases for the whole stack.
+
 ## Observing Alertmanager {#observing}
 
 Alertmanager is scraped through a ServiceMonitor, once per replica.
@@ -5621,6 +5659,7 @@ Both Services the subchart renders carry the same labels, so the monitor drops t
 
 Grafana's **Alertmanager** datasource (`connections.datasources.alertmanager`) gives the alert list and the silence editor.
 It points at the ClusterIP Service, which is correct for a reader: every replica holds the same alerts and silences.
+Its scheme follows `alerting.server.tls`.
 
 None of these series is alerted on yet.
 The deadman's switch and the meta-alerts that read them arrive with the rule set.
@@ -5640,6 +5679,7 @@ The deadman's switch and the meta-alerts that read them arrive with the rule set
 | GrafanaDatasource | `mzmon-alertmanager-datasource` | Chart |
 | ConfigMap | `ruler-env`, in each ruler's namespace | Chart, from `clusterName` |
 | Secret | `alertmanager-receivers` | The operator |
+| Secret | `mzmon-alertmanager-tls` | cert-manager, when `certificates.enabled` is on |
 
 The subchart's names are pinned by `alertmanager.fullnameOverride`, like Loki's, Thanos's and Grafana's, so they do not depend on the release name.
 That is what lets both rulers address `alertmanager-headless` literally, from inside subcharts where this chart's helpers cannot run.
@@ -5653,7 +5693,8 @@ The render warns when the rulers' addresses and the pinned name disagree.
 | A deadman's switch, and meta-alerts on the series above | Alertmanager being unable to deliver is visible on a dashboard, and pages nobody |
 | Rollout-signal inhibition | Upgrade noise is suppressed with a silence or a mute window, by hand. See [Maintenance Windows](../maintenance/) |
 | `alerting.alertmanager.mode: external` | A deployment with its own Alertmanager overrides both rulers' addresses by hand. See [Configuring](../configuring/#what-an-operator-configures-today) |
-| TLS on Alertmanager's own listener | The chart issues a certificate for it, and nothing serves it yet |
+| Client certificates required on the API port | Alertmanager stops at `VerifyClientCertIfGiven`, because its probes and config reloader cannot present one. See [TLS](#tls) |
+| TLS on gossip | Replicas gossip over plaintext on 9094 |
 | Terraform inputs for receivers and the preset | The Terraform path configures `alerting` through `additional_values` |
 
 
@@ -6349,8 +6390,7 @@ kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
 ```bash
 kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
   amtool alert add alertname=ReceiverTest severity=warning \
-    --annotation=summary="Delivery test for the warning class" \
-    --alertmanager.url=http://127.0.0.1:9093
+    --annotation=summary="Delivery test for the warning class"
 ```
 
 The test alert is delivered after `group_wait`, resolves on its own after `resolve_timeout` (5m by default), and is a
@@ -6404,18 +6444,19 @@ Grafana stores nothing itself; the silence lives in Alertmanager.
 
 ### Through `amtool`
 
-`amtool` ships in the Alertmanager image and reaches it on localhost.
+`amtool` ships in the Alertmanager image.
+The chart mounts its configuration at `/etc/amtool/config.yml`, which points it at the local Alertmanager.
+The configuration speaks TLS when Alertmanager does; see [TLS](../architecture/#tls).
 
 ```bash
 kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
   amtool silence add namespace=materialize-environment \
-    --duration=2h --author="$USER" --comment="Planned Materialize upgrade" \
-    --alertmanager.url=http://127.0.0.1:9093
+    --duration=2h --author="$USER" --comment="Planned Materialize upgrade"
 ```
 
 ```bash
 kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
-  amtool silence query --alertmanager.url=http://127.0.0.1:9093
+  amtool silence query
 ```
 
 `amtool silence expire <id>` ends one early.
@@ -7601,6 +7642,7 @@ Everything else on this list ships as a default or is checked at render time.
 - [x] `[chart]` `extraArgs.web.route-prefix: /` keeps every endpoint at the root, so a `baseURL` with a path does not move the API both rulers post to, the probes, the reloader or the datasource. The render fails when a `baseURL` has a path and the pin has been removed.
 - [x] `[chart]` Resource names are **pinned** by `alertmanager.fullnameOverride: alertmanager`, like Loki, Thanos and Grafana, so the rulers address `alertmanager-headless` whatever the release is called. The render warns when the rulers' addresses and the pinned name disagree.
 - [ ] `[operator]` Under `split-namespace`, the profile opens Alertmanager to the ruler and Grafana namespaces. A receiver listening on a port other than `443`, `587` or `465` needs it added to `networkPolicies.alertmanager.egress.external.ports`.
+- [ ] `[operator]` **TLS on the API port** comes with the mTLS profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both rulers and the Grafana datasource with it. The render refuses each client left on the other scheme. `VerifyClientCertIfGiven` at phase 2 is as far as it goes, because the kubelet's probes and the reloader cannot present a certificate. See [Alert Architecture](../../alerting/architecture/#tls).
 
 #### 7. Meta-monitoring
 
@@ -8642,7 +8684,8 @@ Set `global.clusterDomain` if yours differs — it propagates into Loki and Than
 
 ### Turning a backend onto TLS
 
-`profiles/mtls.values.yaml` moves two hops off plaintext — gateway → Loki and gateway → Thanos Receive — and is the supported way to do it:
+`profiles/mtls.values.yaml` is the supported way to move three servers off plaintext.
+They are Loki, Thanos Receive's remote-write listener, and Alertmanager's API port:
 
 ```bash
 helm upgrade --install mzmon charts/materialize-monitoring -n monitoring \
@@ -8668,6 +8711,26 @@ The render refuses each of those rather than letting you find out, which is most
 
 Thanos Receive is narrower by construction: its TLS flags scope to the remote-write listener, so probes, metrics and the ServiceMonitor are untouched and Thanos Query stays plaintext.
 
+Alertmanager has a switch of its own, `alerting.server.tls`, which the chart renders into Alertmanager's `--web.config.file`.
+The switch reaches the Grafana datasource and `amtool` inside the pod, which the chart configures itself.
+It cannot reach the rest, because they render in subcharts from their own values, so the profile sets them:
+
+| Left behind | Effect |
+|---|---|
+| `alertmanager.extraArgs.web.config.file` | Alertmanager decides TLS at startup from this flag, so it keeps serving plaintext |
+| `alertmanager.livenessProbe` and `readinessProbe` schemes | Every replica fails its probes at once |
+| `alertmanager.configmapReload.extraArgs.reload-url` | Configuration changes stop applying until the next restart |
+| `alertmanager.serviceMonitor` scheme and CA | Alertmanager's own metrics vanish |
+| `thanos.ruler.alertmanagers.config`, `loki.loki.rulerConfig.alertmanager_url` | Every notification from that ruler fails, while the ruler reports healthy |
+
+The render refuses each of these as well.
+Both rulers reach each replica by pod IP or per-pod name, and the certificate carries neither.
+Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare name.
+Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
+
+Composing `profiles/split-namespace.values.yaml` with the mTLS profiles needs one extra step, because both restate the two ruler addresses in full.
+Whichever profile comes last wins, and the render warns when a ruler address names the wrong namespace or the wrong scheme.
+
 #### Through Terraform
 
 The Terraform module composes the same profiles from one input, because a consumer of the module has no copy of the chart directory to point `-f` at:
@@ -8686,15 +8749,19 @@ In `materialize-terraform-self-managed` both are on by default, since every exam
 
 Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
 
-| Phase | Profile | Gateway ingress | Loki | Thanos Receive |
-|---|---|---|---|---|
-| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA |
-| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it |
-| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** |
+| Phase | Profile | Gateway ingress | Loki | Thanos Receive | Alertmanager |
+|---|---|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA | TLS, `NoClientCert`; rulers present |
+| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
+| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** | **unreachable** |
 
 The gateway's own ingress reaches phase 3 because its listeners are not the ports the kubelet probes — readiness is on `12345`. That is the difference between it and Loki.
 
 **Loki's HTTP port cannot require client certificates, ever.** The kubelet's readiness and liveness probes dial the same port 3100 that the gateway does, and a Kubernetes `httpGet` probe has no field for a client certificate. Setting `RequireAndVerifyClientCert` fails every probe with `remote error: tls: certificate required`, and every Loki pod goes unready and then restarts. The render refuses it. **Phase 2 is the ceiling for that hop**: a certificate from the wrong CA is refused, an anonymous client is still served. Real authentication there needs an authenticating proxy in front of Loki, or a listener the kubelet does not touch.
+
+**Alertmanager's API port stops at phase 2 as well**, for the same reason and one more.
+The kubelet probes port 9093, and so does Alertmanager's config reloader, whose HTTP client cannot present a certificate either.
+The render refuses `RequireAndVerifyClientCert` while either is in place.
 
 **Thanos Receive does reach phase 3**, because its probes are on the HTTP port while the TLS flags scope to the separate remote-write listener. Verified: a client presenting no certificate is refused at the TLS handshake; one presenting a certificate from the trusted CA is served.
 
@@ -8705,7 +8772,7 @@ Two more measured constraints the profiles encode, both of which crashloop the s
 - **Loki's `client_ca_file` and `client_auth_type` must arrive together.** dskit refuses a client CA with no policy — Loki exits at startup with `client CA's have been configured without a Client Auth Policy`, buried in a Go stack trace, on every microservice at once. That is why phase 1 ships neither.
 - **Both probes need the scheme, not just readiness.** Liveness hits a different path on the same port; left plaintext it returns 400 and the kubelet restarts the container *after* readiness has gone green, which reads as an unrelated flap.
 
-- [ ] `[operator]` **Phase 1 is encryption, not authentication**, and phase 2 only rejects the wrong CA. Phase 3 is where a client presenting nothing is refused — on Thanos Receive's remote-write listener and all four gateway ingress ports. Loki's HTTP port stops at phase 2 and cannot go further, because the kubelet probes it.
+- [ ] `[operator]` **Phase 1 is encryption, not authentication**, and phase 2 only rejects the wrong CA. Phase 3 is where a client presenting nothing is refused — on Thanos Receive's remote-write listener and all four gateway ingress ports. Loki's HTTP port and Alertmanager's API port stop at phase 2 and cannot go further, because the kubelet probes them.
 - [ ] `[operator]` **Roll the server and its clients in either order at phase 1 and 2, never at phase 3.** Kubernetes does not order them, so a server that starts requiring certificates before its clients present them stops ingesting until they catch up. Phase 2 exists to make phase 3 order-independent; the render refuses phase 3 applied without it.
 - [ ] `[operator]` **Grafana's datasource TLS does not renew like the rest.** It reads from `secureJsonData`, which is provisioned config rather than a file mount, so a new CA means re-provisioning the datasource.
 
@@ -8730,11 +8797,12 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
 | **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
+| **In-cluster TLS, rulers and Grafana → Alertmanager** | 🔨 Encrypted, and presented certificates verified, at phase 2, which is its ceiling. The kubelet and the config reloader dial the same port and cannot present a certificate |
 | **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
-| **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port is the exception and stays at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
+| **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port and Alertmanager's API port are the exceptions and stay at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
 | **A trust bundle for a private CA** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)). Needed for an S3-compatible store behind a private CA, and for images that ship no CA bundle at all |
-| **Intra-Loki and intra-Thanos TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store — all real hops inside a single subchart's trust boundary |
+| **Intra-Loki, intra-Thanos and intra-Alertmanager TLS** | ❌ Not shipped. Distributor→ingester gRPC, the memberlist ring, query→store, Alertmanager's gossip on 9094 — all real hops inside a single subchart's trust boundary |
 | **Redaction in the pipeline** | ❌ Not shipped ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)) |
 
 **Issuance and use are separate switches on purpose**, and a default install turns on neither. A hop only leaves plaintext once that component's renewal behaviour has been proven, because a component that does not reload a renewed certificate works for exactly one certificate lifetime and then fails with no deploy nearby to blame — which is why `tls::survives_renewal` forces a reissue and asserts delivery across it rather than trusting a freshly-installed stack.
@@ -12763,7 +12831,75 @@ every replica like any other.
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"{{ include \"mzmon.alertmanager.url\" $ }}"</code></td>
-      <td class="helm-value-desc">Alertmanager endpoint. Rendered with `tpl`. The load-balanced Service is right for a reader: silences and the notification log are gossiped, and both rulers send every alert to every replica, so any replica answers with the same state.
+      <td class="helm-value-desc">Alertmanager endpoint. Rendered with `tpl`. The load-balanced Service is right for a reader: silences and the notification log are gossiped, and both rulers send every alert to every replica, so any replica answers with the same state. The helper's scheme follows `alerting.server.tls.enabled`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "caPem": "",
+  "caSecret": {
+    "key": "ca.crt",
+    "name": ""
+  },
+  "clientCert": {
+    "certKey": "tls.crt",
+    "keyKey": "tls.key",
+    "secretName": ""
+  },
+  "enabled": null,
+  "serverName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">TLS for Grafana's connection to Alertmanager. Same shape and caveats as `connections.datasources.thanos.tls`, including that Grafana stores the material rather than reading a file, so it refreshes on `resyncPeriod` rather than on renewal. `profiles/mtls.values.yaml` sets `caSecret` to Grafana's own certificate Secret, and `mtls-phase2` presents it as the client certificate.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows the URL scheme</code></td>
+      <td class="helm-value-desc">Verify Alertmanager's certificate. Unset follows the URL scheme.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.caPem</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">The CA to trust, inline as PEM.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.caSecret</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "key": "ca.crt",
+  "name": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Secret holding the CA bundle, in the Grafana instance's namespace.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.clientCert</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "certKey": "tls.crt",
+  "keyKey": "tls.key",
+  "secretName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Present a client certificate.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">SNI to send, when it differs from the URL host.
 </td>
     </tr>
     <tr>
@@ -12989,6 +13125,47 @@ routes:
 {}</pre>
 </td>
       <td class="helm-value-desc">Alertmanager's `global` block, verbatim: `resolve_timeout`, SMTP defaults, a shared `http_config`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.server<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "certFile": "/etc/mzmon/tls/tls.crt",
+  "clientAuth": "NoClientCert",
+  "clientCAFile": "",
+  "enabled": false,
+  "keyFile": "/etc/mzmon/tls/tls.key",
+  "minVersion": "TLS13"
+}</pre>
+</td>
+      <td class="helm-value-desc">TLS on Alertmanager's API port (9093), rendered as its `--web.config.file`.
+
+Off by default. `profiles/mtls.values.yaml` turns it on and assembles the
+settings that have to move with it, and `mtls-phase2` verifies client
+certificates. Set these directly only alongside the same changes; the render
+refuses each half-applied combination.
+
+| Key | Meaning |
+| --- | --- |
+| `enabled` | Serve TLS. Takes effect when `alertmanager.extraArgs.web.config.file` is also set, which is what restarts Alertmanager onto it: TLS on or off is decided at startup. |
+| `certFile` / `keyFile` | The serving certificate. The defaults are the chart's `mzmon-alertmanager-tls` Secret, which `alertmanager.extraSecretMounts` mounts at `/etc/mzmon/tls` whether or not it exists yet. `amtool` in the pod trusts the `ca.crt` beside `certFile`, which a cert-manager Secret carries. |
+| `clientCAFile` | Roots client certificates are verified against. Ignored with `NoClientCert`, which Alertmanager refuses to combine with a client CA. |
+| `clientAuth` | `NoClientCert`, or `VerifyClientCertIfGiven`. See below for `RequireAndVerifyClientCert`. |
+| `minVersion` | Lowest TLS version accepted, in Alertmanager's spelling (`TLS12`, `TLS13`). |
+
+The certificate, the client-auth policy and the CA are re-read on every
+connection, so a renewal or a move between `NoClientCert` and
+`VerifyClientCertIfGiven` applies without a restart.
+
+**`RequireAndVerifyClientCert` is refused while Alertmanager's own probes
+or config reloader would be locked out.** Both reach port 9093 from inside
+the pod and neither can present a client certificate: a Kubernetes `httpGet`
+probe has no field for one, and the config reloader's client has no option
+for one. So `VerifyClientCertIfGiven` is the terminal state here, as it is
+for Loki's HTTP port: certificates that are presented are verified, and a
+client that presents none is still served.
 </td>
     </tr>
     <tr>
@@ -15729,6 +15906,11 @@ validator warns when the two disagree.
       "name": "remote-write",
       "readOnly": true,
       "subPath": "remote-write.yaml"
+    },
+    {
+      "mountPath": "/etc/mzmon/tls",
+      "name": "mzmon-tls",
+      "readOnly": true
     }
   ],
   "extraVolumes": [
@@ -15737,6 +15919,13 @@ validator warns when the two disagree.
         "name": "thanos-ruler-remote-write"
       },
       "name": "remote-write"
+    },
+    {
+      "name": "mzmon-tls",
+      "secret": {
+        "optional": true,
+        "secretName": "mzmon-thanos-tls"
+      }
     }
   ],
   "persistence": {
@@ -15992,6 +16181,35 @@ an override of this list; the render warns when either goes missing.
 ]</pre>
 </td>
       <td class="helm-value-desc">The cluster name, for `--label=cluster` in `extraArgs`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraVolumes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMap": {
+      "name": "thanos-ruler-remote-write"
+    },
+    "name": "remote-write"
+  },
+  {
+    "name": "mzmon-tls",
+    "secret": {
+      "optional": true,
+      "secretName": "mzmon-thanos-tls"
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
+
+`mzmon-thanos-tls` is the certificate the chart issues for Thanos when
+`certificates` is on. The Ruler presents it to Alertmanager when
+`alerting.server.tls` is on, and trusts its `ca.crt`. Mounted unconditionally
+and optionally, so the same values work before issuance, during it and after.
+This is a list: restate both entries when adding one.
 </td>
     </tr>
     <tr>
@@ -16706,10 +16924,31 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
     "secret": {
       "secretName": "alertmanager-config"
     }
+  },
+  {
+    "name": "mzmon-amtool",
+    "secret": {
+      "items": [
+        {
+          "key": "amtool.yml",
+          "path": "config.yml"
+        }
+      ],
+      "secretName": "alertmanager-config"
+    }
   }
 ]</pre>
 </td>
       <td class="helm-value-desc">Mount the configuration the chart renders. Load-bearing, with `extraArgs.config.file`.
+
+The second volume puts an `amtool` configuration at `/etc/amtool/config.yml`,
+where `amtool` looks by default, rendered from the same Secret. It carries the
+URL and, when `alerting.server.tls` is on, the CA that issued `certFile` (the
+`ca.crt` beside it), so `kubectl exec ... -- amtool silence query` works
+unchanged in every TLS phase. It presents a client certificate only when
+`clientAuth` requires one.
+Mounted as a directory rather than with `subPath`, so it follows changes to
+the Secret.
 </td>
     </tr>
     <tr>
@@ -16723,6 +16962,13 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
     "optional": true,
     "readOnly": true,
     "secretName": "alertmanager-receivers"
+  },
+  {
+    "mountPath": "/etc/mzmon/tls",
+    "name": "mzmon-tls",
+    "optional": true,
+    "readOnly": true,
+    "secretName": "mzmon-alertmanager-tls"
   }
 ]</pre>
 </td>
@@ -16738,9 +16984,14 @@ It is `optional`, so the pods start before it exists. Alertmanager reads a
 needs no restart. The kubelet refreshes the mounted copy within about a minute.
 
 To mount further Secrets, add entries under `/etc/alertmanager/secrets/`.
-**This is a list, and Helm replaces lists**, so restate the default entry
+**This is a list, and Helm replaces lists**, so restate the default entries
 when adding one. The render fails when a receiver names a `*_file` path that
 no mount covers.
+
+The second entry is Alertmanager's own certificate, which the chart issues as
+`mzmon-alertmanager-tls` when `certificates` is on. Mounted unconditionally
+and optionally, so the same values work before issuance, during it and after,
+and turning `alerting.server.tls` on changes no volume.
 </td>
     </tr>
     <tr>
@@ -18868,11 +19119,12 @@ the trust domain is the security property. That is the argument for leaving
 `issuer_ref` null and letting the chart bootstrap a root scoped to this
 release.
 
-Two hops stop short of `authenticate` by nature rather than by choice, and
-the chart refuses to configure them otherwise: Loki's HTTP port is probed by
-the kubelet, and a `httpGet` probe has no field for a client certificate, so
-that hop's terminal state is `present`. Grafana's datasource verifies the
-backend but presents nothing.
+Two ports stop short of `authenticate` by nature rather than by choice, and
+the chart refuses to configure them otherwise: Loki's HTTP port and
+Alertmanager's API port are probed by the kubelet, and a `httpGet` probe has
+no field for a client certificate, so their terminal state is `present`.
+Grafana's datasources verify the backend, and present a certificate only to
+Alertmanager.
 </td>
         <td class="tf-var-default"><code>off</code></td>
     </tr>
@@ -21885,7 +22137,7 @@ The umbrella chart loads pre-rendered artifacts and bundles the productionalized
 | **Grafana production shape** ([CLO-111](https://linear.app/materializeinc/issue/CLO-111)) — pinned image so Renovate bumps the server independently, resource requests, PDB, HPA, Image Renderer refused, unpinned-plugin and leaked-secret guards, `grafana.ini` documented as an arbitrary-config passthrough for SSO, and a `grafanaSpec` break-glass for `mode: operator` | OO-M1 | ✅ |
 | **Pre-delete hook finalizing the Grafana custom resources** before grafana-operator is deleted, so teardown does not deadlock on finalizers with no remover ([DEP-197](https://linear.app/materializeinc/issue/DEP-197)). `cleanup.grafanaOperator` runs one `kubectl delete` at `pre-delete` and blocks until the finalizers clear, on upstream's distroless kubectl image | OO-M1 | ✅ |
 | **Dashboards split into `materialize-monitoring-dashboards`** — their own chart and release, because the rendered set outgrew what a Helm release can carry ([why, and what it cost](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Not their own component:** the chart joined the existing `dashboards` stream, since it carries nothing but that component's output and two streams would move in lockstep while claiming independence. The umbrella chart dropped `dashboards` from its `dependencies` with it — nothing it ships comes from them any more. Folders, datasources and the `Grafana` instance stay in the umbrella chart; the new one references them through explicit values, and the Terraform module derives those from the same `values.yaml` the main release renders from. Verified on a live install: the full seven-dashboard default set installs and each lands in its folder | OO-M2 | ✅ |
-| **cert-manager integration (opt-in)** ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)) — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | OO-M1 | ✅ (issuance shipped and off by default: `certificates.enabled` renders per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root, and a separate external issuer for a Grafana behind an L4 LB. `global.clusterDomain` lands with it and propagates into Loki and Thanos. Material is mounted, not env-injected, and the `tls.*File` carriers plus scheme derivation are wired on the gateway's own destinations — `alloy validate` passes on the TLS-enabled render. Server halves shipped for both: `profiles/mtls.values.yaml` assembles Loki's six coupled settings and Thanos Receive's two, and a validator refuses every half-applied combination — `alloy validate` passes on the rendered result. All four gateway ingress listeners — 3100, 4317, 4318, 9090 — now render from Helm and take TLS from values; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker, so **agent→gateway is shipped**. Phases 2 and 3 ship as `mtls-phase2` / `mtls-phase3`, and at phase 3 five listeners refuse a client presenting no certificate. Terraform exposes the whole rollout as `internal_tls` (`off`/`encrypt`/`present`/`authenticate`) and `materialize-terraform-self-managed` defaults to certificates on and `authenticate`. Tier 2 runs phase 3 by default at chart-default lifetimes — the earlier 1h/55m livelocked cert-manager, so renewal is **forced** by deleting the Secret instead. The E2E suite has its own TLS client and asserts issuance, expiry, plaintext refusal, client-certificate enforcement and delivery across a forced renewal; verified on kind and on real EKS and GKE. **Not covered:** the trust bundle ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)), which moved to BYOC-CP; intra-Loki and intra-Thanos hops; and Loki's HTTP port, which cannot pass phase 2 because the kubelet probes it) |
+| **cert-manager integration (opt-in)** ([DEP-195](https://linear.app/materializeinc/issue/DEP-195)) — `Certificate` resources for agent↔gateway and gateway/Grafana→Loki/Thanos mTLS, server-side TLS on the receiving halves, and file-mounted cert material so renewal takes effect. cert-manager stays an optional dependency the chart encourages rather than requires; the Terraform path enables it by default because that stack already ships it | OO-M1 | ✅ (issuance shipped and off by default: `certificates.enabled` renders per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root, and a separate external issuer for a Grafana behind an L4 LB. `global.clusterDomain` lands with it and propagates into Loki and Thanos. Material is mounted, not env-injected, and the `tls.*File` carriers plus scheme derivation are wired on the gateway's own destinations — `alloy validate` passes on the TLS-enabled render. Server halves shipped for both, and for Alertmanager: `profiles/mtls.values.yaml` assembles Loki's six coupled settings, Thanos Receive's two, and the listener, probes, reloader, scrape and both rulers for Alertmanager's API port, and a validator refuses every half-applied combination — `alloy validate` passes on the rendered result. All four gateway ingress listeners — 3100, 4317, 4318, 9090 — now render from Helm and take TLS from values; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker, so **agent→gateway is shipped**. Phases 2 and 3 ship as `mtls-phase2` / `mtls-phase3`, and at phase 3 five listeners refuse a client presenting no certificate. Terraform exposes the whole rollout as `internal_tls` (`off`/`encrypt`/`present`/`authenticate`) and `materialize-terraform-self-managed` defaults to certificates on and `authenticate`. Tier 2 runs phase 3 by default at chart-default lifetimes — the earlier 1h/55m livelocked cert-manager, so renewal is **forced** by deleting the Secret instead. The E2E suite has its own TLS client and asserts issuance, expiry, plaintext refusal, client-certificate enforcement and delivery across a forced renewal; verified on kind and on real EKS and GKE. **Not covered:** the trust bundle ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)), which moved to BYOC-CP; intra-Loki, intra-Thanos and Alertmanager gossip hops; and Loki's HTTP port and Alertmanager's API port, which cannot pass phase 2 because the kubelet probes them) |
 
 Grafana reachability and persistence are paired deliberately.
 Exposing Grafana without a durable backend turns a bundled extra nobody depended on into a primary interface that silently discards everything a user creates in it.
@@ -24404,11 +24656,11 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | Grafana ingress TLS | ✅ Modeled | `grafana.ingress.tls`, with the render refusing a `LoadBalancer` with no allowlist unless `allowPublicAccess` |
 | **Default posture on every in-cluster hop** | ⚠️ **Plaintext** | `http://alloy-gateway…:3100`, `http://loki-distributor…:3100`, `http://thanos-receive…:10908`, `http://thanos-query…:9090`, `http://loki-query-frontend…:3100` |
 | **Certificate issuance** | ✅ Shipped | `templates/certificates.yaml`, gated on `certificates.enabled` (default false). Per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root chain, and a separate external issuer for a Grafana behind an L4 LB |
-| **Server-side TLS on all three gateway listeners** | ⚠️ `raw` only | `loki.source.api` `http`, `otelcol.receiver.otlp` `grpc` / `http`, and `prometheus.receive_http` `http` — every one reaches `tls` only through the `raw` escape hatch. The `receive_http` schema says so outright: *"`http` configures the server; a `tls` block uses the `raw:` escape"* |
+| **Server-side TLS on all three gateway listeners** | ✅ Shipped | `loki.source.api`, `otelcol.receiver.otlp` and `prometheus.receive_http` render TLS from Helm (`mzmon.alloyGateway.pipeline.sources`). The Alloy JSONSchema still reaches `tls` only through `raw`; see [Work in this repo](#work-in-this-repo) |
 | **A configurable cluster domain** | ✅ Shipped | `global.clusterDomain`. Placed under `global` rather than top-level because Loki and Thanos already read `global.clusterDomain` and build real addresses from it, so Helm's propagation makes one value cover all three — this settles [open question 9](#open-questions). `metrics-server` reads its own `tls.clusterDomain` and is covered by a validator instead |
 | **A trust-bundle surface for non-public CAs** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)) | The `certificates.trustBundle` values were modeled and never read, so they have been removed rather than left as a silent no-op |
-| **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | ⬜ Not wired | Each subchart exposes it through its own config passthrough; the umbrella models none of it |
-| **Grafana → backends client certificates** | ⚠️ Expressible, unmodeled | `connections.datasources.*.valuesFrom` can inject `secureJsonData`; nothing defaults or documents the cert keys |
+| **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | 🔨 Partly shipped | Loki, Thanos Receive's remote-write listener and Alertmanager's API port, through `profiles/mtls.values.yaml`; see [Work in this repo](#work-in-this-repo). Grafana and Thanos Query are not wired |
+| **Grafana → backends client certificates** | ✅ Modeled | `connections.datasources.*.tls.clientCert`, a `valuesFrom` reference to a Secret. `mtls-phase2` sets it to Grafana's own certificate for Alertmanager |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
 | **NetworkPolicy coverage** | ✅ Shipped | Every workload, on by default ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Ingress is narrowed to known peers; egress is narrowed only where the chart knows the destination set, which is node-exporter, kube-state-metrics and Loki |
 | **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) |
@@ -24745,6 +24997,16 @@ It is also the one component where mTLS is the *only* available control — the 
 Lowest-value hop in the set — the traffic is alert notifications, and the exposure is injecting false alerts rather than reading or corrupting telemetry.
 Phase 3, and acceptable to defer past 1.0 if it is the last thing standing.
 
+As built, Alertmanager's API port reaches phase 2 and stops there, like Loki's HTTP port.
+The kubelet's `httpGet` probes dial 9093 and cannot present a certificate.
+Neither can the config reloader, whose HTTP client has no option for one.
+The chart models the listener as `alerting.server.tls` and renders it into `--web.config.file`, because the subchart has no TLS values of its own.
+exporter-toolkit, which serves the port, decides TLS once at startup and reads the certificate, client CA and policy on every connection.
+That last point is read from its source rather than measured; see [open question 2](#open-questions).
+Both rulers reach replicas through the headless Service, by addresses the certificate does not carry.
+Each therefore verifies Alertmanager as its bare Service name.
+Gossip on 9094 is intra-subchart and stays plaintext.
+
 ## Relationship to NetworkPolicy
 
 These are complements and the docs should refuse to let them be read as alternatives.
@@ -24819,6 +25081,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
 | ~~Modeled `connections.datasources.*.tls` for Grafana → backends~~ **Shipped** and verified against a live Grafana: `tls.caPem` (inline; a CA is public material) or `tls.caSecret` (a `valuesFrom` reference). Neither is defaulted, because an https datasource with no CA fails as an empty dashboard — the render refuses it. **Cluster finding, now fixed:** grafana-operator's `valuesFrom` substitutes into a `${...}` placeholder that must already exist at the target path **and must be named for the `secretKeyRef` key** — `${ca.crt}`, not a token of the chart's choosing. The chart emitted `${tlsCACert}`, so nothing substituted and Grafana stored the literal, reporting `failed to parse TLS CA PEM certificate` at query time while the CR, the operator log and `secureJsonFields` all looked correct. The placeholder is now derived from the key, `caSecret.name` is `tpl`-rendered so a profile can name a release-dependent Secret, and `mtls.values.yaml` wires Grafana's own certificate Secret with no operator action. Verified on grafana-operator v5.24.0 at tier 2. Grafana → Thanos Query is not shipped: Query has no `--http.tls-*` flags, only an experimental `--http.config` that would also TLS its probe endpoints | — | 2 |
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
+| ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
 | A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |

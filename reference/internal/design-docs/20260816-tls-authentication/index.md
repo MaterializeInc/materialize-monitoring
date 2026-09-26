@@ -99,11 +99,11 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | Grafana ingress TLS | ✅ Modeled | `grafana.ingress.tls`, with the render refusing a `LoadBalancer` with no allowlist unless `allowPublicAccess` |
 | **Default posture on every in-cluster hop** | ⚠️ **Plaintext** | `http://alloy-gateway…:3100`, `http://loki-distributor…:3100`, `http://thanos-receive…:10908`, `http://thanos-query…:9090`, `http://loki-query-frontend…:3100` |
 | **Certificate issuance** | ✅ Shipped | `templates/certificates.yaml`, gated on `certificates.enabled` (default false). Per-component `Certificate`s with the full SAN ladder, an opt-in self-signed root chain, and a separate external issuer for a Grafana behind an L4 LB |
-| **Server-side TLS on all three gateway listeners** | ⚠️ `raw` only | `loki.source.api` `http`, `otelcol.receiver.otlp` `grpc` / `http`, and `prometheus.receive_http` `http` — every one reaches `tls` only through the `raw` escape hatch. The `receive_http` schema says so outright: *"`http` configures the server; a `tls` block uses the `raw:` escape"* |
+| **Server-side TLS on all three gateway listeners** | ✅ Shipped | `loki.source.api`, `otelcol.receiver.otlp` and `prometheus.receive_http` render TLS from Helm (`mzmon.alloyGateway.pipeline.sources`). The Alloy JSONSchema still reaches `tls` only through `raw`; see [Work in this repo](#work-in-this-repo) |
 | **A configurable cluster domain** | ✅ Shipped | `global.clusterDomain`. Placed under `global` rather than top-level because Loki and Thanos already read `global.clusterDomain` and build real addresses from it, so Helm's propagation makes one value cover all three — this settles [open question 9](#open-questions). `metrics-server` reads its own `tls.clusterDomain` and is covered by a validator instead |
 | **A trust-bundle surface for non-public CAs** | ❌ Not shipped ([DEP-236](https://linear.app/materializeinc/issue/DEP-236)) | The `certificates.trustBundle` values were modeled and never read, so they have been removed rather than left as a silent no-op |
-| **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | ⬜ Not wired | Each subchart exposes it through its own config passthrough; the umbrella models none of it |
-| **Grafana → backends client certificates** | ⚠️ Expressible, unmodeled | `connections.datasources.*.valuesFrom` can inject `secureJsonData`; nothing defaults or documents the cert keys |
+| **Server-side TLS on Loki / Thanos / Grafana / Alertmanager** | 🔨 Partly shipped | Loki, Thanos Receive's remote-write listener and Alertmanager's API port, through `profiles/mtls.values.yaml`; see [Work in this repo](#work-in-this-repo). Grafana and Thanos Query are not wired |
+| **Grafana → backends client certificates** | ✅ Modeled | `connections.datasources.*.tls.clientCert`, a `valuesFrom` reference to a Secret. `mtls-phase2` sets it to Grafana's own certificate for Alertmanager |
 | **Authenticated node-exporter scrape** | ⚠️ Parked | `nodeExporter.kubeRBACProxy` off by default — a sidecar on every node to protect an endpoint that exposes no secrets |
 | **NetworkPolicy coverage** | ✅ Shipped | Every workload, on by default ([DEP-192](https://linear.app/materializeinc/issue/DEP-192)). Ingress is narrowed to known peers; egress is narrowed only where the chart knows the destination set, which is node-exporter, kube-state-metrics and Loki |
 | **External client-cert auth (BYOC)** | 📄 Designed | [BYOC design doc](../20260813-byoc-observability/#two-stage-verification-with-one-revocation-checkpoint) |
@@ -440,6 +440,16 @@ It is also the one component where mTLS is the *only* available control — the 
 Lowest-value hop in the set — the traffic is alert notifications, and the exposure is injecting false alerts rather than reading or corrupting telemetry.
 Phase 3, and acceptable to defer past 1.0 if it is the last thing standing.
 
+As built, Alertmanager's API port reaches phase 2 and stops there, like Loki's HTTP port.
+The kubelet's `httpGet` probes dial 9093 and cannot present a certificate.
+Neither can the config reloader, whose HTTP client has no option for one.
+The chart models the listener as `alerting.server.tls` and renders it into `--web.config.file`, because the subchart has no TLS values of its own.
+exporter-toolkit, which serves the port, decides TLS once at startup and reads the certificate, client CA and policy on every connection.
+That last point is read from its source rather than measured; see [open question 2](#open-questions).
+Both rulers reach replicas through the headless Service, by addresses the certificate does not carry.
+Each therefore verifies Alertmanager as its bare Service name.
+Gossip on 9094 is intra-subchart and stays plaintext.
+
 ## Relationship to NetworkPolicy
 
 These are complements and the docs should refuse to let them be read as alternatives.
@@ -514,6 +524,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
 | ~~Modeled `connections.datasources.*.tls` for Grafana → backends~~ **Shipped** and verified against a live Grafana: `tls.caPem` (inline; a CA is public material) or `tls.caSecret` (a `valuesFrom` reference). Neither is defaulted, because an https datasource with no CA fails as an empty dashboard — the render refuses it. **Cluster finding, now fixed:** grafana-operator's `valuesFrom` substitutes into a `${...}` placeholder that must already exist at the target path **and must be named for the `secretKeyRef` key** — `${ca.crt}`, not a token of the chart's choosing. The chart emitted `${tlsCACert}`, so nothing substituted and Grafana stored the literal, reporting `failed to parse TLS CA PEM certificate` at query time while the CR, the operator log and `secureJsonFields` all looked correct. The placeholder is now derived from the key, `caSecret.name` is `tpl`-rendered so a profile can name a release-dependent Secret, and `mtls.values.yaml` wires Grafana's own certificate Secret with no operator action. Verified on grafana-operator v5.24.0 at tier 2. Grafana → Thanos Query is not shipped: Query has no `--http.tls-*` flags, only an experimental `--http.config` that would also TLS its probe endpoints | — | 2 |
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
+| ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
 | A tier-2 variant with a private-CA object store, replacing plaintext rustfs | trust bundle | 2 |

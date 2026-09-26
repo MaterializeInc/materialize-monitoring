@@ -1123,6 +1123,7 @@ Everything else on this list ships as a default or is checked at render time.
 - [x] `[chart]` `extraArgs.web.route-prefix: /` keeps every endpoint at the root, so a `baseURL` with a path does not move the API both rulers post to, the probes, the reloader or the datasource. The render fails when a `baseURL` has a path and the pin has been removed.
 - [x] `[chart]` Resource names are **pinned** by `alertmanager.fullnameOverride: alertmanager`, like Loki, Thanos and Grafana, so the rulers address `alertmanager-headless` whatever the release is called. The render warns when the rulers' addresses and the pinned name disagree.
 - [ ] `[operator]` Under `split-namespace`, the profile opens Alertmanager to the ruler and Grafana namespaces. A receiver listening on a port other than `443`, `587` or `465` needs it added to `networkPolicies.alertmanager.egress.external.ports`.
+- [ ] `[operator]` **TLS on the API port** comes with the mTLS profiles: `alerting.server.tls` moves 9093 to TLS, and the profiles move the probes, the reloader, the scrape, both rulers and the Grafana datasource with it. The render refuses each client left on the other scheme. `VerifyClientCertIfGiven` at phase 2 is as far as it goes, because the kubelet's probes and the reloader cannot present a certificate. See [Alert Architecture](../../alerting/architecture/#tls).
 
 #### 7. Meta-monitoring
 

@@ -556,8 +556,7 @@ kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
 ```bash
 kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
   amtool alert add alertname=ReceiverTest severity=warning \
-    --annotation=summary="Delivery test for the warning class" \
-    --alertmanager.url=http://127.0.0.1:9093
+    --annotation=summary="Delivery test for the warning class"
 ```
 
 The test alert is delivered after `group_wait`, resolves on its own after `resolve_timeout` (5m by default), and is a

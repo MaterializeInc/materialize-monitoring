@@ -3054,7 +3054,75 @@ every replica like any other.
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.url</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"{{ include \"mzmon.alertmanager.url\" $ }}"</code></td>
-      <td class="helm-value-desc">Alertmanager endpoint. Rendered with `tpl`. The load-balanced Service is right for a reader: silences and the notification log are gossiped, and both rulers send every alert to every replica, so any replica answers with the same state.
+      <td class="helm-value-desc">Alertmanager endpoint. Rendered with `tpl`. The load-balanced Service is right for a reader: silences and the notification log are gossiped, and both rulers send every alert to every replica, so any replica answers with the same state. The helper's scheme follows `alerting.server.tls.enabled`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "caPem": "",
+  "caSecret": {
+    "key": "ca.crt",
+    "name": ""
+  },
+  "clientCert": {
+    "certKey": "tls.crt",
+    "keyKey": "tls.key",
+    "secretName": ""
+  },
+  "enabled": null,
+  "serverName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">TLS for Grafana's connection to Alertmanager. Same shape and caveats as `connections.datasources.thanos.tls`, including that Grafana stores the material rather than reading a file, so it refreshes on `resyncPeriod` rather than on renewal. `profiles/mtls.values.yaml` sets `caSecret` to Grafana's own certificate Secret, and `mtls-phase2` presents it as the client certificate.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows the URL scheme</code></td>
+      <td class="helm-value-desc">Verify Alertmanager's certificate. Unset follows the URL scheme.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.caPem</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">The CA to trust, inline as PEM.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.caSecret</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "key": "ca.crt",
+  "name": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Secret holding the CA bundle, in the Grafana instance's namespace.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.clientCert</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "certKey": "tls.crt",
+  "keyKey": "tls.key",
+  "secretName": ""
+}</pre>
+</td>
+      <td class="helm-value-desc">Present a client certificate.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.tls<wbr>.serverName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">SNI to send, when it differs from the URL host.
 </td>
     </tr>
     <tr>
@@ -3280,6 +3348,47 @@ routes:
 {}</pre>
 </td>
       <td class="helm-value-desc">Alertmanager's `global` block, verbatim: `resolve_timeout`, SMTP defaults, a shared `http_config`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.server<wbr>.tls</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "certFile": "/etc/mzmon/tls/tls.crt",
+  "clientAuth": "NoClientCert",
+  "clientCAFile": "",
+  "enabled": false,
+  "keyFile": "/etc/mzmon/tls/tls.key",
+  "minVersion": "TLS13"
+}</pre>
+</td>
+      <td class="helm-value-desc">TLS on Alertmanager's API port (9093), rendered as its `--web.config.file`.
+
+Off by default. `profiles/mtls.values.yaml` turns it on and assembles the
+settings that have to move with it, and `mtls-phase2` verifies client
+certificates. Set these directly only alongside the same changes; the render
+refuses each half-applied combination.
+
+| Key | Meaning |
+| --- | --- |
+| `enabled` | Serve TLS. Takes effect when `alertmanager.extraArgs.web.config.file` is also set, which is what restarts Alertmanager onto it: TLS on or off is decided at startup. |
+| `certFile` / `keyFile` | The serving certificate. The defaults are the chart's `mzmon-alertmanager-tls` Secret, which `alertmanager.extraSecretMounts` mounts at `/etc/mzmon/tls` whether or not it exists yet. `amtool` in the pod trusts the `ca.crt` beside `certFile`, which a cert-manager Secret carries. |
+| `clientCAFile` | Roots client certificates are verified against. Ignored with `NoClientCert`, which Alertmanager refuses to combine with a client CA. |
+| `clientAuth` | `NoClientCert`, or `VerifyClientCertIfGiven`. See below for `RequireAndVerifyClientCert`. |
+| `minVersion` | Lowest TLS version accepted, in Alertmanager's spelling (`TLS12`, `TLS13`). |
+
+The certificate, the client-auth policy and the CA are re-read on every
+connection, so a renewal or a move between `NoClientCert` and
+`VerifyClientCertIfGiven` applies without a restart.
+
+**`RequireAndVerifyClientCert` is refused while Alertmanager's own probes
+or config reloader would be locked out.** Both reach port 9093 from inside
+the pod and neither can present a client certificate: a Kubernetes `httpGet`
+probe has no field for one, and the config reloader's client has no option
+for one. So `VerifyClientCertIfGiven` is the terminal state here, as it is
+for Loki's HTTP port: certificates that are presented are verified, and a
+client that presents none is still served.
 </td>
     </tr>
     <tr>
@@ -6020,6 +6129,11 @@ validator warns when the two disagree.
       "name": "remote-write",
       "readOnly": true,
       "subPath": "remote-write.yaml"
+    },
+    {
+      "mountPath": "/etc/mzmon/tls",
+      "name": "mzmon-tls",
+      "readOnly": true
     }
   ],
   "extraVolumes": [
@@ -6028,6 +6142,13 @@ validator warns when the two disagree.
         "name": "thanos-ruler-remote-write"
       },
       "name": "remote-write"
+    },
+    {
+      "name": "mzmon-tls",
+      "secret": {
+        "optional": true,
+        "secretName": "mzmon-thanos-tls"
+      }
     }
   ],
   "persistence": {
@@ -6283,6 +6404,35 @@ an override of this list; the render warns when either goes missing.
 ]</pre>
 </td>
       <td class="helm-value-desc">The cluster name, for `--label=cluster` in `extraArgs`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraVolumes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "configMap": {
+      "name": "thanos-ruler-remote-write"
+    },
+    "name": "remote-write"
+  },
+  {
+    "name": "mzmon-tls",
+    "secret": {
+      "optional": true,
+      "secretName": "mzmon-thanos-tls"
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
+
+`mzmon-thanos-tls` is the certificate the chart issues for Thanos when
+`certificates` is on. The Ruler presents it to Alertmanager when
+`alerting.server.tls` is on, and trusts its `ca.crt`. Mounted unconditionally
+and optionally, so the same values work before issuance, during it and after.
+This is a list: restate both entries when adding one.
 </td>
     </tr>
     <tr>
@@ -6997,10 +7147,31 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
     "secret": {
       "secretName": "alertmanager-config"
     }
+  },
+  {
+    "name": "mzmon-amtool",
+    "secret": {
+      "items": [
+        {
+          "key": "amtool.yml",
+          "path": "config.yml"
+        }
+      ],
+      "secretName": "alertmanager-config"
+    }
   }
 ]</pre>
 </td>
       <td class="helm-value-desc">Mount the configuration the chart renders. Load-bearing, with `extraArgs.config.file`.
+
+The second volume puts an `amtool` configuration at `/etc/amtool/config.yml`,
+where `amtool` looks by default, rendered from the same Secret. It carries the
+URL and, when `alerting.server.tls` is on, the CA that issued `certFile` (the
+`ca.crt` beside it), so `kubectl exec ... -- amtool silence query` works
+unchanged in every TLS phase. It presents a client certificate only when
+`clientAuth` requires one.
+Mounted as a directory rather than with `subPath`, so it follows changes to
+the Secret.
 </td>
     </tr>
     <tr>
@@ -7014,6 +7185,13 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
     "optional": true,
     "readOnly": true,
     "secretName": "alertmanager-receivers"
+  },
+  {
+    "mountPath": "/etc/mzmon/tls",
+    "name": "mzmon-tls",
+    "optional": true,
+    "readOnly": true,
+    "secretName": "mzmon-alertmanager-tls"
   }
 ]</pre>
 </td>
@@ -7029,9 +7207,14 @@ It is `optional`, so the pods start before it exists. Alertmanager reads a
 needs no restart. The kubelet refreshes the mounted copy within about a minute.
 
 To mount further Secrets, add entries under `/etc/alertmanager/secrets/`.
-**This is a list, and Helm replaces lists**, so restate the default entry
+**This is a list, and Helm replaces lists**, so restate the default entries
 when adding one. The render fails when a receiver names a `*_file` path that
 no mount covers.
+
+The second entry is Alertmanager's own certificate, which the chart issues as
+`mzmon-alertmanager-tls` when `certificates` is on. Mounted unconditionally
+and optionally, so the same values work before issuance, during it and after,
+and turning `alerting.server.tls` on changes no volume.
 </td>
     </tr>
     <tr>
