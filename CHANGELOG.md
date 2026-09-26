@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.7.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.25.0 (Unreleased)
 
 _Changes Pending_
@@ -84,9 +88,10 @@ _Changes Pending_
 * Included Prometheus Scrapers @ v0.4.0..v0.5.0
 * Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
-## Container Images v0.6.0 (Unreleased)
+## Container Images v0.6.0
 
-_Changes Pending_
+* Update debian:13 Docker digest to 9cc0800
+    * [materialize-monitoring#379](https://github.com/MaterializeInc/materialize-monitoring/pull/379)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.22.0
 
