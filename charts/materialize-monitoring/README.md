@@ -1904,6 +1904,350 @@ bug this repo has shipped once already.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "externalId":"", "metricImportance":"extended", "rds":{"instances":[], "length":"10m", "metrics":[{"name":"CPUUtilization", "statistics":["Average", "Maximum"]}, {"name":"CPUCreditBalance", "statistics":["Minimum"]}, {"name":"FreeableMemory", "statistics":["Minimum"]}, {"name":"FreeStorageSpace", "statistics":["Minimum"]}, {"name":"DatabaseConnections", "statistics":["Maximum"]}, {"name":"ReadLatency", "statistics":["Average"]}, {"name":"WriteLatency", "statistics":["Average"]}, {"name":"DiskQueueDepth", "statistics":["Average"]}, {"name":"BurstBalance", "statistics":["Minimum"]}, {"name":"EBSIOBalance%", "statistics":["Minimum"]}, {"name":"EBSByteBalance%", "statistics":["Minimum"]}, {"name":"MaximumUsedTransactionIDs", "statistics":["Maximum"]}], "period":"5m"}, "region":"", "roleArn":"", "s3":{"buckets":[], "storageTypes":["StandardStorage"]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[], "metrics":["cpu/utilization", "memory/utilization", "disk/utilization", "postgresql/num_backends", "postgresql/transaction_id_utilization", "up"]}, "enabled":false, "gcs":{"buckets":[], "metrics":["storage/v2/total_bytes", "storage/v2/total_count"]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
+
+The gateway can pull what a cloud provider's monitoring API publishes about
+the managed database and the buckets a deployment depends on, and write it
+beside every other metric. The result shares retention, PromQL and alerting
+with the rest of the stack, so a provider series is joinable with
+`mz_persist_*` in one expression. The [external-dependency
+design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+records why this is a pull rather than a Grafana datasource.
+
+| Provider | Services | Alloy component |
+| --- | --- | --- |
+| `cloudwatch` | RDS instances, S3 buckets | `prometheus.exporter.cloudwatch` |
+| `gcp` | Cloud SQL instances, GCS buckets | `prometheus.exporter.gcp` |
+
+Every provider is off by default. Provider collection is an addition to
+what the clients already report about the same dependencies, not a
+replacement for it.
+
+**Resources are named, not discovered.** Each service lists the instances
+or buckets to watch, and nothing else is pulled. Tag discovery would find
+every resource in the account and bill for each of them. A provider that is
+enabled with nothing listed fails at render.
+
+**Credentials never travel through values.** The pull uses the gateway
+pod's own cloud identity, bound through
+`alloy-gateway.serviceAccount.annotations`:
+
+| Provider | Identity | Grant |
+| --- | --- | --- |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning; `sts:AssumeRole` on `roleArn` when it is set |
+| `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
+
+**The data is minutes old when it arrives.** CloudWatch publishes RDS
+metrics a few minutes late and S3 storage metrics once a day. Cloud
+Monitoring stamps each sample with its own time: Cloud SQL samples arrive
+about three minutes old, and GCS storage samples over ten. Query these
+families with `last_over_time(...[15m])` or wider, and do not page on them.
+
+**Each pull is billed by the provider.** The cost is a function of the
+interval and of how many resources and metrics are listed, not of how many
+dashboards are open. The interval is the main lever.
+
+**Every replica runs the exporter, and one scrapes it.** The scrape is
+clustered, so a provider's API is called once per interval however many
+gateway replicas there are.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Pull CloudWatch metrics for the resources listed below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.region</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">AWS region the resources live in, and the region CloudWatch and STS are called in. Required when enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.roleArn</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">IAM role to assume before calling CloudWatch. Empty uses the gateway's own identity, which is the usual setup under IRSA.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.externalId</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">External ID presented when assuming `roleArn`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the gateway pulls. Every pull is one set of billed `GetMetricData` requests.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.scrapeTimeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">Scrape timeout. Must not exceed `scrapeInterval`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.metricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"extended"</code></td>
+      <td class="helm-value-desc">Importance tier assigned to every CloudWatch family, for destinations that filter by `minMetricImportance`. One of `essential`, `recommended`, `extended`, `diagnostic`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.instances</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">RDS DB instance identifiers to watch, as `DBInstanceIdentifier`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.period</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">Statistic period for the RDS metrics. RDS publishes at one-minute resolution, so a period equal to the scrape interval summarises the whole interval rather than sampling one minute of it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.length</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"10m"</code></td>
+      <td class="helm-value-desc">How far back each request reaches. Longer than `period`, so CloudWatch's publication delay does not leave a scrape empty.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.metrics</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "CPUUtilization",
+    "statistics": [
+      "Average",
+      "Maximum"
+    ]
+  },
+  {
+    "name": "CPUCreditBalance",
+    "statistics": [
+      "Minimum"
+    ]
+  },
+  {
+    "name": "FreeableMemory",
+    "statistics": [
+      "Minimum"
+    ]
+  },
+  {
+    "name": "FreeStorageSpace",
+    "statistics": [
+      "Minimum"
+    ]
+  },
+  {
+    "name": "DatabaseConnections",
+    "statistics": [
+      "Maximum"
+    ]
+  },
+  {
+    "name": "ReadLatency",
+    "statistics": [
+      "Average"
+    ]
+  },
+  {
+    "name": "WriteLatency",
+    "statistics": [
+      "Average"
+    ]
+  },
+  {
+    "name": "DiskQueueDepth",
+    "statistics": [
+      "Average"
+    ]
+  },
+  {
+    "name": "BurstBalance",
+    "statistics": [
+      "Minimum"
+    ]
+  },
+  {
+    "name": "EBSIOBalance%",
+    "statistics": [
+      "Minimum"
+    ]
+  },
+  {
+    "name": "EBSByteBalance%",
+    "statistics": [
+      "Minimum"
+    ]
+  },
+  {
+    "name": "MaximumUsedTransactionIDs",
+    "statistics": [
+      "Maximum"
+    ]
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">RDS metrics to pull, with the statistics to request for each.
+Each statistic is a separate billed metric. The defaults are the set
+the external-dependency design argues for: CPU, memory, storage and
+connection headroom, I/O latency and queueing, the gp2/gp3 burst and
+EBS balances whose exhaustion slows every write while every in-database
+metric stays flat, and transaction-ID consumption.
+
+`CPUCreditBalance` applies only to burstable `db.t*` classes, and
+`BurstBalance` only to volumes that burst. Where CloudWatch has no
+datapoint the series is absent, never zero: a missing balance is not
+an exhausted one.
+
+Statistics are `Average`, `Minimum`, `Maximum`, `Sum`, `SampleCount`,
+or a percentile such as `p99`. Each entry needs at least one that is
+not a percentile.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.s3<wbr>.buckets</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">S3 bucket names to watch.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.s3<wbr>.storageTypes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "StandardStorage"
+]</pre>
+</td>
+      <td class="helm-value-desc">`StorageType` dimensions to report `BucketSizeBytes` for.
+S3 reports size per storage class. `StandardStorage` covers a bucket
+that never transitions objects, which is every bucket the Terraform
+wrappers create. `NumberOfObjects` is always reported across all
+classes.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Pull Cloud Monitoring metrics for the resources listed below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.projectId</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Google Cloud project that holds the resources. Required when enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the gateway pulls. Every pull lists time series once per metric type.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.scrapeTimeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">Scrape timeout. Must not exceed `scrapeInterval`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.requestInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"10m"</code></td>
+      <td class="helm-value-desc">How far back each pull reaches. Only the newest point per series is kept, so a window longer than the interval costs nothing in samples and covers a late point.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.metricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"extended"</code></td>
+      <td class="helm-value-desc">Importance tier assigned to every Cloud Monitoring family, for destinations that filter by `minMetricImportance`. One of `essential`, `recommended`, `extended`, `diagnostic`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.cloudSql<wbr>.instances</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Cloud SQL instance names to watch — the instance name, not the `project:region:instance` connection name.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.cloudSql<wbr>.metrics</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "cpu/utilization",
+  "memory/utilization",
+  "disk/utilization",
+  "postgresql/num_backends",
+  "postgresql/transaction_id_utilization",
+  "up"
+]</pre>
+</td>
+      <td class="helm-value-desc">Metric types to pull, relative to `cloudsql.googleapis.com/database/`.
+Each entry is a **prefix**, as the exporter matches them:
+`postgresql/num_backends` also pulls `num_backends_by_state` and
+`num_backends_by_application`, and `up` also pulls `uptime`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.gcs<wbr>.buckets</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">GCS bucket names to watch.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.gcs<wbr>.metrics</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "storage/v2/total_bytes",
+  "storage/v2/total_count"
+]</pre>
+</td>
+      <td class="helm-value-desc">Metric types to pull, relative to `storage.googleapis.com/`.
+The `v2` storage metrics split stored bytes and objects into live,
+noncurrent and soft-deleted, which is what shows reclaimable waste.
+
+`api/request_count` is deliberately absent. It is a per-minute DELTA,
+and the exporter adds only the newest point of each pull to its
+counter, so at a five-minute interval it reports roughly a fifth of
+the real request count. The Loki, Thanos and persist clients report
+the same requests exactly, with latency, which GCS does not publish.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.denyMetrics</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>

@@ -20,7 +20,7 @@ SOURCES_mz-monitoring-check = $(shell find packages/mz-monitoring-check -type f)
 SOURCES_mz-monitoring-e2e = $(shell find packages/mz-monitoring-e2e -type f)
 
 # Alloy targets
-ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub gateway-sources-stub agent agent-dest-stub
+ALLOY_TARGETS = gateway gateway-metrics gateway-dest-stub gateway-sources-stub gateway-provider-stub agent agent-dest-stub
 
 ### CONFIG ###
 # These may be overridden by the user
@@ -149,7 +149,7 @@ $(PIPELINES_DIR): $(addprefix $(PIPELINES_DIR)/,$(addsuffix .alloy,$(ALLOY_TARGE
 
 alloy-pipelines-validate:
 	cat "$(PIPELINES_DIR)/agent.alloy" "$(PIPELINES_DIR)/agent-dest-stub.alloy" | alloy validate /dev/stdin
-	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-sources-stub.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" | alloy validate /dev/stdin
+	cat "$(PIPELINES_DIR)/gateway.alloy" "$(PIPELINES_DIR)/gateway-metrics.alloy" "$(PIPELINES_DIR)/gateway-sources-stub.alloy" "$(PIPELINES_DIR)/gateway-dest-stub.alloy" "$(PIPELINES_DIR)/gateway-provider-stub.alloy" | alloy validate /dev/stdin
 .PHONY: alloy-pipelines-validate
 
 ### SCRAPER SYNC ###

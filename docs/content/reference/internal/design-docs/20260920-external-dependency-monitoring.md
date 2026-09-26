@@ -139,7 +139,7 @@ Four stakeholder classes consume this:
 | PostgreSQL alerts | ❌ **None** | Nothing in the registry names a `pg_*` family |
 | Object-store alerts | ❌ **None** | The composite `mz_persist_*` alert is the closest thing, and it names Materialize rather than the bucket |
 | A `postgres_exporter` deployment | ❌ **Absent** | Two `postgres_exporter_*` *config* families were observed on a live install, from something outside this chart. Nothing here deploys one |
-| Provider metric pull | ❌ **Absent** | No `prometheus.exporter.cloudwatch`, `.gcp` or `.azure` in the schema or any pipeline |
+| Provider metric pull | ⚠️ CloudWatch and GCP built, Azure absent | `pipeline.metrics.provider.{cloudwatch,gcp}`, rendered into the gateway by `_alloy_provider_helpers.tpl`. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
 | Provider metric *push* | ✅ Shipped, opposite direction | `googleCloudExporter` and `datadogExporter` write metrics *out*. The GCP monitoring module already provisions a workload identity for it |
 | Recording rules | ❌ Declared, no producer | The registry models `rules:`, no file uses the branch, and `pre-rendered/rules/{prometheus,thanos,loki}/` are all empty |
 | Alerts as installable rules | 🔨 Designed, not built | `config.rules.prometheus.enabled` defaults true and no template emits a `PrometheusRule`, so an install gets no alerts at all. [Alerting in self-managed](../20260917-alerting-self-managed/) designs the path and finds that a `PrometheusRule` has exactly one consumer here — the Thanos ruler's `autoImportPrometheusRules` sidecar |
@@ -614,7 +614,7 @@ Joining a client-side series to a provider-side one needs the mapping described 
 |---|---|---|
 | S3 | `BucketSizeBytes`, `NumberOfObjects` | Free, **daily** |
 | S3 | `AllRequests`, `4xxErrors`, `5xxErrors`, `FirstByteLatency`, `TotalRequestLatency` | Request metrics are **opt-in per filter and billed as custom metrics**; 1-minute granularity |
-| GCS | `storage/total_bytes`, `storage/object_count`, `api/request_count` by response code | Free; request count is useful, **and there is no latency metric** |
+| GCS | `storage/total_bytes`, `storage/object_count`, `api/request_count` by response code | Free, **and there is no latency metric**. Request count is a per-minute DELTA that the Alloy exporter counts from the newest point of each pull only, so it under-counts at any interval above a minute |
 | Azure Blob | `BlobCapacity`, `BlobCount`, `Transactions` by response type, `Availability`, `SuccessE2ELatency`, `SuccessServerLatency` | Free, and the most complete of the three |
 
 The daily granularity on S3 storage metrics is not a defect for this purpose.
@@ -678,8 +678,10 @@ The agent is a DaemonSet and the pull is per-deployment rather than per-node, so
 This is the same reasoning that moved cAdvisor off the agent, recorded in the roadmap's [pipelines section](../../roadmap/#pipelines-alloy), and it applies here more sharply because the duplicated calls would be billed.
 
 The gateway runs multiple replicas, which makes duplication a live concern within a single role.
-The provider exporters MUST run with `clustering { enabled = true }`, which is the existing answer for `prometheus.operator.*`.
+The scrape of each provider exporter MUST run with `clustering { enabled = true }`, which is the existing answer for `prometheus.operator.*`.
 Forgetting it produces a correct-looking dashboard and a bill multiplied by the replica count.
+The exporters themselves take no clustering block: they call the provider on scrape and export an identical target on every replica, so the clustered scrape gives it one owner.
+CloudWatch's `decoupled_scraping` breaks that, by polling on a timer in every replica whether it owns the target or not, and MUST NOT be enabled on the gateway.
 
 ### Why pull rather than a Grafana datasource
 
@@ -725,7 +727,7 @@ YACE's tag-discovery mode will happily produce a series per resource per tag com
 Three controls, all of which already exist in this stack:
 
 - A provider adapter SHOULD address resources **explicitly rather than by tag discovery**, wherever the deployment knows the resource — which the Terraform wrappers do, since they created it.
-- Every family this design adds MUST carry a `metricImportanceHint`. The normalized core is `recommended` and the flavor-native families are `extended` or `diagnostic`. This is what keeps a Datadog or BYOC fan-out from carrying a provider's whole metric surface across a boundary at a per-metric price.
+- Every family this design adds MUST carry a `metricImportanceHint`. The normalized core is `recommended` and the flavor-native families are `extended` or `diagnostic`. Until a registry query reads the provider families, their tier is assigned in values (`pipeline.metrics.provider.<name>.metricImportance`, default `extended`) and unioned into each destination's allowlist. This is what keeps a Datadog or BYOC fan-out from carrying a provider's whole metric surface across a boundary at a per-metric price.
 - The deny list catches the rest, since provider metrics pass through `inputMetricProcessor` like everything else.
 
 ## Dependency series are `infra-*` until a mapping exists

@@ -45,6 +45,9 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
          prometheus.remote_write "<name>"   prometheus.remote_write "<name>"
 ```
 
+Cloud provider pulls join the same bridge when enabled: `prometheus.exporter.{cloudwatch,gcp} "provider"` → `discovery.relabel "provider_<name>"` → `prometheus.scrape "provider_<name>"` (clustered) → `inputBridge`.
+They are covered under [Cloud provider pulls](#cloud-provider-pulls) below.
+
 The operator components enable `clustering` (target load spread across the alloy cluster) and read their scrape defaults from the environment (`GATEWAY_SCRAPE_INTERVAL` / `GATEWAY_SCRAPE_TIMEOUT`, via `coalesce`).
 `inputMetricProcessor` is the single choke point (the otelcol analog of the loki-side `inputProcessor`); a `memory_limiter` + `batch` pair manages the outbound stream; `otelcol.processor.filter "egress"` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
 `outputBridge` sets `add_metric_suffixes=false` so names survive the OTLP round-trip unchanged.
@@ -78,6 +81,34 @@ It resolves each field with `dig` rather than `mergeOverwrite` on purpose: `merg
 `sigv4` targets Amazon Managed Prometheus: set `authType: sigv4` + `sigv4.region` (optional `roleArn`) and bind the gateway ServiceAccount via IRSA — the AWS default credential chain then picks up the injected web-identity token, so no static keys.
 See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 (In a *hand-authored* pipeline — outside the chart destination — the same is reachable via a `raw:` `sigv4` block nested in the endpoint; see below.)
+
+## Cloud provider pulls
+
+`pipeline.metrics.provider.{cloudwatch,gcp}` render a provider exporter and a clustered scrape of it into the gateway config, feeding `otelcol.receiver.prometheus "inputBridge"`.
+The operator-facing page is [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/).
+
+**They are Helm-rendered, like the destination**, by `charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl`.
+CloudWatch needs one `static` block per resource, and a pre-rendered pipeline cannot repeat a block.
+The output skips the JSONSchema; the pre-validate job's `alloy validate` checks it at install.
+`gateway-provider-stub.yaml` is the build-time stand-in: it exercises every argument and block the helper emits, through the typed components, and `make pipelines` validates it joined with `gateway-metrics.alloy`.
+Keep the two in step. The helper is the source of truth.
+
+Behaviours that decide the shape, all measured against Alloy v1.19.2 source and a v1.20.0 run:
+
+| Behaviour | Consequence |
+|---|---|
+| Both exporters call the provider **on scrape** | A clustered `prometheus.scrape` gives each target one owner, so the provider is called once per interval however many replicas there are |
+| The exporter target's labels are identical across replicas | Clustering works. `instance` is an MD5 of the exporter's arguments, so it is still pinned with a relabel: otherwise any config change re-labels every series |
+| CloudWatch `decoupled_scraping` polls on a timer in **every** replica | Never rendered |
+| CloudWatch `nil_to_zero` defaults to **true** in Alloy | Set false on every job. A resource with no published datapoints produces no series either way; the setting matters for value-less datapoints |
+| CloudWatch static jobs use `GetMetricStatistics` and ignore job-level `period`/`length` | Both are set per `metric` |
+| A CloudWatch `static` label must be an identifier and becomes the `name` label | Labels are `rds_<id>` / `s3_<bucket>` with other characters mapped to `_`; join on `dimension_*` instead |
+| GCP `metrics_prefixes` are prefixes; `extra_filters` split on the **first** colon | One `one_of(...)` filter per service, rendered only beside that service's prefixes. `database_id` keeps its `project:instance` colon |
+| GCP samples carry Cloud Monitoring's timestamps; DELTA metrics count only the newest point per pull | `api/request_count` is left out; queries use `last_over_time` |
+| A failed provider call still answers the scrape with HTTP 200 | `up` does not report pull health |
+| `alloy validate` type-checks and never builds a component, so it passes an exporter argument that `alloy run` then refuses (a CloudWatch `length` shorter than its `period`, a `scrape_timeout` longer than the interval) | The initial load fails and the gateway exits, taking every log and metric with it. The pre-validate job cannot see this, so `mzmon.alloy.validate.provider` checks both at render |
+
+Provider families have no registry query, so `mzmon.alloyGateway.metricFilter` appends their name patterns (`aws_rds_.*`, `stackdriver_gcs_bucket_.*`, and so on) at the tier each provider's `metricImportance` assigns.
 
 ## Where relabeling lives (three phases)
 
@@ -115,6 +146,9 @@ Typed and validated (schema: `packages/mzmon-lib/schemas/alloy/prometheus.schema
 | `prometheus.relabel` | Rewrites metric labels via shared `rule` blocks; forwards downstream. |
 | `prometheus.receive_http` | Serves a remote-write endpoint; typed `http` server sub-block. |
 | `prometheus.remote_write` | Delivers metrics to remote-write endpoints; typed `endpoint` (`url` + scalars). |
+| `prometheus.exporter.cadvisor` | Runs cAdvisor in-process. |
+| `prometheus.exporter.cloudwatch` | Pulls CloudWatch through YACE; typed `static` jobs with `metric` and `role` sub-blocks. `discovery`, `custom_namespace` and `decoupled_scraping` via `raw:`. |
+| `prometheus.exporter.gcp` | Pulls Cloud Monitoring through `stackdriver_exporter`; attributes only. |
 
 The operator `scrape` block's `default_scrape_interval` / `default_scrape_timeout` accept an expression (`{env: …}`), not just a literal duration.
 Metrics receivers (`forward_to`, and the `receiver` exported by echo/relabel/remote_write/receive_http) are the `MetricsReceiver` capsule — the metrics analog of the logs-side `LogsReceiver`.

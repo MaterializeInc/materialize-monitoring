@@ -89,6 +89,12 @@ pub enum ComponentBlock {
     // Boxed: fifteen mostly-optional cAdvisor knobs, several `ExpressableList`,
     // make this the widest variant otherwise (clippy::large_enum_variant).
     PrometheusExporterCadvisor(Box<prometheus::PrometheusExporterCadvisorBlock>),
+    #[serde(rename = "prometheus.exporter.cloudwatch")]
+    // Boxed for the same reason: an `Expressable` region plus the job list.
+    PrometheusExporterCloudwatch(Box<prometheus::PrometheusExporterCloudwatchBlock>),
+    #[serde(rename = "prometheus.exporter.gcp")]
+    // Boxed: three `ExpressableList` fields.
+    PrometheusExporterGcp(Box<prometheus::PrometheusExporterGcpBlock>),
     #[serde(rename = "otelcol.receiver.otlp")]
     OtelcolReceiverOtlp(otelcol::OtelcolReceiverOtlpBlock),
     #[serde(rename = "otelcol.receiver.prometheus")]
@@ -129,6 +135,8 @@ impl_to_block_dispatch!(ComponentBlock {
     LokiSourceKubernetesEvents,
     LokiWrite,
     PrometheusExporterCadvisor,
+    PrometheusExporterCloudwatch,
+    PrometheusExporterGcp,
     OtelcolReceiverOtlp,
     OtelcolReceiverPrometheus,
     OtelcolExporterOtlp,

@@ -83,6 +83,18 @@ oneOf:
         $ref: "#/$defs/prometheus.exporter.cadvisor"
     required: [prometheus.exporter.cadvisor]
     additionalProperties: false
+  - type: object
+    properties:
+      prometheus.exporter.cloudwatch:
+        $ref: "#/$defs/prometheus.exporter.cloudwatch"
+    required: [prometheus.exporter.cloudwatch]
+    additionalProperties: false
+  - type: object
+    properties:
+      prometheus.exporter.gcp:
+        $ref: "#/$defs/prometheus.exporter.gcp"
+    required: [prometheus.exporter.gcp]
+    additionalProperties: false
 
 $defs:
   label:
@@ -866,4 +878,243 @@ $defs:
         anyOf:
           - type: string
           - $ref: "./common/expression.schema.yaml"
+    additionalProperties: false
+
+  prometheus.exporter.cloudwatch:
+    description: |
+      Pulls CloudWatch metrics through the embedded YACE exporter and exports
+      them as a scrape target.
+
+      Three behaviours decide how this is used on a clustered gateway:
+
+        * AWS is called ON SCRAPE, so a clustered `prometheus.scrape` owning the
+          target is the only replica that calls it. `decoupled_scraping`
+          (reachable through `raw:`) polls on a timer in EVERY replica, owner
+          or not, and multiplies the bill by the replica count.
+        * The exported target's `instance` is a hash of these arguments. It is
+          the same on every replica, and it changes whenever an argument does,
+          which re-labels every series. Pin it with a `discovery.relabel`.
+        * `nil_to_zero` defaults to TRUE in Alloy, which reports a value-less
+          datapoint as zero. Set it false on each job.
+
+      `discovery`, `custom_namespace` and `decoupled_scraping` are deferred to
+      the `raw:` escape. The deprecated no-op `debug` and `aws_sdk_version_v2`
+      are not modelled.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      sts_region:
+        description: |
+          Region for STS, which role assumption and the `account_id` label use.
+        $ref: "#/$defs/expressionOrString"
+      fips_disabled:
+        description: Do not use FIPS endpoints. Defaults to true.
+        type: boolean
+      labels_snake_case:
+        description: Snake-case the `dimension_*` label names.
+        type: boolean
+      blocks:
+        description: "`static` jobs, plus anything else through `raw:`."
+        type: array
+        items:
+          $ref: "#/$defs/cloudwatchSubBlock"
+    required: [sts_region]
+    additionalProperties: false
+
+  cloudwatchSubBlock:
+    description: |
+      One sub-block in a `prometheus.exporter.cloudwatch` body.
+      The final `raw` branch is the escape hatch, and the way to reach
+      `discovery`, `custom_namespace` and `decoupled_scraping`.
+    oneOf:
+      - type: object
+        properties:
+          static:
+            $ref: "#/$defs/cloudwatchStatic"
+        required: [static]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  cloudwatchStatic:
+    description: |
+      A `static "<name>"` job: one resource, addressed by its exact dimensions,
+      read through `GetMetricStatistics`.
+
+      The label becomes every series' `name` label and must be an identifier.
+      `period` and `length` belong on each `metric`; the exporter ignores them
+      on the job.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#static-block
+    type: object
+    properties:
+      label:
+        description: The job name. Written to every series as `name`.
+        type: string
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      regions:
+        description: Regions to query.
+        type: array
+        items:
+          type: string
+        minItems: 1
+      namespace:
+        description: CloudWatch namespace, such as `AWS/RDS`.
+        type: string
+      dimensions:
+        description: The exact dimension set of the resource.
+        type: object
+        additionalProperties:
+          type: string
+      custom_tags:
+        description: Extra labels, written as `custom_tag_<key>`.
+        type: object
+        additionalProperties:
+          type: string
+      nil_to_zero:
+        description: |
+          Report a value-less datapoint as zero. Defaults to TRUE in Alloy;
+          false keeps absence distinguishable from zero.
+        type: boolean
+      blocks:
+        description: "`metric` and `role` blocks."
+        type: array
+        items:
+          $ref: "#/$defs/cloudwatchJobSubBlock"
+    required: [label, regions, namespace, dimensions]
+    additionalProperties: false
+
+  cloudwatchJobSubBlock:
+    description: |
+      One sub-block in a CloudWatch job.
+      The final `raw` branch is the escape hatch.
+    oneOf:
+      - type: object
+        properties:
+          metric:
+            $ref: "#/$defs/cloudwatchMetric"
+        required: [metric]
+        additionalProperties: false
+      - type: object
+        properties:
+          role:
+            $ref: "#/$defs/cloudwatchRole"
+        required: [role]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  cloudwatchMetric:
+    description: |
+      One CloudWatch metric and the statistics to request for it. Each
+      statistic is a separately billed series.
+
+      On a `static` job the list needs at least one of `Average`, `Minimum`,
+      `Maximum`, `Sum` or `SampleCount` beside any percentile, because the
+      exporter indexes that list unconditionally.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#metric-block
+    type: object
+    properties:
+      name:
+        description: The CloudWatch metric name.
+        type: string
+      statistics:
+        description: Statistics to request.
+        type: array
+        items:
+          type: string
+          pattern: "^(Average|Minimum|Maximum|Sum|SampleCount|p(\\d{1,2}(\\.\\d{0,2})?|100))$"
+        minItems: 1
+      period:
+        description: Statistic period. Defaults to 300s.
+        type: string
+        format: go-duration
+      length:
+        description: How far back to request. Defaults to `period`, and must not be shorter.
+        type: string
+        format: go-duration
+      nil_to_zero:
+        description: Report a value-less datapoint as zero.
+        type: boolean
+      add_cloudwatch_timestamp:
+        description: |
+          Stamp samples with CloudWatch's timestamp rather than the scrape's.
+          A daily metric stamped a day back is older than a remote-write
+          receiver accepts.
+        type: boolean
+    required: [name, statistics]
+    additionalProperties: false
+
+  cloudwatchRole:
+    description: |
+      An IAM role to assume for the job. Without one the job uses the ambient
+      AWS credential chain: IRSA, EKS Pod Identity, or static keys.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#role-block
+    type: object
+    properties:
+      role_arn:
+        description: ARN of the role to assume.
+        $ref: "#/$defs/expressionOrString"
+      external_id:
+        description: External ID presented when assuming the role.
+        $ref: "#/$defs/expressionOrString"
+    required: [role_arn]
+    additionalProperties: false
+
+  prometheus.exporter.gcp:
+    description: |
+      Pulls Cloud Monitoring time series through the embedded
+      `stackdriver_exporter` and exports them as a scrape target. Google Cloud
+      is called on scrape, as with the CloudWatch exporter.
+
+      Four behaviours decide how this is used:
+
+        * Each `metrics_prefixes` entry is a PREFIX:
+          `.../postgresql/num_backends` also pulls `num_backends_by_state`.
+        * An `extra_filters` entry is `<prefix>:<filter>`, split on the FIRST
+          colon and ANDed onto every metric type under that prefix. The prefix
+          must start some `metrics_prefixes` entry or the config is refused.
+          Without a filter, a prefix pulls every resource in the project.
+        * Samples carry Cloud Monitoring's own timestamps, minutes old.
+        * DELTA metrics become counters built from the newest point of each
+          pull only, so a DELTA sampled more often than the scrape under-counts.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.gcp/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      project_ids:
+        description: Projects to read.
+        $ref: "#/$defs/expressionOrStringList"
+      metrics_prefixes:
+        description: Metric-type prefixes to pull.
+        $ref: "#/$defs/expressionOrStringList"
+      extra_filters:
+        description: "`<prefix>:<filter>` entries narrowing what each prefix pulls."
+        $ref: "#/$defs/expressionOrStringList"
+      request_interval:
+        description: |
+          How far back each pull reaches. Only the newest point per series is
+          kept. Defaults to 5m.
+        type: string
+        format: go-duration
+      request_offset:
+        description: Shift the window back by this much. Defaults to 0.
+        type: string
+        format: go-duration
+      ingest_delay:
+        description: Shift the window back by each metric type's published ingest delay.
+        type: boolean
+      drop_delegated_projects:
+        description: Drop series from projects other than the one being read.
+        type: boolean
+      gcp_client_timeout:
+        description: HTTP timeout for the Cloud Monitoring client. Defaults to 15s.
+        type: string
+        format: go-duration
+    required: [project_ids, metrics_prefixes]
     additionalProperties: false

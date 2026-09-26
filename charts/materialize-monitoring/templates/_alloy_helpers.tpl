@@ -224,6 +224,9 @@ Usage:
   {{- /* Output rendered sources */}}
   {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
 
+  {{- /* Output cloud provider pulls, when any is enabled */}}
+  {{- include "mzmon.alloyGateway.pipeline.provider" $ }}
+
   {{- /* Output rendered destination */}}
   {{- include "mzmon.alloyGateway.pipeline.destination" $ }}
 {{- end }}
@@ -957,6 +960,12 @@ Usage:
     {{- printf "No metrics patterns found for %s" .minMetricImportance | fail }}
   {{- end }}
 
+  {{- /* Provider-pulled families have no registry query to take a tier from,
+         so they join at the tier their values assign them. */}}
+  {{- $metricPatterns = concat $metricPatterns ( include "mzmon.alloyGateway.provider.metricPatterns" ( dict
+        "context" $context
+        "minMetricImportance" .minMetricImportance ) | fromYamlArray ) }}
+
   {{- /* final output */}}
   {{- join "|" $metricPatterns }}
 {{- end }}
@@ -1064,6 +1073,10 @@ Usage:
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
   {{- $res := include "mzmon.alloy.validate.serverTls" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
+  {{- $res := include "mzmon.alloy.validate.provider" $ | fromYaml }}
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 

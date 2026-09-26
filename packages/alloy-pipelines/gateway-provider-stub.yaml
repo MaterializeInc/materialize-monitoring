@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway cloud provider pull stub.
+# These are processed by mz-monitoring-build gen-pipelines to produce a gateway-provider-stub.alloy config.
+
+description: |
+  BUILD-TIME stand-in for the gateway's cloud provider pulls. This is NOT what
+  deploys.
+
+  At install the provider pulls are rendered by the chart's
+  charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl, from
+  .Values.pipeline.metrics.provider.*, because CloudWatch needs one `static`
+  block per resource and a pre-rendered pipeline cannot repeat a block. That
+  output skips the JSONSchema; the pre-validate job's `alloy validate` is its
+  check at install.
+
+  This stub exists so the shape the helper renders is also checked at build
+  time, against the Alloy version CI pins: every argument name and block the
+  helper emits appears here, with one resource per service. `make pipelines`
+  renders it and validates it joined with gateway-metrics.alloy, whose
+  otelcol.receiver.prometheus.inputBridge the scrapes forward to. Keep the two
+  in step. The helper is the source of truth.
+
+blocks:
+  # --- CloudWatch ------------------------------------------------------------
+
+  - prometheus.exporter.cloudwatch:
+      label: provider
+      sts_region: us-east-1
+      blocks:
+        # One job per RDS instance. The label is an identifier derived from the
+        # resource name; the real name is the DBInstanceIdentifier dimension.
+        - static:
+            label: rds_example_db
+            regions: [us-east-1]
+            namespace: AWS/RDS
+            # Alloy defaults this to true, which reports a value-less datapoint
+            # as zero.
+            nil_to_zero: false
+            dimensions:
+              DBInstanceIdentifier: example-db
+            blocks:
+              - role:
+                  role_arn: arn:aws:iam::123456789012:role/example-reader
+                  external_id: example
+              # period and length go on each metric: the exporter ignores them
+              # on a static job.
+              - metric:
+                  name: CPUUtilization
+                  statistics: [Average, Maximum]
+                  period: 5m
+                  length: 10m
+        # S3 size is per storage class and count is across all classes, under
+        # different StorageType dimensions, so a bucket takes two jobs.
+        - static:
+            label: s3_example_bucket
+            regions: [us-east-1]
+            namespace: AWS/S3
+            nil_to_zero: false
+            dimensions:
+              BucketName: example-bucket
+              StorageType: StandardStorage
+            blocks:
+              - metric:
+                  name: BucketSizeBytes
+                  statistics: [Average]
+                  period: 24h
+                  length: 48h
+        - static:
+            label: s3_example_bucket
+            regions: [us-east-1]
+            namespace: AWS/S3
+            nil_to_zero: false
+            dimensions:
+              BucketName: example-bucket
+              StorageType: AllStorageTypes
+            blocks:
+              - metric:
+                  name: NumberOfObjects
+                  statistics: [Average]
+                  period: 24h
+                  length: 48h
+
+  # --- Cloud Monitoring --------------------------------------------------------
+
+  - prometheus.exporter.gcp:
+      label: provider
+      project_ids: [example-project]
+      metrics_prefixes:
+        - cloudsql.googleapis.com/database/cpu/utilization
+        - storage.googleapis.com/storage/v2/total_bytes
+      # One filter per service, naming exactly the listed resources. A prefix
+      # without its filter pulls every resource in the project.
+      extra_filters:
+        - 'cloudsql.googleapis.com/database:resource.labels.database_id=one_of("example-project:example-pg")'
+        - 'storage.googleapis.com:resource.labels.bucket_name=one_of("example-bucket")'
+      request_interval: 10m
+      ingest_delay: true
+
+  # --- the clustered scrape, one per provider --------------------------------
+
+  # The exporter's `instance` is a hash of its arguments, so any config change
+  # would re-label every series. Pin it.
+  - discovery.relabel:
+      label: provider_cloudwatch
+      targets: ["prometheus.exporter.cloudwatch.provider.targets"]
+      blocks:
+        - rule:
+            target_label: instance
+            replacement: cloudwatch
+
+  # Clustered, so one replica owns the target and AWS is called once per
+  # interval whatever the replica count.
+  - prometheus.scrape:
+      label: provider_cloudwatch
+      targets: ["discovery.relabel.provider_cloudwatch.output"]
+      forward_to:
+        - otelcol.receiver.prometheus.inputBridge.receiver
+      scrape_interval: 5m
+      scrape_timeout: 2m
+      blocks:
+        - clustering:
+            enabled: true
+
+  - discovery.relabel:
+      label: provider_gcp
+      targets: ["prometheus.exporter.gcp.provider.targets"]
+      blocks:
+        - rule:
+            target_label: instance
+            replacement: gcp
+
+  - prometheus.scrape:
+      label: provider_gcp
+      targets: ["discovery.relabel.provider_gcp.output"]
+      forward_to:
+        - otelcol.receiver.prometheus.inputBridge.receiver
+      scrape_interval: 5m
+      scrape_timeout: 2m
+      blocks:
+        - clustering:
+            enabled: true
