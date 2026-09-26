@@ -142,10 +142,21 @@ Usage:
 `amtool`'s configuration, mounted at `/etc/amtool/config.yml`, and the HTTP
 client configuration it points at.
 
-With TLS on, `amtool` dials the loopback over https, verifies Alertmanager's
-certificate as `localhost` (one of its SANs), and presents that same certificate,
-which carries the `client auth` usage. So an operator's `amtool` works unchanged
-in every TLS phase, including one that verifies client certificates.
+With TLS on, `amtool` dials the loopback over https and verifies Alertmanager's
+certificate as `localhost`, one of its SANs.
+
+It trusts the `ca.crt` beside `certFile`, not `clientCAFile`. The two answer
+different questions: `ca.crt` is the CA that issued the serving certificate,
+which is what `amtool` has to verify, and `clientCAFile` is what Alertmanager
+verifies clients against. cert-manager writes the issuing CA into every Secret it
+signs, so the file is there whenever the chart issues the certificate.
+
+It presents a certificate only when Alertmanager requires one. Under
+`VerifyClientCertIfGiven`, a client presenting nothing is served, but a
+certificate that fails verification is refused at the handshake. Presenting the
+serving certificate there would lock `amtool` out of any deployment whose
+`clientCAFile` did not also sign it. When a certificate is required, the serving
+certificate, which carries `client auth`, is the one available.
 
 Usage:
   {{ include "mzmon.alertmanager.amtoolConfig" $ }}
@@ -162,13 +173,15 @@ Usage:
 {{- define "mzmon.alertmanager.amtoolHTTPConfig" }}
   {{- $tls := dig "server" "tls" dict ( $.Values.alerting | default dict ) }}
   {{- if $tls.enabled }}
-    {{- $dir := dir ( $tls.certFile | toString ) }}
-    {{- dict "tls_config" ( dict
-      "ca_file" ( printf "%s/ca.crt" $dir )
-      "cert_file" ( $tls.certFile | toString )
-      "key_file" ( $tls.keyFile | toString )
+    {{- $tlsConfig := dict
+      "ca_file" ( printf "%s/ca.crt" ( dir ( $tls.certFile | toString ) ) )
       "server_name" "localhost"
-    ) | toYaml }}
+    }}
+    {{- if has ( $tls.clientAuth | default "NoClientCert" | toString ) ( list "RequireAndVerifyClientCert" "RequireAnyClientCert" ) }}
+      {{- $_ := set $tlsConfig "cert_file" ( $tls.certFile | toString ) }}
+      {{- $_ := set $tlsConfig "key_file" ( $tls.keyFile | toString ) }}
+    {{- end }}
+    {{- dict "tls_config" $tlsConfig | toYaml }}
   {{- else }}
     {{- "{}" }}
   {{- end }}

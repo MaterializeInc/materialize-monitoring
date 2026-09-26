@@ -124,7 +124,7 @@ tests:
               key_file: /etc/mzmon/tls/tls.key
               min_version: TLS13
       # amtool verifies the loopback as `localhost`, a SAN on the certificate,
-      # and presents the same certificate, so it works in every phase.
+      # against the CA that issued it, and presents nothing.
       - equal:
           path: stringData["amtool.yml"]
           value: |
@@ -135,8 +135,6 @@ tests:
           value: |
             tls_config:
               ca_file: /etc/mzmon/tls/ca.crt
-              cert_file: /etc/mzmon/tls/tls.crt
-              key_file: /etc/mzmon/tls/tls.key
               server_name: localhost
 
   - it: moves the listener, probes and reloader together at phase 1
@@ -301,6 +299,68 @@ tests:
               client_ca_file: /etc/mzmon/tls/ca.crt
               key_file: /etc/mzmon/tls/tls.key
               min_version: TLS13
+
+  # A presented certificate that fails verification is refused, and one that
+  # is absent is served. So amtool presents nothing while the client CA is
+  # anyone's but the serving certificate's issuer, and it trusts that issuer
+  # rather than the client CA.
+  - it: presents no certificate from amtool when verification is only if given
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      alerting.server.tls.clientCAFile: /etc/mzmon/client-ca/ca.crt
+      alertmanager.extraSecretMounts:
+        - name: alertmanager-receivers
+          secretName: alertmanager-receivers
+          mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+          readOnly: true
+          optional: true
+        - name: mzmon-tls
+          secretName: mzmon-alertmanager-tls
+          mountPath: /etc/mzmon/tls
+          readOnly: true
+        - name: client-ca
+          secretName: client-ca
+          mountPath: /etc/mzmon/client-ca
+          readOnly: true
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["amtool-http.yml"]
+          value: |
+            tls_config:
+              ca_file: /etc/mzmon/tls/ca.crt
+              server_name: localhost
+
+  # With the reloader off and the probes off httpGet, requiring a certificate
+  # is possible, and then amtool has to present one.
+  - it: presents the serving certificate from amtool when a certificate is required
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      alerting.server.tls.clientAuth: RequireAndVerifyClientCert
+      alertmanager.configmapReload.enabled: false
+      alertmanager.serviceMonitor.enabled: false
+      alertmanager.livenessProbe:
+        httpGet: null
+        tcpSocket:
+          port: http
+      alertmanager.readinessProbe:
+        httpGet: null
+        tcpSocket:
+          port: http
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["amtool-http.yml"]
+          value: |
+            tls_config:
+              ca_file: /etc/mzmon/tls/ca.crt
+              cert_file: /etc/mzmon/tls/tls.crt
+              key_file: /etc/mzmon/tls/tls.key
+              server_name: localhost
 
   - it: has Grafana present its certificate at phase 2
     values:

@@ -312,7 +312,7 @@ Eight clients dial the port, and each one needs a matching change:
 | Client | How it follows |
 |---|---|
 | Grafana's datasource | The chart's default URL follows the switch; the profile supplies the CA |
-| `amtool` inside the pod | The chart renders `/etc/amtool/config.yml` with the URL, CA and client certificate |
+| `amtool` inside the pod | The chart renders `/etc/amtool/config.yml` with the URL and the CA that issued Alertmanager's certificate |
 | Liveness and readiness probes | `scheme: HTTPS`, set by the profile |
 | The config reloader | `reload-url`, set by the profile |
 | The ServiceMonitor | `scheme` and a CA, set by the profile |
