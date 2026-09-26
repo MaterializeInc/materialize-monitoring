@@ -1,0 +1,592 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# TLS on Alertmanager's API port, through the mTLS profiles.
+#
+# `alerting.server.tls` changes one listener, and eight things dial it: two
+# probes, the config reloader, `amtool`, both rulers, the Grafana datasource and
+# the ServiceMonitor. Each one left behind fails without naming TLS, so the
+# profile moves them together and the validator refuses each half-applied set.
+#
+# Warnings are asserted against `NOTES.txt`; `templates/validate.yaml` renders
+# them as YAML comments, which no content assertion can match.
+suite: alertmanager tls
+chart:
+  version: 1.2.3
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+  certificates.enabled: true
+  certificates.internal.selfSigned.enabled: true
+tests:
+  # --- off -------------------------------------------------------------------
+
+  # The web config is always rendered, as `{}` when off, which Alertmanager
+  # serves as plaintext. So the file existing is never what turns TLS on.
+  - it: renders an empty web config and plaintext amtool by default
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["web.yml"]
+          value: "{}\n"
+      - equal:
+          path: stringData["amtool.yml"]
+          value: |
+            alertmanager.url: http://127.0.0.1:9093
+            http.config.file: /etc/alertmanager/config/amtool-http.yml
+      - equal:
+          path: stringData["amtool-http.yml"]
+          value: "{}\n"
+
+  # Mounted before anything reads it, so turning TLS on changes no volume, and
+  # a pod starts before cert-manager has signed.
+  - it: mounts the certificate optionally and amtool's config, but passes no web config flag
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[1].args
+          content: --web.config.file=/etc/alertmanager/config/web.yml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-alertmanager-tls
+              optional: true
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: mzmon-amtool
+            mountPath: /etc/amtool
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-amtool
+            secret:
+              secretName: alertmanager-config
+              items:
+                - key: amtool.yml
+                  path: config.yml
+
+  - it: mounts the Thanos certificate into the Thanos ruler optionally
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-thanos-tls
+              optional: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: mzmon-tls
+            mountPath: /etc/mzmon/tls
+            readOnly: true
+
+  - it: says TLS is off in the notes
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "TLS: off \\(alerting\\.server\\.tls\\)"
+
+  # --- phase 1 ---------------------------------------------------------------
+
+  - it: serves TLS without client certificates at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["web.yml"]
+          value: |
+            tls_server_config:
+              cert_file: /etc/mzmon/tls/tls.crt
+              client_auth_type: NoClientCert
+              key_file: /etc/mzmon/tls/tls.key
+              min_version: TLS13
+      # amtool verifies the loopback as `localhost`, a SAN on the certificate,
+      # against the CA that issued it, and presents nothing.
+      - equal:
+          path: stringData["amtool.yml"]
+          value: |
+            alertmanager.url: https://127.0.0.1:9093
+            http.config.file: /etc/alertmanager/config/amtool-http.yml
+      - equal:
+          path: stringData["amtool-http.yml"]
+          value: |
+            tls_config:
+              ca_file: /etc/mzmon/tls/ca.crt
+              server_name: localhost
+
+  - it: moves the listener, probes and reloader together at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --web.config.file=/etc/alertmanager/config/web.yml
+      # The base flags survive: extraArgs is a map.
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --config.file=/etc/alertmanager/config/alertmanager.yml
+      - equal:
+          path: spec.template.spec.containers[1].livenessProbe.httpGet
+          value:
+            path: /-/healthy
+            port: http
+            scheme: HTTPS
+      - equal:
+          path: spec.template.spec.containers[1].readinessProbe.httpGet
+          value:
+            path: /-/ready
+            port: http
+            scheme: HTTPS
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --reload-url=https://127.0.0.1:9093/-/reload
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --watched-dir=/etc/alertmanager/config
+      # Required once a config reads it; the receivers Secret stays optional.
+      # The subchart renders `optional` through `with`, so `false` is dropped,
+      # which is the Kubernetes default and means the same thing.
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-alertmanager-tls
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: alertmanager-receivers
+            secret:
+              secretName: alertmanager-receivers
+              optional: true
+
+  - it: scrapes Alertmanager over verified TLS at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: ../charts/alertmanager/templates/servicemonitor.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].scheme
+          value: https
+      - equal:
+          path: spec.endpoints[0].tlsConfig
+          value:
+            serverName: alertmanager
+            ca:
+              secret:
+                name: mzmon-alertmanager-tls
+                key: ca.crt
+
+  # Both rulers reach each replica by an address the certificate does not carry,
+  # so each names the Service's bare name as the server name.
+  - it: sends Thanos ruler alerts over TLS at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: ../charts/thanos/templates/ruler/configmap-alertmanagers.yaml
+    asserts:
+      - matchRegex:
+          path: data["alertmanagers.yaml"]
+          pattern: "- dns\\+alertmanager-headless\\.test-monitoring\\.svc\\.cluster\\.local:9093\\n\\s+scheme: https\\n"
+      - matchRegex:
+          path: data["alertmanagers.yaml"]
+          pattern: "ca_file: /etc/mzmon/tls/ca\\.crt\\n\\s+cert_file: /etc/mzmon/tls/tls\\.crt\\n\\s+key_file: /etc/mzmon/tls/tls\\.key\\n\\s+server_name: alertmanager\\n"
+
+  - it: keeps the Thanos ruler's remote-write volume when requiring its certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: remote-write
+            configMap:
+              name: thanos-ruler-remote-write
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-tls
+            secret:
+              secretName: mzmon-thanos-tls
+              optional: false
+
+  - it: sends Loki ruler alerts over TLS at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager_url: https://_http\\._tcp\\.alertmanager-headless\\.test-monitoring\\.svc\\.cluster\\.local\\n"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "alertmanager_client:\\n\\s+tls_ca_path: /etc/mzmon/tls/ca\\.crt\\n\\s+tls_cert_path: /etc/mzmon/tls/tls\\.crt\\n\\s+tls_key_path: /etc/mzmon/tls/tls\\.key\\n\\s+tls_server_name: alertmanager\\n"
+
+  - it: points Grafana at Alertmanager over verified TLS at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: templates/grafana-datasources.yaml
+    documentSelector:
+      path: spec.datasource.uid
+      value: mzmon-alertmanager
+    asserts:
+      - equal:
+          path: spec.datasource.url
+          value: https://alertmanager.test-monitoring.svc.cluster.local:9093
+      - equal:
+          path: spec.datasource.jsonData
+          value:
+            implementation: prometheus
+            handleGrafanaManagedAlerts: false
+            tlsAuthWithCACert: true
+      - contains:
+          path: spec.valuesFrom
+          content:
+            targetPath: secureJsonData.tlsCACert
+            valueFrom:
+              secretKeyRef:
+                name: mzmon-grafana-tls
+                key: ca.crt
+
+  - it: says TLS is on in the notes at phase 1
+    values:
+      - ../profiles/mtls.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Service: https://alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+      - matchRegexRaw:
+          pattern: "TLS: on, client certificates: NoClientCert"
+
+  # --- phase 2 ---------------------------------------------------------------
+
+  - it: verifies client certificates when given at phase 2
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["web.yml"]
+          value: |
+            tls_server_config:
+              cert_file: /etc/mzmon/tls/tls.crt
+              client_auth_type: VerifyClientCertIfGiven
+              client_ca_file: /etc/mzmon/tls/ca.crt
+              key_file: /etc/mzmon/tls/tls.key
+              min_version: TLS13
+
+  # A presented certificate that fails verification is refused, and one that
+  # is absent is served. So amtool presents nothing while the client CA is
+  # anyone's but the serving certificate's issuer, and it trusts that issuer
+  # rather than the client CA.
+  - it: presents no certificate from amtool when verification is only if given
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      alerting.server.tls.clientCAFile: /etc/mzmon/client-ca/ca.crt
+      alertmanager.extraSecretMounts:
+        - name: alertmanager-receivers
+          secretName: alertmanager-receivers
+          mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+          readOnly: true
+          optional: true
+        - name: mzmon-tls
+          secretName: mzmon-alertmanager-tls
+          mountPath: /etc/mzmon/tls
+          readOnly: true
+        - name: client-ca
+          secretName: client-ca
+          mountPath: /etc/mzmon/client-ca
+          readOnly: true
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["amtool-http.yml"]
+          value: |
+            tls_config:
+              ca_file: /etc/mzmon/tls/ca.crt
+              server_name: localhost
+
+  # With the reloader off and the probes off httpGet, requiring a certificate
+  # is possible, and then amtool has to present one.
+  - it: presents the serving certificate from amtool when a certificate is required
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      alerting.server.tls.clientAuth: RequireAndVerifyClientCert
+      alertmanager.configmapReload.enabled: false
+      alertmanager.serviceMonitor.enabled: false
+      alertmanager.livenessProbe:
+        httpGet: null
+        tcpSocket:
+          port: http
+      alertmanager.readinessProbe:
+        httpGet: null
+        tcpSocket:
+          port: http
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["amtool-http.yml"]
+          value: |
+            tls_config:
+              ca_file: /etc/mzmon/tls/ca.crt
+              cert_file: /etc/mzmon/tls/tls.crt
+              key_file: /etc/mzmon/tls/tls.key
+              server_name: localhost
+
+  - it: has Grafana present its certificate at phase 2
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    template: templates/grafana-datasources.yaml
+    documentSelector:
+      path: spec.datasource.uid
+      value: mzmon-alertmanager
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.tlsAuth
+          value: true
+      - contains:
+          path: spec.valuesFrom
+          content:
+            targetPath: secureJsonData.tlsClientCert
+            valueFrom:
+              secretKeyRef:
+                name: mzmon-grafana-tls
+                key: tls.crt
+      - contains:
+          path: spec.valuesFrom
+          content:
+            targetPath: secureJsonData.tlsClientKey
+            valueFrom:
+              secretKeyRef:
+                name: mzmon-grafana-tls
+                key: tls.key
+
+  # --- phase 3 ---------------------------------------------------------------
+
+  # The probes and the reloader cannot present a certificate, so phase 2 is
+  # where this port stops.
+  - it: stays at verify-if-given at phase 3
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["web.yml"]
+          pattern: "client_auth_type: VerifyClientCertIfGiven"
+
+  - it: renders every phase without error
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # --- validators: the listener ----------------------------------------------
+
+  # The switch alone moves the listener's settings and nothing that dials it.
+  - it: refuses the switch without the settings that move with it
+    set:
+      alerting.server.tls.enabled: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alertmanager.extraArgs.web.config.file is \"\" rather than /etc/alertmanager/config/web.yml"
+      - failedTemplate:
+          errorPattern: "alertmanager.livenessProbe.httpGet.scheme is HTTP but Alertmanager serves HTTPS"
+      - failedTemplate:
+          errorPattern: "alertmanager.readinessProbe.httpGet.scheme is HTTP but Alertmanager serves HTTPS"
+      - failedTemplate:
+          errorPattern: "reload-url is http://127.0.0.1:9093/-/reload but Alertmanager serves https"
+      - failedTemplate:
+          errorPattern: "alertmanager.serviceMonitor.scheme is http but Alertmanager serves https"
+      - failedTemplate:
+          errorPattern: "thanos.ruler.alertmanagers.config alertmanagers\\[0\\] sends with scheme http but Alertmanager serves https"
+      - failedTemplate:
+          errorPattern: "loki.loki.rulerConfig.alertmanager_url is http://_http._tcp.alertmanager-headless.test-monitoring.svc.cluster.local but Alertmanager serves https"
+      - failedTemplate:
+          errorPattern: "connections.datasources.alertmanager is https with no CA configured"
+
+  # Turned back off, the clients still on https break the same way.
+  - it: refuses clients left on https when TLS is off
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      alerting.server.tls.enabled: false
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alertmanager.livenessProbe.httpGet.scheme is HTTPS but Alertmanager serves HTTP"
+      - failedTemplate:
+          errorPattern: "reload-url is https://127.0.0.1:9093/-/reload but Alertmanager serves http\\."
+      - failedTemplate:
+          errorPattern: "thanos.ruler.alertmanagers.config alertmanagers\\[0\\] sends with scheme https but Alertmanager serves http\\."
+
+  - it: refuses a certificate no volume mounts
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      alerting.server.tls.certFile: /etc/elsewhere/tls.crt
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.server.tls.certFile is /etc/elsewhere/tls.crt, which no volume"
+
+  - it: refuses verification with no client CA
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      alerting.server.tls.clientAuth: VerifyClientCertIfGiven
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "clientAuth is VerifyClientCertIfGiven but clientCAFile is empty"
+
+  - it: refuses an unknown client-auth type
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      alerting.server.tls.clientAuth: Verify
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.server.tls.clientAuth is \"Verify\""
+
+  - it: refuses a TLS version Alertmanager does not spell
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      alerting.server.tls.minVersion: VersionTLS13
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.server.tls.minVersion is \"VersionTLS13\""
+
+  - it: warns when the chart issues no certificate for Alertmanager
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.components.alertmanager.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "the chart issues no certificate for Alertmanager"
+
+  # --- validators: phase 3 ---------------------------------------------------
+
+  - it: refuses requiring a certificate while the reloader and probes cannot present one
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      alerting.server.tls.clientAuth: RequireAndVerifyClientCert
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "RequireAndVerifyClientCert while alertmanager.configmapReload is enabled"
+      - failedTemplate:
+          errorPattern: "alertmanager.livenessProbe and readinessProbe use httpGet"
+      - failedTemplate:
+          errorPattern: "alertmanager.serviceMonitor.tlsConfig presents no client certificate"
+
+  # With the reloader off and the probes moved off httpGet, requiring is
+  # possible, and every remaining client has to present.
+  - it: refuses requiring a certificate from a client that presents none
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      alerting.server.tls.clientAuth: RequireAndVerifyClientCert
+      alerting.server.tls.clientCAFile: /etc/mzmon/tls/ca.crt
+      alertmanager.configmapReload.enabled: false
+      alertmanager.livenessProbe:
+        httpGet: null
+        tcpSocket:
+          port: http
+      alertmanager.readinessProbe:
+        httpGet: null
+        tcpSocket:
+          port: http
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "connections.datasources.alertmanager.tls.clientCert.secretName is empty"
+
+  # --- validators: the rulers ------------------------------------------------
+
+  - it: refuses a ruler server name that is not on the certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      loki.loki.rulerConfig.alertmanager_client.tls_server_name: alertmanager-headless
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "tls_server_name is \"alertmanager-headless\", which is not a SAN on Alertmanager's certificate"
+
+  - it: refuses a ruler sending over https with no server name
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      loki.loki.rulerConfig.alertmanager_client.tls_server_name: null
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alertmanager_url is https with no alertmanager_client.tls_server_name"
+
+  # The two profiles each restate the ruler addresses whole, so whichever comes
+  # last wins. mTLS last keeps TLS and loses the namespace.
+  - it: warns when mTLS composed after split-namespace moves the rulers back to the release namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+      - ../profiles/mtls.values.yaml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.ruler.alertmanagers.config names alertmanager-headless, but not in Alertmanager's namespace"
+      - matchRegexRaw:
+          pattern: "loki.loki.rulerConfig.alertmanager_url names alertmanager-headless, but not in Alertmanager's namespace"
+
+  # --- validators: Grafana ---------------------------------------------------
+
+  - it: refuses a Grafana datasource left on http
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      connections.datasources.alertmanager.url: http://alertmanager.test-monitoring.svc:9093
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "connections.datasources.alertmanager.url is http://alertmanager.test-monitoring.svc:9093 but Alertmanager serves https"

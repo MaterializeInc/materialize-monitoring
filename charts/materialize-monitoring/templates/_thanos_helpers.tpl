@@ -559,7 +559,7 @@ Usage:
              than an error because only the remote-write half breaks — the ruler
              still evaluates and still notifies Alertmanager. The Loki ruler has
              the same gap and warns separately. */}}
-      {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, and the chart mounts no CA into the Thanos ruler pods. The remote-write URL follows the scheme, so every write fails the handshake: the ALERTS series and any recording-rule results fill the WAL and are dropped. Alert evaluation and notification are unaffected. Drop --remote-write.config-file from thanos.ruler.extraArgs, or leave the gateway's metrics listener plaintext, until the ruler carries certificate material." }}
+      {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, and the Thanos ruler's remote-write configuration (thanos-ruler-remote-write) names no CA. The remote-write URL follows the scheme, so every write fails the handshake: the ALERTS series and any recording-rule results fill the WAL and are dropped. Alert evaluation and notification are unaffected. Drop --remote-write.config-file from thanos.ruler.extraArgs, or leave the gateway's metrics listener plaintext, until the ruler's remote-write carries certificate material." }}
     {{- end }}
   {{- end }}
 

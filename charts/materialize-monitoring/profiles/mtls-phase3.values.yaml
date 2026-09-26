@@ -15,8 +15,9 @@
 # TLS handshake rather than served — on Thanos Receive's remote-write listener
 # and on all four of the gateway's ingress ports (3100, 4317, 4318, 9090).
 #
-# The Loki hop stops at phase 2 and cannot go further; see the section below for
-# why, which is a property of Kubernetes probes rather than of Loki.
+# The Loki and Alertmanager hops stop at phase 2 and cannot go further; see the
+# section below for why, which is a property of Kubernetes probes rather than of
+# either server.
 #
 # ---------------------------------------------------------------------------
 # Do not apply this until every writer is already presenting
@@ -53,7 +54,7 @@
 # rather than for a mechanism this stack does not have.
 
 # ---------------------------------------------------------------------------
-# Loki is deliberately absent, and cannot be added
+# Loki and Alertmanager are deliberately absent, and cannot be added
 # ---------------------------------------------------------------------------
 # `client_auth_type: RequireAndVerifyClientCert` on Loki's HTTP port does not
 # work, and the reason is structural rather than a missing setting: **the kubelet
@@ -73,6 +74,14 @@
 # Getting real authentication there needs something the probe can bypass — an
 # authenticating proxy in front of Loki, or moving inter-component traffic to a
 # port the kubelet does not touch. Both are larger than this profile.
+#
+# **Alertmanager is absent for the same reason**, and one more: its config
+# reloader POSTs `/-/reload` to the same port and its HTTP client has no option
+# for a client certificate either. `alerting.server.tls.clientAuth:
+# RequireAndVerifyClientCert` fails the render while the reloader is on or a probe
+# uses `httpGet`. So Alertmanager's API port also stays at phase 2: both rulers
+# and Grafana present certificates that are verified, and the kubelet and the
+# reloader, which present nothing, are still served.
 #
 # Thanos Receive does not have the problem, which is why it is here: its probes
 # live on the HTTP port and the TLS flags scope to the separate remote-write

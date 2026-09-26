@@ -301,6 +301,44 @@ It also fails when a `*_file` path falls under no mounted volume, since that not
 Amazon SNS is the one integration that uses the pod's cloud identity instead, through IRSA or EKS Pod Identity on the `alertmanager` ServiceAccount.
 [Cloud provider services](../channels/#cloud) lists the permissions for it and for the cloud email services.
 
+## TLS {#tls}
+
+Alertmanager serves plaintext on its API port, 9093, by default.
+`alerting.server.tls` moves that port to TLS, and `profiles/mtls.values.yaml` turns it on along with the settings that have to move with it.
+The chart renders the listener settings into `web.yml` in the `alertmanager-config` Secret, which Alertmanager reads through `--web.config.file`.
+
+Eight clients dial the port, and each one needs a matching change:
+
+| Client | How it follows |
+|---|---|
+| Grafana's datasource | The chart's default URL follows the switch; the profile supplies the CA |
+| `amtool` inside the pod | The chart renders `/etc/amtool/config.yml` with the URL and the CA that issued Alertmanager's certificate |
+| Liveness and readiness probes | `scheme: HTTPS`, set by the profile |
+| The config reloader | `reload-url`, set by the profile |
+| The ServiceMonitor | `scheme` and a CA, set by the profile |
+| Both rulers | Their addresses and TLS settings, set by the profile |
+
+The render fails on each client left on the other scheme.
+Alertmanager reads its certificate, client CA and client-auth policy on every connection, so a renewal takes effect without a restart.
+Whether TLS is on at all is decided at startup, so turning it on or off rolls the replicas.
+It also rolls every Loki component, because the Loki ruler's settings live in the configuration all of Loki shares.
+
+Both rulers address the headless Service and reach each replica by pod IP (Thanos) or per-pod name (Loki).
+The certificate carries neither, so each ruler verifies Alertmanager as `alertmanager`, one of the Service names the certificate does carry.
+Each ruler presents its own component's certificate from phase 1.
+
+| Phase | Profile | Alertmanager's API port |
+|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client certificate requested |
+| 2 | `+ mtls-phase2.values.yaml` | `VerifyClientCertIfGiven`: a presented certificate is verified, and a client presenting none is served |
+| 3 | `+ mtls-phase3.values.yaml` | Unchanged from phase 2 |
+
+Phase 2 is as far as this port goes.
+The kubelet's probes and the config reloader dial it and cannot present a client certificate.
+The render refuses `RequireAndVerifyClientCert` while either is in place.
+Gossip between replicas, on 9094, stays plaintext.
+[Securing](../../operating/securing/#the-phases-and-where-each-hop-can-actually-end-up) covers the phases for the whole stack.
+
 ## Observing Alertmanager {#observing}
 
 Alertmanager is scraped through a ServiceMonitor, once per replica.
@@ -315,6 +353,7 @@ Both Services the subchart renders carry the same labels, so the monitor drops t
 
 Grafana's **Alertmanager** datasource (`connections.datasources.alertmanager`) gives the alert list and the silence editor.
 It points at the ClusterIP Service, which is correct for a reader: every replica holds the same alerts and silences.
+Its scheme follows `alerting.server.tls`.
 
 None of these series is alerted on yet.
 The deadman's switch and the meta-alerts that read them arrive with the rule set.
@@ -334,6 +373,7 @@ The deadman's switch and the meta-alerts that read them arrive with the rule set
 | GrafanaDatasource | `mzmon-alertmanager-datasource` | Chart |
 | ConfigMap | `ruler-env`, in each ruler's namespace | Chart, from `clusterName` |
 | Secret | `alertmanager-receivers` | The operator |
+| Secret | `mzmon-alertmanager-tls` | cert-manager, when `certificates.enabled` is on |
 
 The subchart's names are pinned by `alertmanager.fullnameOverride`, like Loki's, Thanos's and Grafana's, so they do not depend on the release name.
 That is what lets both rulers address `alertmanager-headless` literally, from inside subcharts where this chart's helpers cannot run.
@@ -347,5 +387,6 @@ The render warns when the rulers' addresses and the pinned name disagree.
 | A deadman's switch, and meta-alerts on the series above | Alertmanager being unable to deliver is visible on a dashboard, and pages nobody |
 | Rollout-signal inhibition | Upgrade noise is suppressed with a silence or a mute window, by hand. See [Maintenance Windows](../maintenance/) |
 | `alerting.alertmanager.mode: external` | A deployment with its own Alertmanager overrides both rulers' addresses by hand. See [Configuring](../configuring/#what-an-operator-configures-today) |
-| TLS on Alertmanager's own listener | The chart issues a certificate for it, and nothing serves it yet |
+| Client certificates required on the API port | Alertmanager stops at `VerifyClientCertIfGiven`, because its probes and config reloader cannot present one. See [TLS](#tls) |
+| TLS on gossip | Replicas gossip over plaintext on 9094 |
 | Terraform inputs for receivers and the preset | The Terraform path configures `alerting` through `additional_values` |

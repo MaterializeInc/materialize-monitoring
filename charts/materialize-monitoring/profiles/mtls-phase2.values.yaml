@@ -23,7 +23,7 @@
 # every writer is presenting, phase 3 can require it in any order, safely.
 #
 # ---------------------------------------------------------------------------
-# The two backends reach this differently, and it is not symmetric
+# The backends reach this differently, and it is not symmetric
 # ---------------------------------------------------------------------------
 # Measured against the versions this chart ships, not read off documentation:
 #
@@ -31,6 +31,10 @@
 #     is still served; a client presenting one from the configured CA is served;
 #     a client presenting one from *any other* CA is refused at the handshake. So
 #     Loki moves to that state here, and gains a real (if partial) check.
+#
+#   * **Alertmanager** is the same as Loki: exporter-toolkit's listener takes
+#     Go's client-auth types, and `VerifyClientCertIfGiven` serves a client with
+#     no certificate.
 #
 #   * **Thanos Receive has no equivalent.** `--remote-write.server-tls-client-ca`
 #     puts the listener straight into require-and-verify — a client with no
@@ -66,6 +70,27 @@ loki:
         # -> served; certificate from another CA -> refused at the handshake.
         client_ca_file: /etc/mzmon/tls/ca.crt
         client_auth_type: VerifyClientCertIfGiven
+
+# Alertmanager's API port moves the same way as Loki's HTTP port, for the same
+# reason: its listener has a real verify-if-given. Both rulers already present a
+# certificate from phase 1, so the clients this changes are Grafana, below, and
+# nothing else. The probes and the config reloader present nothing and are still
+# served, which is why this is where the port stops.
+alerting:
+  server:
+    tls:
+      clientCAFile: /etc/mzmon/tls/ca.crt
+      clientAuth: VerifyClientCertIfGiven
+
+connections:
+  datasources:
+    alertmanager:
+      tls:
+        # Grafana's own certificate, which carries `client auth`. Like the CA in
+        # phase 1, Grafana stores it rather than reading it, so a renewal reaches
+        # the datasource on `connections.datasources.resyncPeriod`.
+        clientCert:
+          secretName: '{{ include "mzmon.certificates.secretName" ( dict "context" $ "component" "grafana" ) }}'
 
 # Thanos Receive is deliberately absent from this file. Adding
 # `--remote-write.server-tls-client-ca` here would skip straight to phase 3 on

@@ -1999,8 +1999,32 @@ connections:
       # -- Alertmanager endpoint. Rendered with `tpl`.
       # The load-balanced Service is right for a reader: silences and the
       # notification log are gossiped, and both rulers send every alert to every
-      # replica, so any replica answers with the same state.
+      # replica, so any replica answers with the same state. The helper's scheme
+      # follows `alerting.server.tls.enabled`.
       url: '{{ include "mzmon.alertmanager.url" $ }}'
+      # -- TLS for Grafana's connection to Alertmanager. Same shape and caveats as
+      # `connections.datasources.thanos.tls`, including that Grafana stores the
+      # material rather than reading a file, so it refreshes on
+      # `resyncPeriod` rather than on renewal. `profiles/mtls.values.yaml` sets
+      # `caSecret` to Grafana's own certificate Secret, and `mtls-phase2` presents
+      # it as the client certificate.
+      tls:
+        # -- Verify Alertmanager's certificate. Unset follows the URL scheme.
+        # @default -- follows the URL scheme
+        enabled: null
+        # -- The CA to trust, inline as PEM.
+        caPem: ""
+        # -- Secret holding the CA bundle, in the Grafana instance's namespace.
+        caSecret:
+          name: ""
+          key: ca.crt
+        # -- Present a client certificate.
+        clientCert:
+          secretName: ""
+          certKey: tls.crt
+          keyKey: tls.key
+        # -- SNI to send, when it differs from the URL host.
+        serverName: ""
       # -- Extra `jsonData`, merged over the chart's defaults
       # (`implementation: prometheus`, `handleGrafanaManagedAlerts: false`).
       # @default -- `{}`
@@ -2164,6 +2188,42 @@ alerting:
   # a shared `http_config`.
   # @default -- `{}`
   global: {}
+
+  server:
+    # -- TLS on Alertmanager's API port (9093), rendered as its `--web.config.file`.
+    # @raw
+    #
+    # Off by default. `profiles/mtls.values.yaml` turns it on and assembles the
+    # settings that have to move with it, and `mtls-phase2` verifies client
+    # certificates. Set these directly only alongside the same changes; the render
+    # refuses each half-applied combination.
+    #
+    # | Key | Meaning |
+    # | --- | --- |
+    # | `enabled` | Serve TLS. Takes effect when `alertmanager.extraArgs.web.config.file` is also set, which is what restarts Alertmanager onto it: TLS on or off is decided at startup. |
+    # | `certFile` / `keyFile` | The serving certificate. The defaults are the chart's `mzmon-alertmanager-tls` Secret, which `alertmanager.extraSecretMounts` mounts at `/etc/mzmon/tls` whether or not it exists yet. `amtool` in the pod trusts the `ca.crt` beside `certFile`, which a cert-manager Secret carries. |
+    # | `clientCAFile` | Roots client certificates are verified against. Ignored with `NoClientCert`, which Alertmanager refuses to combine with a client CA. |
+    # | `clientAuth` | `NoClientCert`, or `VerifyClientCertIfGiven`. See below for `RequireAndVerifyClientCert`. |
+    # | `minVersion` | Lowest TLS version accepted, in Alertmanager's spelling (`TLS12`, `TLS13`). |
+    #
+    # The certificate, the client-auth policy and the CA are re-read on every
+    # connection, so a renewal or a move between `NoClientCert` and
+    # `VerifyClientCertIfGiven` applies without a restart.
+    #
+    # **`RequireAndVerifyClientCert` is refused while Alertmanager's own probes
+    # or config reloader would be locked out.** Both reach port 9093 from inside
+    # the pod and neither can present a client certificate: a Kubernetes `httpGet`
+    # probe has no field for one, and the config reloader's client has no option
+    # for one. So `VerifyClientCertIfGiven` is the terminal state here, as it is
+    # for Loki's HTTP port: certificates that are presented are verified, and a
+    # client that presents none is still served.
+    tls:
+      enabled: false
+      certFile: /etc/mzmon/tls/tls.crt
+      keyFile: /etc/mzmon/tls/tls.key
+      clientCAFile: ""
+      clientAuth: NoClientCert
+      minVersion: TLS13
 
   # -- Fail the render when a receiver or `global` carries an inline credential.
   # @raw
@@ -4273,15 +4333,30 @@ thanos:
             name: ruler-env
             key: CLUSTER_NAME
 
+    # -- Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
+    # @raw
+    #
+    # `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
+    # `certificates` is on. The Ruler presents it to Alertmanager when
+    # `alerting.server.tls` is on, and trusts its `ca.crt`. Mounted unconditionally
+    # and optionally, so the same values work before issuance, during it and after.
+    # This is a list: restate both entries when adding one.
     extraVolumes:
       - name: remote-write
         configMap:
           name: thanos-ruler-remote-write
+      - name: mzmon-tls
+        secret:
+          secretName: mzmon-thanos-tls
+          optional: true
 
     extraVolumeMounts:
       - name: remote-write
         mountPath: /etc/thanos/remote-write.yaml
         subPath: remote-write.yaml
+        readOnly: true
+      - name: mzmon-tls
+        mountPath: /etc/mzmon/tls
         readOnly: true
 
     # -- No PVC. The data directory holds the remote-write WAL and nothing else.
@@ -4805,13 +4880,32 @@ alertmanager:
     enabled: false
 
   # -- Mount the configuration the chart renders. Load-bearing, with `extraArgs.config.file`.
+  # @raw
+  #
+  # The second volume puts an `amtool` configuration at `/etc/amtool/config.yml`,
+  # where `amtool` looks by default, rendered from the same Secret. It carries the
+  # URL and, when `alerting.server.tls` is on, the CA that issued `certFile` (the
+  # `ca.crt` beside it), so `kubectl exec ... -- amtool silence query` works
+  # unchanged in every TLS phase. It presents a client certificate only when
+  # `clientAuth` requires one.
+  # Mounted as a directory rather than with `subPath`, so it follows changes to
+  # the Secret.
   extraVolumes:
     - name: mzmon-config
       secret:
         secretName: alertmanager-config
+    - name: mzmon-amtool
+      secret:
+        secretName: alertmanager-config
+        items:
+          - key: amtool.yml
+            path: config.yml
   extraVolumeMounts:
     - name: mzmon-config
       mountPath: /etc/alertmanager/config
+      readOnly: true
+    - name: mzmon-amtool
+      mountPath: /etc/amtool
       readOnly: true
 
   # -- Secrets holding receiver credentials, for `*_file` fields to read.
@@ -4827,13 +4921,23 @@ alertmanager:
   # needs no restart. The kubelet refreshes the mounted copy within about a minute.
   #
   # To mount further Secrets, add entries under `/etc/alertmanager/secrets/`.
-  # **This is a list, and Helm replaces lists**, so restate the default entry
+  # **This is a list, and Helm replaces lists**, so restate the default entries
   # when adding one. The render fails when a receiver names a `*_file` path that
   # no mount covers.
+  #
+  # The second entry is Alertmanager's own certificate, which the chart issues as
+  # `mzmon-alertmanager-tls` when `certificates` is on. Mounted unconditionally
+  # and optionally, so the same values work before issuance, during it and after,
+  # and turning `alerting.server.tls` on changes no volume.
   extraSecretMounts:
     - name: alertmanager-receivers
       secretName: alertmanager-receivers
       mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+      readOnly: true
+      optional: true
+    - name: mzmon-tls
+      secretName: mzmon-alertmanager-tls
+      mountPath: /etc/mzmon/tls
       readOnly: true
       optional: true
 

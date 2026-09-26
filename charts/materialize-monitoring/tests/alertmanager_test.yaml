@@ -1019,7 +1019,7 @@ tests:
     template: templates/NOTES.txt
     asserts:
       - matchRegexRaw:
-          pattern: "Service: alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+          pattern: "Service: http://alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
 
   - it: reports the cluster label alerts carry
     set:

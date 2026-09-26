@@ -423,6 +423,13 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         certificates && ctx.features.enabled("loki") && ctx.features.loki_server_tls(),
         checks::tls::loki_refuses_plaintext,
     ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "tls::alertmanager_refuses_plaintext",
+        certificates && alertmanager && ctx.features.alertmanager_server_tls(),
+        checks::tls::alertmanager_refuses_plaintext,
+    ));
     // Destructive: forces a reissue by deleting a Secret. Opt-in, because this
     // binary is pointed at real clusters too.
     //

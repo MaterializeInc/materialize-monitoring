@@ -322,6 +322,44 @@ pub async fn loki_refuses_plaintext(ctx: &Ctx) -> Result<()> {
     }
 }
 
+/// Alertmanager's API port serves TLS, and *only* TLS.
+///
+/// The same two halves as [`loki_refuses_plaintext`], in the same order and for
+/// the same reason. Here the negative half guards a specific miss: the chart
+/// renders the TLS settings whenever `alerting.server.tls.enabled` is on, but
+/// Alertmanager only reads them when started with `--web.config.file`, so a
+/// release that set the switch and lost the flag serves plaintext with every
+/// setting in place.
+pub async fn alertmanager_refuses_plaintext(ctx: &Ctx) -> Result<()> {
+    let service = crate::checks::alertmanager::service_name(ctx);
+    let port = crate::checks::alertmanager::API_PORT;
+
+    let secure = crate::checks::alertmanager::api_target(ctx)?;
+    let body = ctx
+        .cluster
+        .get(&secure, "-/ready")
+        .await
+        .context("Alertmanager did not answer a TLS request on its API port")?;
+    if body.trim() != "OK" {
+        bail!(
+            "Alertmanager answered TLS on {service}:{port} with {:?}",
+            body.trim()
+        );
+    }
+
+    let plaintext = ServiceTarget::new(service.clone(), port);
+    match ctx.cluster.get(&plaintext, "-/ready").await {
+        Err(_) => Ok(()),
+        Ok(body) => bail!(
+            "{service}:{port} answered a *plaintext* request with {:?} while also answering TLS. \
+             A listener cannot do both, so this is the port being reached by something other than \
+             the TLS one the values configure — check that the StatefulSet's Alertmanager \
+             container carries --web.config.file=/etc/alertmanager/config/web.yml.",
+            body.trim()
+        ),
+    }
+}
+
 /// The gateway's log-ingest listener turns away a client with no certificate.
 ///
 /// **The only assertion in the suite that tests authentication rather than

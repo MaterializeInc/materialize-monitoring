@@ -88,7 +88,103 @@ Usage:
   {{- include "mzmon.alertmanager.url" $ }}
 */}}
 {{- define "mzmon.alertmanager.url" }}
-  {{- printf "http://%s" ( include "mzmon.alertmanager.hostPort" $ ) }}
+  {{- printf "%s://%s" ( ternary "https" "http" ( not ( empty ( include "mzmon.alertmanager.tls.enabled" $ ) ) ) ) ( include "mzmon.alertmanager.hostPort" $ ) }}
+{{- end }}
+
+{{- /*
+Whether Alertmanager serves its API over TLS. A truthy string, or empty.
+
+Usage:
+  {{- if ( include "mzmon.alertmanager.tls.enabled" $ ) }}
+*/}}
+{{- define "mzmon.alertmanager.tls.enabled" }}
+  {{- if dig "server" "tls" "enabled" false ( $.Values.alerting | default dict ) }}
+    {{- "true" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Alertmanager's `--web.config.file`, in exporter-toolkit's format.
+
+Empty when TLS is off, which exporter-toolkit serves as plaintext, so the file is
+harmless wherever the flag points at it. When TLS is on, the certificate, the
+client CA and the client-auth policy are re-read on every connection; whether
+TLS is on at all is decided once, at startup, which is why
+`alertmanager.extraArgs.web.config.file` is what moves a running Alertmanager
+onto it.
+
+`client_ca_file` is left out with `NoClientCert`, because exporter-toolkit refuses
+a client CA with no policy to apply it: "client CA's have been configured without
+a Client Auth Policy".
+
+Usage:
+  {{ include "mzmon.alertmanager.webConfig" $ }}
+*/}}
+{{- define "mzmon.alertmanager.webConfig" }}
+  {{- $tls := dig "server" "tls" dict ( $.Values.alerting | default dict ) }}
+  {{- if $tls.enabled }}
+    {{- $server := dict
+      "cert_file" ( $tls.certFile | toString )
+      "key_file" ( $tls.keyFile | toString )
+      "client_auth_type" ( $tls.clientAuth | default "NoClientCert" | toString )
+      "min_version" ( $tls.minVersion | default "TLS13" | toString )
+    }}
+    {{- if and $tls.clientCAFile ( ne ( $tls.clientAuth | default "NoClientCert" ) "NoClientCert" ) }}
+      {{- $_ := set $server "client_ca_file" ( $tls.clientCAFile | toString ) }}
+    {{- end }}
+    {{- dict "tls_server_config" $server | toYaml }}
+  {{- else }}
+    {{- "{}" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+`amtool`'s configuration, mounted at `/etc/amtool/config.yml`, and the HTTP
+client configuration it points at.
+
+With TLS on, `amtool` dials the loopback over https and verifies Alertmanager's
+certificate as `localhost`, one of its SANs.
+
+It trusts the `ca.crt` beside `certFile`, not `clientCAFile`. The two answer
+different questions: `ca.crt` is the CA that issued the serving certificate,
+which is what `amtool` has to verify, and `clientCAFile` is what Alertmanager
+verifies clients against. cert-manager writes the issuing CA into every Secret it
+signs, so the file is there whenever the chart issues the certificate.
+
+It presents a certificate only when Alertmanager requires one. Under
+`VerifyClientCertIfGiven`, a client presenting nothing is served, but a
+certificate that fails verification is refused at the handshake. Presenting the
+serving certificate there would lock `amtool` out of any deployment whose
+`clientCAFile` did not also sign it. When a certificate is required, the serving
+certificate, which carries `client auth`, is the one available.
+
+Usage:
+  {{ include "mzmon.alertmanager.amtoolConfig" $ }}
+  {{ include "mzmon.alertmanager.amtoolHTTPConfig" $ }}
+*/}}
+{{- define "mzmon.alertmanager.amtoolConfig" }}
+  {{- $tls := include "mzmon.alertmanager.tls.enabled" $ }}
+  {{- dict
+    "alertmanager.url" ( printf "%s://127.0.0.1:9093" ( ternary "https" "http" ( not ( empty $tls ) ) ) )
+    "http.config.file" "/etc/alertmanager/config/amtool-http.yml"
+    | toYaml }}
+{{- end }}
+
+{{- define "mzmon.alertmanager.amtoolHTTPConfig" }}
+  {{- $tls := dig "server" "tls" dict ( $.Values.alerting | default dict ) }}
+  {{- if $tls.enabled }}
+    {{- $tlsConfig := dict
+      "ca_file" ( printf "%s/ca.crt" ( dir ( $tls.certFile | toString ) ) )
+      "server_name" "localhost"
+    }}
+    {{- if has ( $tls.clientAuth | default "NoClientCert" | toString ) ( list "RequireAndVerifyClientCert" "RequireAnyClientCert" ) }}
+      {{- $_ := set $tlsConfig "cert_file" ( $tls.certFile | toString ) }}
+      {{- $_ := set $tlsConfig "key_file" ( $tls.keyFile | toString ) }}
+    {{- end }}
+    {{- dict "tls_config" $tlsConfig | toYaml }}
+  {{- else }}
+    {{- "{}" }}
+  {{- end }}
 {{- end }}
 
 {{- /*
@@ -430,17 +526,27 @@ Usage:
            peer holds — gossip does not replicate alerts. A warning, since an
            operator may be pointing a ruler at an Alertmanager of their own. */}}
     {{- $headless := printf "%s-headless" ( include "mzmon.alertmanager.fullname" $ ) }}
+    {{- /* Rendered with the release's context, which resolves the same
+           `.Release.Namespace` and cluster domain the subcharts' own `tpl` does.
+           The namespace is checked because `split-namespace` and the mTLS
+           profiles each restate these addresses whole, so composing them in the
+           wrong order leaves a ruler resolving a Service that does not exist. */}}
+    {{- $inNamespace := printf "%s.%s.svc" $headless ( include "mzmon.alertmanager.namespace" $ ) }}
     {{- if $thanosRuler }}
-      {{- $thanosAm := dig "ruler" "alertmanagers" "config" "" ( $.Values.thanos | default dict ) | toString }}
+      {{- $thanosAm := tpl ( dig "ruler" "alertmanagers" "config" "" ( $.Values.thanos | default dict ) | toString ) $ }}
       {{- if not ( contains $headless $thanosAm ) }}
         {{- $warnings = append $warnings ( printf "thanos.ruler.alertmanagers.config does not name %s, the headless Service of the bundled Alertmanager. The ruler has to resolve every replica (dns+%s.<namespace>.svc...:9093), because gossip does not replicate alerts; otherwise a surviving replica may hold none of them." $headless $headless ) }}
+      {{- else if not ( contains $inNamespace $thanosAm ) }}
+        {{- $warnings = append $warnings ( printf "thanos.ruler.alertmanagers.config names %s, but not in Alertmanager's namespace (%s), so the ruler resolves nothing and drops every alert. When composing profiles/split-namespace.values.yaml with an mTLS profile, both restate this address; restate it once more, last, with the Alertmanager namespace." $headless $inNamespace ) }}
       {{- end }}
     {{- end }}
     {{- if $lokiRuler }}
-      {{- $lokiAm := dig "loki" "rulerConfig" "alertmanager_url" "" ( $.Values.loki | default dict ) | toString }}
+      {{- $lokiAm := tpl ( dig "loki" "rulerConfig" "alertmanager_url" "" ( $.Values.loki | default dict ) | toString ) $ }}
       {{- $discovery := dig "loki" "rulerConfig" "enable_alertmanager_discovery" false ( $.Values.loki | default dict ) }}
       {{- if and $lokiAm ( not ( contains $headless $lokiAm ) ) }}
         {{- $warnings = append $warnings ( printf "loki.loki.rulerConfig.alertmanager_url does not name %s, the headless Service of the bundled Alertmanager. The ruler has to resolve every replica (http://_http._tcp.%s.<namespace>.svc... with enable_alertmanager_discovery), because gossip does not replicate alerts." $headless $headless ) }}
+      {{- else if and $lokiAm ( not ( contains $inNamespace $lokiAm ) ) }}
+        {{- $warnings = append $warnings ( printf "loki.loki.rulerConfig.alertmanager_url names %s, but not in Alertmanager's namespace (%s), so the ruler resolves nothing and drops every alert. When composing profiles/split-namespace.values.yaml with an mTLS profile, both restate this address; restate it once more, last, with the Alertmanager namespace." $headless $inNamespace ) }}
       {{- else if and ( contains "_tcp." $lokiAm ) ( not $discovery ) }}
         {{- $warnings = append $warnings "loki.loki.rulerConfig.alertmanager_url is an SRV name (_http._tcp....) but enable_alertmanager_discovery is off, so the ruler dials it as a hostname, which resolves to nothing, and every alert it evaluates is dropped." }}
       {{- end }}
@@ -687,6 +793,278 @@ Usage:
           {{- $errors = append $errors ( printf "%s reads %s, which no volume mounts. Mounted: %s. Add the Secret to alertmanager.extraSecretMounts, or correct the path; otherwise every notification through it fails at send time." $leaf.path $leaf.value ( $mounts | join ", " | default "nothing" ) ) }}
         {{- end }}
       {{- end }}
+    {{- end }}
+
+    {{- $res := include "mzmon.alertmanager.validate.tls" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Whether a path lies under one of a list of mount paths. A truthy string, or empty.
+
+Usage:
+  {{- if ( include "mzmon.alertmanager.pathMounted" ( dict "path" $p "mounts" $mounts ) ) }}
+*/}}
+{{- define "mzmon.alertmanager.pathMounted" }}
+  {{- $path := .path | toString }}
+  {{- range $m := .mounts }}
+    {{- if or ( eq $path $m ) ( hasPrefix ( printf "%s/" $m ) $path ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+The mount paths of a list of volume mounts, without trailing slashes, as a YAML
+array. Takes `extraSecretMounts` and `extraVolumeMounts` entries alike.
+
+Usage:
+  {{- $mounts := include "mzmon.alertmanager.mountPaths" ( list $a $b ) | fromYamlArray }}
+*/}}
+{{- define "mzmon.alertmanager.mountPaths" }}
+  {{- $out := list }}
+  {{- range $list := . }}
+    {{- range ( $list | default list ) }}
+      {{- if and ( kindIs "map" . ) .mountPath }}
+        {{- $out = append $out ( trimSuffix "/" ( toString .mountPath ) ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- toYaml $out }}
+{{- end }}
+
+{{- /*
+Validate Alertmanager's TLS: the listener, and everything that dials it.
+
+`alerting.server.tls.enabled` changes one listener, and eight things reach it:
+Alertmanager's two probes, its config reloader, `amtool`, both rulers, the
+Grafana datasource and the ServiceMonitor. `amtool` and the datasource follow the
+switch on their own. The rest are configured in subcharts that render their own
+values, which is why `profiles/mtls.values.yaml` sets them and this checks them.
+
+Each one left behind fails without naming TLS. A plaintext client at a TLS port
+gets a protocol error; a ruler that cannot notify reports healthy; a probe that
+cannot connect restarts a working Alertmanager. So every mismatch is an error,
+in both directions: a client left on https after TLS is turned back off breaks
+the same way.
+
+Usage:
+  {{- $res := include "mzmon.alertmanager.validate.tls" $ | fromYaml }}
+*/}}
+{{- define "mzmon.alertmanager.validate.tls" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := index $.Values "alertmanager" | default dict }}
+  {{- $tls := dig "server" "tls" dict ( $.Values.alerting | default dict ) }}
+  {{- $on := not ( empty ( include "mzmon.alertmanager.tls.enabled" $ ) ) }}
+  {{- $scheme := ternary "https" "http" $on }}
+  {{- $clientAuth := $tls.clientAuth | default "NoClientCert" | toString }}
+  {{- $requires := has $clientAuth ( list "RequireAndVerifyClientCert" "RequireAnyClientCert" ) }}
+  {{- $headless := printf "%s-headless" ( include "mzmon.alertmanager.fullname" $ ) }}
+  {{- $sans := list }}
+  {{- if ( include "mzmon.certificates.enabled" ( dict "context" $ "component" "alertmanager" ) ) }}
+    {{- $sans = include "mzmon.certificates.sans" ( dict "context" $ "component" "alertmanager" ) | fromYamlArray }}
+  {{- end }}
+
+  {{- /* --- the listener -------------------------------------------------- */}}
+
+  {{- if $on }}
+    {{- /* exporter-toolkit decides TLS once, at startup, from whether the flag
+           is set. The file behind it is re-read per connection, so this flag is
+           the only part of the switch that needs a restart. */}}
+    {{- $webConfigFlag := dig "extraArgs" "web.config.file" "" $values | toString }}
+    {{- if ne $webConfigFlag "/etc/alertmanager/config/web.yml" }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.enabled is on but alertmanager.extraArgs.web.config.file is %q rather than /etc/alertmanager/config/web.yml, where the chart renders the TLS settings. Alertmanager decides whether to serve TLS at startup from that flag, so it keeps serving plaintext while every client configured for TLS dials https. Set the flag; profiles/mtls.values.yaml does." $webConfigFlag ) }}
+    {{- end }}
+
+    {{- $mounts := include "mzmon.alertmanager.mountPaths" ( list $values.extraSecretMounts $values.extraVolumeMounts ) | fromYamlArray }}
+    {{- range $key := list "certFile" "keyFile" "clientCAFile" }}
+      {{- $path := index $tls $key | default "" | toString }}
+      {{- if and $path ( not ( and ( eq $key "clientCAFile" ) ( eq $clientAuth "NoClientCert" ) ) ) }}
+        {{- if not ( include "mzmon.alertmanager.pathMounted" ( dict "path" $path "mounts" $mounts ) ) }}
+          {{- $errors = append $errors ( printf "alerting.server.tls.%s is %s, which no volume in alertmanager.extraSecretMounts or alertmanager.extraVolumeMounts mounts (mounted: %s). Alertmanager checks its certificate at startup and exits when it cannot read it." $key $path ( $mounts | join ", " | default "nothing" ) ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if not ( and $tls.certFile $tls.keyFile ) }}
+      {{- $errors = append $errors "alerting.server.tls.enabled is on but certFile or keyFile is empty. Alertmanager refuses to start a TLS listener without both." }}
+    {{- end }}
+
+    {{- /* A certificate the chart is not issuing is legitimate, and is also what
+           a half-applied profile looks like. */}}
+    {{- if not ( include "mzmon.certificates.enabled" ( dict "context" $ "component" "alertmanager" ) ) }}
+      {{- $warnings = append $warnings "alerting.server.tls.enabled is on while the chart issues no certificate for Alertmanager (certificates.enabled, or certificates.components.alertmanager.enabled, is off). That is correct if you mount your own. Otherwise Alertmanager exits at startup, because the certificate it is pointed at does not exist." }}
+    {{- else }}
+      {{- $expected := include "mzmon.certificates.secretName" ( dict "context" $ "component" "alertmanager" ) }}
+      {{- range ( $values.extraSecretMounts | default list ) }}
+        {{- if and ( kindIs "map" . ) .mountPath ( eq ( trimSuffix "/" ( toString .mountPath ) ) ( dir ( $tls.certFile | default "" | toString ) ) ) ( ne ( toString .secretName ) $expected ) }}
+          {{- $warnings = append $warnings ( printf "alertmanager.extraSecretMounts mounts Secret %q at %s, where alerting.server.tls.certFile points, but the chart issues Alertmanager's certificate as %q. Alertmanager serves whatever the mounted Secret holds." ( toString .secretName ) ( toString .mountPath ) $expected ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if not ( has $clientAuth ( list "NoClientCert" "RequestClientCert" "RequireAnyClientCert" "VerifyClientCertIfGiven" "RequireAndVerifyClientCert" ) ) }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %q. Alertmanager accepts Go's client-auth types: NoClientCert, VerifyClientCertIfGiven, RequireAndVerifyClientCert (and RequestClientCert, RequireAnyClientCert, which verify nothing)." $clientAuth ) }}
+    {{- else if has $clientAuth ( list "RequestClientCert" "RequireAnyClientCert" ) }}
+      {{- $warnings = append $warnings ( printf "alerting.server.tls.clientAuth is %s, which accepts a client certificate from any issuer without verifying it, so it authenticates nobody. Use VerifyClientCertIfGiven with clientCAFile." $clientAuth ) }}
+    {{- end }}
+    {{- if and ( has $clientAuth ( list "VerifyClientCertIfGiven" "RequireAndVerifyClientCert" ) ) ( not $tls.clientCAFile ) }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s but clientCAFile is empty, so client certificates are verified against the image's public roots and every client presenting a certificate from the internal CA is refused at the handshake. Set clientCAFile to the internal CA; profiles/mtls-phase2.values.yaml uses /etc/mzmon/tls/ca.crt." $clientAuth ) }}
+    {{- end }}
+
+    {{- $minVersion := $tls.minVersion | default "TLS13" | toString }}
+    {{- if not ( has $minVersion ( list "TLS10" "TLS11" "TLS12" "TLS13" ) ) }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.minVersion is %q. Alertmanager accepts TLS10, TLS11, TLS12 or TLS13, and exits at startup on anything else." $minVersion ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* --- inside the pod ----------------------------------------------- */}}
+
+  {{- /* The kubelet dials 9093 for both probes. A probe on the wrong scheme fails
+         on every replica: readiness takes both out of the Service, and liveness
+         restarts a working Alertmanager. */}}
+  {{- $httpGetProbes := list }}
+  {{- range $probe := list "livenessProbe" "readinessProbe" }}
+    {{- $httpGet := dig $probe "httpGet" nil $values }}
+    {{- if kindIs "map" $httpGet }}
+      {{- $httpGetProbes = append $httpGetProbes $probe }}
+      {{- $probeScheme := $httpGet.scheme | default "HTTP" | toString | upper }}
+      {{- if ne $probeScheme ( upper $scheme ) }}
+        {{- $errors = append $errors ( printf "alertmanager.%s.httpGet.scheme is %s but Alertmanager serves %s (alerting.server.tls.enabled is %t). The kubelet's probe fails on every replica at once: readiness takes them all out of the Service, and liveness restarts them. Set the scheme to %s." $probe $probeScheme ( upper $scheme ) $on ( upper $scheme ) ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- $reloader := dig "configmapReload" "enabled" false $values }}
+  {{- if $reloader }}
+    {{- $reloadURL := dig "configmapReload" "extraArgs" "reload-url" "http://127.0.0.1:9093/-/reload" $values | toString }}
+    {{- if not ( hasPrefix ( printf "%s://" $scheme ) $reloadURL ) }}
+      {{- $errors = append $errors ( printf "alertmanager.configmapReload.extraArgs.reload-url is %s but Alertmanager serves %s. Every reload fails, so a change under alerting.* reaches the replicas only when they next restart, and the reloader retries forever. Set it to %s://127.0.0.1:9093/-/reload." $reloadURL $scheme $scheme ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The two in-pod clients that cannot present a certificate. A Kubernetes
+         httpGet probe has no field for one, and the reloader's HTTP client has no
+         option for one. Requiring a certificate refuses both. */}}
+  {{- if and $on $requires }}
+    {{- if $reloader }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s while alertmanager.configmapReload is enabled. The reloader cannot present a client certificate, so every reload is refused and configuration changes stop applying. VerifyClientCertIfGiven is the terminal state for Alertmanager's API port, as it is for Loki's: presented certificates are verified, and the in-pod clients that present none are still served." $clientAuth ) }}
+    {{- end }}
+    {{- if $httpGetProbes }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s but alertmanager.%s use httpGet, which cannot present a client certificate. Every probe is refused: readiness takes every replica out of the Service and liveness restarts them. VerifyClientCertIfGiven is the terminal state for Alertmanager's API port." $clientAuth ( join " and " $httpGetProbes ) ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* --- the ServiceMonitor ------------------------------------------- */}}
+
+  {{- if dig "serviceMonitor" "enabled" false $values }}
+    {{- $sm := $values.serviceMonitor | default dict }}
+    {{- $smScheme := $sm.scheme | default "http" | toString | lower }}
+    {{- if ne $smScheme $scheme }}
+      {{- $errors = append $errors ( printf "alertmanager.serviceMonitor.scheme is %s but Alertmanager serves %s. The scrape fails, and because a failed target is absent rather than zero, Alertmanager's own metrics — failed notifications, mesh membership, reload health — disappear without an alert on `up == 0` firing. Set the scheme to %s." $smScheme $scheme $scheme ) }}
+    {{- else if $on }}
+      {{- $smTls := $sm.tlsConfig | default dict }}
+      {{- if and ( not $smTls.ca ) ( not $smTls.caFile ) ( not $smTls.insecureSkipVerify ) }}
+        {{- $errors = append $errors "alertmanager.serviceMonitor scrapes https with no CA in tlsConfig, so the scrape verifies Alertmanager's certificate against public roots and fails. Set tlsConfig.ca to the Secret holding the internal CA, and tlsConfig.serverName to a name on the certificate; profiles/mtls.values.yaml does." }}
+      {{- end }}
+      {{- if and $requires ( not ( and $smTls.cert $smTls.keySecret ) ) }}
+        {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s but alertmanager.serviceMonitor.tlsConfig presents no client certificate (cert and keySecret), so every scrape is refused." $clientAuth ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* --- the rulers ---------------------------------------------------- */}}
+
+  {{- /* Both address the headless Service, resolving to pod IPs (Thanos) or
+         per-pod names (Loki), neither of which is a SAN. So each has to name the
+         certificate's Service in its TLS server name. */}}
+  {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+    {{- $thanos := $.Values.thanos | default dict }}
+    {{- $raw := dig "ruler" "alertmanagers" "config" "" $thanos | toString }}
+    {{- $parsed := tpl $raw $ | fromYaml }}
+    {{- $rulerMounts := include "mzmon.alertmanager.mountPaths" ( list ( dig "ruler" "extraVolumeMounts" list $thanos ) ) | fromYamlArray }}
+    {{- range $i, $am := ( $parsed.alertmanagers | default list ) }}
+      {{- if and ( kindIs "map" $am ) ( contains $headless ( toYaml ( $am.static_configs | default list ) ) ) }}
+        {{- $path := printf "thanos.ruler.alertmanagers.config alertmanagers[%d]" $i }}
+        {{- $amScheme := $am.scheme | default "http" | toString }}
+        {{- $amTls := dig "http_config" "tls_config" dict $am }}
+        {{- if ne $amScheme $scheme }}
+          {{- $errors = append $errors ( printf "%s sends with scheme %s but Alertmanager serves %s. Every notification from the Thanos ruler fails while the ruler reports healthy. Set scheme: %s%s." $path $amScheme $scheme $scheme ( ternary " and http_config.tls_config; profiles/mtls.values.yaml does" "" $on ) ) }}
+        {{- else if $on }}
+          {{- if not $amTls.ca_file }}
+            {{- $errors = append $errors ( printf "%s sends over https with no http_config.tls_config.ca_file, so it verifies Alertmanager against public roots and every notification fails. Set ca_file to the internal CA." $path ) }}
+          {{- end }}
+          {{- $sn := $amTls.server_name | default "" | toString }}
+          {{- if not $sn }}
+            {{- $errors = append $errors ( printf "%s sends over https with no http_config.tls_config.server_name. The ruler dials each replica's IP, which is not on Alertmanager's certificate, so every notification fails verification. Set server_name to a name on the certificate, such as alertmanager." $path ) }}
+          {{- else if and $sans ( not ( has $sn $sans ) ) }}
+            {{- $errors = append $errors ( printf "%s verifies Alertmanager as %q, which is not a SAN on its certificate (%s). Every notification from the Thanos ruler fails verification." $path $sn ( join ", " $sans ) ) }}
+          {{- end }}
+          {{- range $key := list "ca_file" "cert_file" "key_file" }}
+            {{- $f := index $amTls $key | default "" | toString }}
+            {{- if and $f ( not ( include "mzmon.alertmanager.pathMounted" ( dict "path" $f "mounts" $rulerMounts ) ) ) }}
+              {{- $errors = append $errors ( printf "%s reads %s from %s, which no entry in thanos.ruler.extraVolumeMounts mounts (mounted: %s)." $path $key $f ( $rulerMounts | join ", " | default "nothing" ) ) }}
+            {{- end }}
+          {{- end }}
+          {{- if and $requires ( not ( and $amTls.cert_file $amTls.key_file ) ) }}
+            {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s but %s presents no client certificate (http_config.tls_config.cert_file and key_file), so Alertmanager refuses every notification from the Thanos ruler." $clientAuth $path ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
+    {{- $loki := $.Values.loki | default dict }}
+    {{- $lokiAm := tpl ( dig "loki" "rulerConfig" "alertmanager_url" "" $loki | toString ) $ }}
+    {{- if contains $headless $lokiAm }}
+      {{- $client := dig "loki" "rulerConfig" "alertmanager_client" dict $loki }}
+      {{- if not ( hasPrefix ( printf "%s://" $scheme ) $lokiAm ) }}
+        {{- $errors = append $errors ( printf "loki.loki.rulerConfig.alertmanager_url is %s but Alertmanager serves %s. Every notification from the Loki ruler fails while the ruler reports healthy. Use %s://%s." $lokiAm $scheme $scheme ( ternary " and set alertmanager_client's tls_* paths; profiles/mtls.values.yaml does" "" $on ) ) }}
+      {{- else if $on }}
+        {{- if not $client.tls_ca_path }}
+          {{- $errors = append $errors "loki.loki.rulerConfig.alertmanager_url is https with no alertmanager_client.tls_ca_path, so the Loki ruler verifies Alertmanager against public roots and every notification fails. Set tls_ca_path to the internal CA." }}
+        {{- end }}
+        {{- $sn := tpl ( $client.tls_server_name | default "" | toString ) $ }}
+        {{- if not $sn }}
+          {{- $errors = append $errors "loki.loki.rulerConfig.alertmanager_url is https with no alertmanager_client.tls_server_name. The ruler dials each replica by its per-pod name, which is not on Alertmanager's certificate, so every notification fails verification. Set tls_server_name to a name on the certificate, such as alertmanager." }}
+        {{- else if and $sans ( not ( has $sn $sans ) ) }}
+          {{- $errors = append $errors ( printf "loki.loki.rulerConfig.alertmanager_client.tls_server_name is %q, which is not a SAN on Alertmanager's certificate (%s). Every notification from the Loki ruler fails verification." $sn ( join ", " $sans ) ) }}
+        {{- end }}
+        {{- /* Loki's `_pod.tpl` concatenates these three, so a mount on any one
+               reaches the ruler. */}}
+        {{- $lokiMounts := include "mzmon.alertmanager.mountPaths" ( list
+              ( dig "global" "extraVolumeMounts" list $loki )
+              ( dig "defaults" "extraVolumeMounts" list $loki )
+              ( dig "ruler" "extraVolumeMounts" list $loki ) ) | fromYamlArray }}
+        {{- range $key := list "tls_ca_path" "tls_cert_path" "tls_key_path" }}
+          {{- $f := index $client $key | default "" | toString }}
+          {{- if and $f ( not ( include "mzmon.alertmanager.pathMounted" ( dict "path" $f "mounts" $lokiMounts ) ) ) }}
+            {{- $errors = append $errors ( printf "loki.loki.rulerConfig.alertmanager_client.%s is %s, which no entry in loki.defaults.extraVolumeMounts or loki.ruler.extraVolumeMounts mounts (mounted: %s)." $key $f ( $lokiMounts | join ", " | default "nothing" ) ) }}
+          {{- end }}
+        {{- end }}
+        {{- if and $requires ( not ( and $client.tls_cert_path $client.tls_key_path ) ) }}
+          {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s but loki.loki.rulerConfig.alertmanager_client presents no client certificate (tls_cert_path and tls_key_path), so Alertmanager refuses every notification from the Loki ruler." $clientAuth ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* --- Grafana ------------------------------------------------------- */}}
+
+  {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "alertmanager" ) ) }}
+    {{- $ds := dig "datasources" "alertmanager" dict ( $.Values.connections | default dict ) }}
+    {{- $url := tpl ( $ds.url | default "" | toString ) $ }}
+    {{- if and ( contains ( include "mzmon.alertmanager.fullname" $ ) $url ) ( not ( hasPrefix ( printf "%s://" $scheme ) $url ) ) }}
+      {{- $errors = append $errors ( printf "connections.datasources.alertmanager.url is %s but Alertmanager serves %s. Grafana cannot reach it, and the alerting pages show no alerts and no silences rather than an error. Leave the URL at its default, which follows alerting.server.tls.enabled." $url $scheme ) }}
+    {{- end }}
+    {{- if and $on $requires ( not ( dig "tls" "clientCert" "secretName" "" $ds ) ) }}
+      {{- $errors = append $errors ( printf "alerting.server.tls.clientAuth is %s but connections.datasources.alertmanager.tls.clientCert.secretName is empty, so Grafana presents no certificate and Alertmanager refuses it." $clientAuth ) }}
     {{- end }}
   {{- end }}
 

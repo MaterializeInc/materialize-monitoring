@@ -250,6 +250,18 @@ impl Features {
             .unwrap_or(false)
     }
 
+    /// Whether Alertmanager serves TLS on its API port.
+    ///
+    /// Decides how the Alertmanager assertions dial, like
+    /// [`Features::loki_server_tls`] does for Loki's, and gates
+    /// `tls::alertmanager_refuses_plaintext`. Read from the chart's own switch,
+    /// because the chart renders the listener settings from it.
+    pub fn alertmanager_server_tls(&self) -> bool {
+        self.get("alerting.server.tls.enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }
+
     /// The stable UID a datasource is provisioned under.
     ///
     /// Read from values rather than hardcoded: the dashboards resolve their

@@ -34,7 +34,7 @@ use crate::cluster::ServiceTarget;
 use crate::ctx::Ctx;
 use crate::retry::retry_until;
 
-const API_PORT: u16 = 9093;
+pub const API_PORT: u16 = 9093;
 const QUERY_SERVICE: &str = "thanos-query";
 const QUERY_PORT: u16 = 9090;
 
@@ -74,6 +74,20 @@ fn truncate(name: &str) -> String {
         .to_owned()
 }
 
+/// A target for Alertmanager's API port, speaking TLS when the release moved it
+/// to TLS.
+///
+/// Presents the suite's certificate. At every phase Alertmanager reaches, that is
+/// accepted: phase 1 ignores it and phase 2 verifies it against the same CA.
+pub fn api_target(ctx: &Ctx) -> Result<ServiceTarget> {
+    let target = ServiceTarget::new(service_name(ctx), API_PORT);
+    if ctx.features.alertmanager_server_tls() {
+        Ok(target.with_tls(ctx.client_tls()?))
+    } else {
+        Ok(target)
+    }
+}
+
 /// The replica count the release asked for.
 fn replicas(ctx: &Ctx) -> u64 {
     ctx.features
@@ -89,7 +103,7 @@ fn replicas(ctx: &Ctx) -> u64 {
 /// exactly the partition that doubles every notification.
 pub async fn mesh_converged(ctx: &Ctx) -> Result<()> {
     let want = replicas(ctx);
-    let target = ServiceTarget::new(service_name(ctx), API_PORT);
+    let target = api_target(ctx)?;
 
     retry_until(
         "alertmanager replicas form one settled gossip cluster",
