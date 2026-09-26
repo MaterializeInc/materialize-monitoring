@@ -126,6 +126,12 @@ Cloud Monitoring samples keep their own timestamps.
 An instant query at "now" looks back five minutes by default and finds no GCS sample at all.
 Queries on provider families need `last_over_time(<series>[15m])` or a wider window.
 
+**Every gateway restart leaves a gap as long as the lag.**
+Remote write forwards only samples stamped after it started, so that a restart does not resend what was already written.
+A Cloud Monitoring sample stamped before the restart is therefore never sent.
+After each restart, Cloud SQL series resume a few minutes later and GCS series over ten minutes later.
+CloudWatch samples carry the scrape's time, so they have no gap.
+
 No provider signal backs a fast page.
 Provider alerts cover the slow-moving conditions — storage headroom, burst-credit exhaustion, connection ceilings — with `for:` windows well above the publication delay.
 
@@ -156,6 +162,11 @@ Each provider assigns its families one instead, through `metricImportance`, whic
 | `recommended`, `essential` | No |
 
 A destination that bills per series, such as Datadog or a BYOC fan-out, therefore does not receive them unless its floor or the provider's tier is changed.
+
+The Google Cloud Monitoring destination deserves the same care on an install that also pulls from GCP.
+Its default floor is `recommended`, which keeps the pulled families out.
+Raising either would write each series back into Cloud Monitoring as a custom `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
+The pull does not read those types back, so it does not loop.
 
 ## What is deliberately not pulled
 
