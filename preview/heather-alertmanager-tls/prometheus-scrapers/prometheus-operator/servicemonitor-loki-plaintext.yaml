@@ -1,0 +1,52 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki-plaintext
+  labels:
+    app.kubernetes.io/name: loki
+spec:
+  # The Loki services whose metrics endpoint is plaintext no matter how Loki
+  # itself is configured.
+  #
+  # The subchart emits **one** ServiceMonitor for everything it labels, with a
+  # single `scheme` shared by every target. That is fine while Loki serves its
+  # own metrics over plaintext, and wrong the moment it does not: `profiles/mtls`
+  # moves the Loki processes to TLS and sets `scheme: https` on that monitor,
+  # which then also applies to these — none of which ever speak TLS.
+  #
+  #   * The canary's `-tls` flags configure the client it uses to reach Loki. Its
+  #     own `/metrics` server on :3500 is plaintext and has no TLS option.
+  #   * The two memcached exporters serve :9150 in the clear; the subchart wires
+  #     no certificates to them.
+  #
+  # Scraped over HTTPS they fail outright, so `up` reads 0 and the series never
+  # arrive — which for the canary means the end-to-end write→read check silently
+  # reports nothing during exactly the incident it exists for.
+  #
+  # Membership is an **opt-in label** rather than a list of component names:
+  # `values.yaml` sets both this label and the
+  # `prometheus.io/service-monitor: "false"` that takes the service out of the
+  # subchart's monitor, so the two halves of the split are written together and a
+  # renamed component cannot quietly fall out of one of them.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      monitoring.materialize.cloud/scrape-scheme: plaintext
+  # One entry covers all of them: the canary and both exporters name their
+  # metrics port `http-metrics`, whatever number sits behind it.
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 15s
+      # Both rules mirror the subchart's own monitor, so a canary series carries
+      # the same `job` and `app_instance` it would have if the split had never
+      # been necessary. Without them the canary lands under a bare `loki-canary`
+      # job and stops matching `job=~"loki/.*"` alongside the rest of Loki.
+      relabelings:
+        - sourceLabels: [job]
+          action: replace
+          replacement: loki/$1
+          targetLabel: job
+        - action: replace
+          replacement: loki
+          targetLabel: app_instance
