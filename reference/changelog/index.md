@@ -15,9 +15,60 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.24.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.25.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.24.0
+
+* DEP-226 Serve Alertmanager's API over TLS through the mTLS profiles
+    * [materialize-monitoring#394](https://github.com/MaterializeInc/materialize-monitoring/pull/394)
+    * Alertmanager can serve its API over TLS: `alerting.server.tls`, turned on by `profiles/mtls.values.yaml` (Terraform: `internal_tls`). Phase 2 verifies client certificates when given; the port stops there, like Loki's HTTP port.
+    * The mTLS profiles now move both rulers, the probes, the config reloader, the ServiceMonitor and the Grafana datasource to TLS with it. Turning it on rolls Alertmanager, both rulers and every Loki component.
+    * `amtool` inside the Alertmanager pod no longer needs `--alertmanager.url`.
+* Make Alertmanager highly available, and configurable from `alerting`
+    * [materialize-monitoring#393](https://github.com/MaterializeInc/materialize-monitoring/pull/393)
+    * The bundled Alertmanager now runs two gossiping replicas, spread across zones and hardened. Clusters whose nodes carry no zone label need the `no-zone-spread` profile (Terraform: `min_zones = 0`).
+    * Alertmanager's resources are renamed to `alertmanager` and start on new volumes; the orphaned `storage-<release>-alertmanager-0` PVC can be deleted.
+    * **New `alerting` key** configures routing: `receivers` (Alertmanager's own receiver config plus a `class`), `preset`/`presets` (severity to class), and `routes.extra`. Receiver credentials are read from Secrets through `*_file` fields, and an inline one fails the render.
+    * **New top-level `clusterName`** labels every log line, metric and alert as `cluster`, replacing setting `pipeline.env.CLUSTER_NAME` directly (Terraform's `cluster_name` now writes it). Give each cluster its own name.
+    * Grafana gains an Alertmanager datasource, and Alertmanager's own metrics are scraped.
+* DEP-216 Turn on both rule evaluators and wire them to Alertmanager
+    * [materialize-monitoring#384](https://github.com/MaterializeInc/materialize-monitoring/pull/384)
+    * **Thanos Ruler is now deployed by default** (`thanos.ruler.enabled: true`, 2 replicas). It runs stateless — no PersistentVolumeClaim — and remote-writes rule results to the alloy-gateway. Set `thanos.ruler.enabled: false` to keep the previous shape.
+    * **Every `PrometheusRule` in the cluster is now evaluated and notified through the bundled Alertmanager.** This is the upstream import default. On a cluster running another rule owner, such as kube-prometheus-stack, set `thanos.ruler.autoImportPrometheusRules.labelSelector` to narrow the set.
+    * **A new image is pulled by default:** `docker.io/alpine/kubectl`, for the rule-import sidecar. It must carry a shell and `curl`, so a distroless `kubectl` will crash-loop. The four `profiles/registry/` overlays already address it.
+    * **The Loki ruler now notifies Alertmanager** (`loki.loki.rulerConfig.alertmanager_url`) and remote-writes recording-rule samples to the alloy-gateway. It previously did neither.
+    * **`split-namespace` retargets both rulers** and opens Alertmanager to the ruler namespaces. The Loki ruler's own egress cannot be opened from values in Distributed mode — supply a NetworkPolicy for it, or set `loki.networkPolicy.enabled: false`.
+    * The Terraform `storage_class` variable now also reaches `thanos.ruler`, so re-enabling its persistence picks up the class rather than silently missing it.
+* Fall back to CLUSTER_NAME for the gateway's log cluster label
+    * [materialize-monitoring#385](https://github.com/MaterializeInc/materialize-monitoring/pull/385)
+* Add a Loki meta-monitoring dashboard, and split dashboards into their own chart
+    * [materialize-monitoring#383](https://github.com/MaterializeInc/materialize-monitoring/pull/383)
+    * **Dashboards now install from a separate chart.** `materialize-monitoring-dashboards` is a release of its own, installed beside `materialize-monitoring` in the same namespace. The umbrella chart no longer creates dashboards; a release that upgrades without installing the new chart will have its dashboards removed. Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
+        * Terraform installs it automatically — set `enable_dashboards = false` to opt out.
+        * `dashboards.selected` → the new chart's `selected`.
+        * `dashboards.config.grafana.manifest.apiTarget` → the new chart's `grafana.apiTarget`.
+        * `dashboards.config.datadog` is removed; it drove nothing.
+        * The new chart cannot read the umbrella release's values, so `grafana.instanceSelector` and `grafana.folderUids` must match it. The umbrella chart's install notes print the folder UIDs.
+        * Dashboard UIDs are unchanged, so saved links, playlists and alerts keep working.
+    * **New dashboard: Loki Meta Monitoring** (`mz-mon-infra-loki`), in the Meta Observability folder. Ingest, queries, object storage, retention, and Loki's own logs.
+    * **Fixed: the Loki canary and both memcached exporters were never scraped under `profiles/mtls`.** The subchart's single ServiceMonitor applied one `scheme` to every target, including three that only serve plaintext. They are now collected by a separate monitor, and carry `prometheus.io/service-monitor: "false"` plus `monitoring.materialize.cloud/scrape-scheme: plaintext` on their Services. Installs using mTLS gain `loki_canary_*` and `memcached_*` series that were previously absent.
+    * New Terraform inputs: `enable_dashboards`, `dashboards_chart_version`, `dashboards_selected`, `dashboards_instance_selector`, `dashboards_allow_cross_namespace_import`.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+    * Reassemble and classify Rust panics, and parse tracing's plain text format
+        * [materialize-monitoring#376](https://github.com/MaterializeInc/materialize-monitoring/pull/376)
+        * Rust panics from Materialize services now arrive as a **single log entry** rather than one entry per line of the backtrace, carrying `level=CRITICAL` and `panic_thread` / `panic_location` as structured metadata. The `msg` names the source location and the panic message.
+        * `balancerd` and `materialize-operator` logs now carry a parsed `level` and `target`. Both previously landed as `level="UNKNOWN"` for every line.
+        * **React to this if you filter or size on log level.** Those services' `WARN` and `ERROR` lines are no longer swept into the `UNKNOWN` rate-limit bucket, which drops, so they now reach Loki reliably and ingested volume from the operator namespace rises. A saved query or alert matching `level="UNKNOWN"` on these services will stop matching.
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate jsonschema to 0.57.0
+        * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
+        * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
 
 ## Dashboards (Helm chart) v0.17.0 (Unreleased)
 
