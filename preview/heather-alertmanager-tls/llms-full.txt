@@ -5618,7 +5618,7 @@ Eight clients dial the port, and each one needs a matching change:
 | Client | How it follows |
 |---|---|
 | Grafana's datasource | The chart's default URL follows the switch; the profile supplies the CA |
-| `amtool` inside the pod | The chart renders `/etc/amtool/config.yml` with the URL, CA and client certificate |
+| `amtool` inside the pod | The chart renders `/etc/amtool/config.yml` with the URL and the CA that issued Alertmanager's certificate |
 | Liveness and readiness probes | `scheme: HTTPS`, set by the profile |
 | The config reloader | `reload-url`, set by the profile |
 | The ServiceMonitor | `scheme` and a CA, set by the profile |
@@ -13150,7 +13150,7 @@ refuses each half-applied combination.
 | Key | Meaning |
 | --- | --- |
 | `enabled` | Serve TLS. Takes effect when `alertmanager.extraArgs.web.config.file` is also set, which is what restarts Alertmanager onto it: TLS on or off is decided at startup. |
-| `certFile` / `keyFile` | The serving certificate. The defaults are the chart's `mzmon-alertmanager-tls` Secret, which `alertmanager.extraSecretMounts` mounts at `/etc/mzmon/tls` whether or not it exists yet. |
+| `certFile` / `keyFile` | The serving certificate. The defaults are the chart's `mzmon-alertmanager-tls` Secret, which `alertmanager.extraSecretMounts` mounts at `/etc/mzmon/tls` whether or not it exists yet. `amtool` in the pod trusts the `ca.crt` beside `certFile`, which a cert-manager Secret carries. |
 | `clientCAFile` | Roots client certificates are verified against. Ignored with `NoClientCert`, which Alertmanager refuses to combine with a client CA. |
 | `clientAuth` | `NoClientCert`, or `VerifyClientCertIfGiven`. See below for `RequireAndVerifyClientCert`. |
 | `minVersion` | Lowest TLS version accepted, in Alertmanager's spelling (`TLS12`, `TLS13`). |
@@ -16943,8 +16943,10 @@ ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
 
 The second volume puts an `amtool` configuration at `/etc/amtool/config.yml`,
 where `amtool` looks by default, rendered from the same Secret. It carries the
-URL and, when `alerting.server.tls` is on, the CA and client certificate, so
-`kubectl exec ... -- amtool silence query` works unchanged in every TLS phase.
+URL and, when `alerting.server.tls` is on, the CA that issued `certFile` (the
+`ca.crt` beside it), so `kubectl exec ... -- amtool silence query` works
+unchanged in every TLS phase. It presents a client certificate only when
+`clientAuth` requires one.
 Mounted as a directory rather than with `subPath`, so it follows changes to
 the Secret.
 </td>
