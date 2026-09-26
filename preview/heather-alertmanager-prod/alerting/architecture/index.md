@@ -322,8 +322,6 @@ The deadman's switch and the meta-alerts that read them arrive with the rule set
 
 | Resource | Name | From |
 |---|---|---|
-| Resource | Name | From |
-|---|---|---|
 | StatefulSet | `alertmanager` | Subchart |
 | Service (ClusterIP) | `alertmanager` | Subchart |
 | Service (headless) | `alertmanager-headless` | Subchart |
