@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards (Helm chart) v0.18.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.25.0 (Unreleased)
 
 _Changes Pending_
@@ -63,9 +67,34 @@ _Changes Pending_
         * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
         * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
 
-## Dashboards (Helm chart) v0.17.0 (Unreleased)
+## Dashboards (Helm chart) v0.17.0
 
-_Changes Pending_
+* Add a Loki meta-monitoring dashboard, and split dashboards into their own chart
+    * [materialize-monitoring#383](https://github.com/MaterializeInc/materialize-monitoring/pull/383)
+    * **Dashboards now install from a separate chart.** `materialize-monitoring-dashboards` is a release of its own, installed beside `materialize-monitoring` in the same namespace. The umbrella chart no longer creates dashboards; a release that upgrades without installing the new chart will have its dashboards removed. Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
+        * Terraform installs it automatically — set `enable_dashboards = false` to opt out.
+        * `dashboards.selected` → the new chart's `selected`.
+        * `dashboards.config.grafana.manifest.apiTarget` → the new chart's `grafana.apiTarget`.
+        * `dashboards.config.datadog` is removed; it drove nothing.
+        * The new chart cannot read the umbrella release's values, so `grafana.instanceSelector` and `grafana.folderUids` must match it. The umbrella chart's install notes print the folder UIDs.
+        * Dashboard UIDs are unchanged, so saved links, playlists and alerts keep working.
+    * **New dashboard: Loki Meta Monitoring** (`mz-mon-infra-loki`), in the Meta Observability folder. Ingest, queries, object storage, retention, and Loki's own logs.
+    * **Fixed: the Loki canary and both memcached exporters were never scraped under `profiles/mtls`.** The subchart's single ServiceMonitor applied one `scheme` to every target, including three that only serve plaintext. They are now collected by a separate monitor, and carry `prometheus.io/service-monitor: "false"` plus `monitoring.materialize.cloud/scrape-scheme: plaintext` on their Services. Installs using mTLS gain `loki_canary_*` and `memcached_*` series that were previously absent.
+    * New Terraform inputs: `enable_dashboards`, `dashboards_chart_version`, `dashboards_selected`, `dashboards_instance_selector`, `dashboards_allow_cross_namespace_import`.
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate jsonschema to 0.57.0
+        * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
+        * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
+    * Fall back to CLUSTER_NAME for the gateway's log cluster label
+        * [materialize-monitoring#385](https://github.com/MaterializeInc/materialize-monitoring/pull/385)
+    * Reassemble and classify Rust panics, and parse tracing's plain text format
+        * [materialize-monitoring#376](https://github.com/MaterializeInc/materialize-monitoring/pull/376)
+        * Rust panics from Materialize services now arrive as a **single log entry** rather than one entry per line of the backtrace, carrying `level=CRITICAL` and `panic_thread` / `panic_location` as structured metadata. The `msg` names the source location and the panic message.
+        * `balancerd` and `materialize-operator` logs now carry a parsed `level` and `target`. Both previously landed as `level="UNKNOWN"` for every line.
+        * **React to this if you filter or size on log level.** Those services' `WARN` and `ERROR` lines are no longer swept into the `UNKNOWN` rate-limit bucket, which drops, so they now reach Loki reliably and ingested volume from the operator namespace rises. A saved query or alert matching `level="UNKNOWN"` on these services will stop matching.
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.23.0
 

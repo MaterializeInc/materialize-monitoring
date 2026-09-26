@@ -5,7 +5,7 @@ description: |
   Installs the bundled dashboard set into a Grafana provisioned by the
   materialize-monitoring chart. Installs nothing else.
 type: application
-version: 0.16.0
+version: 0.17.0
 appVersion: "0.0.0"
 kubeVersion: ">=1.27.0-0"
 home: https://github.com/MaterializeInc/materialize-monitoring
