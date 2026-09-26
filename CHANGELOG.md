@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Pipelines v0.14.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.25.0 (Unreleased)
 
 _Changes Pending_
@@ -225,9 +229,85 @@ _Changes Pending_
         * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
         * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
 
-## Pipelines v0.13.0 (Unreleased)
+## Pipelines v0.13.0
 
-_Changes Pending_
+* Fall back to CLUSTER_NAME for the gateway's log cluster label
+    * [materialize-monitoring#385](https://github.com/MaterializeInc/materialize-monitoring/pull/385)
+* Add a Loki meta-monitoring dashboard, and split dashboards into their own chart
+    * [materialize-monitoring#383](https://github.com/MaterializeInc/materialize-monitoring/pull/383)
+    * **Dashboards now install from a separate chart.** `materialize-monitoring-dashboards` is a release of its own, installed beside `materialize-monitoring` in the same namespace. The umbrella chart no longer creates dashboards; a release that upgrades without installing the new chart will have its dashboards removed. Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
+        * Terraform installs it automatically — set `enable_dashboards = false` to opt out.
+        * `dashboards.selected` → the new chart's `selected`.
+        * `dashboards.config.grafana.manifest.apiTarget` → the new chart's `grafana.apiTarget`.
+        * `dashboards.config.datadog` is removed; it drove nothing.
+        * The new chart cannot read the umbrella release's values, so `grafana.instanceSelector` and `grafana.folderUids` must match it. The umbrella chart's install notes print the folder UIDs.
+        * Dashboard UIDs are unchanged, so saved links, playlists and alerts keep working.
+    * **New dashboard: Loki Meta Monitoring** (`mz-mon-infra-loki`), in the Meta Observability folder. Ingest, queries, object storage, retention, and Loki's own logs.
+    * **Fixed: the Loki canary and both memcached exporters were never scraped under `profiles/mtls`.** The subchart's single ServiceMonitor applied one `scheme` to every target, including three that only serve plaintext. They are now collected by a separate monitor, and carry `prometheus.io/service-monitor: "false"` plus `monitoring.materialize.cloud/scrape-scheme: plaintext` on their Services. Installs using mTLS gain `loki_canary_*` and `memcached_*` series that were previously absent.
+    * New Terraform inputs: `enable_dashboards`, `dashboards_chart_version`, `dashboards_selected`, `dashboards_instance_selector`, `dashboards_allow_cross_namespace_import`.
+* Reassemble and classify Rust panics, and parse tracing's plain text format
+    * [materialize-monitoring#376](https://github.com/MaterializeInc/materialize-monitoring/pull/376)
+    * Rust panics from Materialize services now arrive as a **single log entry** rather than one entry per line of the backtrace, carrying `level=CRITICAL` and `panic_thread` / `panic_location` as structured metadata. The `msg` names the source location and the panic message.
+    * `balancerd` and `materialize-operator` logs now carry a parsed `level` and `target`. Both previously landed as `level="UNKNOWN"` for every line.
+    * **React to this if you filter or size on log level.** Those services' `WARN` and `ERROR` lines are no longer swept into the `UNKNOWN` rate-limit bucket, which drops, so they now reach Loki reliably and ingested volume from the operator namespace rises. A saved query or alert matching `level="UNKNOWN"` on these services will stop matching.
+* DEP-211 Add infra-net dashboard, and the CNI collection it needs
+    * [materialize-monitoring#366](https://github.com/MaterializeInc/materialize-monitoring/pull/366)
+* DEP-242 Add infra-nodes dashboard
+    * [materialize-monitoring#311](https://github.com/MaterializeInc/materialize-monitoring/pull/311)
+    * Adds an infra-nodes dashboard that is installed by default
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate jsonschema to 0.57.0
+        * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
+        * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
+    * Update Rust crate clap to v4.6.7
+        * [materialize-monitoring#355](https://github.com/MaterializeInc/materialize-monitoring/pull/355)
+        * [`v4.6.7`](https://redirect.github.com/clap-rs/clap/compare/clap_complete-v4.6.6...clap_complete-v4.6.7)
+    * Update Rust crate rustls to v0.23.45
+        * [materialize-monitoring#349](https://github.com/MaterializeInc/materialize-monitoring/pull/349)
+    * Update Rust crate jsonschema to 0.56.0
+        * [materialize-monitoring#267](https://github.com/MaterializeInc/materialize-monitoring/pull/267)
+        * [`v0.56.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0560---2026-09-10)
+        * [`v0.55.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0551---2026-09-08)
+        * [`v0.55.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0550---2026-09-06)
+        * [`v0.54.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0540---2026-09-06)
+        * [`v0.53.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0530---2026-09-02)
+        * [`v0.52.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0521---2026-08-30)
+        * [`v0.52.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0520---2026-08-26)
+        * [`v0.51.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0510---2026-08-23)
+        * [`v0.50.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0501---2026-08-22)
+        * [`v0.50.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0500---2026-08-20)
+    * Update Rust crate reqwest to v0.13.5
+        * [materialize-monitoring#335](https://github.com/MaterializeInc/materialize-monitoring/pull/335)
+        * [`v0.13.5`](https://redirect.github.com/seanmonstar/reqwest/blob/HEAD/CHANGELOG.md#v0135)
+    * Update Rust crate rustls to v0.23.44
+        * [materialize-monitoring#332](https://github.com/MaterializeInc/materialize-monitoring/pull/332)
+    * Update Rust crate tokio-rustls to v0.26.5
+        * [materialize-monitoring#326](https://github.com/MaterializeInc/materialize-monitoring/pull/326)
+    * Add some sample prose in heather's voice
+        * [materialize-monitoring#331](https://github.com/MaterializeInc/materialize-monitoring/pull/331)
+    * Add Dashboard Folders; Update tags
+        * [materialize-monitoring#329](https://github.com/MaterializeInc/materialize-monitoring/pull/329)
+        * Added several GrafanaFolder resources (default enabled: mzmon-infra, mzmon-materialize, mzmon-meta-o11y)
+        * Changed monitoring tag to mzmon within dashboards
+    * Update Rust crate indexmap to v2.14.2
+        * [materialize-monitoring#328](https://github.com/MaterializeInc/materialize-monitoring/pull/328)
+        * [`v2.14.2`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2142-2026-09-04)
+    * Show total lag in env-top / env-upgrade
+        * [materialize-monitoring#312](https://github.com/MaterializeInc/materialize-monitoring/pull/312)
+        * Add new queries around max lag (materialize.compute.freshness.lag_total_by_cluster, materialize.generations.lag.total)
+        * Show max lag as new panels (including per-cluster breakdown) in env-top and env-upgrade dashboards
+    * Update Rust crate indexmap to v2.14.1
+        * [materialize-monitoring#309](https://github.com/MaterializeInc/materialize-monitoring/pull/309)
+        * [`v2.14.1`](https://redirect.github.com/indexmap-rs/indexmap/blob/HEAD/RELEASES.md#2141-2026-08-28)
+    * DEP-209 Add Infrastructure Logs & Events Dashboard
+        * [materialize-monitoring#307](https://github.com/MaterializeInc/materialize-monitoring/pull/307)
+        * Adds new infra-logs dashboard that is enabled by default
+    * Update Rust crate hyper to v1.11.1
+        * [materialize-monitoring#302](https://github.com/MaterializeInc/materialize-monitoring/pull/302)
+        * [`v1.11.1`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1111-2026-08-27)
 
 ## Container Images v0.5.0
 
