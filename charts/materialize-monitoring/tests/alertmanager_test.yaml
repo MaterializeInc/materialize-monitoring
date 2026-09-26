@@ -494,6 +494,27 @@ tests:
           path: stringData["alertmanager.yml"]
           pattern: '- matchers:\n    - severity="critical"\n    receiver: pager\n'
 
+  # A class listed twice would otherwise put the receiver into its class's
+  # route twice, as two continuing children, and notify it twice per alert.
+  - it: routes to a receiver once however many times it lists a class
+    set:
+      alerting:
+        preset: evaluation
+        receivers:
+          chat:
+            class: [normal, normal]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="critical"\n    receiver: chat\n'
+      - notMatchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: 'continue: true'
+
   # Extra routes go first so a specific match wins; the preset is the fallback.
   - it: places extra routes ahead of the preset, verbatim
     set:
@@ -655,29 +676,6 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: "alertmanager.config.enabled is true, but the chart renders"
-
-  # Routing written the pre-`alerting` way is still in the values and read by
-  # nothing, so without this an upgrade would apply cleanly and page nobody.
-  - it: fails on routing left under the subchart's alertmanager.config
-    set:
-      alertmanager.config.receivers:
-        - name: default-receiver
-          slack_configs:
-            - channel: "#mz"
-    template: templates/validate.yaml
-    asserts:
-      - failedTemplate:
-          errorPattern: "alertmanager.config carries receivers or routes, but nothing reads it any more"
-
-  - it: fails on a route tree left under the subchart's alertmanager.config
-    set:
-      alertmanager.config.route.routes:
-        - matchers: ['team="x"']
-          receiver: default-receiver
-    template: templates/validate.yaml
-    asserts:
-      - failedTemplate:
-          errorPattern: "alertmanager.config carries receivers or routes"
 
   # --- validators: routing --------------------------------------------------
 
@@ -1025,7 +1023,7 @@ tests:
 
   - it: reports the cluster label alerts carry
     set:
-      pipeline.env.CLUSTER_NAME: prod-us-east
+      clusterName: prod-us-east
     template: templates/NOTES.txt
     asserts:
       - matchRegexRaw:

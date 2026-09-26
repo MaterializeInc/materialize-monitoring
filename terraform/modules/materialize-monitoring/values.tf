@@ -448,11 +448,13 @@ locals {
   }
 
   # A document of its own so a null `cluster_name` leaves the chart's default
-  # alone rather than writing an empty string over it. `pipeline.env` feeds both
-  # the agent and the gateway, and the gateway's `cluster` fallback for logs and
-  # its metrics `external_labels` both read it.
+  # alone rather than writing an empty string over it. `clusterName` is the one
+  # source: the chart's `pipeline.env.CLUSTER_NAME` defaults to it for the agent
+  # and the gateway (the `cluster` fallback for logs, the metrics
+  # `external_labels`), and both rulers read it for alerts. Writing
+  # `pipeline.env.CLUSTER_NAME` instead would reach Alloy and not the rulers.
   cluster_name_document = var.cluster_name == null ? [] : [yamlencode({
-    pipeline = { env = { CLUSTER_NAME = var.cluster_name } }
+    clusterName = var.cluster_name
   })]
 
   # ----------------------------------------------------------------------------

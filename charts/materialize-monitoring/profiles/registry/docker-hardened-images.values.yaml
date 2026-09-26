@@ -25,10 +25,11 @@
 # ---------------------------------------------------------------------------
 # Read this before rolling it out
 # ---------------------------------------------------------------------------
-# **Tags are inherited, not restated.** Where the chart resolves a tag from a
-# subchart's `appVersion` (Loki, Thanos, kube-state-metrics, grafana-operator,
-# Alertmanager, metrics-server) this profile leaves `tag` alone, so the version
-# stays pinned in exactly one place and Renovate keeps owning it. A mirror only
+# **Tags are inherited, not restated.** Where the chart pins a tag in its own
+# `values.yaml` (Grafana, Alertmanager and its config reloader) or resolves one
+# from a subchart's `appVersion` (Loki, Thanos, kube-state-metrics,
+# grafana-operator, metrics-server), this profile leaves `tag` alone, so the
+# version stays pinned in exactly one place and Renovate keeps owning it. A mirror only
 # carries the tags you chose to mirror, and DHI publishes variant tags
 # (`<version>-<distro>`, `-dev`, `-fips`) alongside the plain ones. Confirm what
 # your mirror actually holds before you install:

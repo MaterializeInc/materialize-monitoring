@@ -23,7 +23,7 @@
 # Environment:
 #   AMTOOL        run this instead of docker; it is called as
 #                 `$AMTOOL check-config <file>`. Templates are then not resolved.
-#   AM_IMAGE      the image to take amtool from (default: the subchart's appVersion)
+#   AM_IMAGE      the image to take amtool from (default: alertmanager.image in values.yaml)
 #   DOCKER, HELM  binaries to use
 #
 # Usage:
@@ -42,15 +42,15 @@ SCENARIO_DIR="${CHART_DIR}/tests/alertmanager"
 BASE_PROFILE="${CHART_DIR}/profiles/azure-example.values.yaml"
 
 if [ -z "${AM_IMAGE:-}" ]; then
-    # The subchart pins the image through its appVersion, so read it from there
-    # rather than restating a tag Renovate would have to find twice.
-    am_chart=$(find "${CHART_DIR}/charts" -maxdepth 1 -name 'alertmanager-*.tgz' | head -n 1)
-    [ -n "${am_chart}" ] || {
-        _error "no vendored alertmanager subchart under ${CHART_DIR}/charts"
-        exit 1
-    }
-    am_version=$(tar -xzOf "${am_chart}" alertmanager/Chart.yaml | yq -r '.appVersion')
-    AM_IMAGE="quay.io/prometheus/alertmanager:${am_version}"
+    # The chart pins the image in its own values.yaml, where Renovate bumps it,
+    # so read it from there rather than restating a tag that would drift.
+    AM_IMAGE=$(yq -r '.alertmanager.image.repository + ":" + .alertmanager.image.tag' "${CHART_DIR}/values.yaml")
+    case "${AM_IMAGE}" in
+        *null* | :* | *:)
+            _error "could not read alertmanager.image.repository and .tag from ${CHART_DIR}/values.yaml (got ${AM_IMAGE})"
+            exit 1
+            ;;
+    esac
 fi
 
 WORK_DIR="$(mktemp -d)"

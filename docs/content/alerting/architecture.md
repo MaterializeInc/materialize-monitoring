@@ -159,12 +159,6 @@ It adds a third copy of every notification whenever gossip is broken.
 | The mesh port is blocked | Both replicas notify independently, so every notification arrives twice. Nothing is dropped. |
 | A configuration Alertmanager rejects | The previous configuration keeps running, and `alertmanager_config_last_reload_successful` drops to 0. On a fresh start, the pods crash-loop instead. |
 
-**The first upgrade from a single replica runs briefly unmeshed.**
-The new replica starts while the old one is still running the previous revision, which carried no `--cluster.label`, so the two reject each other.
-The new replica therefore starts with no silences.
-The mesh forms once the old replica rolls, and its volume carries its silences across, so the window lasts about as long as the rollout.
-During it, an alert covered by a silence can notify from the new replica.
-
 ### Zones and volumes {#zones-and-volumes}
 
 The zone rule is `whenUnsatisfiable: DoNotSchedule`.
@@ -207,7 +201,7 @@ Changing either requires deleting the StatefulSet with `--cascade=orphan` before
 ## The `cluster` label {#cluster-label}
 
 Every alert carries a `cluster` label naming the Kubernetes cluster it came from.
-The value is `pipeline.env.CLUSTER_NAME`, which Terraform's `cluster_name` sets, and which is also stamped on every log
+The value is `clusterName`, which Terraform's `cluster_name` sets, and which is also stamped on every log
 line and every metric this stack collects.
 
 | Ruler | How it stamps `cluster` |
@@ -229,7 +223,7 @@ Within one cluster the label is constant, and it matters as soon as two clusters
 | One Alertmanager | Identical label sets from two clusters are the same alert, so each overwrites the other's state |
 
 The default `alerting.routes.root.group_by` includes `cluster` for the second row.
-All three depend on `pipeline.env.CLUSTER_NAME` being unique per cluster.
+All three depend on `clusterName` being unique per cluster.
 Left at its default, `default`, on several clusters, the label is present and distinguishes nothing.
 
 ## Configuration {#configuration}
@@ -304,6 +298,9 @@ Alertmanager reads a `*_file` credential each time it sends, so creating or rota
 The render fails when a receiver carries an inline credential, unless `alerting.assertNoInlineCredentials` is turned off.
 It also fails when a `*_file` path falls under no mounted volume, since that notification would fail at send time.
 
+Amazon SNS is the one integration that uses the pod's cloud identity instead, through IRSA or EKS Pod Identity on the `alertmanager` ServiceAccount.
+[Cloud provider services](../channels/#cloud) lists the permissions for it and for the cloud email services.
+
 ## Observing Alertmanager {#observing}
 
 Alertmanager is scraped through a ServiceMonitor, once per replica.
@@ -335,7 +332,7 @@ The deadman's switch and the meta-alerts that read them arrive with the rule set
 | Secret | `alertmanager-config` | Chart, from `alerting` |
 | NetworkPolicy | `mzmon-alertmanager`, `mzmon-alertmanager-egress-dns` | Chart |
 | GrafanaDatasource | `mzmon-alertmanager-datasource` | Chart |
-| ConfigMap | `ruler-env`, in each ruler's namespace | Chart, from `pipeline.env.CLUSTER_NAME` |
+| ConfigMap | `ruler-env`, in each ruler's namespace | Chart, from `clusterName` |
 | Secret | `alertmanager-receivers` | The operator |
 
 The subchart's names are pinned by `alertmanager.fullnameOverride`, like Loki's, Thanos's and Grafana's, so they do not depend on the release name.

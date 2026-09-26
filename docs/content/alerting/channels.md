@@ -107,6 +107,7 @@ written into one is a credential published.
 | Email | `auth_password` | `auth_password_file` |
 | Webhook, and any `http_config` | `authorization.credentials`, `basic_auth.password` | `credentials_file`, `password_file` |
 | Webhook whose URL carries a token | `url` | `url_file` |
+| Amazon SNS | `sigv4.secret_key` | The pod's own AWS identity; see [Cloud provider services](#cloud) |
 
 The render fails on an inline credential in a receiver or in `alerting.global`.
 `alerting.assertNoInlineCredentials: false` turns that off, and SHOULD NOT be set.
@@ -254,6 +255,145 @@ alerting:
         email_configs:
           - to: ops@example.internal
 ```
+
+## Cloud provider services {#cloud}
+
+Amazon SNS is the one Alertmanager integration that authenticates with the pod's own cloud identity.
+Every other integration authenticates with a credential read from a Secret, including email sent through Amazon SES or Azure Communication Services.
+GKE Workload Identity and Azure Workload Identity therefore give Alertmanager nothing to use: no integration calls a Google or Azure API.
+
+| Service | Integration | Authenticates with | Workload identity |
+|---|---|---|---|
+| Amazon SNS | `sns_configs` | The pod's AWS identity | IRSA or EKS Pod Identity |
+| Amazon SES | `email_configs`, over SMTP | SES SMTP credentials, derived from an IAM user's key | Not possible: SMTP takes a username and password |
+| Azure Communication Services | `email_configs`, over SMTP | An SMTP username and an Entra application's client secret | Not possible, for the same reason |
+| Microsoft Teams | `msteamsv2_configs` | A Workflows webhook URL, which is itself the credential | Not applicable |
+| Google Cloud | None | No Alertmanager integration calls a Google API | Nothing to authorize |
+
+The default egress policy covers all of them: SNS, STS and the SMTP endpoints are reached on `443`, `587` or `465`.
+
+### Amazon SNS
+
+The pod needs permission to publish to the topic, and nothing else.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:materialize-alerts"
+    }
+  ]
+}
+```
+
+| Also needed when | Permission |
+|---|---|
+| The topic is encrypted with a customer-managed KMS key | `kms:GenerateDataKey*` and `kms:Decrypt` on that key |
+| A receiver sends SMS through `phone_number` | `sns:Publish` on `"*"`, since an SMS has no topic ARN |
+| A receiver sets `sigv4.role_arn` to publish from another account | `sts:AssumeRole` on that role, whose trust policy names this one (and `sigv4.external_id`, if set) |
+
+The identity reaches the pod one of two ways on EKS.
+Both resolve to the ServiceAccount `alertmanager`, in the namespace Alertmanager runs in.
+
+| Mechanism | Setup |
+|---|---|
+| IRSA | A role whose trust policy allows `sts:AssumeRoleWithWebIdentity` from the cluster's OIDC provider for `system:serviceaccount:<namespace>:alertmanager`, and `alertmanager.serviceAccount.annotations` naming it |
+| EKS Pod Identity | A pod identity association for namespace `<namespace>` and ServiceAccount `alertmanager`. No annotation |
+
+The chart's `automountServiceAccountToken: false` does not interfere with IRSA.
+The EKS webhook projects a token volume of its own into the pod, whatever that setting says.
+
+```yaml
+alertmanager:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/materialize-alertmanager
+alerting:
+  receivers:
+    sns:
+      class: [high, normal, low]
+      config:
+        sns_configs:
+          - topic_arn: arn:aws:sns:us-east-1:123456789012:materialize-alerts
+            sigv4:
+              region: us-east-1
+```
+
+With no `access_key` or `secret_key`, Alertmanager uses the AWS SDK's default credential chain, which is what finds the
+IRSA or Pod Identity credentials.
+`sigv4` has no `_file` variant for static keys, so a cluster without workload identity supplies them as
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` through `alertmanager.extraEnv`, from a Secret, rather than inline.
+
+An SNS topic with email subscriptions is also the AWS-native way to send alert email without SMTP credentials.
+
+### Amazon SES
+
+SES accepts mail over SMTP, and SMTP authenticates with a username and password, so workload identity cannot apply.
+The credentials belong to an IAM user whose policy allows `ses:SendRawEmail`, which is the action SES's SMTP interface performs.
+The SMTP password is derived from that user's secret access key; it is not the key itself.
+
+```yaml
+alerting:
+  global:
+    smtp_smarthost: email-smtp.us-east-1.amazonaws.com:587
+    smtp_from: alertmanager@example.com
+    smtp_auth_username: <ses-smtp-username>
+    smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-receivers/ses-smtp-password
+  receivers:
+    ops-email:
+      class: [high, normal, low]
+      config:
+        email_configs:
+          - to: ops@example.com
+```
+
+The `smtp_from` address, or its domain, MUST be a verified SES identity.
+An account still in the SES sandbox can also only send to verified recipients.
+
+### Google Cloud
+
+No Alertmanager integration authenticates to a Google API, so Workload Identity on GKE has nothing to authorize, and
+`alertmanager.serviceAccount` needs no annotation there.
+
+| Destination | Path |
+|---|---|
+| Email | An SMTP provider, with `email_configs` and credentials in a Secret |
+| Google Chat, Pub/Sub, or another Google service | A relay the deployment runs, reached with `webhook_configs`. The relay holds the Google identity and permission, such as `roles/pubsub.publisher`, and Alertmanager authenticates to it with a bearer token from a Secret |
+
+### Azure
+
+No Alertmanager integration authenticates with an Entra token, so Azure Workload Identity has nothing to authorize either.
+
+| Destination | Path |
+|---|---|
+| Email through Azure Communication Services | `email_configs` against `smtp.azurecomm.net:587`. The username is an SMTP Username resource linked to an Entra application; the password is one of that application's client secrets |
+| Microsoft Teams | `msteamsv2_configs` with a Workflows webhook URL in a Secret, read through `webhook_url_file` |
+
+The Entra application behind Azure Communication Services SMTP needs a role on the Communication Services resource.
+The built-in **Communication and Email Service Owner** role works.
+A custom role limited to `Microsoft.Communication/CommunicationServices/Read`,
+`Microsoft.Communication/CommunicationServices/Write` and `Microsoft.Communication/EmailServices/write` is narrower.
+
+```yaml
+alerting:
+  global:
+    smtp_smarthost: smtp.azurecomm.net:587
+    smtp_from: DoNotReply@alerts.example.com
+    smtp_auth_username: materialize-alertmanager
+    smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-receivers/acs-client-secret
+  receivers:
+    ops-email:
+      class: [high, normal, low]
+      config:
+        email_configs:
+          - to: ops@example.com
+```
+
+An Entra client secret expires, so the Secret holding it needs rotating before it does.
+Alertmanager reads it on every send, so rotation needs no restart.
 
 ## Extra routes {#extra-routes}
 

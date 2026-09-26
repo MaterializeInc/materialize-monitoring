@@ -127,11 +127,12 @@ the two cannot drift. Set it only to pin a chart version different from the modu
     <tr>
       <td class="tf-var-name"><a name="cluster_name" href="#cluster_name">cluster_<wbr>name</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
-sample the stack collects.
+      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line, metric
+sample and alert the stack produces. Written to the chart's `clusterName`.
 
-Set it whenever more than one cluster writes to the same log or metrics store — the label is
-the only thing that tells their data apart. Null leaves the chart's default, `default`.
+Set it whenever more than one cluster writes to the same log or metrics store, or notifies the
+same channel or incident tool — the label is the only thing that tells them apart. Null leaves
+the chart's default, `default`.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>

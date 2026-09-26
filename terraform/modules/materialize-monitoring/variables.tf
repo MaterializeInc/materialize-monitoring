@@ -115,11 +115,12 @@ variable "create_namespace" {
 
 variable "cluster_name" {
   description = <<-EOT
-    Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
-    sample the stack collects.
+    Name of the Kubernetes cluster, stamped as the `cluster` label on every log line, metric
+    sample and alert the stack produces. Written to the chart's `clusterName`.
 
-    Set it whenever more than one cluster writes to the same log or metrics store — the label is
-    the only thing that tells their data apart. Null leaves the chart's default, `default`.
+    Set it whenever more than one cluster writes to the same log or metrics store, or notifies the
+    same channel or incident tool — the label is the only thing that tells them apart. Null leaves
+    the chart's default, `default`.
   EOT
   type        = string
   default     = null

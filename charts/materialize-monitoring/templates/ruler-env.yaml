@@ -2,8 +2,8 @@
 The cluster name, carried into each ruler's namespace.
 
 Both rulers stamp `cluster` on every alert they send, from the same value the
-pipeline stamps on every log line and every metric: `pipeline.env.CLUSTER_NAME`,
-which Terraform's `cluster_name` sets. Without it, two clusters sending the same
+pipeline stamps on every log line and every metric: `clusterName`, which
+Terraform's `cluster_name` sets. Without it, two clusters sending the same
 condition to one incident tool are indistinguishable, and share an Alertmanager
 group key — which is what PagerDuty's `dedup_key` and Opsgenie's `alias` are
 built from, so one cluster's resolution closes the other's incident.

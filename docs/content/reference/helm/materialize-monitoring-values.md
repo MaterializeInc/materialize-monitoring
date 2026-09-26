@@ -147,6 +147,24 @@ Configuration for the main chart
       <td class="helm-value-desc">Namespace override for default workloads.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">clusterName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"default"</code></td>
+      <td class="helm-value-desc">Name of this Kubernetes cluster, stamped as `cluster` on every log line, metric sample and alert.
+
+One value, read everywhere the stack labels a signal: the Alloy agent and
+gateway (through `pipeline.env.CLUSTER_NAME`, which defaults to it), the
+gateway's remote-write `external_labels`, and both rulers' alerts (through the
+`ruler-env` ConfigMap). Terraform's `cluster_name` sets it.
+
+Give each cluster its own. The label is what tells clusters apart once they
+share a log or metric store, a notification channel or an incident tool, and
+the default distinguishes nothing. Letters, digits, `.`, `_` and `-`, starting
+with a letter or digit: it is substituted unquoted into Loki's configuration
+and into an Alloy template.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -1381,8 +1399,8 @@ release instances.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.env<wbr>.CLUSTER_NAME</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"default"</code></td>
-      <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.
+      <td class="helm-value-default"><code>"{{ include \"mzmon.clusterName\" $ }}"</code></td>
+      <td class="helm-value-desc">The cluster name the agent and gateway stamp as `cluster`. Set `clusterName` instead. Defaults to `clusterName`, so logs and metrics agree with alerts. A literal here overrides it for Alloy alone, and the render warns that the two differ.
 </td>
     </tr>
     <tr>
@@ -4994,7 +5012,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name, for `rulerConfig.alert_relabel_configs` to stamp on alerts. Read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `pipeline.env.CLUSTER_NAME`; Loki's `-config.expand-env` substitutes it.
+      <td class="helm-value-desc">The cluster name, for `rulerConfig.alert_relabel_configs` to stamp on alerts. Read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`; Loki's `-config.expand-env` substitutes it.
 </td>
     </tr>
     <tr>
@@ -6246,7 +6264,7 @@ scans every 30s and uploads nothing.
 the Ruler adds to every alert it sends that does not already carry
 `cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
 Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-chart renders from `pipeline.env.CLUSTER_NAME`. Both flags have to survive
+chart renders from `clusterName`. Both flags have to survive
 an override of this list; the render warns when either goes missing.
 </td>
     </tr>
@@ -6881,6 +6899,24 @@ the StatefulSet, whose volumes do not follow; see
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alertmanager<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "quay.io/prometheus/alertmanager",
+  "tag": "v0.34.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Alertmanager on its own cadence, with Alertmanager's own
+release notes, instead of only when a chart release happens to carry a new
+`appVersion`. Grafana is pinned the same way. This chart's `repository`
+carries the registry host; there is no separate `registry` key. The
+profiles under `profiles/registry/` repoint `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alertmanager<wbr>.priorityClassName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
@@ -7016,6 +7052,10 @@ no mount covers.
       "readOnly": true
     }
   ],
+  "image": {
+    "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
+    "tag": "v0.93.1"
+  },
   "resources": {
     "limits": {
       "memory": "64Mi"
@@ -7048,8 +7088,8 @@ directory and POSTs `/-/reload`. A configuration Alertmanager rejects leaves
 the previous one running, and `alertmanager_config_last_reload_successful`
 drops to 0.
 
-The image is `quay.io/prometheus-operator/prometheus-config-reloader`, pinned
-by the subchart. Every profile under `profiles/registry/` already remaps it.
+The image is pinned here, like Alertmanager's, so Renovate tracks it
+directly. Every profile under `profiles/registry/` repoints it.
 </td>
     </tr>
     <tr>
@@ -7110,7 +7150,24 @@ out, and a validator warns when it is turned off.
       <td class="helm-value-key">alertmanager<wbr>.automountServiceAccountToken</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Mount no ServiceAccount token. Alertmanager reads nothing from the Kubernetes API.
+      <td class="helm-value-desc">Mount no ServiceAccount token. Alertmanager reads nothing from the Kubernetes API. Cloud identity does not need it: the EKS webhook behind IRSA projects a token volume of its own, whatever this says.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.serviceAccount<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Annotations on Alertmanager's ServiceAccount (`alertmanager`): the IRSA role for `sns_configs`.
+
+Amazon SNS is the one Alertmanager integration that authenticates with the
+pod's own cloud identity; everything else, including email through SES or
+Azure Communication Services, takes a credential from a Secret. On EKS,
+`eks.amazonaws.com/role-arn` names a role with `sns:Publish` on the topic,
+trusting `system:serviceaccount:<namespace>:alertmanager`. EKS Pod Identity
+needs no annotation. See
+[Alert Channels](https://materializeinc.github.io/materialize-monitoring/alerting/channels/#cloud).
 </td>
     </tr>
     <tr>

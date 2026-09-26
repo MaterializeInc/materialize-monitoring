@@ -149,7 +149,10 @@ Usage:
   {{- $receivers := include "mzmon.alerting.receivers" $ | fromYaml }}
   {{- $out := dict }}
   {{- range $name := keys $receivers | sortAlpha }}
-    {{- range $class := include "mzmon.alerting.receiverClasses" ( index $receivers $name ) | fromYamlArray }}
+    {{- /* `uniq`, so a class listed twice on one receiver does not route to it
+           twice: a receiver twice under one class becomes two continuing
+           children, and every notification goes out twice. */}}
+    {{- range $class := include "mzmon.alerting.receiverClasses" ( index $receivers $name ) | fromYamlArray | uniq }}
       {{- if kindIs "string" $class }}
         {{- $_ := set $out $class ( append ( index $out $class | default list ) $name ) }}
       {{- end }}
@@ -357,21 +360,26 @@ Usage:
     {{- $warnings = append $warnings "alerting.receivers is set but the bundled Alertmanager is disabled, so none of alerting.* is rendered. An Alertmanager this chart does not deploy is routed by its own configuration." }}
   {{- end }}
 
-  {{- /* The `cluster` label on alerts. Checked whether or not the bundled
-         Alertmanager is on: an Alertmanager shared by several clusters is where
-         the label matters most, since identical label sets from two clusters are
-         otherwise one alert there. */}}
-  {{- if or $thanosRuler $lokiRuler }}
-    {{- $clusterName := include "mzmon.clusterName" $ }}
-    {{- if not $clusterName }}
-      {{- $errors = append $errors "pipeline.env.CLUSTER_NAME is empty. Both rulers stamp it on every alert as `cluster`, and the Thanos ruler refuses an external label with no value." }}
-    {{- else if not ( regexMatch "^[A-Za-z0-9][A-Za-z0-9._/-]*$" $clusterName ) }}
-      {{- /* The Loki ruler reads it through `-config.expand-env`, which
-             substitutes it into the YAML every Loki component parses, unquoted.
-             A colon or a space there crash-loops all of Loki, not only the
-             ruler. */}}
-      {{- $errors = append $errors ( printf "pipeline.env.CLUSTER_NAME is %q. It is substituted unquoted into the configuration every Loki component parses, so it is limited to letters, digits, and . _ / -, starting with a letter or digit." $clusterName ) }}
-    {{- end }}
+  {{- /* `clusterName`, the `cluster` label on every signal. Checked here
+         because alerts are where a bad value does the most damage, but checked
+         whatever is enabled: the Alloy agent and gateway read it too. */}}
+  {{- $clusterName := include "mzmon.clusterName" $ }}
+  {{- if not $clusterName }}
+    {{- $errors = append $errors "clusterName is empty. It is the `cluster` label on every log line, metric sample and alert, and the Thanos ruler refuses an external label with no value." }}
+  {{- else if not ( regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]*$" $clusterName ) }}
+    {{- /* The Loki ruler reads it through `-config.expand-env`, which
+           substitutes it into the YAML every Loki component parses, unquoted,
+           and the gateway splices it into an Alloy template. A colon or a space
+           crash-loops all of Loki, not only the ruler. Same rule as Terraform's
+           `cluster_name` validation. */}}
+    {{- $errors = append $errors ( printf "clusterName is %q. It is substituted unquoted into the configuration every Loki component parses and into an Alloy template, so it is limited to letters, digits, '.', '_' and '-', starting with a letter or digit." $clusterName ) }}
+  {{- end }}
+  {{- /* A literal left in `pipeline.env.CLUSTER_NAME` overrides the name for
+         Alloy alone, so logs and metrics would carry one `cluster` and alerts
+         another. */}}
+  {{- $pipelineCluster := tpl ( dig "env" "CLUSTER_NAME" "" ( $.Values.pipeline | default dict ) | toString ) $ }}
+  {{- if and $pipelineCluster ( ne $pipelineCluster $clusterName ) }}
+    {{- $warnings = append $warnings ( printf "pipeline.env.CLUSTER_NAME is %q but clusterName is %q, so logs and metrics are labelled cluster=%q and alerts cluster=%q. Set clusterName and remove the pipeline.env override." $pipelineCluster $clusterName $pipelineCluster $clusterName ) }}
   {{- end }}
   {{- if $thanosRuler }}
     {{- $hasLabel := false }}
@@ -408,32 +416,6 @@ Usage:
            mounted at. Two sources of truth and a nested mount; refuse it. */}}
     {{- if dig "config" "enabled" false $values }}
       {{- $errors = append $errors "alertmanager.config.enabled is true, but the chart renders Alertmanager's configuration itself, from alerting.*. The subchart's ConfigMap would be mounted over /etc/alertmanager, the directory holding the chart's. Configure receivers and routes under alerting, and leave alertmanager.config.enabled false." }}
-    {{- else }}
-      {{- /* Before the chart rendered the configuration, routing was written under
-             the subchart's own `alertmanager.config`. That block is still in the
-             merged values — the subchart's defaults guarantee it — and is now read
-             by nothing, so a deployment carrying its old routing forward would
-             upgrade cleanly and page nobody. The subchart's defaults are one
-             receiver with no integrations, a route with no children, and empty
-             `global`; anything past that is someone's routing. */}}
-      {{- $legacy := $values.config | default dict }}
-      {{- $legacyReceivers := $legacy.receivers | default list }}
-      {{- $customised := or
-        ( gt ( len $legacyReceivers ) 1 )
-        ( $legacy.global )
-        ( $legacy.inhibit_rules )
-        ( $legacy.time_intervals )
-        ( $legacy.mute_time_intervals )
-        ( dig "route" "routes" nil $legacy )
-      }}
-      {{- range $legacyReceivers }}
-        {{- if and ( kindIs "map" . ) ( gt ( len ( omit . "name" ) ) 0 ) }}
-          {{- $customised = true }}
-        {{- end }}
-      {{- end }}
-      {{- if $customised }}
-        {{- $errors = append $errors "alertmanager.config carries receivers or routes, but nothing reads it any more: the chart renders Alertmanager's configuration from alerting.*. Move receivers to alerting.receivers (each with a class), routes to alerting.routes.extra, and inhibit_rules, time_intervals and global to alerting.inhibitRules, alerting.timeIntervals and alerting.global. See the Alert Channels page." }}
-      {{- end }}
     {{- end }}
 
     {{- $configFile := dig "extraArgs" "config.file" "" $values }}

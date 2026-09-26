@@ -368,12 +368,12 @@ tests:
 
   # --- the cluster label ----------------------------------------------------
 
-  # Both rulers stamp `cluster` on every alert from pipeline.env.CLUSTER_NAME.
+  # Both rulers stamp `cluster` on every alert from clusterName.
   # Without it, two clusters sending one condition to one incident tool share a
   # group key, which is what PagerDuty's dedup_key is a hash of.
   - it: carries the cluster name into each ruler's namespace
     set:
-      pipeline.env.CLUSTER_NAME: prod-us-east
+      clusterName: prod-us-east
     template: templates/ruler-env.yaml
     asserts:
       - hasDocuments:
@@ -451,20 +451,58 @@ tests:
 
   - it: fails on an empty cluster name
     set:
-      pipeline.env.CLUSTER_NAME: ""
+      clusterName: ""
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "pipeline.env.CLUSTER_NAME is empty"
+          errorPattern: "clusterName is empty"
 
   # Substituted unquoted into the YAML every Loki component parses.
   - it: fails on a cluster name Loki's configuration cannot hold unquoted
     set:
-      pipeline.env.CLUSTER_NAME: "prod: us"
+      clusterName: "prod: us"
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: 'pipeline.env.CLUSTER_NAME is "prod: us"'
+          errorPattern: 'clusterName is "prod: us"'
+
+  # One value for every signal: the Alloy env ConfigMaps take it through
+  # pipeline.env.CLUSTER_NAME's default, the rulers through ruler-env.
+  - it: labels logs and metrics with the same clusterName as alerts
+    set:
+      clusterName: prod-us-east
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - equal:
+          path: data.CLUSTER_NAME
+          value: prod-us-east
+
+  - it: labels the agent's logs with it too
+    set:
+      clusterName: prod-us-east
+    template: templates/pipelines/cm-alloy-agent-env.yaml
+    asserts:
+      - equal:
+          path: data.CLUSTER_NAME
+          value: prod-us-east
+
+  # A literal left in pipeline.env overrides the name for Alloy alone.
+  - it: warns when pipeline.env.CLUSTER_NAME diverges from clusterName
+    set:
+      clusterName: prod-us-east
+      pipeline.env.CLUSTER_NAME: staging
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'pipeline.env.CLUSTER_NAME is "staging" but clusterName is "prod-us-east"'
+
+  - it: stays quiet when pipeline.env.CLUSTER_NAME follows clusterName
+    set:
+      clusterName: prod-us-east
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "pipeline.env.CLUSTER_NAME is"
 
   - it: warns when an override drops either ruler's cluster stamp
     set:

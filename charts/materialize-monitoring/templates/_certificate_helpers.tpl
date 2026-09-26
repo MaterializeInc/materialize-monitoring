@@ -18,18 +18,18 @@ Usage:
 
 {{- /*
 The cluster's name, as every signal this stack produces labels it: `cluster` on
-log lines (the Alloy agent and gateway), on metrics (the gateway's remote-write
-`external_labels`), and on alerts (both rulers, through `templates/ruler-env.yaml`).
+log lines and metrics (the Alloy agent and gateway, through
+`pipeline.env.CLUSTER_NAME`, which defaults to this) and on alerts (both rulers,
+through `templates/ruler-env.yaml`). Terraform's `cluster_name` sets it.
 
-Read from `pipeline.env.CLUSTER_NAME`, which is where the Alloy env ConfigMaps
-take it from and where Terraform's `cluster_name` writes it, so the three cannot
-disagree. `tpl`-rendered, as every `pipeline.env` value is.
+Not `tpl`-rendered: `pipeline.env.CLUSTER_NAME` renders this helper through
+`tpl`, so a `clusterName` that referenced the pipeline would recurse.
 
 Usage:
   {{ include "mzmon.clusterName" $ }}
 */}}
 {{- define "mzmon.clusterName" -}}
-  {{- tpl ( dig "env" "CLUSTER_NAME" "" ( $.Values.pipeline | default dict ) | toString ) $ -}}
+  {{- $.Values.clusterName | default "" | toString -}}
 {{- end }}
 
 {{- /*
