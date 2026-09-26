@@ -4679,7 +4679,7 @@ spec:
         spec:
           label: level
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{namespace=~"$logNamespaceList"}'
+          stream: '{app="loki", namespace=~"$lokiNamespace"}'
           type: 1
         version: v0
       refresh: onTimeRangeChanged

@@ -82,6 +82,19 @@ const LOKI_PLUGIN: &str = "loki";
 /// these conventions picks its own from a list that was never narrowed.
 const MATERIALIZE_NAMESPACE_PATTERN: &str = ".*materialize.*|mz-.*|environment-.*";
 
+/// The `app` values this chart's collectors carry, as one alternation.
+///
+/// `app` is the pod's `app.kubernetes.io/name`, which Helm sets to the subchart
+/// alias. The alias is fixed in `Chart.yaml`, unlike the release name or a
+/// `fullnameOverride`, so it is the one identifier every install shares. The
+/// gateway's own discovery of the agents selects on the same label.
+///
+/// Used as the role picker's "All" value, which makes it the anchor that keeps
+/// every Alloy query to these two workloads. `thanos-ruler` publishes the same
+/// `prometheus_remote_storage_*` family, and a looser "All" would fold its queue
+/// into the gateway's.
+const ALLOY_ROLES: &str = "alloy-agent|alloy-gateway";
+
 /// Extra controls the baseline defines beyond what the render context requires.
 pub mod extra {
     /// Whether cluster discovery includes Materialize's own system clusters.
@@ -580,12 +593,25 @@ pub fn log_apps() -> dashboardv2::VariableKind {
 /// falls back to `UNKNOWN`, so which levels exist is a property of the workloads
 /// running, not a fixed vocabulary.
 pub fn log_levels() -> dashboardv2::VariableKind {
+    log_levels_in(format!(
+        r#"{{namespace=~"${}"}}"#,
+        variables::LOG_NAMESPACE_LIST
+    ))
+}
+
+/// [`log_levels`], discovered from a stream selector of the caller's choosing.
+///
+/// For a dashboard with no `$logNamespaceList`. A discovery selector naming a
+/// variable the dashboard does not define matches no stream at all, so the
+/// picker offers nothing but "All". The panels still work, since "All" is `.*`,
+/// which is why the empty picker went unnoticed on `infra-loki`.
+pub fn log_levels_in(stream: String) -> dashboardv2::VariableKind {
     LogQueryVariable {
         name: variables::LOG_LEVEL_LIST,
         label: "Level",
         description: "The severity level(s) to include",
         loki_label: "level",
-        stream: format!(r#"{{namespace=~"${}"}}"#, variables::LOG_NAMESPACE_LIST),
+        stream,
         current: None,
         // `.*` for the same reason as `app`, even though every line carries a
         // level today: the inclusive form costs nothing and does not depend on
@@ -860,6 +886,87 @@ pub fn loki_components() -> dashboardv2::VariableKind {
         label: "Component",
         description: "Which of the log store's processes to read",
         expr: r#"label_values(up{app_instance="loki"}, container)"#.to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Namespaces the collectors run in.
+///
+/// Discovered from `up` rather than from an `alloy_*` metric, so a collector
+/// whose scrape is failing still puts its namespace on the list. That is the
+/// case the meta-monitoring dashboard most needs to be able to select.
+///
+/// Multi-select with an `.+` "All", for the reason [`loki_namespaces`] gives.
+pub fn alloy_namespaces() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::ALLOY_NAMESPACE,
+        label: "Alloy Namespace",
+        description: "Namespace(s) the collectors run in",
+        expr: format!(r#"label_values(up{{app=~"{ALLOY_ROLES}"}}, namespace)"#),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Which collector role to read: the per-node agents, the gateway, or both.
+///
+/// **One picker across both engines**, on the terms the style guide sets out
+/// for `lokiComponent`. The metrics pipeline relabels a target's
+/// `app.kubernetes.io/name` to `app`, and the log pipelines do the same to a
+/// pod's lines, so the two value sets share an origin rather than merely
+/// matching. Nothing diverges: both roles are scraped and both roles log.
+///
+/// "All" is the literal pair rather than `.+`. It is the matcher that scopes
+/// every query to this chart's collectors, and it is non-empty, which is what
+/// keeps the log stream selectors parseable.
+pub fn alloy_roles() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::ALLOY_ROLE,
+        label: "Role",
+        description: "Which collectors to read: the per-node agents, the gateway, or both",
+        expr: format!(
+            r#"label_values(up{{app=~"{ALLOY_ROLES}", namespace=~"${}"}}, app)"#,
+            variables::ALLOY_NAMESPACE
+        ),
+        multi: true,
+        include_all: true,
+        all_value: Some(ALLOY_ROLES),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Which collector pods to read, chained on the role and namespace pickers.
+///
+/// Most often one agent, when one node's logs are the ones missing. `pod` is a
+/// stream label on neither side, so the log queries apply it after a `|` as
+/// structured metadata; the value is still the pod name in both engines.
+pub fn alloy_pods() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::ALLOY_POD,
+        label: "Collector",
+        description: "Which collector pods to read",
+        expr: format!(
+            r#"label_values(up{{app=~"${}", namespace=~"${}"}}, pod)"#,
+            variables::ALLOY_ROLE,
+            variables::ALLOY_NAMESPACE
+        ),
         multi: true,
         include_all: true,
         all_value: Some(".+"),
@@ -1243,7 +1350,34 @@ pub fn loki_scoped() -> Vec<dashboardv2::VariableKind> {
         logs_datasource(),
         loki_namespaces(),
         loki_components(),
-        log_levels(),
+        log_levels_in(format!(
+            r#"{{app="loki", namespace=~"${}"}}"#,
+            variables::LOKI_NAMESPACE
+        )),
+        log_search(),
+        metric_adhoc(),
+        logs_adhoc(),
+    ]
+}
+
+/// Controls for the collector meta-monitoring dashboard.
+///
+/// The same shape as [`loki_scoped`], for the same reason: both datasources,
+/// because the metrics say whether collection is working and the collectors'
+/// own logs say why. The three collector pickers scope both engines, and the
+/// level picker discovers from the collectors' own streams.
+pub fn alloy_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        logs_datasource(),
+        alloy_namespaces(),
+        alloy_roles(),
+        alloy_pods(),
+        log_levels_in(format!(
+            r#"{{app=~"${}", namespace=~"${}"}}"#,
+            variables::ALLOY_ROLE,
+            variables::ALLOY_NAMESPACE
+        )),
         log_search(),
         metric_adhoc(),
         logs_adhoc(),

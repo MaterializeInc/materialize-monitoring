@@ -110,6 +110,7 @@ from.
 | `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
 | `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
 | `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
+| `infra-alloy` | `grafana/infra_alloy/` | `mz-mon-infra-alloy` | Alloy Meta Monitoring |
 
 Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -369,7 +370,7 @@ Cloud Networking is half-stubbed on purpose; the two text rows name the provider
 
 ## `infra-loki` tabs
 
-The fourth of the `infra-*` family, and the only dashboard here whose **subject is the monitoring stack** rather than
+The fourth of the `infra-*` family, and the first dashboard here whose **subject is the monitoring stack** rather than
 something the stack watches.
 
 | # | Tab title | Module |
@@ -391,9 +392,43 @@ Three things about it are not re-derivable by reading the modules:
   rule for when that is allowed is in the style guide under
   [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines).
 - **The upstream Loki mixin dashboards were evaluated and rejected**, so this does not need re-litigating: they read
-  `cluster_job_route:*` recording rules that nothing in this stack evaluates (no Prometheus, no Thanos Ruler, and
-  Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name. Bloom
-  panels are excluded as experimental.
+  `cluster_job_route:*` recording rules that nothing in this stack evaluates (the Thanos Ruler runs, but no rule set
+  records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring
+  name. Bloom panels are excluded as experimental.
+- **Its Level picker discovers from `{app="loki", namespace=~"$lokiNamespace"}`**, through `log_levels_in`. The shared
+  `log_levels()` discovers from `$logNamespaceList`, which this dashboard does not define, and left the picker offering
+  only "All". `infra-nodes` still uses `log_levels()` without that variable.
+
+## `infra-alloy` tabs
+
+The second meta-monitoring dashboard, and the second occupant of `Folder::MetaO11y`.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Log Pipeline | `log_pipeline.rs` |
+| 3 | Metric Pipeline | `metric_pipeline.rs` |
+| 4 | Components | `components.rs` |
+| 5 | Resources | `resources.rs` |
+| 6 | Logs | `logs.rs` |
+
+Queries are `packages/queries/infra-alloy.yaml`, which absorbed the six panel-less `infra.loki.pipeline.*` queries.
+
+Four things about it are not re-derivable by reading the modules:
+
+- **Everything on it travels through the gateway.** The gateway scrapes Alloy's metrics and forwards Alloy's logs, so
+  a gateway outage empties the whole dashboard. The verdict counts use the registry's `sum(A) or 0 * sum(B)` form so
+  zero and absent read differently; the style guide has it under PromQL recipes.
+- **`$alloyRole`'s "All" is the literal `alloy-agent|alloy-gateway`**, and it is the anchor. `thanos-ruler` publishes
+  `prometheus_remote_storage_*` too, and on the reference install its queue was stuck in retries while the
+  gateway's was healthy. A test asserts every query carries the anchor, except the four `TARGET_WIDE` panels in
+  `metric_pipeline.rs` that read the scraped targets' own `up` and `scrape_*`.
+- **The internal Alloy dashboards were read and not ported.** They are mostly the upstream mixin. The findings are in
+  the module doc of `infra_alloy/mod.rs`: `_bucket`-summed success rates, target `up` scoped by the collector's
+  `job`, memory as RSS, and heap without `GOMEMLIMIT`.
+- **Drop reasons are classified by a test.** `loki_process_dropped_lines_total` mixes the debug tap's deliberate
+  sampling with guard losses. `log_pipeline.rs` reads every `drop_counter_reason` from the rendered pipelines and
+  fails when one is neither excluded as deliberate nor a known guard.
 
 ## Notes on the trickier panels
 

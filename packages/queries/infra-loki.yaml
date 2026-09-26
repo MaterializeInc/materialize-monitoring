@@ -36,8 +36,8 @@ description: |
   A `job=~"loki/.*"` matcher would work too, but it hardcodes the subchart's
   `jobPrefix`, which is a value an operator may change.
 
-  The Alloy-side family gets `infra.loki.pipeline.*` below — queries with no
-  dashboard behind them. That is deliberate; see "Queries with no panel".
+  The Alloy-side family belongs to `infra-alloy.yaml`, which watches the
+  collectors and is where those metrics are drawn.
 
   ## Scoping
 
@@ -70,18 +70,6 @@ description: |
   is the panel that says whether that split is working. It was not, before this
   file existed: under `profiles/mtls` all three were scraped over HTTPS, failed,
   and vanished — taking the end-to-end canary with them.
-
-  ## Queries with no panel
-
-  `infra.loki.pipeline.*` is referenced by no dashboard. The registry is not only
-  a dashboard source — it is also what `gen-metric-tiers` reads to decide which
-  metrics survive the gateway's per-destination allowlist, and a metric no query
-  names is in no tier and reaches no metered backend.
-
-  Metric *overrides* cannot stand in for this. An override re-weights a metric
-  some query already references; it cannot introduce one. So a family worth
-  keeping has to be named by a query even when nothing draws it, and these are
-  written with the descriptions a reader of the metrics reference would want.
 
 metricImportanceHint: recommended
 
@@ -1382,148 +1370,6 @@ queries:
         )
       ) * 60
 
-  # --- the collector side: no panels, see "Queries with no panel" --------------
-  - id: infra.loki.pipeline.sent
-    stability: experimental
-    description:
-      summary: |
-        Log lines per second Alloy successfully delivered to a Loki endpoint.
-      nominal: |
-        Close to the distributor's received-line rate. A persistent gap between
-        the two means lines are being lost between the collector and the store.
-      unhealthy: |
-        Zero while the collectors are running. Alloy is reading logs and cannot
-        deliver them; whatever it has buffered will be dropped when the buffer
-        fills.
-      notes: |
-        Alloy-side, not Loki-side — `job=~"alloy-.*"`. See the two-families note
-        at the top of this file. No dashboard draws this today; it is here so the
-        family reaches the metric tiers and the metrics reference.
-    promQL: |
-      sum by (job) (
-        rate(
-          loki_write_sent_entries_total%%{interval}
-        )
-      )
-
-  - id: infra.loki.pipeline.dropped
-    stability: experimental
-    description:
-      summary: |
-        Log lines per second Alloy gave up on delivering, split by reason.
-      nominal: Zero.
-      unhealthy: |
-        Anything sustained. This is the collector-side twin of Loki's discard
-        counter, and between them they account for every line that was collected
-        and never stored. A `reason` of `rate_limited` here and a matching
-        discard there are the same event seen from both ends.
-      notes: |
-        Alloy-side. No dashboard draws it; see the note on
-        `infra.loki.pipeline.sent`.
-    promQL: |
-      sum by (job, reason) (
-        rate(
-          loki_write_dropped_entries_total%%{interval}
-        )
-      )
-
-  - id: infra.loki.pipeline.retries
-    stability: experimental
-    description:
-      summary: |
-        Delivery batches per second Alloy had to retry.
-      nominal: Zero, or a background trickle.
-      unhealthy: |
-        A sustained rate. Retries precede drops: the collector is buffering
-        because the store is refusing or slow, and it will start discarding when
-        the buffer fills. This is the earliest warning of a write path in
-        trouble, and it fires on the collector rather than on the store.
-      notes: |
-        Alloy-side. No dashboard draws it; see the note on
-        `infra.loki.pipeline.sent`.
-    promQL: |
-      sum by (job) (
-        rate(
-          loki_write_batch_retries_total%%{interval}
-        )
-      )
-
-  - id: infra.loki.pipeline.propagation
-    stability: experimental
-    description:
-      summary: |
-        How long a line took to get from Alloy reading it to Loki acknowledging
-        it, at the 99th percentile.
-      nominal: |
-        A few seconds. The collector batches before sending, so the floor is the
-        batch interval rather than zero.
-      unhealthy: |
-        Tens of seconds and climbing. Logs are arriving late, which matters most
-        during an incident — the lines explaining what happened show up after the
-        person looking for them has moved on.
-      notes: |
-        Alloy-side. No dashboard draws it; see the note on
-        `infra.loki.pipeline.sent`.
-    promQL: |
-      histogram_quantile(
-        0.99,
-        sum by (le, job) (
-          rate(
-            loki_write_entry_propagation_latency_seconds_bucket%%{interval}
-          )
-        )
-      )
-
-  - id: infra.loki.pipeline.source_files
-    stability: experimental
-    description:
-      summary: |
-        Log files Alloy currently has open, and the bytes per second it is
-        reading from them.
-      nominal: |
-        A file count that tracks how many containers are running on the node.
-      unhealthy: |
-        A file count of zero on a node running workloads, which means discovery
-        broke and that node's logs are not being collected at all. Nothing
-        downstream reports this — Loki cannot miss what it was never sent.
-      notes: |
-        Alloy-side. No dashboard draws it; see the note on
-        `infra.loki.pipeline.sent`.
-    promQL:
-      - |
-        sum by (job) (
-          loki_source_file_files_active_total
-        )
-      - |
-        sum by (job) (
-          rate(
-            loki_source_file_read_bytes_total%%{interval}
-          )
-        )
-
-  - id: infra.loki.pipeline.dropped_lines
-    stability: experimental
-    description:
-      summary: |
-        Log lines per second dropped by Alloy's own processing stages, before
-        anything was sent.
-      nominal: |
-        Non-zero and deliberate. The pipelines drop noise on purpose, so a steady
-        rate here is the configuration working.
-      unhealthy: |
-        A step change nobody made. A relabel or drop stage started matching more
-        than it was written to match, and the lines it is now discarding are gone
-        before any other counter sees them.
-      notes: |
-        Alloy-side. No dashboard draws it; see the note on
-        `infra.loki.pipeline.sent`.
-    promQL: |
-      sum by (job, reason) (
-        rate(
-          loki_process_dropped_lines_total%%{interval}
-        )
-      )
-
 metricOverrides:
   # The end-to-end check outranks everything else here. A deployment trimmed to
   # `essential` keeps almost nothing about Loki, and what it should keep is the
@@ -1560,7 +1406,7 @@ metricOverrides:
   - metricPattern: "loki_request_duration_seconds_(bucket|sum)"
     importance: extended
     priority: 5
-  - metricPattern: "loki_(objstore_bucket_operation_duration_seconds|ingester_chunk_(age_seconds|utilization)|query_scheduler_queue_duration_seconds|tsdb_shipper_query_wait_time_seconds|write_entry_propagation_latency_seconds)_(bucket|sum)"
+  - metricPattern: "loki_(objstore_bucket_operation_duration_seconds|ingester_chunk_(age_seconds|utilization)|query_scheduler_queue_duration_seconds|tsdb_shipper_query_wait_time_seconds)_(bucket|sum)"
     importance: extended
     priority: 5
 

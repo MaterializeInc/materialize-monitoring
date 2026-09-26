@@ -1,5 +1,33 @@
 - importance: essential
   labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_build_info
+  usage:
+  - infra.alloy.health.versions
+- importance: essential
+  labels:
+  - app
+  - health_type
+  - namespace
+  - pod
+  name: alloy_component_controller_running_components
+  usage:
+  - infra.alloy.components.not_healthy
+  - infra.alloy.components.running
+  - infra.alloy.health.unhealthy_components
+- importance: essential
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_config_last_load_successful
+  usage:
+  - infra.alloy.components.config_by_pod
+  - infra.alloy.health.config_failed
+- importance: essential
+  labels:
   - condition
   name: certmanager_certificate_ready_status
   usage:
@@ -21,14 +49,18 @@
 - importance: essential
   labels:
   - container
+  - namespace
   name: container_cpu_cfs_periods_total
   usage:
+  - infra.alloy.resources.throttling
   - materialize.environmentd.cpu_throttled
 - importance: essential
   labels:
   - container
+  - namespace
   name: container_cpu_cfs_throttled_periods_total
   usage:
+  - infra.alloy.resources.throttling
   - materialize.environmentd.cpu_throttled
 - importance: essential
   labels:
@@ -37,6 +69,7 @@
   - pod
   name: container_cpu_usage_seconds_total
   usage:
+  - infra.alloy.resources.cpu
   - infra.kubernetes.pods_high_cpu_ratio
   - infra.kubernetes.vector_high_cpu_ratio
   - materialize.environmentd.high_cpu
@@ -80,6 +113,7 @@
   - pod
   name: container_memory_working_set_bytes
   usage:
+  - infra.alloy.resources.memory
   - infra.kubernetes.memory_elevated
   - infra.kubernetes.memory_high
   - materialize.environmentd.high_memory
@@ -375,12 +409,15 @@
   - infra.nodes.conditions
 - importance: essential
   labels:
+  - container
   - namespace
   - node
   - pod
   - resource
   name: kube_pod_container_resource_limits
   usage:
+  - infra.alloy.resources.cpu
+  - infra.alloy.resources.memory
   - infra.nodes.pods.budgets
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
@@ -418,6 +455,7 @@
   - reason
   name: kube_pod_container_status_last_terminated_reason
   usage:
+  - infra.alloy.resources.terminations
   - infra.kubernetes.oomkill_core_systems
   - infra.kubernetes.oomkill_important_systems
   - infra.kubernetes.oomkill_nonessential_systems
@@ -429,6 +467,7 @@
   - pod
   name: kube_pod_container_status_restarts_total
   usage:
+  - infra.alloy.health.restarts
   - infra.kubernetes.oomkill_core_systems
   - infra.kubernetes.oomkill_important_systems
   - infra.kubernetes.oomkill_nonessential_systems
@@ -526,6 +565,7 @@
   - namespace
   name: loki_canary_missing_entries_total
   usage:
+  - infra.loki.health.canary.losses
   - infra.loki.health.canary.missing
 - importance: essential
   labels:
@@ -540,7 +580,7 @@
   - namespace
   name: loki_canary_spot_check_missing_entries_total
   usage:
-  - infra.loki.health.canary.spot_check
+  - infra.loki.health.canary.losses
 - importance: essential
   labels:
   - app_instance
@@ -570,6 +610,7 @@
   - status_code
   name: loki_request_duration_seconds_count
   usage:
+  - infra.loki.health.client_errors
   - infra.loki.health.request_errors
   - infra.loki.health.request_failures
   - infra.loki.push_err_high
@@ -577,11 +618,24 @@
   - infra.loki.req_err_high
   - infra.loki.writer_err_high
 - importance: essential
-  labels: []
+  labels:
+  - app
+  - namespace
+  - pod
   name: loki_write_dropped_entries_total
   usage:
+  - infra.alloy.health.log_lines_lost
+  - infra.alloy.log_pipeline.dropped
   - infra.loki.alloy_log_drops
-  - infra.loki.pipeline.dropped
+- importance: essential
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_write_sent_entries_total
+  usage:
+  - infra.alloy.health.lines_delivered
+  - infra.alloy.log_pipeline.stored
 - importance: essential
   labels:
   - application_name
@@ -938,14 +992,62 @@
   - node.swap.activity
 - importance: essential
   labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_highest_timestamp_in_seconds
+  usage:
+  - infra.alloy.metric_pipeline.send_delay
+  - infra.alloy.metric_pipeline.send_delay.worst
+- importance: essential
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+  usage:
+  - infra.alloy.metric_pipeline.send_delay
+  - infra.alloy.metric_pipeline.send_delay.worst
+- importance: essential
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_samples_failed_total
+  usage:
+  - infra.alloy.health.samples_lost
+  - infra.alloy.metric_pipeline.remote_write
+- importance: essential
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_samples_total
+  usage:
+  - infra.alloy.health.samples_delivered
+  - infra.alloy.metric_pipeline.remote_write
+  - infra.alloy.metric_pipeline.samples_sent
+- importance: essential
+  labels:
+  - app
   - app_instance
   - cluster_environmentd_materialize_cloud_cluster_id
   - container
   - job
   - namespace
   - network_component
+  - pod
   name: up
   usage:
+  - infra.alloy.health.agents_missing
+  - infra.alloy.health.restarts
+  - infra.alloy.health.up
+  - infra.alloy.metric_pipeline.down_targets
+  - infra.alloy.metric_pipeline.targets_down
+  - infra.alloy.resources.cpu
+  - infra.alloy.resources.memory
+  - infra.alloy.resources.terminations
+  - infra.alloy.resources.throttling
   - infra.loki.health.up
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
@@ -970,6 +1072,39 @@
   usage:
   - materialize.environmentd.query_views_critical
   - materialize.environmentd.query_views_warning
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_component_evaluation_queue_size
+  usage:
+  - infra.alloy.components.queue
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_component_evaluation_seconds_count
+  usage:
+  - infra.alloy.components.evaluation_rate
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_component_evaluation_slow_seconds
+  usage:
+  - infra.alloy.components.slow
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_config_hash
+  usage:
+  - infra.alloy.components.config_by_pod
+  - infra.alloy.components.distinct_configs
 - importance: recommended
   labels: []
   name: awscni_assigned_ip_addresses
@@ -1039,6 +1174,55 @@
   - infra.net.cni.cilium.unreachable
 - importance: recommended
   labels:
+  - app
+  - namespace
+  - pod
+  name: cluster_node_gossip_health_score
+  usage:
+  - infra.alloy.cluster.health_score
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: cluster_node_info
+  usage:
+  - infra.alloy.cluster.members
+  - infra.alloy.cluster.peers
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: cluster_node_peers
+  usage:
+  - infra.alloy.cluster.peers
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: cluster_ready_for_traffic
+  usage:
+  - infra.alloy.cluster.members
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: cluster_transport_stream_tx_packets_failed_total
+  usage:
+  - infra.alloy.cluster.transport_failures
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: cluster_transport_tx_packets_failed_total
+  usage:
+  - infra.alloy.cluster.transport_failures
+- importance: recommended
+  labels:
   - namespace
   name: environmentd_needs_update
   usage:
@@ -1048,6 +1232,13 @@
   name: hubble_flows_processed_total
   usage:
   - infra.net.cni.cilium.hubble_flows
+- importance: recommended
+  labels:
+  - daemonset
+  - namespace
+  name: kube_daemonset_status_desired_number_scheduled
+  usage:
+  - infra.alloy.health.agents_missing
 - importance: recommended
   labels:
   - namespace
@@ -1216,10 +1407,22 @@
   usage:
   - infra.loki.store.operations
 - importance: recommended
-  labels: []
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_process_cri_lines_truncated_total
+  usage:
+  - infra.alloy.log_pipeline.truncated
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  - reason
   name: loki_process_dropped_lines_total
   usage:
-  - infra.loki.pipeline.dropped_lines
+  - infra.alloy.log_pipeline.guard_drops
 - importance: recommended
   labels:
   - app_instance
@@ -1228,15 +1431,39 @@
   usage:
   - infra.loki.read.queries_in_flight
 - importance: recommended
-  labels: []
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_source_api_request_duration_seconds_count
+  usage:
+  - infra.alloy.log_pipeline.pushes_received
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
   name: loki_source_file_files_active_total
   usage:
-  - infra.loki.pipeline.source_files
+  - infra.alloy.log_pipeline.files
 - importance: recommended
-  labels: []
-  name: loki_source_file_read_bytes_total
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_source_file_read_lines_total
   usage:
-  - infra.loki.pipeline.source_files
+  - infra.alloy.log_pipeline.file_lines
+  - infra.alloy.log_pipeline.read
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_source_journal_target_lines_total
+  usage:
+  - infra.alloy.log_pipeline.journal_lines
+  - infra.alloy.log_pipeline.read
 - importance: recommended
   labels:
   - app_instance
@@ -1252,15 +1479,21 @@
   usage:
   - infra.loki.store.index_sync
 - importance: recommended
-  labels: []
+  labels:
+  - app
+  - namespace
+  - pod
   name: loki_write_batch_retries_total
   usage:
-  - infra.loki.pipeline.retries
+  - infra.alloy.log_pipeline.retries
 - importance: recommended
-  labels: []
-  name: loki_write_sent_entries_total
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_write_request_duration_seconds_count
   usage:
-  - infra.loki.pipeline.sent
+  - infra.alloy.log_pipeline.requests
 - importance: recommended
   labels:
   - app_instance
@@ -1958,6 +2191,309 @@
   - materialize.operator.reconciliation.failures.total
   - materialize.operator.reconciliation.outcomes
   - materialize.operator.reconciliation.rate
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_exporter_queue_capacity
+  usage:
+  - infra.alloy.metric_pipeline.otel_queue
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_exporter_queue_size
+  usage:
+  - infra.alloy.metric_pipeline.otel_queue
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_exporter_send_failed_log_records_total
+  usage:
+  - infra.alloy.metric_pipeline.otel_failed
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_exporter_send_failed_metric_points_total
+  usage:
+  - infra.alloy.health.samples_lost
+  - infra.alloy.metric_pipeline.otel_failed
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_exporter_sent_log_records_total
+  usage:
+  - infra.alloy.metric_pipeline.otel_sent
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_exporter_sent_metric_points_total
+  usage:
+  - infra.alloy.health.samples_delivered
+  - infra.alloy.metric_pipeline.otel_sent
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_processor_filter_datapoints_filtered_total
+  usage:
+  - infra.alloy.metric_pipeline.otel_filtered
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_processor_memory_limiter_refused_metric_points_total
+  usage:
+  - infra.alloy.resources.memory_limiter
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_receiver_accepted_log_records_total
+  usage:
+  - infra.alloy.log_pipeline.otlp_received
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_receiver_accepted_metric_points_total
+  usage:
+  - infra.alloy.metric_pipeline.otlp_received
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_receiver_refused_log_records_total
+  usage:
+  - infra.alloy.log_pipeline.otlp_received
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_receiver_refused_metric_points_total
+  usage:
+  - infra.alloy.metric_pipeline.otlp_received
+- importance: recommended
+  labels:
+  - app
+  - component_id
+  - namespace
+  - pod
+  name: prometheus_forwarded_samples_total
+  usage:
+  - infra.alloy.metric_pipeline.samples_in
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_samples_retried_total
+  usage:
+  - infra.alloy.metric_pipeline.remote_write
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_shards
+  usage:
+  - infra.alloy.metric_pipeline.shards
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_shards_desired
+  usage:
+  - infra.alloy.metric_pipeline.shards
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_shards_max
+  usage:
+  - infra.alloy.metric_pipeline.shards
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_write_wal_checkpoint_creations_failed_total
+  usage:
+  - infra.alloy.metric_pipeline.wal_errors
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_write_wal_corruptions_total
+  usage:
+  - infra.alloy.metric_pipeline.wal_errors
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_write_wal_storage_active_series
+  usage:
+  - infra.alloy.metric_pipeline.active_series
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrape_pool_exceeded_label_limits_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_scrapes
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrape_pool_exceeded_target_limit_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_scrapes
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrape_pool_targets
+  usage:
+  - infra.alloy.cluster.targets
+  - infra.alloy.metric_pipeline.targets
+  - infra.alloy.metric_pipeline.targets_by_monitor
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrapes_exceeded_body_size_limit_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_scrapes
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrapes_exceeded_sample_limit_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_scrapes
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrapes_sample_duplicate_timestamp_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_samples
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrapes_sample_out_of_bounds_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_samples
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_target_scrapes_sample_out_of_order_total
+  usage:
+  - infra.alloy.metric_pipeline.rejected_samples
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_tsdb_wal_storage_size_bytes
+  usage:
+  - infra.alloy.metric_pipeline.wal_size
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_tsdb_wal_truncations_failed_total
+  usage:
+  - infra.alloy.metric_pipeline.wal_errors
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_tsdb_wal_writes_failed_total
+  usage:
+  - infra.alloy.metric_pipeline.wal_errors
+- importance: recommended
+  labels: []
+  name: scrape_duration_seconds
+  usage:
+  - infra.alloy.metric_pipeline.slowest_scrapes
+- importance: recommended
+  labels: []
+  name: scrape_samples_post_metric_relabeling
+  usage:
+  - infra.alloy.metric_pipeline.largest_scrapes
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_component_evaluation_seconds_bucket
+  usage:
+  - infra.alloy.components.evaluation_latency
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: go_gc_gomemlimit_bytes
+  usage:
+  - infra.alloy.resources.gomemlimit
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: go_goroutines
+  usage:
+  - infra.alloy.resources.goroutines
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: go_memstats_heap_released_bytes
+  usage:
+  - infra.alloy.resources.gomemlimit
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: go_memstats_sys_bytes
+  usage:
+  - infra.alloy.resources.gomemlimit
 - importance: extended
   labels:
   - app_instance
@@ -2006,7 +2542,42 @@
   usage:
   - infra.loki.store.index_wait
 - importance: extended
-  labels: []
+  labels:
+  - app
+  - namespace
+  - pod
   name: loki_write_entry_propagation_latency_seconds_bucket
   usage:
-  - infra.loki.pipeline.propagation
+  - infra.alloy.log_pipeline.propagation
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: loki_write_request_duration_seconds_bucket
+  usage:
+  - infra.alloy.log_pipeline.request_latency
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: process_max_fds
+  usage:
+  - infra.alloy.resources.file_descriptors
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: process_open_fds
+  usage:
+  - infra.alloy.resources.file_descriptors
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_remote_storage_sent_batch_duration_seconds_bucket
+  usage:
+  - infra.alloy.metric_pipeline.send_latency

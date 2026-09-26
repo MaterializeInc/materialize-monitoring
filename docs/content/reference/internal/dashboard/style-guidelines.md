@@ -1016,6 +1016,13 @@ Where either condition fails, define two variables.
 The cost of the second picker is that a reader has to set both; the cost of wrongly sharing one is a panel that is
 empty and looks fine, which is the failure this whole guide keeps coming back to.
 
+`infra-alloy` shares all three of its pickers, and meets both conditions more simply.
+`app`, `namespace` and `pod` hold the same values on a metric and on a log line because the metrics pipeline and the
+log pipelines relabel them from the same pod metadata, and both collector roles are scraped and both log.
+One difference in *placement* remains: `pod` is a stream label on neither side's logs but structured metadata, so the
+log queries apply `$alloyPod` after a `|` rather than inside the selector.
+A test holds that, since in the selector it would match no stream at all.
+
 ## Node identifiers across three families
 
 The dashboard's one real trick. kube-state-metrics calls a node `node="<name>"`; node-exporter calls the same machine
@@ -1227,6 +1234,24 @@ promQL:
 ```
 
 Real example: `materialize.compute.hydration.currently_hydrating`.
+
+### `or 0 * sum(...)` to keep zero honest
+
+`or vector(0)` turns "no series" into `0` unconditionally, including when nothing was collected at all.
+On a meta-monitoring dashboard that is the wrong answer, because the collector that went quiet is often the subject.
+Draw the zero from the population instead:
+
+```promql
+sum(alloy_component_controller_running_components{health_type!="healthy"})
+or
+0 * sum(alloy_component_controller_running_components)
+```
+
+The left arm is empty on a healthy install, because Alloy creates a per-state series only once something is in that
+state.
+The right arm is `0` only when the population exists, so the panel reads `0` when the collectors reported and no data
+when they did not.
+Real examples: `infra.alloy.health.unhealthy_components`, `infra.alloy.health.config_failed`.
 
 ### Per-cluster aggregation that handles label breakdowns
 

@@ -48,6 +48,7 @@ const QUERY_PORT: u16 = 9090;
 /// out rather than loaded at runtime so the assertion binary needs no source tree
 /// beside it.
 pub const REGISTRY_KUBE_METRICS: &[&str] = &[
+    "kube_daemonset_status_desired_number_scheduled",
     "kube_deployment_status_condition",
     "kube_deployment_status_replicas_ready",
     "kube_deployment_status_replicas_unavailable",

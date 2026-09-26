@@ -5,7 +5,8 @@ weight: 1
 
 # Available Dashboards
 
-Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
+Eight dashboards ship today: three scoped to a Materialize environment (`env-*`), and five to the platform underneath it (`infra-*`).
+Two of the five watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -89,6 +90,33 @@ Cloud Networking is partly stubbed.
 The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#collection-gaps-these-depend-on).
 
 {{< download-dashboards name="infra-net" >}}
+
+## Meta monitoring (`infra-*`)
+
+These two dashboards watch the monitoring stack rather than anything it collects.
+Their subject can take its own instrumentation down with it, so an empty panel on either can mean the component that would have reported a problem is the one that failed.
+Every panel on both states its own empty-state text for that reason.
+
+### Loki Meta Monitoring (`infra-loki`)
+
+Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
+The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="infra-loki" >}}
+
+### Alloy Meta Monitoring (`infra-alloy`)
+
+Whether telemetry collection is healthy, and which stage of it broke if not, across six tabs: Overview, Log Pipeline, Metric Pipeline, Components, Resources, and Logs.
+The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
+Components covers configuration loads, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits.
+It needs both a metrics and a logs datasource.
+
+**Everything on this dashboard reaches Grafana through the gateway.**
+The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dashboard that is empty throughout most likely means the gateway is down.
+`kubectl get pods -l app.kubernetes.io/name=alloy-gateway` in the monitoring namespace is the check that does not depend on it.
+
+{{< download-dashboards name="infra-alloy" >}}
 
 ## What the annotations mean
 
