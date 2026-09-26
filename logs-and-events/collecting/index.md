@@ -49,7 +49,9 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 ## Tuning collection
 
 - **Per-node rate limit.** The agent caps pod-log throughput per node to protect the pipeline from a single noisy node. The rate (lines/sec) and short-term burst are set with the `AGENT_POD_LOG_RATE_LIMIT` (default `5000`) and `AGENT_POD_LOG_BURST` (default `20000`) environment variables on the agent.
-- **Cluster label.** Set `CLUSTER_NAME` in `pipeline.env`, or `cluster_name` on the Terraform module, so every collected line carries a stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
+- **Cluster label.** Set `clusterName`, or `cluster_name` on the Terraform module, so every collected line carries a
+  stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without
+  one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
 - **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.

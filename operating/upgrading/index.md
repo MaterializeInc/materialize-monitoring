@@ -52,6 +52,19 @@ The Compactor's scratch is not authoritative at all — the bucket is, and compa
 
 If a Compactor later gets wedged in an unavailable zone by the volume it just gained, that is recoverable by hand; see [The Thanos Compactor is stuck in a zone](../o11y-troubleshooting/#the-thanos-compactor-is-stuck-in-a-zone) for the ordering, which matters because two Compactors running at once is the one thing that corrupts data.
 
+## Alertmanager: two replicas, renamed
+
+The release that made Alertmanager highly available ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) also pinned its resource
+names to `alertmanager`, which were previously derived from the release name as `<release>-alertmanager`.
+`helm upgrade` applies it without error.
+
+| Change | What to expect |
+|---|---|
+| Resources renamed to `alertmanager` | Helm deletes the old StatefulSet and creates a new one, whose two replicas start together on new volumes. The old volume is left orphaned: `storage-<release>-alertmanager-0`, safe to delete. Nothing routed alerts anywhere before this release, so there is no configuration to carry over; an install with silences worth keeping can move them with `amtool silence query --output=json` and `amtool silence import`. |
+| Hard zone spread | A cluster whose nodes carry no zone label needs `no-zone-spread` or `min_zones = 0` first, or a replica stays `Pending`. |
+| Both rulers retarget `alertmanager-headless` | The Loki ruler's address lives in Loki's shared configuration, so every Loki pod rolls once. |
+| Both rulers stamp `cluster` on alerts | Read from a new `ruler-env` ConfigMap in each ruler's namespace; both rulers roll once. Set `clusterName` (Terraform: `cluster_name`) first if it is still `default`; it replaces setting `pipeline.env.CLUSTER_NAME` directly. |
+
 ## Ingester rollouts: duration and deploy timeouts
 
 Any change to the ingester pod spec — image, resources, or scaling the replica count — rolls the ingester StatefulSet.

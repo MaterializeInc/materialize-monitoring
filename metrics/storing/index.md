@@ -84,15 +84,15 @@ The `essential` tier is a small fraction of `all`, so a filtered second destinat
 
 ### External labels
 
-Every sample carries a `cluster` label identifying its source cluster, set from the `CLUSTER_NAME` environment variable (default `default`).
+Every sample carries a `cluster` label identifying its source cluster, set from the chart's `clusterName` (default `default`).
 Set it per install so series from different clusters stay distinct once they land in a shared backend:
 
 ```yaml
-env:
-  CLUSTER_NAME: prod-us-east-1
+clusterName: prod-us-east-1
 ```
 
 The Terraform module sets it from its `cluster_name` input.
+The same value labels log lines and alerts.
 
 `cluster` is applied to every destination.
 Add labels for one destination only with its `externalLabels` map, which is useful where one backend needs a tenant or account key the others do not:

@@ -169,7 +169,15 @@ It manages these kinds of resources:
 
 ## `alertmanager`: Prometheus Alertmanager
 
-[Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) is a tool that handles alerts sent by Prometheus and other monitoring systems.
+[Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) routes, groups, deduplicates and
+silences the alerts both rulers send, and delivers them to receivers.
+It is the single notification surface: the Thanos Ruler (PromQL) and the Loki Ruler (LogQL) both notify it.
 
-TODO: determine architecture and integration of Alertmanager in `materialize-monitoring`.
+* A `StatefulSet` of two replicas that gossip silences and the notification log over `9094`, spread across zones, each with its own small volume.
+* Both rulers resolve the headless Service and send every alert to every replica, because gossip does not replicate alerts.
+* The chart renders the configuration from the `alerting` values key into the `alertmanager-config` Secret, and a
+  config-reloader sidecar applies changes in place.
+* Grafana reads alerts and silences through an Alertmanager datasource, and the Alloy gateway scrapes Alertmanager's own metrics.
+
+See [Alert Architecture](../alerting/architecture/) for the full design.
 

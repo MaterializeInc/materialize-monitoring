@@ -68,7 +68,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/reference/internal/design-docs/20260917-alerting-self-managed/">Alerting in Self-Managed: Evaluation, Routing, and Customer Extension</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-09-17 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-09-25 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>

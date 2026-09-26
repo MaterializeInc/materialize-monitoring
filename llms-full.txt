@@ -590,9 +590,17 @@ It manages these kinds of resources:
 
 ## `alertmanager`: Prometheus Alertmanager
 
-[Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) is a tool that handles alerts sent by Prometheus and other monitoring systems.
+[Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) routes, groups, deduplicates and
+silences the alerts both rulers send, and delivers them to receivers.
+It is the single notification surface: the Thanos Ruler (PromQL) and the Loki Ruler (LogQL) both notify it.
 
-TODO: determine architecture and integration of Alertmanager in `materialize-monitoring`.
+* A `StatefulSet` of two replicas that gossip silences and the notification log over `9094`, spread across zones, each with its own small volume.
+* Both rulers resolve the headless Service and send every alert to every replica, because gossip does not replicate alerts.
+* The chart renders the configuration from the `alerting` values key into the `alertmanager-config` Secret, and a
+  config-reloader sidecar applies changes in place.
+* Grafana reads alerts and silences through an Alertmanager datasource, and the Alloy gateway scrapes Alertmanager's own metrics.
+
+See [Alert Architecture](../alerting/architecture/) for the full design.
 
 
 --------------------------------------------------------------------------------
@@ -2421,15 +2429,15 @@ The `essential` tier is a small fraction of `all`, so a filtered second destinat
 
 ### External labels
 
-Every sample carries a `cluster` label identifying its source cluster, set from the `CLUSTER_NAME` environment variable (default `default`).
+Every sample carries a `cluster` label identifying its source cluster, set from the chart's `clusterName` (default `default`).
 Set it per install so series from different clusters stay distinct once they land in a shared backend:
 
 ```yaml
-env:
-  CLUSTER_NAME: prod-us-east-1
+clusterName: prod-us-east-1
 ```
 
 The Terraform module sets it from its `cluster_name` input.
+The same value labels log lines and alerts.
 
 `cluster` is applied to every destination.
 Add labels for one destination only with its `externalLabels` map, which is useful where one backend needs a tenant or account key the others do not:
@@ -3604,7 +3612,9 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 ## Tuning collection
 
 - **Per-node rate limit.** The agent caps pod-log throughput per node to protect the pipeline from a single noisy node. The rate (lines/sec) and short-term burst are set with the `AGENT_POD_LOG_RATE_LIMIT` (default `5000`) and `AGENT_POD_LOG_BURST` (default `20000`) environment variables on the agent.
-- **Cluster label.** Set `CLUSTER_NAME` in `pipeline.env`, or `cluster_name` on the Terraform module, so every collected line carries a stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
+- **Cluster label.** Set `clusterName`, or `cluster_name` on the Terraform module, so every collected line carries a
+  stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without
+  one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
 - **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
@@ -5299,6 +5309,355 @@ See [Storing Metrics]({{< relref "../metrics/storing.md" >}}#datadog) for the ex
 
 
 --------------------------------------------------------------------------------
+title: "Architecture"
+url: https://materializeinc.github.io/materialize-monitoring/alerting/architecture/index.md
+--------------------------------------------------------------------------------
+
+# Alert Architecture
+
+This page describes how an alert moves through `materialize-monitoring`: evaluated by one of two rulers, sent to every
+replica of the bundled Alertmanager, routed by a configuration the chart renders from `alerting`, and delivered to a receiver.
+It covers why the notifier is shaped the way it is, what state it holds, and what happens to that state when things fail.
+
+The other pages in this section cover each part in depth:
+
+| Page | Covers |
+|---|---|
+| [Configuring](../configuring/) | The two rule evaluators, what each reads, and how each is wired |
+| [Alert Channels](../channels/) | Receivers, receiver classes, severity presets, credentials, and extra routes |
+| [Maintenance Windows](../maintenance/) | Silences, recurring mute windows, and inhibition |
+
+The production checklist for this component is [Production Best Practices > Alertmanager](../../operating/production-best-practices/#alertmanager).
+
+<!--
+Agent note: the claims on this page were verified against a live two-replica install (gossip convergence,
+both rulers discovering both replicas, silence replication, in-place reload, replica loss, and the 1→2
+upgrade window). Re-verify before changing them rather than reasoning from the values file alone: the
+"alerts are not gossiped" point is the one most often gotten wrong, and it is why the rulers address the
+headless Service.
+-->
+
+## End-to-end flow
+
+```mermaid
+flowchart TB
+  subgraph eval["Evaluation"]
+    truler["Thanos Ruler<br/>PromQL"]
+    lruler["Loki Ruler<br/>LogQL"]
+  end
+
+  hs["alertmanager-headless<br/>one address per ready replica"]
+
+  subgraph am["Alertmanager — 2 replicas"]
+    am0["replica 0<br/>zone A · own volume"]
+    am1["replica 1<br/>zone B · own volume"]
+    am0 <-->|"gossip :9094 TCP + UDP<br/>silences · notification log"| am1
+  end
+
+  cfg["alertmanager-config Secret<br/>rendered from alerting.*"]
+  creds["alertmanager-receivers Secret<br/>receiver credentials"]
+  recv["Receivers<br/>Slack · PagerDuty · webhook · email · …"]
+  svc["alertmanager<br/>ClusterIP Service"]
+  graf["Grafana<br/>Alertmanager datasource"]
+  gw["alloy-gateway<br/>ServiceMonitor scrape"]
+
+  truler -->|"dns+ lookup"| hs
+  lruler -->|"SRV lookup"| hs
+  hs -->|"every alert"| am0
+  hs -->|"every alert"| am1
+  cfg -.->|"mounted · reloaded in place"| am0
+  cfg -.-> am1
+  creds -.->|"*_file"| am0
+  creds -.-> am1
+  am0 --> recv
+  am1 --> recv
+  graf -->|"alerts · silences"| svc
+  gw -->|"/metrics"| svc
+  svc --- am0
+  svc --- am1
+```
+
+Five properties of that shape are the design.
+
+**Alertmanager is the single notification surface.**
+Both rulers notify it, so an operator configuring where alerts go configures one thing, whether the alert came from a metric or a log line.
+
+**Every replica receives every alert.**
+The rulers resolve the headless Service to one address per replica and send each alert to all of them.
+See [Why the rulers address every replica](#every-replica).
+
+**The replicas gossip, and deduplicate.**
+Silences and the notification log replicate between them, so a notification goes out once and either replica can send it.
+
+**The configuration is rendered, not written.**
+The chart builds Alertmanager's configuration from `alerting`, checks it at render time, and reloads it in place.
+See [Configuration](#configuration).
+
+**Nothing about alerting lives in Grafana.**
+Grafana reads and writes Alertmanager's alerts and silences through a datasource, and keeps none of that state itself.
+
+## Why the rulers address every replica {#every-replica}
+
+Alertmanager's gossip replicates two things between replicas: **silences** and the **notification log**, which records what was sent to whom and when.
+It does not replicate **alerts**.
+A replica knows about an alert only if a ruler sent that alert to it.
+
+That makes the address a ruler notifies part of the HA design rather than a detail.
+
+| Ruler notifies | What happens when one replica is lost |
+|---|---|
+| The load-balanced ClusterIP Service | Each send reaches one replica, and a kept-alive connection can pin every send to the same one. The survivor may hold none of the firing alerts, and notifies nothing until the ruler's next resend reaches it. |
+| Every replica, through the headless Service | Both replicas hold every firing alert. The survivor carries on notifying with no gap. |
+
+So both rulers address the headless Service through DNS discovery, and re-resolve it as replicas come and go.
+
+| Ruler | Setting | Discovery |
+|---|---|---|
+| Thanos Ruler | `thanos.ruler.alertmanagers.config` | `dns+alertmanager-headless.<namespace>.svc.<domain>:9093`, an A-record lookup re-resolved every 30s |
+| Loki Ruler | `loki.loki.rulerConfig.alertmanager_url` with `enable_alertmanager_discovery: true` | `http://_http._tcp.alertmanager-headless.<namespace>.svc.<domain>`, an SRV lookup re-resolved every `alertmanager_refresh_interval` (30s) |
+
+The headless Service publishes only ready replicas, so a replica that is starting or terminating drops out of both rulers' target lists on its own.
+
+The Loki ruler creates a tenant's notifier only once that tenant has rule groups.
+Until then it has discovered nothing, and `loki_prometheus_notifications_alertmanagers_discovered` is absent rather than zero.
+
+## How two replicas send one notification {#deduplication}
+
+Each replica evaluates the same routing tree against the same alerts and would notify independently.
+Gossip is what stops that.
+
+A replica sends a group's notification only after waiting its position in the cluster multiplied by
+`--cluster.peer-timeout` (15s by default), and only if the notification log does not already record that notification as sent.
+The first replica sends at once and gossips the log entry; the second finds it and stays quiet.
+If the first replica is down or cannot deliver, the second sends 15 seconds later.
+
+**This depends on the mesh port being open on both TCP and UDP.**
+Memberlist joins peers and pushes full state over TCP, and gossips updates over UDP.
+With either one blocked the replicas do not converge, and every notification goes out once per replica.
+The failure presents as duplicate pages, which reads like a routing problem rather than a network one.
+The chart's NetworkPolicy opens `9094` on both transports, and a validator warns when a narrowed policy does not.
+
+## High availability {#high-availability}
+
+Two replicas is the default shape rather than a hardening step.
+A single Alertmanager is lost to an ordinary node drain, holds the only copy of every silence, and cannot report its own absence.
+A second replica survives the first and can report it gone.
+
+Three is not the default.
+Gossip tolerates a partition by notifying from both sides rather than by electing a leader, so a third replica adds little availability.
+It adds a third copy of every notification whenever gossip is broken.
+
+| Setting | Default | Role |
+|---|---|---|
+| `alertmanager.replicaCount` | `2` | Above one, the subchart passes `--cluster.peer` for every ordinal and opens the mesh ports on the headless Service |
+| `alertmanager.podDisruptionBudget` | `maxUnavailable: 1` | A drain evicts one replica at a time |
+| `alertmanager.topologySpreadConstraints` | hard across zones, soft across hosts | Keeps the two replicas out of one failure domain |
+| `alertmanager.extraArgs.cluster.label` | `materialize-monitoring` | Stamped on every gossip message, so a peer from another Alertmanager cluster that inherits a recycled pod IP is rejected |
+| `alertmanager.readinessProbe` | `/-/ready` | A StatefulSet rollout replaces one replica at a time and waits on it |
+
+### What each failure costs
+
+| Failure | Outcome |
+|---|---|
+| One replica restarts, or its node is drained | The other keeps notifying. The replacement joins the mesh and pulls its peer's silences and notification log before it serves. |
+| One zone is lost | The replica in that zone stays `Pending` until the zone returns, because its volume is zonal. The other replica, in another zone, keeps notifying. |
+| Both replicas are lost at once | Each comes back from its own volume with the silences and notification log it last saved. Nothing is lost that was written before the failure. |
+| The mesh port is blocked | Both replicas notify independently, so every notification arrives twice. Nothing is dropped. |
+| A configuration Alertmanager rejects | The previous configuration keeps running, and `alertmanager_config_last_reload_successful` drops to 0. On a fresh start, the pods crash-loop instead. |
+
+### Zones and volumes {#zones-and-volumes}
+
+The zone rule is `whenUnsatisfiable: DoNotSchedule`.
+A replica that cannot satisfy it goes `Pending`, which is the signal the cluster autoscaler reads to add a node in the deficient zone.
+
+Each replica's volume is zonal, which is compatible with a hard rule only under `volumeBindingMode: WaitForFirstConsumer`.
+That binding mode creates each volume in whichever zone the scheduler placed its pod, so each replica lands in its own zone and stays there.
+It is the default for every managed-cloud CSI class.
+Under `Immediate` binding both volumes can be provisioned in one zone before scheduling, and the second replica then
+stays `Pending` while the first keeps notifying.
+
+Two differences from the zone rule on Thanos Receive are deliberate.
+
+| Difference | Why |
+|---|---|
+| No `minDomains` | A single-zone cluster schedules both replicas. Only a cluster whose nodes carry no zone label at all needs `no-zone-spread`, or `min_zones = 0` on Terraform. |
+| No `matchLabelKeys: [controller-revision-hash]` | It would let a new replica ignore an old-revision peer when first scheduled, which is exactly what an upgrade from one replica to two does. The new replica could land in the peer's zone, and the peer — pinned there by its volume — would then never reschedule. |
+
+## State and storage {#state}
+
+Alertmanager holds three kinds of state.
+
+| State | Created by | Replicated by gossip | Survives losing both replicas |
+|---|---|---|---|
+| Alerts | The rulers, resent every evaluation | No — each replica receives them directly | Rebuilt from the rulers' next resend |
+| Silences | Operators, through Grafana or `amtool` | Yes | Yes, from each replica's volume |
+| Notification log | Alertmanager, on each notification | Yes | Yes, from each replica's volume |
+
+Gossip is what makes one replica's loss invisible.
+The volume is what makes losing both survivable: silences exist nowhere else, and without the notification log the first
+evaluation after a total loss re-sends every notification that had already gone out.
+
+Each replica keeps a 4Gi volume.
+Alertmanager needs kilobytes; 4Gi is the smallest disk GCP Hyperdisk and Azure managed disks provision.
+Both the volume's existence and its size render into the StatefulSet's `volumeClaimTemplates`, which Kubernetes refuses to change after install.
+Changing either requires deleting the StatefulSet with `--cascade=orphan` before the upgrade.
+
+`--data.retention` (120h) is how long expired silences and notification-log entries are kept.
+
+## The `cluster` label {#cluster-label}
+
+Every alert carries a `cluster` label naming the Kubernetes cluster it came from.
+The value is `clusterName`, which Terraform's `cluster_name` sets, and which is also stamped on every log
+line and every metric this stack collects.
+
+| Ruler | How it stamps `cluster` |
+|---|---|
+| Thanos Ruler | `--label=cluster="$(CLUSTER_NAME)"`, an external label, added to every alert it sends and every sample it writes |
+| Loki Ruler | An `alert_relabel_configs` entry, because the Loki ruler has no external labels |
+
+Both fill the label only where an alert lacks it.
+An alert whose expression kept `cluster` from its series keeps that value, which is the same one wherever the series came from this cluster.
+Neither subchart can read `pipeline.env`, so the chart renders the name into a `ruler-env` ConfigMap in each ruler's
+namespace, and each ruler reads it as an environment variable.
+
+Within one cluster the label is constant, and it matters as soon as two clusters share anything downstream.
+
+| Shared downstream | Without `cluster` |
+|---|---|
+| A chat channel | A notification does not say which cluster it is about |
+| An incident tool | An Alertmanager group key is built from the route and the group labels, and PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of it. Two clusters sending one condition open one incident, and either cluster's resolution closes it |
+| One Alertmanager | Identical label sets from two clusters are the same alert, so each overwrites the other's state |
+
+The default `alerting.routes.root.group_by` includes `cluster` for the second row.
+All three depend on `clusterName` being unique per cluster.
+Left at its default, `default`, on several clusters, the label is present and distinguishes nothing.
+
+## Configuration {#configuration}
+
+The chart renders Alertmanager's configuration itself, from `alerting`, rather than passing it to the subchart.
+
+The subchart renders its `config` block into a ConfigMap with `toYaml`, so nothing in it can be computed.
+The severity presets, the receiver classes and the render-time checks all have to be.
+So `alertmanager.config.enabled` is off, and the chart renders the `alertmanager-config` Secret and mounts it at `/etc/alertmanager/config`.
+
+```mermaid
+flowchart LR
+  values["alerting.*<br/>(values)"] --> tpl["templates/alertmanager-config.yaml"]
+  tpl --> val{"render-time checks"}
+  val -->|"error"| fail["helm install fails"]
+  val --> secret["alertmanager-config Secret"]
+  secret -->|"kubelet refresh"| mount["/etc/alertmanager/config"]
+  mount --> reloader["config-reloader sidecar"]
+  reloader -->|"POST /-/reload"| am["Alertmanager"]
+```
+
+A change to `alerting` reaches the running replicas without a restart.
+The kubelet refreshes the mounted Secret, the config-reloader sidecar sees the change and asks Alertmanager to reload,
+and the whole path takes seconds to about a minute.
+The sidecar is needed because the subchart rolls its pods on a checksum of the ConfigMap it no longer renders.
+
+`alertmanager.baseURL` is left empty by default and is not pointed at Grafana: Alertmanager builds links into its own UI
+from it, and Grafana serves none of those paths.
+`extraArgs.web.route-prefix: /` keeps every endpoint at the root whatever `baseURL` is set to.
+[Alert Channels](../channels/#links) shows how to link notifications to Grafana instead.
+
+### The routing tree
+
+The rendered tree has the same shape in every install.
+
+| Order | Route | Source |
+|---|---|---|
+| 1 | Each route in `alerting.routes.extra`, verbatim | The operator |
+| 2 | One route per severity in the selected preset, delivering that severity's class | `alerting.preset`, `alerting.presets` and the receivers' `class` |
+| 3 | A catch-all delivering the class of `alerting.unknownSeverity` | So an alert with no recognised `severity` still reaches somebody |
+
+The root route's receiver is `mzmon-null`, which notifies nobody.
+While `alerting.receivers` is empty, rows 2 and 3 are left out and every alert lands there.
+Alerts on `mzmon-null` still fire and still show in Alertmanager and Grafana.
+
+A class served by one receiver is a single route.
+A class served by several is a parent route with one child per receiver, each set to `continue`, because an Alertmanager
+route names exactly one receiver.
+
+[Alert Channels](../channels/) covers configuring each part.
+
+### What is checked, and when
+
+| Check | Where | Catches |
+|---|---|---|
+| Structural validators | Every `helm template` and `helm install` | An unroutable severity, an undefined receiver or time interval, an inline credential, a credential file no volume mounts, a receiver key that is not an integration, a template Alertmanager would not load |
+| `amtool check-config` | CI, over representative scenarios (`make alertmanager-config-check`) | The chart generating a tree Alertmanager rejects |
+| Alertmanager itself | Each reload | Anything else in a receiver body, which the chart passes through without modelling |
+
+The chart does not model receiver types.
+A receiver's `config` passes through verbatim, which is why every integration Alertmanager supports works, and why the last row exists.
+
+## Credentials {#credentials}
+
+Receiver credentials are referenced by path, never inlined.
+Nearly every Alertmanager credential field has a `_file` variant, and the chart mounts Secrets for those fields to read.
+
+One Secret is mounted by default: `alertmanager-receivers`, at `/etc/alertmanager/secrets/alertmanager-receivers/`.
+It is optional, so the pods start before it exists.
+Alertmanager reads a `*_file` credential each time it sends, so creating or rotating the Secret takes effect without a restart.
+
+The render fails when a receiver carries an inline credential, unless `alerting.assertNoInlineCredentials` is turned off.
+It also fails when a `*_file` path falls under no mounted volume, since that notification would fail at send time.
+
+Amazon SNS is the one integration that uses the pod's cloud identity instead, through IRSA or EKS Pod Identity on the `alertmanager` ServiceAccount.
+[Cloud provider services](../channels/#cloud) lists the permissions for it and for the cloud email services.
+
+## Observing Alertmanager {#observing}
+
+Alertmanager is scraped through a ServiceMonitor, once per replica.
+Both Services the subchart renders carry the same labels, so the monitor drops the headless Service's targets to avoid scraping each replica twice.
+
+| Series | Healthy value | Means when it is not |
+|---|---|---|
+| `alertmanager_cluster_members` | `2` on each replica | A replica is down, or the mesh has partitioned |
+| `alertmanager_config_last_reload_successful` | `1` | The last configuration change was rejected, and the previous one is still running |
+| `rate(alertmanager_notifications_failed_total[5m])` | `0` | A receiver is refusing or unreachable, per `integration` |
+| `alertmanager_notifications_total` | rising while alerts fire | Nothing is being delivered |
+
+Grafana's **Alertmanager** datasource (`connections.datasources.alertmanager`) gives the alert list and the silence editor.
+It points at the ClusterIP Service, which is correct for a reader: every replica holds the same alerts and silences.
+
+None of these series is alerted on yet.
+The deadman's switch and the meta-alerts that read them arrive with the rule set.
+
+## Resource map {#resources}
+
+| Resource | Name | From |
+|---|---|---|
+| StatefulSet | `alertmanager` | Subchart |
+| Service (ClusterIP) | `alertmanager` | Subchart |
+| Service (headless) | `alertmanager-headless` | Subchart |
+| PodDisruptionBudget | `alertmanager` | Subchart |
+| ServiceMonitor | `alertmanager` | Subchart |
+| PersistentVolumeClaim | `storage-alertmanager-<ordinal>` | StatefulSet, retained after uninstall |
+| Secret | `alertmanager-config` | Chart, from `alerting` |
+| NetworkPolicy | `mzmon-alertmanager`, `mzmon-alertmanager-egress-dns` | Chart |
+| GrafanaDatasource | `mzmon-alertmanager-datasource` | Chart |
+| ConfigMap | `ruler-env`, in each ruler's namespace | Chart, from `clusterName` |
+| Secret | `alertmanager-receivers` | The operator |
+
+The subchart's names are pinned by `alertmanager.fullnameOverride`, like Loki's, Thanos's and Grafana's, so they do not depend on the release name.
+That is what lets both rulers address `alertmanager-headless` literally, from inside subcharts where this chart's helpers cannot run.
+The render warns when the rulers' addresses and the pinned name disagree.
+
+## What is not built yet {#gaps}
+
+| Missing | Consequence |
+|---|---|
+| The shipped rule set | Only rules an operator applies, and the Thanos subchart's own mixin rules, reach Alertmanager |
+| A deadman's switch, and meta-alerts on the series above | Alertmanager being unable to deliver is visible on a dashboard, and pages nobody |
+| Rollout-signal inhibition | Upgrade noise is suppressed with a silence or a mute window, by hand. See [Maintenance Windows](../maintenance/) |
+| `alerting.alertmanager.mode: external` | A deployment with its own Alertmanager overrides both rulers' addresses by hand. See [Configuring](../configuring/#what-an-operator-configures-today) |
+| TLS on Alertmanager's own listener | The chart issues a certificate for it, and nothing serves it yet |
+| Terraform inputs for receivers and the preset | The Terraform path configures `alerting` through `additional_values` |
+
+
+--------------------------------------------------------------------------------
 title: "Configuring"
 url: https://materializeinc.github.io/materialize-monitoring/alerting/configuring/index.md
 --------------------------------------------------------------------------------
@@ -5308,9 +5667,11 @@ url: https://materializeinc.github.io/materialize-monitoring/alerting/configurin
 A default install runs two rule evaluators and one notifier.
 Thanos Ruler evaluates PromQL, Loki Ruler evaluates LogQL, and both send what they produce to a single Alertmanager.
 
-**The evaluators are wired; the rules and the routing are not built yet.**
-`pre-rendered/rules/` ships empty, and the bundled Alertmanager carries no routing tree, so an alert that fires today reaches a null receiver.
-What this page describes is the path an alert will travel, and the parts of it an operator configures now.
+**The evaluators and the notifier are wired; the shipped rule set is not built yet.**
+`pre-rendered/rules/` ships empty, so the only rules evaluated are those an operator applies and the Thanos subchart's own mixin rules.
+Where an alert goes is configured under `alerting`, and until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
+This page describes the two evaluators and how they reach Alertmanager.
+[Alert Architecture](../architecture/) describes Alertmanager itself, and [Alert Channels](../channels/) describes routing and receivers.
 The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
 <!-- more -->
@@ -5331,6 +5692,18 @@ No component evaluates both PromQL and LogQL, which is why there are two.
 
 Alertmanager is the single notification surface.
 An operator configuring where alerts go configures one thing, whether the alert came from a metric or a log line.
+
+## Both rulers notify every Alertmanager replica
+
+The bundled Alertmanager runs two replicas that gossip silences and the notification log to each other, but not alerts.
+Each replica therefore has to receive every alert from the rulers directly.
+
+So neither ruler notifies the load-balanced Service.
+Both resolve the headless Service to one address per ready replica, the Thanos ruler through a `dns+` lookup and the
+Loki ruler through an SRV lookup with `enable_alertmanager_discovery`.
+A deployment overriding either address SHOULD keep that shape; one that points a ruler at the load-balanced Service
+leaves a surviving replica without the alerts its peer was holding.
+See [Why the rulers address every replica](../architecture/#every-replica).
 
 ## Both rulers depend on the query path
 
@@ -5382,14 +5755,16 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 |---|---|---|
 | `thanos.ruler.enabled` | `true` | Deploys the PromQL evaluator. Turning it off makes every `PrometheusRule` in the cluster inert |
 | `thanos.ruler.query.urls` | Thanos Query | Deliberately Query rather than Query Frontend. See below |
-| `thanos.ruler.alertmanagers.config` | The bundled Alertmanager | Thanos's own Alertmanager configuration format, passed through |
+| `thanos.ruler.alertmanagers.config` | Every replica of the bundled Alertmanager, by `dns+` lookup | Thanos's own Alertmanager configuration format, passed through |
 | `thanos.ruler.autoImportPrometheusRules.labelSelector` | `{}` | Which `PrometheusRule` resources to import. Empty means all of them |
 | `loki.ruler.enabled` | `true` | Deploys the LogQL evaluator |
-| `loki.loki.rulerConfig.alertmanager_url` | The bundled Alertmanager | Clearing it leaves the ruler evaluating recording rules and discarding alerts |
+| `loki.loki.rulerConfig.alertmanager_url` | Every replica of the bundled Alertmanager, by SRV lookup | Clearing it leaves the ruler evaluating recording rules and discarding alerts. The `_http._tcp.` form requires `enable_alertmanager_discovery: true` |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
+| `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
-The bundled Alertmanager can then be excluded with `tags.alertmanager: false`, or `alertmanager.enabled: false`.
+The bundled Alertmanager can then be excluded with `alertmanager.enabled: false`.
+`tags.alertmanager: false` alone does not exclude it, because the tags are OR'd and `tags.default` and `tags.bundled-backends` both include it.
 
 ## The rulers do not follow the query frontend
 
@@ -5412,14 +5787,15 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 
 | Missing | Consequence |
 |---|---|
-| The shipped rule set | Nothing fires unless an operator supplies rules |
+| The shipped rule set | Only rules an operator supplies, and the Thanos subchart's mixin rules, fire |
 | `gen-rules` | The alert definitions in the query registry render to [Common Alerts](../../reference/stable-metrics/common-alerts/) and are not deployed |
-| Alertmanager routing, receivers, grouping, inhibition | A firing alert reaches a null receiver |
 | Log-derived alert definitions | Panic and correctness detection is not yet expressible here |
 | Runbook links | An alert with no stated action is half an alert |
-| An Alertmanager scrape | Delivery failures are not observable |
+| A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
+| Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
 
-[Alert Channels](../channels/) and [Maintenance Windows](../maintenance/) cover the parts of that list closest to an operator, and are stubs until the routing surface exists.
+Routing, receivers, grouping, inhibition and silences are configurable today; [Alert Channels](../channels/) and
+[Maintenance Windows](../maintenance/) cover them.
 
 
 --------------------------------------------------------------------------------
@@ -5429,13 +5805,675 @@ url: https://materializeinc.github.io/materialize-monitoring/alerting/channels/i
 
 # Alert Channels
 
+This page describes how to tell the bundled Alertmanager where alerts go: which receivers exist, which alerts reach each
+of them, and where their credentials come from.
+Everything here is configured under the `alerting` values key, which the chart renders into Alertmanager's configuration.
+[Alert Architecture](../architecture/#configuration) describes how that rendering works.
+
+<!-- more -->
+{{< rfc-2119 >}}
+
+A default install configures no receiver, so every alert reaches `mzmon-null`, a receiver that notifies nobody.
+The render warns about that until a receiver exists.
+
+## Receivers, classes, and presets
+
+Three ideas carry the whole configuration.
+
+| Idea | Owned by | Set with |
+|---|---|---|
+| **Severity** — how bad a condition is | The rule | A rule's `severity` label: `critical`, `warning`, or `notice` |
+| **Preset** — what each severity means for this deployment | The operator | `alerting.preset`, naming an entry of `alerting.presets` |
+| **Class** — a kind of delivery, such as a page or a low-priority notice | The operator | Each receiver's `class`, and the cells of each preset |
+
+A preset maps each severity to a class.
+The three shipped presets express how much the deployment depends on Materialize, and `important` is the default.
+
+| `severity` | `critical-infrastructure` | `important` | `evaluation` |
+|---|---|---|---|
+| `critical` | `page` | `high` | `normal` |
+| `warning` | `high` | `normal` | `normal` |
+| `notice` | `normal` | `low` | `suppressed` |
+
+Each receiver declares the classes it serves.
+An alert reaches every receiver serving the class its severity maps to.
+`suppressed` notifies nobody, and the alert still fires and still shows in Alertmanager and Grafana.
+
+The indirection is what lets one set of rules serve a deployment with a pager and one with a single chat channel.
+The rules do not change; the preset and the receivers do.
+
+**Every class the selected preset names MUST be served by some receiver**, or be `suppressed`.
+The render fails otherwise, since an unroutable severity is otherwise discovered during the incident it should have reported.
+Class names are free-form, and `alerting.presets` is a map, so a single cell can be changed without restating the rest.
+
+A preset of the deployment's own is one more key, with whatever severities and classes it needs:
+
+```yaml
+alerting:
+  preset: oncall-lite
+  presets:
+    oncall-lite:
+      critical: page
+      warning: ticket
+      notice: suppressed
+```
+
+An alert whose `severity` label is missing, or not in the preset, is routed as `alerting.unknownSeverity` (default `warning`).
+
+## Configuring a receiver
+
+```yaml
+alerting:
+  receivers:
+    <name>:
+      class: <class> | [<class>, ...]   # optional
+      config:                           # an Alertmanager receiver, without `name`
+        <integration>_configs:
+          - ...
+      route:                            # optional route options for this receiver
+        repeat_interval: 1h
+```
+
+| Key | Meaning |
+|---|---|
+| `class` | The classes this receiver serves. A receiver with no class is reachable only from [extra routes](#extra-routes). |
+| `config` | An Alertmanager receiver body, verbatim: `slack_configs`, `pagerduty_configs`, `webhook_configs`, `email_configs`, `msteamsv2_configs`, `opsgenie_configs`, and every other integration Alertmanager supports. The key is the receiver's name. |
+| `route` | Route options — `group_wait`, `group_interval`, `repeat_interval`, `group_by`, `mute_time_intervals`, `active_time_intervals` — applied wherever the preset routes to this receiver. |
+
+The chart does not model receiver types.
+Each integration's fields are documented once, in Alertmanager's [receiver integration
+reference](https://prometheus.io/docs/alerting/latest/configuration/#receiver-integration-settings), and a `config`
+block is written exactly as that reference describes.
+An integration Alertmanager gains in a later release works without a chart change.
+
+## Credentials
+
+**A receiver's credentials MUST come from a mounted Secret, referenced through the field's `_file` variant.**
+Values files are committed, diffed, pasted into support threads, and rendered into Terraform plans, so a credential
+written into one is a credential published.
+
+| Integration | Inline field | Use instead |
+|---|---|---|
+| Slack | `api_url` | `api_url_file` |
+| PagerDuty | `routing_key`, `service_key` | `routing_key_file`, `service_key_file` |
+| Opsgenie | `api_key` | `api_key_file` |
+| Microsoft Teams | `webhook_url` | `webhook_url_file` |
+| Discord | `webhook_url` | `webhook_url_file` |
+| Telegram | `bot_token` | `bot_token_file` |
+| Email | `auth_password` | `auth_password_file` |
+| Webhook, and any `http_config` | `authorization.credentials`, `basic_auth.password` | `credentials_file`, `password_file` |
+| Webhook whose URL carries a token | `url` | `url_file` |
+| Amazon SNS | `sigv4.secret_key` | The pod's own AWS identity; see [Cloud provider services](#cloud) |
+
+The render fails on an inline credential in a receiver or in `alerting.global`.
+`alerting.assertNoInlineCredentials: false` turns that off, and SHOULD NOT be set.
+
+### The default Secret
+
+The chart mounts one Secret by default, named `alertmanager-receivers`, at `/etc/alertmanager/secrets/alertmanager-receivers/`.
+Each key in it becomes a file of the same name.
+
+```bash
+kubectl --namespace monitoring create secret generic alertmanager-receivers \
+  --from-file=slack-url=./slack-url.txt \
+  --from-file=pagerduty-key=./pagerduty-key.txt
+```
+
+The Secret MUST be in the namespace the Alertmanager pods run in, which under `split-namespace` is `alertmanager`, not the release namespace.
+It is mounted as optional, so the pods start before it exists.
+Alertmanager reads a `*_file` credential each time it sends, so creating or rotating the Secret takes effect without a
+restart once the kubelet refreshes the mount, typically within a minute.
+
+External Secrets Operator, Vault Agent, SOPS, or a cloud secret store's CSI driver MAY own the Secret instead of `kubectl`.
+The chart consumes it by name and never creates it.
+
+### Further Secrets
+
+Additional Secrets are mounted through `alertmanager.extraSecretMounts`, conventionally under `/etc/alertmanager/secrets/<secret-name>/`.
+
+```yaml
+alertmanager:
+  extraSecretMounts:
+    # Helm replaces lists, so the default entry is restated.
+    - name: alertmanager-receivers
+      secretName: alertmanager-receivers
+      mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+      readOnly: true
+      optional: true
+    - name: pagerduty
+      secretName: pagerduty-routing
+      mountPath: /etc/alertmanager/secrets/pagerduty
+      readOnly: true
+```
+
+Helm replaces a list rather than merging it, so a values file setting `extraSecretMounts` MUST restate the default entry
+if receivers still reference it.
+The render fails when a `*_file` path falls under no mounted volume, which is how a dropped entry shows up.
+Paths under `/etc/ssl/`, the image's own trust store, are exempt.
+
+## Examples
+
+Each example is a complete `alerting` block that renders on its own.
+The default preset, `important`, names the `high`, `normal` and `low` classes, so a receiver meant to catch everything on it serves all three.
+
+### One chat channel
+
+The smallest real configuration: one Slack channel receiving everything, on an evaluation deployment where `notice` is suppressed.
+
+```yaml
+alerting:
+  preset: evaluation
+  receivers:
+    chat:
+      class: normal
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true
+```
+
+On `important` or `critical-infrastructure`, the same receiver needs every class those entries name, for example `class: [high, normal, low]`.
+
+### A pager and a channel
+
+Critical alerts page; everything else goes to a channel and a ticket queue.
+
+```yaml
+alerting:
+  preset: critical-infrastructure
+  receivers:
+    oncall:
+      class: page
+      route:
+        group_wait: 10s
+        repeat_interval: 1h
+      config:
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/alertmanager-receivers/pagerduty-key
+            send_resolved: true
+    platform:
+      class: [high, normal]
+      config:
+        slack_configs:
+          - channel: "#platform-alerts"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true
+    tickets:
+      class: normal
+      config:
+        webhook_configs:
+          - url: https://tickets.example.internal/hooks/alertmanager
+            http_config:
+              authorization:
+                credentials_file: /etc/alertmanager/secrets/alertmanager-receivers/tickets-token
+```
+
+`notice` maps to `normal` here, and two receivers serve `normal`, so a `notice` alert reaches both `platform` and `tickets`.
+The `route` options on `oncall` apply only to its route, so pages are grouped and repeated faster than anything else.
+
+### An incident-management product
+
+Most incident-management products accept Alertmanager's native webhook payload, so a `webhook_configs` entry with a
+bearer token is the whole integration.
+
+```yaml
+alerting:
+  receivers:
+    incidents:
+      class: [high, normal, low]
+      config:
+        webhook_configs:
+          - url: https://incidents.example.com/v2/alert-sources/alertmanager
+            send_resolved: true
+            http_config:
+              authorization:
+                credentials_file: /etc/alertmanager/secrets/alertmanager-receivers/incidents-token
+```
+
+On `critical-infrastructure`, the same receiver would add `page`.
+A product with a dedicated integration in Alertmanager, such as PagerDuty or Opsgenie, SHOULD use it rather than a
+webhook, because the integration maps Alertmanager's grouping and resolution onto the product's own incident lifecycle.
+
+### Email
+
+```yaml
+alerting:
+  global:
+    smtp_smarthost: smtp.example.internal:587
+    smtp_from: alertmanager@example.internal
+    smtp_auth_username: alertmanager
+    smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-receivers/smtp-password
+  receivers:
+    ops-email:
+      class: [high, normal, low]
+      config:
+        email_configs:
+          - to: ops@example.internal
+```
+
+## Cloud provider services {#cloud}
+
+Amazon SNS is the one Alertmanager integration that authenticates with the pod's own cloud identity.
+Every other integration authenticates with a credential read from a Secret, including email sent through Amazon SES or Azure Communication Services.
+GKE Workload Identity and Azure Workload Identity therefore give Alertmanager nothing to use: no integration calls a Google or Azure API.
+
+| Service | Integration | Authenticates with | Workload identity |
+|---|---|---|---|
+| Amazon SNS | `sns_configs` | The pod's AWS identity | IRSA or EKS Pod Identity |
+| Amazon SES | `email_configs`, over SMTP | SES SMTP credentials, derived from an IAM user's key | Not possible: SMTP takes a username and password |
+| Azure Communication Services | `email_configs`, over SMTP | An SMTP username and an Entra application's client secret | Not possible, for the same reason |
+| Microsoft Teams | `msteamsv2_configs` | A Workflows webhook URL, which is itself the credential | Not applicable |
+| Google Cloud | None | No Alertmanager integration calls a Google API | Nothing to authorize |
+
+The default egress policy covers all of them: SNS, STS and the SMTP endpoints are reached on `443`, `587` or `465`.
+
+### Amazon SNS
+
+The pod needs permission to publish to the topic, and nothing else.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:materialize-alerts"
+    }
+  ]
+}
+```
+
+| Also needed when | Permission |
+|---|---|
+| The topic is encrypted with a customer-managed KMS key | `kms:GenerateDataKey*` and `kms:Decrypt` on that key |
+| A receiver sends SMS through `phone_number` | `sns:Publish` on `"*"`, since an SMS has no topic ARN |
+| A receiver sets `sigv4.role_arn` to publish from another account | `sts:AssumeRole` on that role, whose trust policy names this one (and `sigv4.external_id`, if set) |
+
+The identity reaches the pod one of two ways on EKS.
+Both resolve to the ServiceAccount `alertmanager`, in the namespace Alertmanager runs in.
+
+| Mechanism | Setup |
+|---|---|
+| IRSA | A role whose trust policy allows `sts:AssumeRoleWithWebIdentity` from the cluster's OIDC provider for `system:serviceaccount:<namespace>:alertmanager`, and `alertmanager.serviceAccount.annotations` naming it |
+| EKS Pod Identity | A pod identity association for namespace `<namespace>` and ServiceAccount `alertmanager`. No annotation |
+
+The chart's `automountServiceAccountToken: false` does not interfere with IRSA.
+The EKS webhook projects a token volume of its own into the pod, whatever that setting says.
+
+```yaml
+alertmanager:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/materialize-alertmanager
+alerting:
+  receivers:
+    sns:
+      class: [high, normal, low]
+      config:
+        sns_configs:
+          - topic_arn: arn:aws:sns:us-east-1:123456789012:materialize-alerts
+            sigv4:
+              region: us-east-1
+```
+
+With no `access_key` or `secret_key`, Alertmanager uses the AWS SDK's default credential chain, which is what finds the
+IRSA or Pod Identity credentials.
+`sigv4` has no `_file` variant for static keys, so a cluster without workload identity supplies them as
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` through `alertmanager.extraEnv`, from a Secret, rather than inline.
+
+An SNS topic with email subscriptions is also the AWS-native way to send alert email without SMTP credentials.
+
+### Amazon SES
+
+SES accepts mail over SMTP, and SMTP authenticates with a username and password, so workload identity cannot apply.
+The credentials belong to an IAM user whose policy allows `ses:SendRawEmail`, which is the action SES's SMTP interface performs.
+The SMTP password is derived from that user's secret access key; it is not the key itself.
+
+```yaml
+alerting:
+  global:
+    smtp_smarthost: email-smtp.us-east-1.amazonaws.com:587
+    smtp_from: alertmanager@example.com
+    smtp_auth_username: <ses-smtp-username>
+    smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-receivers/ses-smtp-password
+  receivers:
+    ops-email:
+      class: [high, normal, low]
+      config:
+        email_configs:
+          - to: ops@example.com
+```
+
+The `smtp_from` address, or its domain, MUST be a verified SES identity.
+An account still in the SES sandbox can also only send to verified recipients.
+
+### Google Cloud
+
+No Alertmanager integration authenticates to a Google API, so Workload Identity on GKE has nothing to authorize, and
+`alertmanager.serviceAccount` needs no annotation there.
+
+| Destination | Path |
+|---|---|
+| Email | An SMTP provider, with `email_configs` and credentials in a Secret |
+| Google Chat, Pub/Sub, or another Google service | A relay the deployment runs, reached with `webhook_configs`. The relay holds the Google identity and permission, such as `roles/pubsub.publisher`, and Alertmanager authenticates to it with a bearer token from a Secret |
+
+### Azure
+
+No Alertmanager integration authenticates with an Entra token, so Azure Workload Identity has nothing to authorize either.
+
+| Destination | Path |
+|---|---|
+| Email through Azure Communication Services | `email_configs` against `smtp.azurecomm.net:587`. The username is an SMTP Username resource linked to an Entra application; the password is one of that application's client secrets |
+| Microsoft Teams | `msteamsv2_configs` with a Workflows webhook URL in a Secret, read through `webhook_url_file` |
+
+The Entra application behind Azure Communication Services SMTP needs a role on the Communication Services resource.
+The built-in **Communication and Email Service Owner** role works.
+A custom role limited to `Microsoft.Communication/CommunicationServices/Read`,
+`Microsoft.Communication/CommunicationServices/Write` and `Microsoft.Communication/EmailServices/write` is narrower.
+
+```yaml
+alerting:
+  global:
+    smtp_smarthost: smtp.azurecomm.net:587
+    smtp_from: DoNotReply@alerts.example.com
+    smtp_auth_username: materialize-alertmanager
+    smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-receivers/acs-client-secret
+  receivers:
+    ops-email:
+      class: [high, normal, low]
+      config:
+        email_configs:
+          - to: ops@example.com
+```
+
+An Entra client secret expires, so the Secret holding it needs rotating before it does.
+Alertmanager reads it on every send, so rotation needs no restart.
+
+## Extra routes {#extra-routes}
+
+`alerting.routes.extra` takes routes in Alertmanager's own format and places them **ahead of** the preset's severity routes.
+An alert is tested against them first, so a specific match wins and the preset remains the fallback.
+
+```yaml
+alerting:
+  receivers:
+    chat:
+      class: [high, normal, low]
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+    data-team:
+      config:
+        slack_configs:
+          - channel: "#data-platform"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/data-team-slack-url
+  routes:
+    extra:
+      - matchers: ['component="storage"']
+        receiver: data-team
+        continue: true
+```
+
+| `continue` | An alert the route matches |
+|---|---|
+| `false` (default) | Goes to this route's receiver only |
+| `true` | Goes to this route's receiver, then on through the preset as well |
+
+Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
+A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
+
+Storage alerts reach `data-team`, and, because the route continues, also whichever receivers the preset names for their severity.
+
+This is where deployment-specific routing lives, including routing that names a particular customer or environment.
+It belongs in that deployment's own values, reviewed by the people who run it.
+
+## Grouping and timing
+
+`alerting.routes.root` sets grouping and timing for the top-level route, and every route below inherits it.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `group_by` | `[alertname, cluster, namespace]` | One notification per condition per Materialize environment. `cluster` is constant within one Alertmanager; see below |
+| `group_wait` | `30s` | How long a new group waits for more alerts before its first notification |
+| `group_interval` | `5m` | How long before a group's next notification when alerts are added to it |
+| `repeat_interval` | `4h` | How long before an unchanged, still-firing group is notified again |
+
+`cluster` is in the default `group_by` for the incident tools downstream rather than for grouping.
+An Alertmanager group key is built from the route and the group labels, and PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of it.
+Without `cluster`, two clusters sending the same condition to one PagerDuty service open a single incident, and either cluster's resolution closes it.
+Every alert carries `cluster`; see [Alert Architecture](../architecture/#cluster-label).
+
+A receiver's `route` overrides these wherever the preset routes to it.
+The root route's `receiver`, `routes` and `matchers` belong to the chart, and setting them fails the render.
+
+## Notification templates
+
+`alerting.templates` adds Go-template files that every receiver can reference.
+Each key is a file name ending in `.tmpl`.
+
+```yaml
+alerting:
+  templates:
+    materialize.tmpl: |
+      {{ define "materialize.title" }}[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}{{ end }}
+  receivers:
+    chat:
+      class: [high, normal, low]
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            title: '{{ template "materialize.title" . }}'
+```
+
+## Links in notifications {#links}
+
+Alertmanager's default notification templates link to two pages of its own UI: the alert list (`/#/alerts`) and a
+pre-filled silence (`/#/silences/new`).
+It builds both from `alertmanager.baseURL`.
+
+| Deployment | `alertmanager.baseURL` |
+|---|---|
+| Alertmanager is not exposed (default) | Empty. The links name the pod's own address, which is unreachable from outside the cluster and otherwise harmless |
+| Alertmanager is exposed, behind authentication | The address operators reach it at. A sub-path is fine, provided the ingress strips it |
+| Operators work from Grafana | Still empty. Build Grafana links in a template instead, as below |
+
+**`alertmanager.baseURL` MUST NOT point at Grafana.**
+Grafana serves neither of Alertmanager's paths, so every link lands on Grafana's home page, and the render warns when the two share a host.
+
+The chart pins `alertmanager.extraArgs.web.route-prefix` to `/`.
+Without that pin, Alertmanager takes its route prefix from the path of `baseURL`, which would move the API both rulers
+post to, its probes, the reloader and the Grafana datasource.
+The render fails on a `baseURL` with a path once the pin is removed.
+
+### Linking to Grafana instead
+
+Grafana's alerting pages name an Alertmanager by its datasource **name** — `Alertmanager` by default, set by
+`connections.datasources.alertmanager.name` — and take each silence matcher as a `matcher=<label>=<value>` parameter.
+A template builds both links, and a receiver references them.
+
+```yaml
+alerting:
+  templates:
+    grafana-links.tmpl: |
+      {{ define "grafana.alerts.url" -}}
+      https://grafana.example.com/alerting/groups?alertmanager=Alertmanager
+      {{- end }}
+      {{ define "grafana.silence.url" -}}
+      https://grafana.example.com/alerting/silence/new?alertmanager=Alertmanager
+      {{- range .CommonLabels.SortedPairs }}&matcher={{ .Name }}%3D{{ .Value | urlquery }}{{ end }}
+      {{- end }}
+  receivers:
+    chat:
+      class: [high, normal, low]
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            title_link: '{{ template "grafana.alerts.url" . }}'
+            actions:
+              - type: button
+                text: Silence
+                url: '{{ template "grafana.silence.url" . }}'
+```
+
+The host is the one in `grafana.ini.server.root_url`.
+Silences created from that link live in Alertmanager like any other; see [Maintenance Windows](../maintenance/).
+
+## Checking a configuration
+
+The render checks the structure it can see, and fails the install rather than the reload.
+
+| The render fails on | Because Alertmanager would |
+|---|---|
+| A preset class no receiver serves | Route that severity to nobody |
+| A route naming an undefined receiver or time interval | Refuse the configuration |
+| A receiver key that does not end in `_configs` | Refuse the configuration |
+| An inline credential | Accept it, and the credential would be published with the values |
+| A `*_file` path under no mounted volume | Fail every notification through that receiver, at send time |
+| A template whose name does not end in `.tmpl` | Never load it |
+
+Anything inside a receiver body passes through unchecked, and Alertmanager validates it on reload.
+A rejected configuration leaves the previous one running, and `alertmanager_config_last_reload_successful` drops to 0.
+
+`amtool`, shipped in the Alertmanager image, answers where a given alert would be routed and confirms a receiver delivers.
+
+```bash
+kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
+  amtool config routes test --config.file=/etc/alertmanager/config/alertmanager.yml severity=critical
+```
+
+```bash
+kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
+  amtool alert add alertname=ReceiverTest severity=warning \
+    --annotation=summary="Delivery test for the warning class" \
+    --alertmanager.url=http://127.0.0.1:9093
+```
+
+The test alert is delivered after `group_wait`, resolves on its own after `resolve_timeout` (5m by default), and is a
+real notification to whoever the route reaches.
+
+## Another Alertmanager
+
+Nothing on this page applies when the bundled Alertmanager is disabled.
+A deployment that notifies an Alertmanager it already runs configures that Alertmanager's routing itself, and points
+both rulers at it as described in [Configuring](../configuring/#what-an-operator-configures-today).
+
 
 --------------------------------------------------------------------------------
 title: "Maintenance Windows"
 url: https://materializeinc.github.io/materialize-monitoring/alerting/maintenance/index.md
 --------------------------------------------------------------------------------
 
+<!--
+Agent note: the rollout inhibition the design doc settles on keys off `materialize.generations.active > 1`, not the
+hydrating-collection count, which also spikes on an ordinary restart. Document it here when the rule ships; see
+"Maintenance windows do not work when the customer picks the time" in the alerting design doc.
+-->
+
 # Maintenance Windows
+
+This page describes the three ways to keep an alert from notifying anyone while it still fires: a silence, a recurring
+mute window, and an inhibition rule.
+None of them stops an alert from firing or from showing in Alertmanager and Grafana; each stops only the notification.
+
+| Mechanism | Suppresses | Scope | Set with |
+|---|---|---|---|
+| Silence | Alerts matching a set of labels | One period, created by hand | Grafana, or `amtool` |
+| Mute window | Every alert a route delivers | A recurring schedule | `alerting.timeIntervals`, referenced from a route |
+| Inhibition | Alerts matching one set of labels, while an alert matching another fires | For as long as the source alert fires | `alerting.inhibitRules` |
+
+A self-managed deployment upgrades on its own schedule, so a fixed weekly window is either useless or permanently open.
+The intended mechanism for upgrade noise is inhibition on a rollout signal, which closes itself when the rollout ends.
+That rule arrives with the shipped rule set and does not exist yet, so a silence is the mechanism today.
+
+## Silences
+
+A silence matches alerts by label and suppresses their notifications until it expires.
+Silences gossip between the Alertmanager replicas and are kept on each replica's volume, so one created on either
+replica survives the loss of any one of them.
+
+### Through Grafana
+
+The chart provisions an **Alertmanager** datasource in the bundled Grafana.
+Under **Alerting → Silences**, with that datasource selected, a silence is created, extended or expired from the UI.
+Grafana stores nothing itself; the silence lives in Alertmanager.
+
+### Through `amtool`
+
+`amtool` ships in the Alertmanager image and reaches it on localhost.
+
+```bash
+kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
+  amtool silence add namespace=materialize-environment \
+    --duration=2h --author="$USER" --comment="Planned Materialize upgrade" \
+    --alertmanager.url=http://127.0.0.1:9093
+```
+
+```bash
+kubectl --namespace monitoring exec alertmanager-0 -c alertmanager -- \
+  amtool silence query --alertmanager.url=http://127.0.0.1:9093
+```
+
+`amtool silence expire <id>` ends one early.
+
+A silence with no end in sight hides the next incident on the same labels as well as the current one.
+A duration that covers the work and no more, and a comment naming who to ask, keep it from outliving its purpose.
+
+## Recurring mute windows
+
+A mute window stops a route from notifying during a named, recurring schedule.
+It is two parts: a time interval defined once, and a route that references it.
+
+```yaml
+alerting:
+  timeIntervals:
+    - name: change-window
+      time_intervals:
+        - weekdays: [saturday]
+          times:
+            - start_time: "02:00"
+              end_time: "06:00"
+          location: America/New_York
+  receivers:
+    tickets:
+      class: [high, normal, low]
+      route:
+        mute_time_intervals: [change-window]
+      config:
+        webhook_configs:
+          - url: https://tickets.example.internal/hooks/alertmanager
+```
+
+A receiver's `route.mute_time_intervals` mutes it wherever the preset routes to it.
+A route under `alerting.routes.extra` takes `mute_time_intervals` the same way, and `active_time_intervals` inverts it:
+the route notifies only during the interval.
+The render fails when a route names an interval `alerting.timeIntervals` does not define.
+
+A mute window mutes a route, not a condition.
+Everything that route delivers is muted for the window, including an unrelated incident that happens to fall inside it.
+That is the reason inhibition is preferred where a signal exists.
+
+## Inhibition
+
+An inhibition rule suppresses alerts matching the `target_matchers` while an alert matching the `source_matchers` fires,
+optionally only where the listed labels are equal on both.
+
+```yaml
+alerting:
+  inhibitRules:
+    # A warning is noise while the critical form of the same condition fires.
+    - source_matchers: ['severity="critical"']
+      target_matchers: ['severity="warning"']
+      equal: [alertname, namespace]
+```
+
+`alerting.inhibitRules` passes through to Alertmanager verbatim, so any rule its [inhibition
+reference](https://prometheus.io/docs/alerting/latest/configuration/#inhibit_rule) describes works.
+The chart ships no inhibition rules of its own yet.
 
 
 --------------------------------------------------------------------------------
@@ -5448,7 +6486,8 @@ url: https://materializeinc.github.io/materialize-monitoring/operating/productio
 Production guidance for the `materialize-monitoring` stack, organized by backend.
 Every checklist item is tagged with its **primary owner** under the [shared responsibility model](#shared-responsibility-model), and is checked (`[x]`) when the chart already ships it as a default — unchecked items are the deployment-time actions (or still-to-build chart work) that remain.
 
-Today this covers the **collection tier (Alloy)**, **node metrics (node-exporter)**, the bundled **logging backend (Loki)**, the bundled **metrics backend (Thanos)**, and the bundled **Grafana**; an Alertmanager section will follow the same shape.
+This covers the **collection tier (Alloy)**, **node metrics (node-exporter)**, the bundled **logging backend (Loki)**,
+the bundled **metrics backend (Thanos)**, the bundled **Grafana**, and the bundled **Alertmanager**.
 
 Security is organized the other way round.
 The per-component items below carry the security decisions specific to each backend, and [Securing](../securing/) reads across all of them — the trust boundaries, the cluster permissions the stack holds, where credentials live, and what is not yet built.
@@ -5692,7 +6731,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` **Verify coverage rather than assume it** after any node-pool change, the same way as for node-exporter: the agent's pod count should equal `count(kube_node_info)`. Narrowing the toleration list for a pool that cannot absorb the agent is a deliberate blind spot — record which pools those are.
 - [x] `[chart]` `priorityClassName: monitoring-critical` on both roles. The agent is a per-node singleton, so an eviction is a log gap on that node with nothing to cover it; the gateway is the single egress choke point for every signal. See [Scheduling priority](#scheduling-priority).
 - [ ] `[operator]` Persist the agent's file **positions** and journal cursor (hostPath) so a restart resumes where it left off instead of re-tailing (duplicate lines) or skipping (gaps).
-- [ ] `[consumer]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
+- [ ] `[consumer]` Set `clusterName` (Terraform: `cluster_name`) so every line carries a stable `cluster` label when several clusters share a log store.
 
 ### Security & meta-monitoring
 
@@ -6488,6 +7527,96 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [State and persistence](../../dashboards/grafana/architecture/#state-and-persistence) — the PostgreSQL wiring in depth.
 - [Grafana configuration reference](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) (official) — every `grafana.ini` key.
 
+## Alertmanager
+
+For the architecture these items configure, see [Alert Architecture](../../alerting/architecture/).
+Routing and receivers are covered in [Alert Channels](../../alerting/channels/).
+
+Alertmanager is the one component in this stack whose failure is silent by construction.
+A notifier that is down, partitioned, or misconfigured produces no alert about itself, and the absence of a page reads
+the same as the absence of a problem.
+So the defaults target surviving a bad day rather than minimal footprint, and the validators concentrate on the configurations that fail quietly.
+
+| | Default | Production |
+|---|---|---|
+| Replicas | 2, gossiping, one per zone | 2 |
+| State | A 4Gi volume per replica, replicated by gossip | Unchanged |
+| Receivers | None; every alert reaches `mzmon-null` | At least one receiver per class the chosen preset names |
+| Credentials | A mounted, optional `alertmanager-receivers` Secret | That Secret, provisioned by the secret-management tooling already in use |
+| Reachability | `ClusterIP`, and Grafana's Alertmanager datasource | Unchanged, or an authenticated ingress with `baseURL` set |
+
+**The one production step the chart cannot take is configuring a receiver.**
+Everything else on this list ships as a default or is checked at render time.
+
+### Checklist
+
+#### 1. Availability
+
+- [x] `[chart]` **Two replicas by default**, gossiping over `9094`. A single notifier is lost to an ordinary node drain and holds the only copy of every silence. A validator warns on one replica.
+- [x] `[chart]` **Both rulers notify every replica**, through DNS discovery of the headless Service rather than the load-balanced one. Gossip replicates silences and the notification log, not alerts, so a replica a ruler never reached cannot notify when its peer is lost. See [Why the rulers address every replica](../../alerting/architecture/#every-replica).
+- [x] `[chart]` **PodDisruptionBudget** `maxUnavailable: 1`, matching Loki, Thanos and Grafana. A validator warns on several replicas with no budget.
+- [x] `[chart]` **Hard zone spread, soft host spread**, so two replicas are never one notifier to a zone outage. No `minDomains`, so single-zone clusters schedule; no `matchLabelKeys`, which would let the one-to-two upgrade place both replicas in one zone. A validator warns on several replicas with no spread or anti-affinity.
+- [ ] `[consumer]` On a cluster whose nodes carry **no zone label**, apply `no-zone-spread` or set `min_zones = 0`. The zone rule otherwise has no domain to place into, and both replicas stay `Pending`.
+- [x] `[chart]` **Readiness on `/-/ready`, liveness on `/-/healthy`**, rather than the subchart's `/`, which serves the UI. A replica joins the mesh and pulls its peer's state before it serves, so a rollout replacing one replica at a time loses no silences.
+- [x] `[chart]` `priorityClassName: monitoring-scalable`: a surviving replica absorbs the loss of the other. See [Scheduling priority](#scheduling-priority).
+
+#### 2. State & storage
+
+- [x] `[chart]` **A 4Gi volume per replica**, for silences and the notification log. Gossip covers losing one replica; the volume covers losing both at once. 4Gi is the smallest disk GCP Hyperdisk and Azure managed disks provision, not what Alertmanager needs.
+- [ ] `[consumer]` Use a StorageClass with **`volumeBindingMode: WaitForFirstConsumer`** — the default for every managed-cloud CSI class. Under `Immediate` both volumes can be provisioned in one zone before scheduling, and the hard zone rule then leaves the second replica `Pending`. On GKE, the legacy `standard` class is `Immediate`; `standard-rwo`, `premium-rwo` and the Hyperdisk classes are not.
+- [ ] `[operator]` Treat **`persistence.enabled` and `persistence.size` as immutable.** Both render into `volumeClaimTemplates`, which Kubernetes refuses to change, so an upgrade changing either fails until the StatefulSet is deleted with `--cascade=orphan`.
+- [ ] `[operator]` A replica whose zone is lost stays `Pending` until the zone returns, because its volume cannot attach elsewhere. The other replica keeps notifying. Deleting the stranded replica's PVC, then its pod, lets it reschedule into a healthy zone and resync from its peer; its own copy of the state is discarded, and its peer's is complete.
+
+#### 3. Routing & receivers
+
+- [ ] `[operator]` **Configure at least one receiver.** Until one exists every alert reaches `mzmon-null`, and the render warns. See [Alert Channels](../../alerting/channels/).
+- [ ] `[operator]` **Choose `alerting.preset` deliberately.** `important` is the default because it errs in the least damaging direction; a deployment for which Materialize is critical infrastructure wants `critical-infrastructure`, which routes `critical` to `page`. A preset of your own is one more key under `alerting.presets`.
+- [x] `[chart]` A render-time check **errors** when the selected preset names a class no receiver serves, on a route naming an undefined receiver or time interval, and on a receiver key that is not an Alertmanager integration.
+- [x] `[chart]` **`amtool check-config`** runs in CI over representative configurations, in the Alertmanager image the chart pins, so the tree the chart generates is one Alertmanager accepts.
+- [x] `[chart]` Routing changes **reload in place**: the config-reloader sidecar POSTs `/-/reload` when the rendered Secret changes. A configuration Alertmanager rejects leaves the previous one running. A validator warns when the sidecar is turned off.
+- [x] `[chart]` **Every alert carries `cluster`**, stamped by both rulers from `clusterName`, and the default `group_by` includes it. PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of the Alertmanager group key, so without it two clusters sending one condition to one service share an incident and resolve each other's. The render fails on an empty name, or one Loki's configuration cannot hold unquoted. See [The `cluster` label](../../alerting/architecture/#cluster-label).
+- [ ] `[consumer]` **Give every cluster its own name** — `cluster_name` on Terraform, `clusterName` on Helm. The default, `default`, is present on every alert and distinguishes nothing once two clusters share a channel or an incident tool.
+- [ ] `[operator]` **Test a receiver end to end** after configuring it, with `amtool alert add` from inside a pod. The render proves the configuration is well-formed, not that a vendor accepts the notification.
+
+#### 4. Credentials
+
+- [x] `[chart]` A render-time check **errors on an inline credential** in a receiver or in `alerting.global`. `alerting.assertNoInlineCredentials` turns it off; leave it on.
+- [x] `[chart]` A render-time check **errors on a `*_file` path under no mounted volume**, which would otherwise fail every notification through that receiver at send time.
+- [ ] `[consumer]` **Provision the `alertmanager-receivers` Secret** in the namespace the Alertmanager pods run in, with External Secrets Operator, Vault Agent, SOPS, or a CSI driver. The chart consumes it by name and never creates it. It is mounted as optional, so a missing Secret shows up as failed notifications, not as a pod that will not start.
+- [ ] `[consumer]` **Publish to Amazon SNS with workload identity**, not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish` on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic). SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret. See [Cloud provider services](../../alerting/channels/#cloud).
+- [ ] `[operator]` Rotating a credential needs **no restart**: Alertmanager reads a `*_file` credential on each send, and the kubelet refreshes the mount within about a minute.
+
+#### 5. Hardening
+
+- [x] `[chart]` **Read-only root filesystem**, all capabilities dropped, no privilege escalation, `seccompProfile: RuntimeDefault`, non-root UID 65534 — on both the Alertmanager and the config-reloader containers. Alertmanager writes only to its volume. A validator warns when the root filesystem is made writable.
+- [x] `[chart]` **No ServiceAccount token mounted.** Alertmanager reads nothing from the Kubernetes API.
+- [x] `[chart]` `cluster.label` on every gossip message, so a peer from another Alertmanager cluster that inherits a recycled pod IP is rejected rather than merged.
+- [x] `[chart]` Resource **requests and a memory limit** on both containers (10m / 64Mi, 256Mi limit for Alertmanager), and no CPU limit, following the rest of the chart. A quiet install idles near 15Mi. The memory limit is the one setting that can take both replicas down together during an alert storm, so it is set well above the request.
+
+#### 6. Network & reachability
+
+- [x] `[chart]` **NetworkPolicy** on by default: `9093` and `9094` (TCP **and** UDP) open to the release namespace, egress open to notification providers on `443`, `587` and `465`. A validator warns when a narrowed policy closes the mesh port on either transport, which duplicates every notification rather than failing. See [Network policies](#network-policies).
+- [ ] `[operator]` **Do not expose Alertmanager without authentication in front of it.** It has none of its own, and its API creates silences. Grafana's Alertmanager datasource gives the alert list and the silence editor behind Grafana's authentication.
+- [ ] `[operator]` Leave **`alertmanager.baseURL`** empty unless Alertmanager itself is exposed, and then set it to that address. **Never point it at Grafana**: Alertmanager builds links into its own UI from it (`/#/alerts`, `/#/silences/new`), which Grafana does not serve, and the render warns when the two share a host. To link notifications to Grafana, build the links in a template; see [Links in notifications](../../alerting/channels/#links).
+- [x] `[chart]` `extraArgs.web.route-prefix: /` keeps every endpoint at the root, so a `baseURL` with a path does not move the API both rulers post to, the probes, the reloader or the datasource. The render fails when a `baseURL` has a path and the pin has been removed.
+- [x] `[chart]` Resource names are **pinned** by `alertmanager.fullnameOverride: alertmanager`, like Loki, Thanos and Grafana, so the rulers address `alertmanager-headless` whatever the release is called. The render warns when the rulers' addresses and the pinned name disagree.
+- [ ] `[operator]` Under `split-namespace`, the profile opens Alertmanager to the ruler and Grafana namespaces. A receiver listening on a port other than `443`, `587` or `465` needs it added to `networkPolicies.alertmanager.egress.external.ports`.
+
+#### 7. Meta-monitoring
+
+- [x] `[chart]` **ServiceMonitor** for Alertmanager's own metrics, scraping each replica once through the ClusterIP Service.
+- [x] `[chart]` **Alertmanager datasource** in the bundled Grafana, for the alert list and silences.
+- [ ] `[chart]` **No meta-alerts yet** on `alertmanager_cluster_members`, `alertmanager_config_last_reload_successful` or `alertmanager_notifications_failed_total`, and no deadman's switch. They arrive with the rule set. Until then, a notifier that cannot deliver is visible on a dashboard and pages nobody.
+- [ ] `[operator]` **Route a deadman's switch to something outside the cluster** once it ships. Stopped evaluation looks like nothing being wrong, and only an external heartbeat monitor can tell the two apart.
+
+### See also
+
+- [Alert Architecture](../../alerting/architecture/) — the notifier's shape, state, and failure modes.
+- [Alert Channels](../../alerting/channels/) — receivers, classes, presets, and credentials.
+- [Maintenance Windows](../../alerting/maintenance/) — silences, mute windows, and inhibition.
+- [Alertmanager configuration reference](https://prometheus.io/docs/alerting/latest/configuration/) (official) — every
+  receiver integration and route option.
+
 
 --------------------------------------------------------------------------------
 title: "o11y Troubleshooting"
@@ -7102,6 +8231,19 @@ The Compactor's scratch is not authoritative at all — the bucket is, and compa
 
 If a Compactor later gets wedged in an unavailable zone by the volume it just gained, that is recoverable by hand; see [The Thanos Compactor is stuck in a zone](../o11y-troubleshooting/#the-thanos-compactor-is-stuck-in-a-zone) for the ordering, which matters because two Compactors running at once is the one thing that corrupts data.
 
+## Alertmanager: two replicas, renamed
+
+The release that made Alertmanager highly available ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) also pinned its resource
+names to `alertmanager`, which were previously derived from the release name as `<release>-alertmanager`.
+`helm upgrade` applies it without error.
+
+| Change | What to expect |
+|---|---|
+| Resources renamed to `alertmanager` | Helm deletes the old StatefulSet and creates a new one, whose two replicas start together on new volumes. The old volume is left orphaned: `storage-<release>-alertmanager-0`, safe to delete. Nothing routed alerts anywhere before this release, so there is no configuration to carry over; an install with silences worth keeping can move them with `amtool silence query --output=json` and `amtool silence import`. |
+| Hard zone spread | A cluster whose nodes carry no zone label needs `no-zone-spread` or `min_zones = 0` first, or a replica stays `Pending`. |
+| Both rulers retarget `alertmanager-headless` | The Loki ruler's address lives in Loki's shared configuration, so every Loki pod rolls once. |
+| Both rulers stamp `cluster` on alerts | Read from a new `ruler-env` ConfigMap in each ruler's namespace; both rulers roll once. Set `clusterName` (Terraform: `cluster_name`) first if it is still `default`; it replaces setting `pipeline.env.CLUSTER_NAME` directly. |
+
 ## Ingester rollouts: duration and deploy timeouts
 
 Any change to the ingester pod spec — image, resources, or scaling the replica count — rolls the ingester StatefulSet.
@@ -7345,6 +8487,7 @@ Every workload now ships a NetworkPolicy, on by default.
 ### The stack → outside
 
 - [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
+- [ ] `[consumer]` Give Alertmanager a **workload identity** for Amazon SNS rather than static keys, scoped to `sns:Publish` on its topics. It is the only notification integration a cloud identity can authorize; the rest read a credential from the `alertmanager-receivers` Secret. See [Alert Channels > Cloud provider services](../../alerting/channels/#cloud).
 - [ ] `[operator]` Narrow the `0.0.0.0/0` egress rules where your infrastructure gives you something tighter — a VPC endpoint's CIDR, or Cilium's `toFQDNs`. The chart cannot derive the API server's or the object store's address, so it ships the broad form and says so.
 - [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/#11-security--credentials) covers the symptom in detail.
 
@@ -7381,6 +8524,12 @@ Two rendering traps are worth knowing, because both put a plaintext credential s
 - **`grafana.ini` renders into a ConfigMap.** A secret written there is plaintext in the release manifest, in `helm get values`, and in whatever Git repo holds your values. Use `$__file{/path}` against a mounted Secret, or `$__env{VAR}`. The subchart's `assertNoLeakedSecrets` check fails the render on a known-sensitive key set to a literal — leave it on. See [Grafana > Authentication](../../dashboards/grafana/auth/#client-secrets-never-go-in-grafanaini).
 - **Loki's config defaults to a ConfigMap too.** With static S3 credentials the rendered config carries `secret_access_key` verbatim, so `loki.loki.configStorageType: Secret` is load-bearing whenever you are not using workload identity. The Terraform module sets it automatically on that path; a hand-written values file has to. Thanos needs no equivalent — its objstore document already renders into a Secret.
 
+Alertmanager's receivers are not a trap of this kind, because the chart refuses an inline credential in them.
+It renders Alertmanager's configuration from `alerting` and fails the render on a credential written inline — a Slack
+webhook URL, a PagerDuty routing key, an SMTP password — unless `alerting.assertNoInlineCredentials` is turned off.
+Receivers read their credentials through `_file` fields from a mounted Secret instead; see [Alert Channels >
+Credentials](../../alerting/channels/#credentials).
+
 - [ ] `[consumer]` Provision every Secret in the namespace the **pod** runs in, which under [`split-namespace`](../production-best-practices/#namespace-layout) is not the release namespace.
 - [ ] `[operator]` **Rotate the Grafana admin password** after an identity provider is configured, or disable the account. It is a generated password in a Secret, and it bypasses SSO.
 - [ ] `[operator]` Prefer file-mounted credential material over environment variables for anything that renews. An env-var PEM is read once at process start, so renewal does not take effect until every pod restarts.
@@ -7403,7 +8552,7 @@ Two consequences follow from those deviations, and the second is the one that su
 2. **The release namespace cannot run under Pod Security Admission `baseline` or `restricted` as shipped.** Baseline forbids `hostPath` volumes and host namespaces, and the two DaemonSets need both, so the namespace has to be labelled `privileged`. Nothing else in the stack needs it.
 
 - [ ] `[operator]` **Give the DaemonSets their own namespace if you want PSA above `privileged` for the rest.** [`split-namespace`](../production-best-practices/#namespace-layout) is the mechanism; the backends, Grafana and the gateway are all `baseline`-clean today. Note that support for that layout is best-effort, and that it changes the workload-identity subject and the NetworkPolicy selectors along with it.
-- [ ] `[operator]` **`seccompProfile` is not set on every workload** — Alloy, Thanos, Alertmanager and grafana-operator leave it unset, so they inherit the container runtime's default rather than declaring `RuntimeDefault`. Set it through each subchart's `podSecurityContext` if you are targeting `restricted`.
+- [ ] `[operator]` **`seccompProfile` is not set on every workload** — Alloy, Thanos and grafana-operator leave it unset, so they inherit the container runtime's default rather than declaring `RuntimeDefault`. Set it through each subchart's `podSecurityContext` if you are targeting `restricted`.
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
 ## Supply chain
@@ -8705,6 +9854,24 @@ Configuration for the main chart
       <td class="helm-value-desc">Namespace override for default workloads.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">clusterName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"default"</code></td>
+      <td class="helm-value-desc">Name of this Kubernetes cluster, stamped as `cluster` on every log line, metric sample and alert.
+
+One value, read everywhere the stack labels a signal: the Alloy agent and
+gateway (through `pipeline.env.CLUSTER_NAME`, which defaults to it), the
+gateway's remote-write `external_labels`, and both rulers' alerts (through the
+`ruler-env` ConfigMap). Terraform's `cluster_name` sets it.
+
+Give each cluster its own. The label is what tells clusters apart once they
+share a log or metric store, a notification channel or an incident tool, and
+the default distinguishes nothing. Letters, digits, `.`, `_` and `-`, starting
+with a letter or digit: it is substituted unquoted into Loki's configuration
+and into an Alloy template.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -9445,7 +10612,7 @@ point rather than a researched one.
     "extraIpAddresses": [],
     "secretName": "",
     "services": [
-      "mzmon-alertmanager"
+      "alertmanager"
     ]
   },
   "alloy-agent": {
@@ -9939,8 +11106,8 @@ release instances.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.env<wbr>.CLUSTER_NAME</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"default"</code></td>
-      <td class="helm-value-desc">Name of the cluster to discriminate workloads from different sources.
+      <td class="helm-value-default"><code>"{{ include \"mzmon.clusterName\" $ }}"</code></td>
+      <td class="helm-value-desc">The cluster name the agent and gateway stamp as `cluster`. Set `clusterName` instead. Defaults to `clusterName`, so logs and metrics agree with alerts. A literal here overrides it for Alloy alone, and the render warns that the two differ.
 </td>
     </tr>
     <tr>
@@ -11032,7 +12199,7 @@ Configuration for alerts
       <td class="helm-value-key">config<wbr>.alerts<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Alertmanager routing and templates.
+      <td class="helm-value-desc">Read by no template. Alertmanager routing is configured under `alerting`. Kept rather than removed so that a values file setting it still renders; removing it is tracked with the other `config.rules.*` keys in the alerting design doc.
 </td>
     </tr>
   </tbody>
@@ -11565,6 +12732,276 @@ because what it stored is the literal placeholder text.
 []</pre>
 </td>
       <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.enabled</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>follows `alertmanager.enabled</code></td>
+      <td class="helm-value-desc">Provision an Alertmanager datasource, which gives Grafana the alert list and the silence editor for the bundled Alertmanager.
+Unset follows whether the bundled Alertmanager is enabled. Grafana reads
+and writes Alertmanager's state here and keeps none of its own, so this
+is not Grafana-managed alerting. Silences created through it gossip to
+every replica like any other.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.name</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"Alertmanager"</code></td>
+      <td class="helm-value-desc">Datasource name, as shown in Grafana.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.uid</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"mzmon-alertmanager"</code></td>
+      <td class="helm-value-desc">Stable datasource UID.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.url</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"{{ include \"mzmon.alertmanager.url\" $ }}"</code></td>
+      <td class="helm-value-desc">Alertmanager endpoint. Rendered with `tpl`. The load-balanced Service is right for a reader: silences and the notification log are gossiped, and both rulers send every alert to every replica, so any replica answers with the same state.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.jsonData</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`implementation: prometheus`, `handleGrafanaManagedAlerts: false`).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">connections<wbr>.datasources<wbr>.alertmanager<wbr>.valuesFrom</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+#### Alert routing
+
+Where alerts go: receivers, severity presets, and extra routes.
+
+Rendered into the bundled Alertmanager's configuration by
+`templates/alertmanager-config.yaml`. A rule says how bad a condition is with
+its `severity` label; this block says what each severity means for this
+deployment and who hears about it.
+[Alert Channels](https://materializeinc.github.io/materialize-monitoring/alerting/channels/)
+walks through it.
+
+```yaml
+alerting:
+  preset: important
+  receivers:
+    oncall:
+      class: page
+      config:
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/alertmanager-receivers/pagerduty-key
+    platform:
+      class: [high, normal, low]
+      config:
+        slack_configs:
+          - channel: "#platform-alerts"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true
+```
+
+Nothing here applies when the bundled Alertmanager is disabled. A deployment
+notifying its own Alertmanager configures that one's routing itself.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">alerting<wbr>.preset</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"important"</code></td>
+      <td class="helm-value-desc">Which entry of `presets` routes alerts: `critical-infrastructure`, `important`, `evaluation`, or one of your own.
+
+The three shipped presets say how much this deployment depends on
+Materialize. `important` is the default because it is the assumption that is
+wrong in the least damaging direction: a critical-infrastructure deployment
+left on it gets a notification where it wanted a page, while an evaluation
+deployment that pages on `critical` gets an operator who turns alerting off.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.presets</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "critical-infrastructure": {
+    "critical": "page",
+    "notice": "normal",
+    "warning": "high"
+  },
+  "evaluation": {
+    "critical": "normal",
+    "notice": "suppressed",
+    "warning": "normal"
+  },
+  "important": {
+    "critical": "high",
+    "notice": "low",
+    "warning": "normal"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Severity-to-class mappings, one per preset.
+
+A class names a kind of delivery — `page`, `high`, `normal`, `low` — rather
+than a receiver. Each receiver declares the classes it serves, so one preset
+works for a deployment with a pager and one with a single chat channel.
+`suppressed` is reserved: the alert still fires and still shows in
+Alertmanager and Grafana, and no notification is sent.
+
+| `severity` | `critical-infrastructure` | `important` | `evaluation` |
+| --- | --- | --- | --- |
+| `critical` | `page` | `high` | `normal` |
+| `warning` | `high` | `normal` | `normal` |
+| `notice` | `normal` | `low` | `suppressed` |
+
+This is a map, so one cell can be changed without restating the rest, a
+preset can carry a severity of its own, and a preset of your own is one more
+key. Class names are free-form. The render fails when the selected preset
+names a class no receiver serves, since an unroutable severity is otherwise
+discovered during the incident it should have reported.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.unknownSeverity</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"warning"</code></td>
+      <td class="helm-value-desc">Severity an alert is routed as when its `severity` label is missing or is not in the preset. An alert that matches no severity route still reaches somebody, rather than the null receiver.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.receivers</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Notification receivers, keyed by name. Empty means no alert reaches anybody.
+
+| Key | Meaning |
+| --- | --- |
+| `class` | The class, or list of classes, this receiver serves. Optional: a receiver with none is reachable only from `routes.extra`. |
+| `config` | An Alertmanager receiver, verbatim, without `name`: `slack_configs`, `pagerduty_configs`, `webhook_configs`, `email_configs`, `msteamsv2_configs`, and every other integration Alertmanager supports. |
+| `route` | Route options — `group_wait`, `group_interval`, `repeat_interval`, `group_by`, `mute_time_intervals`, `active_time_intervals` — applied wherever the preset routes to this receiver. |
+
+The chart does not model receiver types, so every integration Alertmanager
+documents works as written in its
+[configuration reference](https://prometheus.io/docs/alerting/latest/configuration/#receiver-integration-settings).
+Credentials are referenced through a `*_file` field against a mounted
+Secret; see `alertmanager.extraSecretMounts`.
+
+Several receivers can serve one class, and every one of them is notified.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.routes<wbr>.root</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "group_by": [
+    "alertname",
+    "cluster",
+    "namespace"
+  ],
+  "group_interval": "5m",
+  "group_wait": "30s",
+  "repeat_interval": "4h"
+}</pre>
+</td>
+      <td class="helm-value-desc">The top-level route's grouping and timing. Every route below inherits them.
+
+`group_by: [alertname, cluster, namespace]` sends one notification per
+condition per Materialize environment. `cluster` is constant within one
+Alertmanager, and is there for the incident tools downstream: PagerDuty's
+`dedup_key` and Opsgenie's `alias` are hashes of the group key, so without it
+two clusters sending the same condition open one incident, and either
+cluster's resolution closes it. `receiver`, `routes` and `matchers` are the
+chart's and are rejected here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.routes<wbr>.extra</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Routes placed ahead of the preset's severity routes, in Alertmanager's route format.
+
+An alert is tested against these first, so a specific match wins and the
+preset remains the fallback. A route that should also reach the preset sets
+`continue: true`. Each `receiver` has to name one under `receivers`.
+
+```yaml
+routes:
+  extra:
+    - matchers: ['component="storage"', 'severity="critical"']
+      receiver: data-team
+```
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.inhibitRules</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager `inhibit_rules`, verbatim.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.timeIntervals</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager `time_intervals`, verbatim. Routes reference them by name from `mute_time_intervals` and `active_time_intervals`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.templates</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.global</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager's `global` block, verbatim: `resolve_timeout`, SMTP defaults, a shared `http_config`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.assertNoInlineCredentials</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Fail the render when a receiver or `global` carries an inline credential.
+
+Leave this on. Values files are committed, diffed, pasted into support
+threads and rendered into Terraform plans, so a token written into one is a
+token published. Nearly every Alertmanager credential field has a `_file`
+variant — `api_url_file`, `routing_key_file`, `credentials_file`,
+`password_file` — that reads it from a mounted Secret instead.
 </td>
     </tr>
   </tbody>
@@ -12693,7 +14130,20 @@ Upstream reference:
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "alertmanager_url": "http://{{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093",
+  "alert_relabel_configs": [
+    {
+      "action": "replace",
+      "regex": "",
+      "replacement": "${CLUSTER_NAME}",
+      "source_labels": [
+        "cluster"
+      ],
+      "target_label": "cluster"
+    }
+  ],
+  "alertmanager_refresh_interval": "30s",
+  "alertmanager_url": "http://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}",
+  "enable_alertmanager_discovery": true,
   "enable_alertmanager_v2": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
@@ -13251,6 +14701,25 @@ https://grafana.com/docs/loki/latest/get-started/components/
 }</pre>
 </td>
       <td class="helm-value-desc">Resources for the ruler.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.ruler<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "CLUSTER_NAME",
+    "valueFrom": {
+      "configMapKeyRef": {
+        "key": "CLUSTER_NAME",
+        "name": "ruler-env"
+      }
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">The cluster name, for `rulerConfig.alert_relabel_configs` to stamp on alerts. Read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`; Loki's `-config.expand-env` substitutes it.
 </td>
     </tr>
     <tr>
@@ -14220,7 +15689,7 @@ validator warns when the two disagree.
       <td class="helm-value-default"><pre>
 {
   "alertmanagers": {
-    "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+    "config": "alertmanagers:\n  - static_configs:\n      - dns+alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
   },
   "autoImportPrometheusRules": {
     "enabled": true,
@@ -14240,7 +15709,19 @@ validator warns when the two disagree.
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
+    "--label=cluster=\"$(CLUSTER_NAME)\""
+  ],
+  "extraEnv": [
+    {
+      "name": "CLUSTER_NAME",
+      "valueFrom": {
+        "configMapKeyRef": {
+          "key": "CLUSTER_NAME",
+          "name": "ruler-env"
+        }
+      }
+    }
   ],
   "extraVolumeMounts": [
     {
@@ -14359,15 +15840,21 @@ correct under `split-namespace`.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "config": "alertmanagers:\n  - static_configs:\n      - {{ include \"mzmon.alertmanager.releaseFullname\" . }}.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
+  "config": "alertmanagers:\n  - static_configs:\n      - dns+alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9093\n    scheme: http\n    api_version: v2\n    timeout: 10s\n"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager routing, in Thanos's own format.
 
-`tpl`-evaluated by the subchart, so `.Release.*` resolves. Alertmanager is
-the one subchart with no `fullnameOverride`, so its Service name is derived
-from the release name — see the `alertmanager` section. `split-namespace`
-overrides this because it moves Alertmanager out of the release namespace.
+`tpl`-evaluated by the subchart, so `.Release.*` resolves.
+`alertmanager-headless` follows `alertmanager.fullnameOverride`, and the
+render warns when the two disagree. `split-namespace` overrides this
+because it moves Alertmanager out of the release namespace.
+
+**`dns+` against the headless Service**, so the Ruler resolves one target
+per ready replica and sends every alert to each of them. Alertmanager
+gossips silences and the notification log, not alerts, and a replica that
+never received an alert cannot notify for it when its peer is down. The
+Ruler re-resolves every `--alertmanagers.sd-dns-interval` (30s).
 </td>
     </tr>
     <tr>
@@ -14455,7 +15942,8 @@ advice applies: keep it within one minor of your API server.
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
+  "--label=cluster=\"$(CLUSTER_NAME)\""
 ]</pre>
 </td>
       <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
@@ -14478,6 +15966,32 @@ destination except Thanos.
 The residue is that the Ruler still starts a block shipper against the
 object store. With an agent WAL and no blocks in the data directory it
 scans every 30s and uploads nothing.
+
+**`--label=cluster` is load-bearing too.** It is an external label, which
+the Ruler adds to every alert it sends that does not already carry
+`cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
+Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
+chart renders from `clusterName`. Both flags have to survive
+an override of this list; the render warns when either goes missing.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraEnv</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "CLUSTER_NAME",
+    "valueFrom": {
+      "configMapKeyRef": {
+        "key": "CLUSTER_NAME",
+        "name": "ruler-env"
+      }
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">The cluster name, for `--label=cluster` in `extraArgs`.
 </td>
     </tr>
     <tr>
@@ -15061,13 +16575,55 @@ a pinned Grafana.
 
 #### Alertmanager
 
-Bundled Alertmanager for routing alerts emitted by the rule packages.
+Bundled Alertmanager: the one notification surface for both rulers.
+
+This block shapes the workload — replicas, gossip, storage, scheduling and
+hardening. **Where alerts go is configured under `alerting`**, which the chart
+renders into this Alertmanager's configuration. See
+[Alert Architecture](https://materializeinc.github.io/materialize-monitoring/alerting/architecture/)
+for how the two fit together.
+
+Upstream reference:
+   * https://github.com/prometheus-community/helm-charts/blob/main/charts/alertmanager/values.yaml
 
 <table class="helm-values">
   <thead>
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"alertmanager"</code></td>
+      <td class="helm-value-desc">Resource names, pinned rather than derived from the release name.
+
+Matches Loki, Thanos, Grafana and Alloy, whose names are pinned the same
+way. Everything that addresses Alertmanager — both rulers, the Grafana
+datasource, the certificate SANs — can then name it literally, and the
+subchart's rule of collapsing `<release>-alertmanager` to `<release>` when the
+release name contains `alertmanager` no longer matters. Changing it renames
+the StatefulSet, whose volumes do not follow; see
+[Upgrading](https://materializeinc.github.io/materialize-monitoring/operating/upgrading/).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "quay.io/prometheus/alertmanager",
+  "tag": "v0.34.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Alertmanager on its own cadence, with Alertmanager's own
+release notes, instead of only when a chart release happens to carry a new
+`appVersion`. Grafana is pinned the same way. This chart's `repository`
+carries the registry host; there is no separate `registry` key. The
+profiles under `profiles/registry/` repoint `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alertmanager<wbr>.priorityClassName</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
@@ -15075,10 +16631,460 @@ Bundled Alertmanager for routing alerts emitted by the rule packages.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alertmanager<wbr>.replicaCount</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replica count. Two replicas gossiping is the default, not a hardening step.
+
+A single notifier is lost to an ordinary node drain, holds the only copy of
+every silence, and cannot report its own absence. Two replicas gossip
+silences and the notification log to each other and deduplicate, so each
+notification goes out once and either replica can send it.
+
+Two rather than three. Gossip tolerates a partition by notifying from both
+sides rather than by electing a leader, so a third replica adds little
+availability, and it adds a third copy of every notification whenever gossip
+is broken.
+
+Above one, the subchart passes `--cluster.peer` for every ordinal and opens
+the mesh ports on the headless Service. **Both rulers address that headless
+Service**, not the load-balanced one, so that every replica receives every
+alert: gossip replicates silences and the notification log, not alerts. See
+`thanos.ruler.alertmanagers` and `loki.loki.rulerConfig`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.extraArgs</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "cluster.label": "materialize-monitoring",
+  "config.file": "/etc/alertmanager/config/alertmanager.yml",
+  "data.retention": "120h",
+  "web.route-prefix": "/"
+}</pre>
+</td>
+      <td class="helm-value-desc">Flags passed to Alertmanager as `--<key>=<value>`.
+
+| Flag | Why it is set |
+| --- | --- |
+| `config.file` | Points at the configuration the chart renders from `alerting`. **Load-bearing**: without it Alertmanager starts on the image's built-in example, whose one receiver posts to localhost. |
+| `cluster.label` | Stamped on every gossip message, so a peer from another Alertmanager cluster that inherits a recycled pod IP is rejected rather than merged. |
+| `data.retention` | How long silences and notification-log entries are kept after they expire. The upstream default, set here so that it is visible. |
+| `web.route-prefix` | Keeps every endpoint at `/`. Unset, Alertmanager takes its route prefix from the path of `baseURL`, which would move the API the rulers post to, the probes, the reload endpoint and the datasource. |
+
+Changing `cluster.label` on a running cluster splits the peers until the
+rollout finishes, and every notification in that window goes out twice. Set
+it once. This is a map, so adding a flag here keeps the others.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.config</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": false
+}</pre>
+</td>
+      <td class="helm-value-desc">Use the configuration the chart renders, not the subchart's.
+
+The subchart renders `config` into a ConfigMap with `toYaml` and no `tpl`, so
+nothing in it can be computed. The severity presets, the receiver classes and
+the render-time checks all have to be, so the chart renders the configuration
+itself from `alerting`, as the `alertmanager-config` Secret, and mounts it
+below. Turning this back on fails the render: the subchart would mount its
+ConfigMap over `/etc/alertmanager`, the directory that holds the chart's.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.extraVolumes</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "name": "mzmon-config",
+    "secret": {
+      "secretName": "alertmanager-config"
+    }
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Mount the configuration the chart renders. Load-bearing, with `extraArgs.config.file`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.extraSecretMounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "mountPath": "/etc/alertmanager/secrets/alertmanager-receivers",
+    "name": "alertmanager-receivers",
+    "optional": true,
+    "readOnly": true,
+    "secretName": "alertmanager-receivers"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Secrets holding receiver credentials, for `*_file` fields to read.
+
+Receiver credentials are referenced by path, never inlined; see
+`alerting.assertNoInlineCredentials`. One Secret is mounted by default:
+create `alertmanager-receivers` in the Alertmanager namespace, and reference
+each of its keys as `/etc/alertmanager/secrets/alertmanager-receivers/<key>`.
+
+It is `optional`, so the pods start before it exists. Alertmanager reads a
+`*_file` credential each time it sends, so creating or rotating the Secret
+needs no restart. The kubelet refreshes the mounted copy within about a minute.
+
+To mount further Secrets, add entries under `/etc/alertmanager/secrets/`.
+**This is a list, and Helm replaces lists**, so restate the default entry
+when adding one. The render fails when a receiver names a `*_file` path that
+no mount covers.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.configmapReload</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "extraArgs": {
+    "watched-dir": "/etc/alertmanager/config"
+  },
+  "extraVolumeMounts": [
+    {
+      "mountPath": "/etc/alertmanager/config",
+      "name": "mzmon-config",
+      "readOnly": true
+    }
+  ],
+  "image": {
+    "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
+    "tag": "v0.93.1"
+  },
+  "resources": {
+    "limits": {
+      "memory": "64Mi"
+    },
+    "requests": {
+      "cpu": "5m",
+      "memory": "16Mi"
+    }
+  },
+  "securityContext": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {
+      "drop": [
+        "ALL"
+      ]
+    },
+    "readOnlyRootFilesystem": true,
+    "runAsGroup": 65534,
+    "runAsNonRoot": true,
+    "runAsUser": 65534
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Reload the configuration in place when `alerting` changes.
+
+The subchart rolls its pods on a checksum of the ConfigMap it renders, and it
+no longer renders one, so without this sidecar a routing change would reach
+the running pods only at their next restart. The sidecar watches the mounted
+directory and POSTs `/-/reload`. A configuration Alertmanager rejects leaves
+the previous one running, and `alertmanager_config_last_reload_successful`
+drops to 0.
+
+The image is pinned here, like Alertmanager's, so Renovate tracks it
+directly. Every profile under `profiles/registry/` repoints it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.podAnnotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "kubectl.kubernetes.io/default-container": "alertmanager"
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod annotations. The subchart puts the reloader sidecar first, so this makes `kubectl logs` and `kubectl exec` land in Alertmanager rather than in the sidecar.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "fsGroup": 65534,
+  "fsGroupChangePolicy": "OnRootMismatch",
+  "runAsGroup": 65534,
+  "runAsNonRoot": true,
+  "runAsUser": 65534,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context. `fsGroupChangePolicy: OnRootMismatch` skips the recursive `chown` of the volume on every start once its ownership is already right.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.securityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true,
+  "runAsGroup": 65534,
+  "runAsNonRoot": true,
+  "runAsUser": 65534
+}</pre>
+</td>
+      <td class="helm-value-desc">Container security context.
+
+A read-only root filesystem is safe: Alertmanager writes only under
+`--storage.path`, which is the volume, and reads its configuration and
+credentials from mounts. The subchart ships `readOnlyRootFilesystem` commented
+out, and a validator warns when it is turned off.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.automountServiceAccountToken</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Mount no ServiceAccount token. Alertmanager reads nothing from the Kubernetes API. Cloud identity does not need it: the EKS webhook behind IRSA projects a token volume of its own, whatever this says.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.serviceAccount<wbr>.annotations</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Annotations on Alertmanager's ServiceAccount (`alertmanager`): the IRSA role for `sns_configs`.
+
+Amazon SNS is the one Alertmanager integration that authenticates with the
+pod's own cloud identity; everything else, including email through SES or
+Azure Communication Services, takes a credential from a Secret. On EKS,
+`eks.amazonaws.com/role-arn` names a role with `sns:Publish` on the topic,
+trusting `system:serviceaccount:<namespace>:alertmanager`. EKS Pod Identity
+needs no annotation. See
+[Alert Channels](https://materializeinc.github.io/materialize-monitoring/alerting/channels/#cloud).
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.livenessProbe</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "httpGet": {
+    "path": "/-/healthy",
+    "port": "http"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Liveness on `/-/healthy` rather than the subchart's `/`, which serves the UI.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.readinessProbe</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "httpGet": {
+    "path": "/-/ready",
+    "port": "http"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Readiness on `/-/ready`.
+
+A starting replica joins the mesh and pulls its peer's silences and
+notification log before it serves, so a Ready replica already holds the
+replicated state. A StatefulSet rollout replaces one replica at a time and
+waits on this, which is what keeps a rolling update from losing silences.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "256Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests and limits.
+
+Alertmanager holds active alerts, silences and the notification log in
+memory, and a quiet install idles near 15Mi. Two replicas carry the alert
+volume a Materialize deployment produces, so there is no sizing profile.
+No CPU limit, following the rest of the chart. The memory limit is the one
+setting that can take both replicas down together during an alert storm, so
+it is set well above the request; raise it for very large alert or silence
+populations rather than lowering it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.podDisruptionBudget</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "maxUnavailable": 1
+}</pre>
+</td>
+      <td class="helm-value-desc">PodDisruptionBudget, `maxUnavailable: 1`, matching Loki, Thanos and Grafana. A drain evicts one replica at a time, and the other keeps notifying.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.topologySpreadConstraints</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "alertmanager"
+      }
+    },
+    "maxSkew": 1,
+    "nodeTaintsPolicy": "Honor",
+    "topologyKey": "topology.kubernetes.io/zone",
+    "whenUnsatisfiable": "DoNotSchedule"
+  },
+  {
+    "labelSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "alertmanager"
+      }
+    },
+    "maxSkew": 1,
+    "topologyKey": "kubernetes.io/hostname",
+    "whenUnsatisfiable": "ScheduleAnyway"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Topology spread: hard across zones, soft across hosts.
+
+Two replicas in one zone are one notifier as far as a zone outage is
+concerned, and a zone outage is the failure a second replica exists to
+survive. So the zone rule is `DoNotSchedule`, like Thanos Receive's. A replica
+that cannot satisfy it goes Pending, which is the signal the cluster
+autoscaler reads to add a node in the deficient zone.
+
+**Each replica's volume is zonal, and that is compatible with a hard rule only
+under `volumeBindingMode: WaitForFirstConsumer`**, the default for every
+managed-cloud CSI class. The volume is then created where the scheduler
+placed the pod, so each replica lands in its own zone and stays there. Under
+`Immediate` binding both volumes can be provisioned in one zone before
+scheduling, and the second replica stays Pending while the first keeps
+notifying.
+
+Two deliberate differences from Receive:
+
+* **No `minDomains`.** A single-zone cluster schedules both replicas, so only
+  a cluster whose nodes carry no zone label needs `no-zone-spread` (or
+  `min_zones = 0` on Terraform).
+* **No `matchLabelKeys: [controller-revision-hash]`.** It would let a new
+  replica ignore an old-revision peer when it is first scheduled — which is
+  what an upgrade from one replica to two does — and land in that peer's zone.
+  When the peer is then replaced, its volume pins it to the same zone, the
+  skew is 2, and it stays Pending permanently. A StatefulSet replaces a pod
+  before scheduling its successor, so the rollout deadlock `matchLabelKeys`
+  prevents on a Deployment does not arise here.
+
+The selector names `app.kubernetes.io/name` alone because the subchart
+renders this through `toYaml`, not `tpl`, so the release name is not
+available. Spread is namespace-scoped, and this chart assumes one
+Alertmanager per namespace.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.persistence<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Keep a volume per replica for silences and the notification log.
+
+Gossip replicates both between the replicas, so the volume is what survives
+losing **both at once** — an uninstall and reinstall, a namespace-wide
+restart, a cluster-wide outage. Silences are human-created and exist nowhere
+else. The notification log is what stops the first evaluation after such an
+event from re-sending every notification that already went out.
+
+**This and `size` are immutable after install.** They render into the
+StatefulSet's `volumeClaimTemplates`, which Kubernetes refuses to change, so
+an upgrade that changes either fails. Changing them means deleting the
+StatefulSet with `--cascade=orphan` first.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alertmanager<wbr>.persistence<wbr>.size</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"4Gi"</code></td>
-      <td class="helm-value-desc">Volume for silences and the notification log. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.
+      <td class="helm-value-desc">Volume size. Sized by cloud disk minimums, not by Alertmanager, which needs kilobytes. The subchart default of 50Mi is below the 4 GiB floor on GCP Hyperdisk and Azure managed disks, so provisioning fails there.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.serviceMonitor</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "relabelings": [
+    {
+      "action": "drop",
+      "regex": ".*-headless",
+      "sourceLabels": [
+        "__meta_kubernetes_service_name"
+      ]
+    }
+  ]
+}</pre>
+</td>
+      <td class="helm-value-desc">Scrape Alertmanager's own metrics through the Alloy gateway.
+
+Delivery failures (`alertmanager_notifications_failed_total`), mesh membership
+(`alertmanager_cluster_members`) and reload health
+(`alertmanager_config_last_reload_successful`) are observable only with this on.
+
+Both Services the subchart renders carry identical labels, so the monitor
+selects the headless one too and would scrape every replica twice. The
+relabeling drops the headless Service's targets.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alertmanager<wbr>.baseURL</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Alertmanager's own external URL (`--web.external-url`). Leave it empty unless Alertmanager itself is exposed.
+
+The default notification templates build two kinds of link from it: the
+alert list (`<baseURL>/#/alerts`) and a pre-filled silence
+(`<baseURL>/#/silences/new`). Both are paths in Alertmanager's own UI.
+
+**Do not point it at Grafana.** Grafana serves neither path, so every link
+lands on Grafana's home page. Grafana's equivalents live under
+`<grafana>/alerting/` and name the Alertmanager datasource by its *name*
+(`connections.datasources.alertmanager.name`), for example
+`/alerting/silence/new?alertmanager=Alertmanager&matcher=alertname%3DFoo`.
+A notification template in `alerting.templates` is the place to build them;
+see Alert Channels.
+
+Unset, the links name the pod's own address, which is unreachable from
+outside the cluster but harmless. Set this when Alertmanager is exposed,
+behind authentication, to the address operators reach it at. A path is
+fine: `extraArgs.web.route-prefix` keeps the endpoints at `/`, so an
+ingress serving a sub-path strips the prefix before forwarding.
 </td>
     </tr>
   </tbody>
@@ -15638,7 +17644,8 @@ Metric relabeling splits across three places; putting a rule in the wrong one is
 `inputMetricProcessor` is intentionally a **rule-free passthrough** today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
 It's where the metric `filter`/`transform` work (cardinality tiers) will land as genuinely cross-cutting rules come up.
 
-Note: identity is stamped as a `cluster` `external_labels` entry on every `remote_write` destination, sourced from `env.CLUSTER_NAME` (default `default`).
+Note: identity is stamped as a `cluster` `external_labels` entry on every `remote_write` destination, sourced from
+`env.CLUSTER_NAME`, which the chart fills from `clusterName` (default `default`).
 A destination's own `externalLabels` map adds to it, and setting `cluster` there replaces the environment-derived value for that destination alone.
 
 ### Node-label curation (cAdvisor)
@@ -15722,6 +17729,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `.gitattributes`: Git LFS for the subchart tarballs, plus `linguist-generated` on the docsite's duplicate artifacts (see [Two copies, one review](../dashboard/generating/#two-copies-one-review))
   * `bin/`: bash dev/CI entrypoints (flat; no subdirectories)
     * `check-lfs.sh`: verify/repair Git LFS state
+    * `check-alertmanager-config.sh`: render the chart's Alertmanager configuration per scenario and check it with `amtool check-config` (`make alertmanager-config-check`)
     * `extract-crd-schemas.sh`: pull CRD schemas out of upstream charts
     * `fetch-grafana-schemas.sh`: vendor the cog-generated Grafana JSON Schema documents from grafana-foundation-sdk
     * `gen-grafana-models.sh`: generate the Rust Grafana models from those vendored schemas (typify)
@@ -15749,10 +17757,10 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         * `scrapers/`: `classic/` (raw scrape config), `prometheus-operator/` (PodMonitors + ScrapeConfig), `gmp/` (GCP `PodMonitoring`)
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
-      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki `GrafanaDatasource`s), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`)
+      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`)
       * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
-      * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`)
+      * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect
     * `materialize-monitoring-dashboards/`: the Grafana dashboards, as a chart and release of their own — though not a *component* of their own: it belongs to the existing `dashboards` component, whose version stream it shares with `packages/dashboards/` and `packages/queries/`. Split out because Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew — the umbrella chart's `helm upgrade` began failing outright. It creates `GrafanaManifest` resources and nothing else; the `Grafana` instance, the datasources and the folders stay in the umbrella chart, and this one references them through values it cannot discover (`grafana.instanceSelector`, `grafana.folderUids`)
       * `pre-rendered/dashboards/`: `grafana/` and `datadog/`, written by `mz-monitoring-build gen-dashboards`
       * `templates/`: `dashboards.yaml` (the manifests) and `validate.yaml`
@@ -16490,11 +18498,12 @@ the two cannot drift. Set it only to pin a chart version different from the modu
     <tr>
       <td class="tf-var-name"><a name="cluster_name" href="#cluster_name">cluster_<wbr>name</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
-sample the stack collects.
+      <td class="tf-var-desc">Name of the Kubernetes cluster, stamped as the `cluster` label on every log line, metric
+sample and alert the stack produces. Written to the chart's `clusterName`.
 
-Set it whenever more than one cluster writes to the same log or metrics store — the label is
-the only thing that tells their data apart. Null leaves the chart's default, `default`.
+Set it whenever more than one cluster writes to the same log or metrics store, or notifies the
+same channel or incident tool — the label is the only thing that tells them apart. Null leaves
+the chart's default, `default`.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
@@ -16910,8 +18919,8 @@ the cluster reduces that to "has any certificate".
       <td class="tf-var-name"><a name="min_zones" href="#min_zones">min_<wbr>zones</a></td>
         <td class="tf-var-type"><code>number</code></td>
       <td class="tf-var-desc">Number of availability zones the node pool can actually launch in, used to adjust the hard zone
-spread on Thanos Receive and Loki's ingesters. Null leaves the chart's defaults alone, which
-assume two or more zones and is correct for every managed cloud default.
+spread on Thanos Receive, Loki's ingesters and Alertmanager. Null leaves the chart's defaults
+alone, which assume two or more zones and is correct for every managed cloud default.
 
 Set this when that assumption does not hold, because the chart's constraints fail closed rather
 than degrading:
@@ -16926,7 +18935,8 @@ than degrading:
 Leaving this null on a cluster with fewer than two zones leaves those pods **Pending forever**
 rather than unbalanced: below `minDomains` Kubernetes treats the global minimum as 0, so one
 zone holding every replica computes a skew equal to the replica count. One zone is exactly as
-broken as none.
+broken as none. Alertmanager's rule sets no `minDomains`, so it survives one zone and breaks
+only at zero.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
@@ -19686,7 +21696,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Logs & events** — the platform's own logs, the node journal, cluster-wide events | **Yes, shipped.** `infra-logs` (`mz-mon-infra-logs`) exists with **Logs**, **Nodes** and **Events** tabs. Adds the two axes `env-logs` structurally cannot offer: `component`, which splits `loki` into eight processes and `thanos` into three, and the **node journal**, whose lines carry no namespace and so are excluded from every `env-*` selector by construction. Shares its event queries and variable names with `env-logs`; differs in where the namespace picker opens and in carrying an **Exclude Materialize** switch, on by default — the Materialize namespaces are about half of a week's log volume and `materialize-environment` alone out-logs every other namespace, so left in they make the volume panels a picture of Materialize rather than of the platform underneath it. Verified against a live install | OO-M2 | ✅ |
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M2 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
-| **Meta-monitoring** — every component of this stack | **Loki shipped; the rest outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (no Prometheus, no Thanos Ruler, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Outstanding:** Grafana (523 families), Thanos (220) and Alloy (35); **Alertmanager exposes 0** — it is deployed and not scraped | OO-M3 | 🔨 |
+| **Meta-monitoring** — every component of this stack | **Loki shipped; the rest outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (no Prometheus, no Thanos Ruler, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Outstanding:** Grafana (523 families), Thanos (220), Alloy (35) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M2 | ✅ |
 | **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents), and **nothing in the registry reads any of them**. **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics. Now designed rather than only scoped: see [External dependencies](#external-dependencies) | OO-M2 | 🔨 |
@@ -19706,7 +21716,7 @@ Found while surveying a live install; each is a scrape-side gap in *this* repo r
 | Gap | Blocks | Notes |
 |---|---|---|
 | ✅ **kube-state-metrics label collision** — fixed, and now asserted | *was:* Pods, Nodes, and five shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fixed by setting `honorLabels: true` on both ServiceMonitor endpoints (the vendored 8.4.0 subchart defaults them to `false`). Now asserted by `kube_state::labels_are_honored` and `kube_state::pods_are_distinguishable` in the e2e suite, which between them catch the collision's signature (`exported_*` labels) and its consequence (`kube_pod_info` collapsing to one identity). Verified against a live install *before* the fix: 15 families carrying `exported_*`, and 117 `kube_pod_info` series reporting a single pod. The three `materialize.kubernetes.*` readiness queries are `canonical` on the strength of that coverage |
-| Alertmanager is not scraped | Meta-monitoring | Deployed by the chart and emitting nothing to Thanos. The smallest of these and the most embarrassing, since it is our own component |
+| ✅ **Alertmanager is not scraped** — fixed | *was:* Meta-monitoring | The subchart's own ServiceMonitor, on since [DEP-226](https://linear.app/materializeinc/issue/DEP-226). Both Services it renders carry identical labels, so the monitor drops the headless one's targets; without that every replica is scraped twice. Verified on a live install: one `up` series per replica, 145 families, `alertmanager_cluster_members` reading 2 |
 | No cluster-autoscaler / Karpenter scrape | Autoscaling | Distro-specific: GKE's autoscaler, Karpenter and Cluster Autoscaler each expose different endpoints, so this is a per-flavor scrape source rather than one config |
 | ✅ **No CNI / NetworkPolicy metrics** — fixed for the two CNIs with monitors | *was:* Networking (policy half) | Two PodMonitors ship, for the AWS VPC CNI and for Cilium, plus a kube-proxy ScrapeConfig. All three are **self-disabling**, which is what makes it safe to deploy every one to every cluster: the pod selector matches nothing on a cluster running another vendor, and the CNI endpoints name *container ports* rather than numbers, so a vendor built without metrics yields no target instead of a scrape failing on every node forever. Each stamps a `network_component` label, which is the dashboard's whole detection mechanism. Measured rather than assumed: EKS `aws-node` serves `awscni_*` on the `metrics` port and `network_policy_drop_count_total` on the nodeagent's, both verified landing in Thanos; GKE Dataplane V2 serves nothing on `:9962` and only Hubble's own health counters on `:9965`. **kube-proxy is collected too**, from the gateway pipeline rather than from its ScrapeConfig CR: the gateway has no `prometheus.operator.scrapeconfigs` component, so the CR is a Prometheus-consumer artifact exactly as the cAdvisor one is, and the pipeline carries the same relabeling. Discovery is a server-side pod selector, so a cluster running no kube-proxy returns no targets rather than a refused connection on every node. **Still uncovered:** Calico and Azure NPM, which no monitor ships for |
 | Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not. Nothing in this chart deploys one — the [external-dependency design](../design-docs/20260920-external-dependency-monitoring/) makes it a chart component with a documented grant |
@@ -19918,22 +21928,24 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
-| Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 |
-| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ⬜ |
+| Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
+| Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
 | Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ⬜ |
 | Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | ⬜ |
 | Alert and recording-rule names added to the committed surface | OO-M2 | ⬜ |
 | Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | ⬜ |
-| Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | ⬜ |
-| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ⬜ (**HA moves into the default** rather than staying a hardening step; see below) |
+| Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | 🔨 (the scrape is on; the switch and the meta-alerts are rules, and wait for the rule set) |
+| Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ✅ (two gossiping replicas by default, PDB of one, hard zone and soft host spread, read-only root filesystem, no ServiceAccount token, requests and a memory limit, health-endpoint probes, `cluster.label`. Both rulers now address the headless Service by DNS discovery, because gossip replicates silences and the notification log but **not alerts**, and a replica a ruler never reached cannot notify when its peer is lost. The storage question the ticket deferred is settled: the 4Gi volume stays, because gossip covers losing one replica and only the volume covers losing both, and `volumeClaimTemplates` are immutable so removing it would fail every upgrade. Verified on a live GKE install, including the upgrade landing the replicas in separate zones. Resource names are pinned to `alertmanager`, so that upgrade replaces the StatefulSet rather than scaling it. See [Alert Architecture](../../../alerting/architecture/)) |
 
-Alertmanager is bundled and the rules exist, but nothing routes them anywhere.
-Until that lands the alerting story is "we ship rules", which is half a feature.
+Alertmanager is bundled, highly available, and routes whatever reaches it; what is missing is the rules.
+Until they land the alerting story is "we route alerts you write", which is half a feature.
 
 **The evaluators are now connected.**
 A default install runs the Thanos ruler stateless against Thanos Query, runs the Loki ruler against Loki, and points both at the bundled Alertmanager.
 Both remote-write their results to the alloy-gateway, which is what puts `ALERTS` in front of the destination fan-out that [call-home](../design-docs/20260917-call-home-self-managed/) needs.
-What is still missing is the rules themselves: `pre-rendered/rules/` is empty, `gen-rules` does not exist, and the Alertmanager the rulers notify has no routing tree, so a firing alert reaches a null receiver.
+What is still missing is the rules themselves: `pre-rendered/rules/` is empty and `gen-rules` does not exist.
+The Alertmanager the rulers notify now routes by severity and preset to whatever receivers an operator configures,
+and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
 
 Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
@@ -19945,7 +21957,7 @@ Each is worked around in `values.yaml` with the reasoning recorded at the line.
 | The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
 | The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
 
-The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and are best worked together.
+The two Alertmanager items split along "reaching a human" versus "surviving a bad day", and were worked together.
 Adoption was previously the higher-value half, on the reasoning that until routing exists nobody is paged.
 **The design doc revises that: HA belongs in the default configuration rather than in a later hardening step.**
 A single-replica notifier is lost to an ordinary node drain, it holds the only copy of every silence, and it cannot report its own absence — and shipping routing on top of it is shipping the failure the workstream exists to prevent.
@@ -19967,7 +21979,7 @@ A CockroachDB rule is for a deployment running CockroachDB, and a Cilium rule is
 Rules should declare capability tags (`crdb-dedicated`, `cilium`, `aws`, …) describing what they require, with applicability checked at build time against the extracted metric set, so that no rule is deleted and selection follows what a deployment contains rather than who operates it.
 
 **Severity is a property of the alert and urgency is a property of the deployment**, and conflating them is what makes one rule set unable to serve both a customer for whom Materialize is critical infrastructure and one who is evaluating it.
-The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment, with a severity-to-receiver-class matrix between them.
+The proposal keeps `severity` on the rule and puts a three-way `alerting.criticality` key on the deployment (built as `alerting.preset`), with a severity-to-receiver-class matrix between them.
 
 **Alert names become a committed surface, which closes an open naming decision.**
 [Stamping 1.0](#versioning-changelog-and-releases) records the alert and recording-rule naming decision as free only until the alerting path ships.
@@ -20012,7 +22024,12 @@ Scheduling and storage class are profiles rather than a `global.*` block so the 
 
 Both scanners are scoped to findings this repository can act on, and both report everything else rather than gating on it.
 The upstream population is large and moves on someone else's release schedule, so a gate that included it would turn CI red on a dashboard change — which is how scanners get switched off.
-Three follow-ups came out of building them: the suppressions are per-check rather than per-resource, so they also mask a finding if one of our own templates grows it ([DEP-249](https://linear.app/materializeinc/issue/DEP-249)); `readOnlyRootFilesystem` on grafana and alertmanager is probably fixable through values rather than permanently baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250)); and SARIF findings point at temp render paths, so code scanning cannot map them back to a source line ([DEP-251](https://linear.app/materializeinc/issue/DEP-251)).
+Three follow-ups came out of building them: the suppressions are per-check rather than per-resource, so they also mask a
+finding if one of our own templates grows it ([DEP-249](https://linear.app/materializeinc/issue/DEP-249));
+`readOnlyRootFilesystem` on grafana and alertmanager is probably fixable through values rather than permanently
+baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250); the Alertmanager half landed with DEP-226, so the
+KSV-0014 baseline entry now covers Grafana alone); and SARIF findings point at temp render paths, so code scanning
+cannot map them back to a source line ([DEP-251](https://linear.app/materializeinc/issue/DEP-251)).
 
 The E2E suite subsumes what was previously tracked as a synthetic-data smoke test ([DEP-119](https://linear.app/materializeinc/issue/DEP-119), now closed as a duplicate).
 It asserts **query success everywhere and non-empty results only on self-monitoring series** — Materialize scrapers stay off, since those are integration-tested downstream, so `env-top` assertions are structural while the stack's own telemetry provides real data.
@@ -20262,7 +22279,10 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
 - [Alerting in Self-Managed: Evaluation, Routing, and Customer Extension](../design-docs/20260917-alerting-self-managed/) is written and ready. ✅
   It proposes two evaluators and one notifier, a severity-to-urgency matrix selected by a single values key, a capability-tagged rule set checked against the metric registry, and four additive extension points so that customer-specific alerting never enters this repository.
   The [Rules & alerts](#rules--alerts) section above is the roadmap position it establishes, including that `thanos.ruler.enabled` is the switch that makes alerting exist at all, that Alertmanager HA moves into the default, and that alert names become a committed surface.
-- The three **customer-facing** alerting pages under `alerting/` are owed alongside it: `configuring.md` is currently the word `TODO`, and `channels.md` and `maintenance.md` are bare headings. ⬜
+- The **customer-facing** alerting pages under `alerting/` are written: [Alert
+  Architecture](../../../alerting/architecture/), [Configuring](../../../alerting/configuring/), [Alert
+  Channels](../../../alerting/channels/) and [Maintenance Windows](../../../alerting/maintenance/). ✅
+  Maintenance Windows covers silences, mute windows and inhibition; the rollout-signal inhibition it will lead with arrives with the rules.
   A **label contract** page is owed with them — every label a shipped rule emits and what it means — because a customer routing in their own Alertmanager has nothing to route on without it.
 - [Secret Filtering: A Last Line of Defense for Stored and Egressed Logs](../design-docs/20260924-log-secret-filtering/) is written and
   ready, with its implementation tracked as [DEP-306](https://linear.app/materializeinc/issue/DEP-306). ✅
@@ -24274,6 +26294,11 @@ This is the requirement that a Materialize deployment can be critical infrastruc
 
 **Decision: rules carry `severity`; a single values key selects the severity-to-route mapping.**
 
+> [!NOTE]
+>   **As built, the key is `alerting.preset`, selecting an entry of `alerting.presets`**, rather than `alerting.criticality` and `alerting.matrix`.
+>   The entries are user-extensible, and a deployment's own entry named after its criticality reads oddly.
+>   The three shipped presets are still the three criticalities below, and this section's reasoning is unchanged.
+
 The rules already carry `severity`, with three values.
 Their meanings should be written down, because a label with an intuitive name and no definition drifts within two releases.
 
@@ -24352,6 +26377,14 @@ alerting:
     - name: mzmon-alerting
 ```
 
+> [!NOTE]
+>   **As built, `alerting.secrets` does not exist.**
+>   The Secret mounts are a subchart value, `alertmanager.extraSecretMounts`, which the subchart renders with `toYaml`
+>   and which the umbrella therefore cannot compute from anything else.
+>   The chart instead mounts one conventional, optional Secret by default — `alertmanager-receivers`, at
+>   `/etc/alertmanager/secrets/alertmanager-receivers/` — and further Secrets are added to that list directly.
+>   A render-time check fails any `*_file` path that no mount covers, which recovers the safety the key was meant to provide.
+
 Three properties make this more than a passthrough.
 
 **`class` is the chart's one addition**, and it is what attaches a receiver to the severity matrix.
@@ -24363,6 +26396,9 @@ A class with no receiver MUST be a render-time error rather than a silent drop, 
 
 **The chart still validates.**
 A `config` block is checked with `amtool check-config` at render, so a malformed receiver fails the install rather than the reload.
+As built, Helm cannot run `amtool`, so this splits in two: render-time validators check the structure the chart can see
+— integration keys, receiver and time-interval references, credential fields and paths — and `amtool check-config` runs
+in CI over representative renders, in the Alertmanager image the chart pins.
 
 ### Credentials are referenced, never inlined
 
@@ -24400,6 +26436,12 @@ In `external` mode the chart configures both rulers to notify the given endpoint
 What the chart still owes that operator is the **label contract**: which labels the rules emit, what values they take, and what they mean, so that routing can be written against them.
 That contract MUST be documented and MUST move only under the deprecation cycle, because an external routing tree is written against it and cannot be migrated by this chart.
 That contract is a documentation deliverable and is listed as one.
+
+As built, the contract has one label every alert carries whatever its rule says: `cluster`, stamped by both rulers from `clusterName`.
+It is filled only where a rule's result lacks it, and the default `group_by` includes it, because an Alertmanager group
+key feeds PagerDuty's `dedup_key` and Opsgenie's `alias`.
+Without it, two clusters routing one condition to one service share an incident, and an external Alertmanager shared by
+several clusters merges their identical label sets into one alert.
 
 ## Choosing what ships enabled
 
@@ -24719,21 +26761,21 @@ Work in this repository, roughly in dependency order.
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
-| Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | The routing half of the feature |
-| `amtool check-config` over the rendered configuration | The chart validates a passthrough it does not model |
-| `alerting.secrets` mounting, and the `_file` credential convention | Credentials are referenced, never inlined |
-| Alertmanager at two replicas with gossip, and a PDB of one | HA is the default rather than a hardening profile |
-| Alertmanager ServiceMonitor | Two of three meta-alerting rows depend on it, and it is an existing recorded gap |
+| Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
+| `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |
+| `alerting.secrets` mounting, and the `_file` credential convention | ✅ done, through `alertmanager.extraSecretMounts` rather than `alerting.secrets` — see the note under [Notification channels](#notification-channels). Inline credentials and unmounted `*_file` paths both fail the render |
+| Alertmanager at two replicas with gossip, and a PDB of one | ✅ done ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)), with hard zone spread. Both rulers address the headless Service by DNS discovery so every replica receives every alert — gossip does not replicate alerts, which this table did not anticipate |
+| Alertmanager ServiceMonitor | ✅ done |
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | An alert with no stated action is half an alert |
 | Alert names added to the committed-surface check | Three extension points name alerts |
 | `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | The extension surface |
-| `alerting.routes.extra`, spliced ahead of the matrix | The extension point whose absence forces forks |
+| `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |
 | Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
-| Alertmanager datasource in Grafana, and an alerts dashboard | Alert state has no view today |
+| Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
 | Terraform module surface for receivers and criticality, with `sensitive` credential variables | Where the Secret-creation ergonomics belong |
 | Remove `config.rules.*` / `config.alerts.enabled` or make them load-bearing | Four values keys currently read by nothing |
@@ -24748,13 +26790,21 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **An alert reaches Alertmanager.** Install a rule that fires on `vector(1)`, assert it appears in Alertmanager's API within the evaluation and group-wait interval. This is the end-to-end assertion the whole page exists for.
 - **The routing matrix routes.** For each of the three criticality settings, assert that a synthetic alert at each severity lands on the expected receiver, read from Alertmanager's own routing-tree API rather than from the rendered config. Rendering the tree correctly and Alertmanager interpreting it as intended are different claims.
 - **Extra routes take precedence.** A route added through `alerting.routes.extra` wins over the matrix for a matching alert, and a non-matching alert still reaches the matrix. Ordering bugs here are invisible until the wrong team is paged.
-- **An unroutable class fails the render.** A receiver set missing a class that the matrix references is a render-time error, tested as one.
-- **A malformed receiver fails the render.** `amtool check-config` over the rendered configuration, asserted on a deliberately broken passthrough. The chart does not model these blocks, so this is the only thing standing between a typo and a failed reload in a running Alertmanager.
-- **Gossip converges and deduplicates.** Create a silence on one replica and assert it is visible on the other; fire an alert and assert one notification rather than two. The second half is the check that a two-replica default does not double every page.
+- ✅ **An unroutable class fails the render.** A receiver set missing a class that the matrix references is a render-time error, tested as one.
+- ✅ **A malformed receiver fails the render.** As built, in two halves: validators at render for the structure the chart
+  sees, and `amtool check-config` in CI (`make alertmanager-config-check`). `amtool check-config` over the rendered
+  configuration, asserted on a deliberately broken passthrough. The chart does not model these blocks, so this is the
+  only thing standing between a typo and a failed reload in a running Alertmanager.
+- 🔨 **Gossip converges and deduplicates.** Convergence is asserted by `alertmanager::mesh_converged` in the E2E suite,
+  and `alertmanager::thanos_ruler_reaches_every_replica` asserts the prerequisite this list missed: that each ruler
+  reaches every replica. Deduplication and silence replication were verified by hand on a live install, not automated.
+  Create a silence on one replica and assert it is visible on the other; fire an alert and assert one notification
+  rather than two. The second half is the check that a two-replica default does not double every page.
 - **Losing a replica keeps notifying.** Delete one Alertmanager pod and assert an alert still reaches its receiver, which is the node-drain case the HA default exists for.
 - **Every shipped alert has a reachable runbook.** Assert each `runbook_url` resolves to a page that exists in the built docsite, in CI without a cluster. A dead runbook link is discovered at 03:00 otherwise.
 - **Capability-tagged rules stay out until selected.** Assert a `crdb-dedicated` rule is absent by default and present once the tag is selected, since a tag that fails open is worse than no tag.
-- **Credentials do not appear in the render.** Assert no receiver credential is present in any rendered object except by Secret reference, which is the mechanical half of the inlining rule.
+- ✅ **Credentials do not appear in the render.** Assert no receiver credential is present in any rendered object except
+  by Secret reference, which is the mechanical half of the inlining rule.
 - **`ALERTS` arrives through the gateway.** Assert the series is queryable in Thanos *and* visible to a gateway destination, because landing in Thanos by a second path would satisfy a naive version of this test.
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
 - **Silences suppress notification and not state.** Silence an alert, assert no notification and a firing `ALERTS` series. This is the over-reporting behaviour the call-home level inherits, and pinning it keeps it a known property rather than a surprise.
@@ -24765,13 +26815,18 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 ## Documentation to update
 
 - **`alerting/configuring.md`** — 🔨 written, covering the two evaluators, what each is wired to, and what an operator sets today. Still owed once routing exists: the severity table, the criticality matrix, and the receiver map. This is the page an operator reads once and configures from.
-- **`alerting/channels.md`** — currently a heading. The `class` concept, the Secret-mounting and `_file` convention, one worked example, and a link to Alertmanager's own receiver reference for everything else. This page documents a pattern rather than a schema, deliberately.
-- **`alerting/maintenance.md`** — currently a heading. Inhibition on the rollout signal first, mute timings second, and why that order.
+- **`alerting/channels.md`** — ✅ written: the `class` concept, the Secret-mounting and `_file` convention, worked
+  examples, and a link to Alertmanager's own receiver reference for everything else. It documents a pattern rather than a schema, deliberately.
+- **`alerting/maintenance.md`** — 🔨 written for silences, mute windows and inhibition. Inhibition on the rollout signal
+  leads it once that rule exists.
+- **`alerting/architecture.md`** — ✅ written, as the section's landing page: the notifier's shape, why the rulers
+  address every replica, state, and failure modes.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.
 - **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
 - **`operating/runbooks/`** — a new section, one page per shipped alert, and the convention that a stable runbook graduates to the product documentation.
-- **`operating/production-best-practices.md`** — alerting is a shared-responsibility item and has no entry. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
-- **`architecture.md`** — the alerting path is absent from the architecture page.
+- **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
+  for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
+- **`architecture.md`** — ✅ the Alertmanager entry describes the notifier and points at the alerting section.
 - **`reference/internal/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
 - **`reference/internal/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
 - **A migration note for Cloud** — Cloud adopts these rules when it adopts this stack's Alertmanager. The note that is owed is what changes for the definitions in the process, since per-region duplication, the `tier`/`team` label vocabulary, and the stack-type exclusions have no equivalent here.

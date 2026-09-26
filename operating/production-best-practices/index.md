@@ -8,7 +8,8 @@
 Production guidance for the `materialize-monitoring` stack, organized by backend.
 Every checklist item is tagged with its **primary owner** under the [shared responsibility model](#shared-responsibility-model), and is checked (`[x]`) when the chart already ships it as a default — unchecked items are the deployment-time actions (or still-to-build chart work) that remain.
 
-Today this covers the **collection tier (Alloy)**, **node metrics (node-exporter)**, the bundled **logging backend (Loki)**, the bundled **metrics backend (Thanos)**, and the bundled **Grafana**; an Alertmanager section will follow the same shape.
+This covers the **collection tier (Alloy)**, **node metrics (node-exporter)**, the bundled **logging backend (Loki)**,
+the bundled **metrics backend (Thanos)**, the bundled **Grafana**, and the bundled **Alertmanager**.
 
 Security is organized the other way round.
 The per-component items below carry the security decisions specific to each backend, and [Securing](../securing/) reads across all of them — the trust boundaries, the cluster permissions the stack holds, where credentials live, and what is not yet built.
@@ -252,7 +253,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` **Verify coverage rather than assume it** after any node-pool change, the same way as for node-exporter: the agent's pod count should equal `count(kube_node_info)`. Narrowing the toleration list for a pool that cannot absorb the agent is a deliberate blind spot — record which pools those are.
 - [x] `[chart]` `priorityClassName: monitoring-critical` on both roles. The agent is a per-node singleton, so an eviction is a log gap on that node with nothing to cover it; the gateway is the single egress choke point for every signal. See [Scheduling priority](#scheduling-priority).
 - [ ] `[operator]` Persist the agent's file **positions** and journal cursor (hostPath) so a restart resumes where it left off instead of re-tailing (duplicate lines) or skipping (gaps).
-- [ ] `[consumer]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
+- [ ] `[consumer]` Set `clusterName` (Terraform: `cluster_name`) so every line carries a stable `cluster` label when several clusters share a log store.
 
 ### Security & meta-monitoring
 
@@ -1047,4 +1048,94 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [Grafana Architecture](../../dashboards/grafana/architecture/) — connection modes, namespaces, and the resource map.
 - [State and persistence](../../dashboards/grafana/architecture/#state-and-persistence) — the PostgreSQL wiring in depth.
 - [Grafana configuration reference](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) (official) — every `grafana.ini` key.
+
+## Alertmanager
+
+For the architecture these items configure, see [Alert Architecture](../../alerting/architecture/).
+Routing and receivers are covered in [Alert Channels](../../alerting/channels/).
+
+Alertmanager is the one component in this stack whose failure is silent by construction.
+A notifier that is down, partitioned, or misconfigured produces no alert about itself, and the absence of a page reads
+the same as the absence of a problem.
+So the defaults target surviving a bad day rather than minimal footprint, and the validators concentrate on the configurations that fail quietly.
+
+| | Default | Production |
+|---|---|---|
+| Replicas | 2, gossiping, one per zone | 2 |
+| State | A 4Gi volume per replica, replicated by gossip | Unchanged |
+| Receivers | None; every alert reaches `mzmon-null` | At least one receiver per class the chosen preset names |
+| Credentials | A mounted, optional `alertmanager-receivers` Secret | That Secret, provisioned by the secret-management tooling already in use |
+| Reachability | `ClusterIP`, and Grafana's Alertmanager datasource | Unchanged, or an authenticated ingress with `baseURL` set |
+
+**The one production step the chart cannot take is configuring a receiver.**
+Everything else on this list ships as a default or is checked at render time.
+
+### Checklist
+
+#### 1. Availability
+
+- [x] `[chart]` **Two replicas by default**, gossiping over `9094`. A single notifier is lost to an ordinary node drain and holds the only copy of every silence. A validator warns on one replica.
+- [x] `[chart]` **Both rulers notify every replica**, through DNS discovery of the headless Service rather than the load-balanced one. Gossip replicates silences and the notification log, not alerts, so a replica a ruler never reached cannot notify when its peer is lost. See [Why the rulers address every replica](../../alerting/architecture/#every-replica).
+- [x] `[chart]` **PodDisruptionBudget** `maxUnavailable: 1`, matching Loki, Thanos and Grafana. A validator warns on several replicas with no budget.
+- [x] `[chart]` **Hard zone spread, soft host spread**, so two replicas are never one notifier to a zone outage. No `minDomains`, so single-zone clusters schedule; no `matchLabelKeys`, which would let the one-to-two upgrade place both replicas in one zone. A validator warns on several replicas with no spread or anti-affinity.
+- [ ] `[consumer]` On a cluster whose nodes carry **no zone label**, apply `no-zone-spread` or set `min_zones = 0`. The zone rule otherwise has no domain to place into, and both replicas stay `Pending`.
+- [x] `[chart]` **Readiness on `/-/ready`, liveness on `/-/healthy`**, rather than the subchart's `/`, which serves the UI. A replica joins the mesh and pulls its peer's state before it serves, so a rollout replacing one replica at a time loses no silences.
+- [x] `[chart]` `priorityClassName: monitoring-scalable`: a surviving replica absorbs the loss of the other. See [Scheduling priority](#scheduling-priority).
+
+#### 2. State & storage
+
+- [x] `[chart]` **A 4Gi volume per replica**, for silences and the notification log. Gossip covers losing one replica; the volume covers losing both at once. 4Gi is the smallest disk GCP Hyperdisk and Azure managed disks provision, not what Alertmanager needs.
+- [ ] `[consumer]` Use a StorageClass with **`volumeBindingMode: WaitForFirstConsumer`** — the default for every managed-cloud CSI class. Under `Immediate` both volumes can be provisioned in one zone before scheduling, and the hard zone rule then leaves the second replica `Pending`. On GKE, the legacy `standard` class is `Immediate`; `standard-rwo`, `premium-rwo` and the Hyperdisk classes are not.
+- [ ] `[operator]` Treat **`persistence.enabled` and `persistence.size` as immutable.** Both render into `volumeClaimTemplates`, which Kubernetes refuses to change, so an upgrade changing either fails until the StatefulSet is deleted with `--cascade=orphan`.
+- [ ] `[operator]` A replica whose zone is lost stays `Pending` until the zone returns, because its volume cannot attach elsewhere. The other replica keeps notifying. Deleting the stranded replica's PVC, then its pod, lets it reschedule into a healthy zone and resync from its peer; its own copy of the state is discarded, and its peer's is complete.
+
+#### 3. Routing & receivers
+
+- [ ] `[operator]` **Configure at least one receiver.** Until one exists every alert reaches `mzmon-null`, and the render warns. See [Alert Channels](../../alerting/channels/).
+- [ ] `[operator]` **Choose `alerting.preset` deliberately.** `important` is the default because it errs in the least damaging direction; a deployment for which Materialize is critical infrastructure wants `critical-infrastructure`, which routes `critical` to `page`. A preset of your own is one more key under `alerting.presets`.
+- [x] `[chart]` A render-time check **errors** when the selected preset names a class no receiver serves, on a route naming an undefined receiver or time interval, and on a receiver key that is not an Alertmanager integration.
+- [x] `[chart]` **`amtool check-config`** runs in CI over representative configurations, in the Alertmanager image the chart pins, so the tree the chart generates is one Alertmanager accepts.
+- [x] `[chart]` Routing changes **reload in place**: the config-reloader sidecar POSTs `/-/reload` when the rendered Secret changes. A configuration Alertmanager rejects leaves the previous one running. A validator warns when the sidecar is turned off.
+- [x] `[chart]` **Every alert carries `cluster`**, stamped by both rulers from `clusterName`, and the default `group_by` includes it. PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of the Alertmanager group key, so without it two clusters sending one condition to one service share an incident and resolve each other's. The render fails on an empty name, or one Loki's configuration cannot hold unquoted. See [The `cluster` label](../../alerting/architecture/#cluster-label).
+- [ ] `[consumer]` **Give every cluster its own name** — `cluster_name` on Terraform, `clusterName` on Helm. The default, `default`, is present on every alert and distinguishes nothing once two clusters share a channel or an incident tool.
+- [ ] `[operator]` **Test a receiver end to end** after configuring it, with `amtool alert add` from inside a pod. The render proves the configuration is well-formed, not that a vendor accepts the notification.
+
+#### 4. Credentials
+
+- [x] `[chart]` A render-time check **errors on an inline credential** in a receiver or in `alerting.global`. `alerting.assertNoInlineCredentials` turns it off; leave it on.
+- [x] `[chart]` A render-time check **errors on a `*_file` path under no mounted volume**, which would otherwise fail every notification through that receiver at send time.
+- [ ] `[consumer]` **Provision the `alertmanager-receivers` Secret** in the namespace the Alertmanager pods run in, with External Secrets Operator, Vault Agent, SOPS, or a CSI driver. The chart consumes it by name and never creates it. It is mounted as optional, so a missing Secret shows up as failed notifications, not as a pod that will not start.
+- [ ] `[consumer]` **Publish to Amazon SNS with workload identity**, not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish` on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic). SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret. See [Cloud provider services](../../alerting/channels/#cloud).
+- [ ] `[operator]` Rotating a credential needs **no restart**: Alertmanager reads a `*_file` credential on each send, and the kubelet refreshes the mount within about a minute.
+
+#### 5. Hardening
+
+- [x] `[chart]` **Read-only root filesystem**, all capabilities dropped, no privilege escalation, `seccompProfile: RuntimeDefault`, non-root UID 65534 — on both the Alertmanager and the config-reloader containers. Alertmanager writes only to its volume. A validator warns when the root filesystem is made writable.
+- [x] `[chart]` **No ServiceAccount token mounted.** Alertmanager reads nothing from the Kubernetes API.
+- [x] `[chart]` `cluster.label` on every gossip message, so a peer from another Alertmanager cluster that inherits a recycled pod IP is rejected rather than merged.
+- [x] `[chart]` Resource **requests and a memory limit** on both containers (10m / 64Mi, 256Mi limit for Alertmanager), and no CPU limit, following the rest of the chart. A quiet install idles near 15Mi. The memory limit is the one setting that can take both replicas down together during an alert storm, so it is set well above the request.
+
+#### 6. Network & reachability
+
+- [x] `[chart]` **NetworkPolicy** on by default: `9093` and `9094` (TCP **and** UDP) open to the release namespace, egress open to notification providers on `443`, `587` and `465`. A validator warns when a narrowed policy closes the mesh port on either transport, which duplicates every notification rather than failing. See [Network policies](#network-policies).
+- [ ] `[operator]` **Do not expose Alertmanager without authentication in front of it.** It has none of its own, and its API creates silences. Grafana's Alertmanager datasource gives the alert list and the silence editor behind Grafana's authentication.
+- [ ] `[operator]` Leave **`alertmanager.baseURL`** empty unless Alertmanager itself is exposed, and then set it to that address. **Never point it at Grafana**: Alertmanager builds links into its own UI from it (`/#/alerts`, `/#/silences/new`), which Grafana does not serve, and the render warns when the two share a host. To link notifications to Grafana, build the links in a template; see [Links in notifications](../../alerting/channels/#links).
+- [x] `[chart]` `extraArgs.web.route-prefix: /` keeps every endpoint at the root, so a `baseURL` with a path does not move the API both rulers post to, the probes, the reloader or the datasource. The render fails when a `baseURL` has a path and the pin has been removed.
+- [x] `[chart]` Resource names are **pinned** by `alertmanager.fullnameOverride: alertmanager`, like Loki, Thanos and Grafana, so the rulers address `alertmanager-headless` whatever the release is called. The render warns when the rulers' addresses and the pinned name disagree.
+- [ ] `[operator]` Under `split-namespace`, the profile opens Alertmanager to the ruler and Grafana namespaces. A receiver listening on a port other than `443`, `587` or `465` needs it added to `networkPolicies.alertmanager.egress.external.ports`.
+
+#### 7. Meta-monitoring
+
+- [x] `[chart]` **ServiceMonitor** for Alertmanager's own metrics, scraping each replica once through the ClusterIP Service.
+- [x] `[chart]` **Alertmanager datasource** in the bundled Grafana, for the alert list and silences.
+- [ ] `[chart]` **No meta-alerts yet** on `alertmanager_cluster_members`, `alertmanager_config_last_reload_successful` or `alertmanager_notifications_failed_total`, and no deadman's switch. They arrive with the rule set. Until then, a notifier that cannot deliver is visible on a dashboard and pages nobody.
+- [ ] `[operator]` **Route a deadman's switch to something outside the cluster** once it ships. Stopped evaluation looks like nothing being wrong, and only an external heartbeat monitor can tell the two apart.
+
+### See also
+
+- [Alert Architecture](../../alerting/architecture/) — the notifier's shape, state, and failure modes.
+- [Alert Channels](../../alerting/channels/) — receivers, classes, presets, and credentials.
+- [Maintenance Windows](../../alerting/maintenance/) — silences, mute windows, and inhibition.
+- [Alertmanager configuration reference](https://prometheus.io/docs/alerting/latest/configuration/) (official) — every
+  receiver integration and route option.
 
