@@ -1013,18 +1013,22 @@
   - app
   - namespace
   - pod
+  - url
   name: prometheus_remote_storage_samples_failed_total
   usage:
   - infra.alloy.health.samples_lost
+  - infra.alloy.ingest.remote_write.senders
   - infra.alloy.metric_pipeline.remote_write
 - importance: essential
   labels:
   - app
   - namespace
   - pod
+  - url
   name: prometheus_remote_storage_samples_total
   usage:
   - infra.alloy.health.samples_delivered
+  - infra.alloy.ingest.remote_write.senders
   - infra.alloy.metric_pipeline.remote_write
   - infra.alloy.metric_pipeline.samples_sent
 - importance: essential
@@ -1105,6 +1109,14 @@
   usage:
   - infra.alloy.components.config_by_pod
   - infra.alloy.components.distinct_configs
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: alloy_resources_process_start_time_seconds
+  usage:
+  - infra.alloy.components.config_by_pod
 - importance: recommended
   labels: []
   name: awscni_assigned_ip_addresses
@@ -1435,9 +1447,19 @@
   - app
   - namespace
   - pod
+  name: loki_source_api_entries_written
+  usage:
+  - infra.alloy.ingest.log_push.lines
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  - status_code
   name: loki_source_api_request_duration_seconds_count
   usage:
-  - infra.alloy.log_pipeline.pushes_received
+  - infra.alloy.health.pushes_refused
+  - infra.alloy.ingest.log_push.requests
 - importance: recommended
   labels:
   - app
@@ -2264,7 +2286,7 @@
   - pod
   name: otelcol_receiver_accepted_log_records_total
   usage:
-  - infra.alloy.log_pipeline.otlp_received
+  - infra.alloy.ingest.otlp.logs
 - importance: recommended
   labels:
   - app
@@ -2272,7 +2294,7 @@
   - pod
   name: otelcol_receiver_accepted_metric_points_total
   usage:
-  - infra.alloy.metric_pipeline.otlp_received
+  - infra.alloy.ingest.otlp.metrics
 - importance: recommended
   labels:
   - app
@@ -2280,7 +2302,7 @@
   - pod
   name: otelcol_receiver_refused_log_records_total
   usage:
-  - infra.alloy.log_pipeline.otlp_received
+  - infra.alloy.ingest.otlp.logs
 - importance: recommended
   labels:
   - app
@@ -2288,7 +2310,15 @@
   - pod
   name: otelcol_receiver_refused_metric_points_total
   usage:
-  - infra.alloy.metric_pipeline.otlp_received
+  - infra.alloy.ingest.otlp.metrics
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_api_remote_write_invalid_labels_samples_total
+  usage:
+  - infra.alloy.ingest.remote_write.samples
 - importance: recommended
   labels:
   - app
@@ -2297,14 +2327,28 @@
   - pod
   name: prometheus_forwarded_samples_total
   usage:
-  - infra.alloy.metric_pipeline.samples_in
+  - infra.alloy.ingest.remote_write.received
+  - infra.alloy.ingest.remote_write.samples
+  - infra.alloy.metric_pipeline.samples_scraped
 - importance: recommended
   labels:
   - app
   - namespace
   - pod
+  - status_code
+  name: prometheus_receive_http_request_duration_seconds_count
+  usage:
+  - infra.alloy.health.pushes_refused
+  - infra.alloy.ingest.remote_write.requests
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  - url
   name: prometheus_remote_storage_samples_retried_total
   usage:
+  - infra.alloy.ingest.remote_write.senders
   - infra.alloy.metric_pipeline.remote_write
 - importance: recommended
   labels:
@@ -2536,6 +2580,14 @@
   - infra.loki.write.push_latency
 - importance: extended
   labels:
+  - app
+  - namespace
+  - pod
+  name: loki_source_api_request_duration_seconds_bucket
+  usage:
+  - infra.alloy.ingest.log_push.latency
+- importance: extended
+  labels:
   - app_instance
   - namespace
   name: loki_tsdb_shipper_query_wait_time_seconds_bucket
@@ -2573,6 +2625,14 @@
   name: process_open_fds
   usage:
   - infra.alloy.resources.file_descriptors
+- importance: extended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: prometheus_receive_http_request_duration_seconds_bucket
+  usage:
+  - infra.alloy.ingest.remote_write.latency
 - importance: extended
   labels:
   - app

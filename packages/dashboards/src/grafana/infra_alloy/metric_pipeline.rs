@@ -9,18 +9,19 @@
 
 //! The Metric Pipeline tab: a sample's path from a target to the stores.
 //!
-//! Scraping first, then what enters the gateway, then the two ways out: the
-//! remote-write queue with the write-ahead log behind it, and the OpenTelemetry
-//! exporters for any extra destination. The exporter row is collapsed, since a
-//! default install configures none and its panels are empty.
+//! Scraping first, then the two ways out: the remote-write queue with the
+//! write-ahead log behind it, and the OpenTelemetry exporters for any extra
+//! destination. The exporter row is collapsed, since a default install
+//! configures none and its panels are empty. Samples pushed into the gateway
+//! rather than scraped are on the Ingest tab.
 //!
 //! # Target-wide panels
 //!
 //! Four panels read `up` and `scrape_*`, which describe each *target* the
 //! gateway scrapes rather than the gateway. Those series carry the target's
-//! labels, so the collector pickers cannot narrow them, and [`TARGET_WIDE`]
-//! names them so the dashboard-level anchoring test can tell them apart from a
-//! query that lost its scope by accident.
+//! labels, so the collector pickers cannot narrow them. The dashboard's
+//! anchoring test lists them by name, so it can tell them apart from a query
+//! that lost its scope by accident.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::generated::stat::BigValueGraphMode;
@@ -35,21 +36,11 @@ use crate::grafana::transform;
 
 const SHADE: &str = theme::METRIC_PIPELINE.shade;
 
-/// Elements whose queries describe scraped targets rather than a collector.
-#[cfg(test)]
-pub(super) const TARGET_WIDE: &[&str] = &[
-    "metrics-flow-targets-down",
-    "metrics-scrape-down",
-    "metrics-heavy-slowest",
-    "metrics-heavy-largest",
-];
-
 pub fn rows(q: &Queries) -> Vec<Row> {
     vec![
         flow(q),
         scraping(q),
         heaviest(q),
-        ingest(q),
         remote_write(q),
         wal(q),
         exporters(q),
@@ -76,7 +67,8 @@ fn scraping(q: &Queries) -> Row {
             .panel("metrics-scrape-down", down_targets(q))
             .panel("metrics-scrape-by-monitor", targets_by_monitor(q))
             .panel("metrics-scrape-rejected", rejected_scrapes(q))
-            .panel("metrics-scrape-rejected-samples", rejected_samples(q)),
+            .panel("metrics-scrape-rejected-samples", rejected_samples(q))
+            .panel("metrics-scrape-samples", samples_scraped(q)),
     )
 }
 
@@ -86,14 +78,6 @@ fn heaviest(q: &Queries) -> Row {
             .column_width(ColumnWidth::Wide)
             .panel("metrics-heavy-slowest", slowest_scrapes(q))
             .panel("metrics-heavy-largest", largest_scrapes(q)),
-    )
-}
-
-fn ingest(q: &Queries) -> Row {
-    Row::new("Gateway Ingest").grid(
-        AutoGrid::new(2)
-            .panel("metrics-ingest-sources", samples_in(q))
-            .panel("metrics-ingest-otlp", otlp_received(q)),
     )
 }
 
@@ -280,29 +264,15 @@ fn largest_scrapes(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-fn samples_in(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Samples In by Source")
+fn samples_scraped(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("Samples Scraped by Source")
         .query(
-            q.get("infra.alloy.metric_pipeline.samples_in")
+            q.get("infra.alloy.metric_pipeline.samples_scraped")
                 .legend("{{component_id}}"),
         )
         .unit(SAMPLES_PER_SECOND)
         .min(0.0)
         .no_value(not_collected())
-        .build(0)
-}
-
-fn otlp_received(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("OTLP Metric Points Received")
-        .query(q.legended(
-            "infra.alloy.metric_pipeline.otlp_received",
-            &["accepted", "refused"],
-        ))
-        .unit("suffix:points/s")
-        .min(0.0)
-        .no_value(NoValue::Custom(
-            "Nothing has sent metrics to the gateway over OTLP".to_string(),
-        ))
         .build(0)
 }
 
@@ -464,7 +434,7 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 24);
+        assert_eq!(assembled.elements.len(), 23);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
     }
 
@@ -480,8 +450,8 @@ mod tests {
 
     #[test]
     fn the_remote_write_panels_exclude_other_senders() {
-        // `thanos-ruler` publishes the same family, and on a reference install
-        // its queue was stuck in retries while the gateway's was healthy.
+        // `thanos-ruler` publishes the same family, and an unanchored query
+        // would add its queue to the gateway's.
         let q = &test_queries();
         for panel in [remote_write_samples(q), send_delay(q), shards(q)] {
             let json = serde_json::to_string(&panel).expect("serialize");

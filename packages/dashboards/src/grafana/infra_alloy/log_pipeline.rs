@@ -15,9 +15,9 @@
 //! same component, `loki.write`, and read the same way; the destination label
 //! says which hop a series is.
 //!
-//! Gateway Ingest comes last although it sits mid-path. It is the receiving end
-//! of the first hop, and it is read after Delivery has said that hop is failing,
-//! to learn whether the gateway is the one refusing.
+//! The gateway's receiving end of the first hop is on the Ingest tab, with the
+//! other push listeners. It is read after Delivery here has said that hop is
+//! failing, to learn whether the gateway is the one refusing.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::generated::stat::{BigValueGraphMode, BigValueTextMode};
@@ -31,7 +31,7 @@ use crate::grafana::queries::Queries;
 const SHADE: &str = theme::LOG_PIPELINE.shade;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![flow(q), agents(q), delivery(q), processing(q), ingest(q)]
+    vec![flow(q), agents(q), delivery(q), processing(q)]
 }
 
 fn flow(q: &Queries) -> Row {
@@ -71,14 +71,6 @@ fn processing(q: &Queries) -> Row {
         AutoGrid::new(2)
             .panel("logs-processing-guards", guard_drops(q))
             .panel("logs-processing-truncated", truncated(q)),
-    )
-}
-
-fn ingest(q: &Queries) -> Row {
-    Row::new("Gateway Ingest").grid(
-        AutoGrid::new(2)
-            .panel("logs-ingest-pushes", pushes_received(q))
-            .panel("logs-ingest-otlp", otlp_received(q)),
     )
 }
 
@@ -232,32 +224,6 @@ fn truncated(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-fn pushes_received(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Pushes Received by Status")
-        .query(
-            q.get("infra.alloy.log_pipeline.pushes_received")
-                .legend("{{status_code}}"),
-        )
-        .unit("reqps")
-        .min(0.0)
-        .no_value(NoValue::FilterMismatch)
-        .build(0)
-}
-
-fn otlp_received(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("OTLP Log Records Received")
-        .query(q.legended(
-            "infra.alloy.log_pipeline.otlp_received",
-            &["accepted", "refused"],
-        ))
-        .unit("suffix:records/s")
-        .min(0.0)
-        .no_value(NoValue::Custom(
-            "Nothing has sent logs to the gateway over OTLP".to_string(),
-        ))
-        .build(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,7 +292,7 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 15);
+        assert_eq!(assembled.elements.len(), 13);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
     }
 

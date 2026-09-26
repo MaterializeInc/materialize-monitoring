@@ -10,15 +10,14 @@
 //! The Overview tab: is collection working, and is this dashboard hearing from
 //! the collectors at all.
 //!
-//! The verdict row is five counts that are zero on a healthy install, each built
-//! so that zero and absent read differently. Collection Health follows, because
-//! it is what says whether the verdict can be believed: a collector the gateway
-//! cannot scrape contributes nothing to any count above it.
+//! The verdict row is six counts that are zero on a healthy install, each built
+//! so that zero and absent read differently. Three are about the collectors
+//! themselves, and three about data being lost: log lines and samples the
+//! collectors failed to deliver, and pushes the gateway refused to take.
 //!
-//! Rejected TLS Handshakes sits in that row, although it is read from logs,
-//! because it is the one collection failure no metric records. A client whose
-//! handshake fails never reaches a request counter, so its data is simply
-//! missing, and on an mTLS install this is the usual reason.
+//! Collection Health follows, because it is what says whether the verdict can
+//! be believed: a collector the gateway cannot scrape contributes nothing to
+//! any count above it.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::generated::stat::BigValueGraphMode;
@@ -48,30 +47,30 @@ pub fn rows(q: &Queries) -> Vec<Row> {
     vec![verdict(q), collection(q), throughput(q)]
 }
 
-/// The five numbers worth reading before anything else.
+/// The six numbers worth reading before anything else.
 ///
 /// Header hidden and half height, as on `infra-loki`: this row is the answer,
 /// and Collection Health beneath it has to stay above the fold.
 fn verdict(q: &Queries) -> Row {
     Row::new("Verdict").hide_header().grid(
-        AutoGrid::new(5)
+        AutoGrid::new(6)
             .column_width(ColumnWidth::Narrow)
             .row_height(RowHeight::Short)
             .panel("overview-agents-missing", agents_missing(q))
             .panel("overview-unhealthy-components", unhealthy_components(q))
             .panel("overview-config-failed", config_failed(q))
             .panel("overview-log-lines-lost", log_lines_lost(q))
-            .panel("overview-samples-lost", samples_lost(q)),
+            .panel("overview-samples-lost", samples_lost(q))
+            .panel("overview-pushes-refused", pushes_refused(q)),
     )
 }
 
 fn collection(q: &Queries) -> Row {
     Row::new("Collection Health").grid(
-        AutoGrid::new(4)
+        AutoGrid::new(3)
             .panel("overview-scrape", scrape_health(q))
             .panel("overview-restarts", restarts(q))
-            .panel("overview-versions", versions(q))
-            .panel("overview-tls-rejections", tls_rejections(q)),
+            .panel("overview-versions", versions(q)),
     )
 }
 
@@ -193,16 +192,20 @@ fn versions(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-fn tls_rejections(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Rejected TLS Handshakes")
+/// Refusals on the gateway's push listeners, in requests.
+///
+/// Empty rather than zero when nothing pushes at all, which on a default
+/// install means the agents are not reaching the gateway.
+pub(super) fn pushes_refused(q: &Queries) -> dashboardv2::PanelKind {
+    zero_is_healthy("Push Requests Refused")
         .query(
-            q.logs("infra.alloy.health.tls_rejections")
-                .legend("{{app}}"),
+            q.get("infra.alloy.health.pushes_refused")
+                .legend("refused/s"),
         )
-        .unit("suffix:handshakes/min")
-        .min(0.0)
+        .thresholds(threshold::errors(0.01, 10.0).build())
+        .unit("reqps")
         .no_value(NoValue::Custom(
-            "No listener has refused a TLS handshake in this range".to_string(),
+            "Nothing is pushing to the gateway".to_string(),
         ))
         .build(0)
 }
@@ -243,6 +246,9 @@ mod tests {
             .assemble()
             .expect("assemble");
         assert_eq!(assembled.elements.len(), 11);
+        // The TLS panel moved to the Ingest tab, beside the listeners it is
+        // about, and a refusals stat took its place in the verdict.
+        assert!(!assembled.elements.contains_key("overview-tls-rejections"));
         assert!(q.failures().is_empty(), "{:?}", q.failures());
     }
 
@@ -268,6 +274,7 @@ mod tests {
             config_failed(q),
             log_lines_lost(q),
             samples_lost(q),
+            pushes_refused(q),
         ] {
             let json = serde_json::to_string(&panel).expect("serialize");
             assert!(json.contains(r#""colorMode":"background""#), "{json}");

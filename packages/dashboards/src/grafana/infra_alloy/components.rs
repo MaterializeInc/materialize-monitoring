@@ -24,6 +24,7 @@ use mzmon_lib::grafana::layout::{AutoGrid, Row};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use super::overview::not_collected;
+use crate::grafana::field_override;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
@@ -94,17 +95,58 @@ fn running(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
+const LOADED: &str = "last load succeeded";
+const UPTIME: &str = "uptime";
+
+/// The configuration, its load, and how long it has been running, per pod.
+///
+/// Two expressions joined by `merge` on `app` and `pod`, then renamed off their
+/// refIds, which the renderer assigns positionally, as on `infra-nodes`. The two
+/// columns carry different units, so each gets its own override.
+///
+/// `no_value` stays set, unlike on `infra-nodes`' budget table. Grafana applies
+/// it per cell, and there it filled legitimately empty limit cells; here both
+/// columns come from the same scrape of the same pod, so a row has both values or
+/// no row exists, and the text only ever stands in for an empty panel.
 fn config_by_pod(q: &Queries) -> dashboardv2::PanelKind {
     Panel::table("Configuration by Collector")
-        .query(q.get("infra.alloy.components.config_by_pod").table_format())
-        .transformations(vec![transform::organize_full(
-            &["Time"],
-            &["app", "pod", "sha256", "Value"],
-            &[("sha256", "config hash"), ("Value", "last load succeeded")],
-        )])
-        .unit("bool_yes_no")
+        .query(
+            q.legended("infra.alloy.components.config_by_pod", &[LOADED, UPTIME])
+                .table_format(),
+        )
+        .transformations(vec![
+            transform::merge(),
+            transform::organize_full(
+                &["Time"],
+                &[
+                    "app",
+                    "pod",
+                    "sha256",
+                    LOADED,
+                    UPTIME,
+                    "Value #query-0",
+                    "Value #query-1",
+                ],
+                &[
+                    ("sha256", "config hash"),
+                    ("Value #query-0", LOADED),
+                    ("Value #query-1", UPTIME),
+                ],
+            ),
+        ])
+        .overrides(vec![
+            unit_override(LOADED, "bool_yes_no"),
+            unit_override(UPTIME, "dtdurations"),
+        ])
         .no_value(not_collected())
         .build(0)
+}
+
+/// Give one named column its own unit.
+fn unit_override(field: &str, unit: &str) -> dashboardv2::FieldConfigSourceOverridesItem {
+    field_override::by_name(field)
+        .property("unit", serde_json::Value::String(unit.to_string()))
+        .build()
 }
 
 fn distinct_configs(q: &Queries) -> dashboardv2::PanelKind {
@@ -246,5 +288,21 @@ mod tests {
             assert!(json.contains(r#""instant":true"#), "{json}");
             assert!(json.contains(r#""format":"table""#), "{json}");
         }
+    }
+
+    #[test]
+    fn the_configuration_table_joins_uptime_onto_each_collector() {
+        // Two frames only become one row per pod through `merge`; without it
+        // the uptime column stacks under the load column instead of beside it.
+        let q = &test_queries();
+        let panel = config_by_pod(q);
+        assert_eq!(panel.spec.data.spec.queries.len(), 2);
+        let json = serde_json::to_string(&panel).expect("serialize");
+        assert!(json.contains(r#""group":"merge""#), "{json}");
+        assert!(
+            json.contains("alloy_resources_process_start_time_seconds"),
+            "{json}"
+        );
+        assert!(json.contains("dtdurations"), "{json}");
     }
 }

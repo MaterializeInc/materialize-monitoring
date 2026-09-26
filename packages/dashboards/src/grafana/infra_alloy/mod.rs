@@ -65,6 +65,8 @@
 //! [`variable::alloy_roles`](mzmon_lib::grafana::variable::alloy_roles).
 
 pub mod components;
+pub mod events;
+pub mod ingest;
 pub mod log_pipeline;
 pub mod logs;
 pub mod metric_pipeline;
@@ -103,18 +105,23 @@ pub const REC_MZ_VERSION: &str = "v26.24.0";
 /// The tabs, in order.
 ///
 /// Overview first because it is the verdict. The two pipelines next, logs before
-/// metrics because the log path has more hops and so more places to break.
-/// Components after both, since an unhealthy component surfaces first as a
+/// metrics because the log path has more hops and so more places to break. Then
+/// Ingest, for data other senders push into the gateway, which is read once the
+/// verdict's refusals count or a pipeline's delivery row points at it.
+/// Components after those, since an unhealthy component surfaces first as a
 /// pipeline stage that stopped moving. Resources after that, because resource
 /// pressure is usually the explanation for what the earlier tabs showed rather
-/// than the first thing seen. Logs last, where an investigation ends up.
+/// than the first thing seen. Events and Logs last, where an investigation ends
+/// up, events first because there are few of them and each is dated.
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::OVERVIEW.title).rows(overview::rows(q)),
         Tab::new(theme::LOG_PIPELINE.title).rows(log_pipeline::rows(q)),
         Tab::new(theme::METRIC_PIPELINE.title).rows(metric_pipeline::rows(q)),
+        Tab::new(theme::INGEST.title).rows(ingest::rows(q)),
         Tab::new(theme::COMPONENTS.title).rows(components::rows(q)),
         Tab::new(theme::RESOURCES.title).rows(resources::rows(q)),
+        Tab::new(theme::EVENTS.title).rows(events::rows(q)),
         Tab::new(theme::LOGS.title).rows(logs::rows(q)),
     ]
 }
@@ -252,18 +259,32 @@ mod tests {
         }
     }
 
+    /// Panels whose series belong to something other than a collector: the
+    /// targets the gateway scrapes, and the senders that remote-write into it.
+    /// No collector picker can narrow them.
+    const UNSCOPED: &[&str] = &[
+        "metrics-flow-targets-down",
+        "metrics-scrape-down",
+        "metrics-heavy-slowest",
+        "metrics-heavy-largest",
+        "ingest-rw-senders",
+    ];
+
     #[test]
     fn every_collector_query_is_anchored_to_this_charts_collectors() {
         // `thanos-ruler` publishes `prometheus_remote_storage_*` too. A query
         // that lost its anchor would add the ruler's queue to the gateway's and
-        // read as a gateway problem.
+        // read as a gateway problem. The event queries embed the role picker in
+        // a longer pattern, as `${alloyRole:regex}`.
         let resource = built();
         for (name, _, expr) in expressions(&resource) {
-            if metric_pipeline::TARGET_WIDE.contains(&name.as_str()) {
+            if UNSCOPED.contains(&name.as_str()) {
                 continue;
             }
             assert!(
-                expr.contains("$alloyRole") || expr.contains(r#"app="alloy-agent""#),
+                expr.contains("$alloyRole")
+                    || expr.contains("${alloyRole:regex}")
+                    || expr.contains(r#"app="alloy-agent""#),
                 "{name}: {expr}"
             );
             assert!(expr.contains("$alloyNamespace"), "{name}: {expr}");
@@ -271,13 +292,13 @@ mod tests {
     }
 
     #[test]
-    fn target_wide_panels_are_exactly_the_declared_ones() {
+    fn unscoped_panels_are_exactly_the_declared_ones() {
         // The exemption above is a list, so it has to stay true in both
         // directions: each exempt panel exists, and none of them narrows by a
         // collector picker it cannot honour.
         let resource = built();
         let exprs = expressions(&resource);
-        for exempt in metric_pipeline::TARGET_WIDE {
+        for exempt in UNSCOPED {
             let found: Vec<_> = exprs.iter().filter(|(n, _, _)| n == exempt).collect();
             assert!(!found.is_empty(), "{exempt} is not on the dashboard");
             for (_, _, expr) in found {
@@ -289,13 +310,22 @@ mod tests {
     #[test]
     fn every_log_query_filters_the_pod_as_metadata() {
         // `pod` is structured metadata on these streams, not a stream label. In
-        // the selector it would match no stream at all.
+        // the selector it would match no stream at all. An event names its pod
+        // as the involved object, so the event queries match `name` instead.
         let resource = built();
         for (name, group, expr) in expressions(&resource) {
             if group != "loki" {
                 continue;
             }
-            assert!(expr.contains(r#"| pod=~"$alloyPod""#), "{name}: {expr}");
+            let field = if expr.contains("loki.source.kubernetes_events") {
+                "name"
+            } else {
+                "pod"
+            };
+            assert!(
+                expr.contains(&format!(r#"| {field}=~"$alloyPod""#)),
+                "{name}: {expr}"
+            );
             let selector = &expr[..expr.find('}').expect("a stream selector")];
             assert!(!selector.contains("pod"), "{name}: {expr}");
         }

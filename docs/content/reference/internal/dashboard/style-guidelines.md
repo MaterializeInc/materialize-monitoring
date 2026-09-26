@@ -1022,6 +1022,9 @@ log pipelines relabel them from the same pod metadata, and both collector roles 
 One difference in *placement* remains: `pod` is a stream label on neither side's logs but structured metadata, so the
 log queries apply `$alloyPod` after a `|` rather than inside the selector.
 A test holds that, since in the selector it would match no stream at all.
+Kubernetes events are the exception to the shared origin: they carry the involved object's `name` and no `app`.
+The event queries match the role picker against `name` as a prefix, written `${alloyRole:regex}` because it sits inside a
+longer pattern, and the role picker's custom "All" value passes through that format unchanged.
 
 ## Node identifiers across three families
 

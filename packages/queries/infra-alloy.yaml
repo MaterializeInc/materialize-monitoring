@@ -37,7 +37,14 @@ description: |
 
   Queries over `up` and `scrape_*` for the *targets* the gateway scrapes carry
   no Alloy scope. Those series describe the target, not the collector, and
-  nothing on them records which gateway replica produced them.
+  nothing on them records which gateway replica produced them. The same holds
+  for the remote-write senders' own queues, which are found by their `url`.
+
+  Kubernetes events carry the involved object's `name` rather than an `app`
+  label. The event queries match `name` against the role pattern, as
+  `${alloyRole:regex}` since it is embedded in a longer pattern, and against the
+  pod picker. They also match the pre-install validation Jobs, whose names
+  follow the release rather than the role, as `.+-validate-(agent|gateway)`.
 
   ## Zero only when something was collected
 
@@ -233,6 +240,65 @@ queries:
         or vector(0)
       )
 
+  - id: infra.alloy.health.pushes_refused
+    stability: experimental
+    description:
+      summary: |
+        Push requests per second the gateway answered with an error, across its
+        log-push and remote-write listeners.
+      nominal: Zero.
+      unhealthy: |
+        A sustained rate. Something is sending data the gateway will not take,
+        and that data is lost unless the sender retries successfully. _Ingest_
+        says which listener, which status, and which sender.
+      notes: |
+        Counts requests that reached the gateway's HTTP layer. A sender whose
+        TLS handshake fails never gets that far, and _Ingest -> Connections_
+        carries that case. OTLP refusals are counted in points rather than
+        requests, and appear under _Ingest -> OTLP_.
+    promQL: |
+      sum(
+        rate(
+          loki_source_api_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            status_code!~"2.."
+          }
+          %%{interval}
+        )
+        or
+        rate(
+          prometheus_receive_http_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            status_code!~"2.."
+          }
+          %%{interval}
+        )
+      )
+      or
+      0 * sum(
+        rate(
+          loki_source_api_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+        or
+        rate(
+          prometheus_receive_http_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
   - id: infra.alloy.health.up
     stability: experimental
     description:
@@ -307,36 +373,6 @@ queries:
           pod=~"$alloyPod"
         }
       )
-
-  - id: infra.alloy.health.tls_rejections
-    stability: experimental
-    description:
-      summary: |
-        TLS handshakes per minute that a collector's listener refused, usually
-        because the client presented a certificate the listener does not trust.
-      nominal: Zero.
-      unhealthy: |
-        A sustained rate. A client whose handshake fails never reaches any
-        counter, so its data is missing from every other panel as well. The
-        line names the client's address. `kubectl get pods -o wide` maps that
-        address to a pod.
-      notes: |
-        Read from the collectors' own logs, since no metric records a failed
-        handshake. Covers every listener a collector serves: log push, OTLP,
-        and remote write into the gateway. Its most common cause is a client
-        rolled onto a new certificate before or after the gateway trusts it.
-    logQL: |
-      sum by (app) (
-        rate(
-          {
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace"
-          }
-            |= "TLS handshake error"
-            | pod=~"$alloyPod"
-          %%{interval}
-        )
-      ) * 60
 
   - id: infra.alloy.health.lines_delivered
     stability: experimental
@@ -449,6 +485,11 @@ queries:
       unhealthy: |
         A widening gap against _Lines Read_. Lines are being lost between
         reading and storage, and _Delivery_ below says at which hop.
+      notes: |
+        Both this and _Lines Read_ are short-window rates, and the gateway sends
+        in batches, so at any instant the two can differ by half or more. Over
+        the range they agree to within a few percent: on a reference install,
+        17.7 lines per second read against 17.6 delivered over six hours.
     promQL: |
       sum(
         rate(
@@ -714,66 +755,6 @@ queries:
           %%{interval}
         )
       )
-
-  - id: infra.alloy.log_pipeline.pushes_received
-    stability: experimental
-    description:
-      summary: |
-        Log push requests per second the gateway received, split by the status
-        it returned.
-      nominal: Every request a 2xx.
-      unhealthy: |
-        Non-2xx responses. The gateway is refusing its senders, most often
-        because its own delivery is backed up. _Delivery_ above says which.
-      notes: |
-        A sender whose TLS handshake fails never reaches this counter. _Overview
-        -> Collection Health_ carries that case.
-    promQL: |
-      sum by (status_code) (
-        rate(
-          loki_source_api_request_duration_seconds_count{
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace",
-            pod=~"$alloyPod"
-          }
-          %%{interval}
-        )
-      )
-
-  - id: infra.alloy.log_pipeline.otlp_received
-    stability: experimental
-    description:
-      summary: |
-        Log records per second the gateway accepted and refused over OTLP.
-      nominal: |
-        Empty unless something in the cluster sends logs over OTLP. When
-        something does, nothing refused.
-      unhealthy: |
-        Refused records. The gateway could not take them, usually under memory
-        pressure, and the sender decides whether to retry.
-    promQL:
-      - |
-        sum(
-          rate(
-            otelcol_receiver_accepted_log_records_total{
-              app=~"$alloyRole",
-              namespace=~"$alloyNamespace",
-              pod=~"$alloyPod"
-            }
-            %%{interval}
-          )
-        )
-      - |
-        sum(
-          rate(
-            otelcol_receiver_refused_log_records_total{
-              app=~"$alloyRole",
-              namespace=~"$alloyNamespace",
-              pod=~"$alloyPod"
-            }
-            %%{interval}
-          )
-        )
 
   # --- metric pipeline: targets -> gateway -> stores ---------------------------
   - id: infra.alloy.metric_pipeline.targets
@@ -1093,20 +1074,22 @@ queries:
         )
       )
 
-  - id: infra.alloy.metric_pipeline.samples_in
+  - id: infra.alloy.metric_pipeline.samples_scraped
     stability: experimental
     description:
       summary: |
-        Samples per second entering the gateway, split by the component that
-        brought them in.
+        Samples per second the gateway scraped, split by the component that
+        scraped them.
       nominal: |
-        The monitor-driven scrapes and the kubelet's cAdvisor scrape carry most
-        of it. `prometheus.receive_http` carries what other senders remote-write
-        into the gateway, such as the Thanos ruler's recorded series.
+        The monitor-driven scrapes carry most of it, with the kubelet's cAdvisor
+        scrape next.
       unhealthy: |
-        A source at zero that should not be. For `prometheus.receive_http`, the
-        senders are failing to reach the gateway, and _Overview -> Collection
-        Health_ says whether their TLS handshakes are being refused.
+        A component at zero that should not be. For a `prometheus.operator`
+        component, its monitors stopped matching anything, and _Targets by
+        Monitor_ above says which.
+      notes: |
+        Samples pushed into the gateway rather than scraped by it are on
+        _Ingest_.
     promQL: |
       sum by (component_id) (
         rate(
@@ -1114,46 +1097,11 @@ queries:
             app=~"$alloyRole",
             namespace=~"$alloyNamespace",
             pod=~"$alloyPod",
-            component_id=~"prometheus\\.(scrape|operator|receive_http)\\..*"
+            component_id=~"prometheus\\.(scrape|operator)\\..*"
           }
           %%{interval}
         )
       )
-
-  - id: infra.alloy.metric_pipeline.otlp_received
-    stability: experimental
-    description:
-      summary: |
-        Metric points per second the gateway accepted and refused over OTLP.
-      nominal: |
-        Empty unless something in the cluster sends metrics over OTLP. When
-        something does, nothing refused.
-      unhealthy: |
-        Refused points. The gateway could not take them, usually under memory
-        pressure, and the sender decides whether to retry.
-    promQL:
-      - |
-        sum(
-          rate(
-            otelcol_receiver_accepted_metric_points_total{
-              app=~"$alloyRole",
-              namespace=~"$alloyNamespace",
-              pod=~"$alloyPod"
-            }
-            %%{interval}
-          )
-        )
-      - |
-        sum(
-          rate(
-            otelcol_receiver_refused_metric_points_total{
-              app=~"$alloyRole",
-              namespace=~"$alloyNamespace",
-              pod=~"$alloyPod"
-            }
-            %%{interval}
-          )
-        )
 
   - id: infra.alloy.metric_pipeline.remote_write
     stability: experimental
@@ -1487,6 +1435,341 @@ queries:
         )
       )
 
+  # --- ingest: what pushes into the gateway -----------------------------------
+  - id: infra.alloy.ingest.log_push.lines
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second the gateway accepted on its log-push listener.
+      nominal: |
+        Close to what the agents send, plus anything else in the cluster
+        pushing logs to the gateway.
+      unhealthy: |
+        A fall to zero while the agents are running. They are failing to reach
+        the gateway, and _Log Pipeline -> Delivery_ shows their side of it.
+    promQL: |
+      sum(
+        rate(
+          loki_source_api_entries_written{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.log_push.requests
+    stability: experimental
+    description:
+      summary: |
+        Log push requests per second the gateway received, split by the status
+        it returned.
+      nominal: Every request a 2xx.
+      unhealthy: |
+        Non-2xx responses. The gateway is refusing its senders, most often
+        because its own delivery to Loki is backed up. _Log Pipeline ->
+        Delivery_ says whether it is.
+      notes: |
+        Only requests that reached the HTTP layer. A sender whose TLS handshake
+        fails never reaches this counter, and _Connections_ below carries that
+        case.
+    promQL: |
+      sum by (status_code) (
+        rate(
+          loki_source_api_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.log_push.latency
+    stability: experimental
+    description:
+      summary: |
+        How long the gateway takes to accept a log push, at the 99th percentile.
+      nominal: Milliseconds.
+      unhealthy: |
+        Seconds. The gateway is slow to take data, usually because its own
+        delivery to Loki is backed up, and every sender queues behind it.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le) (
+          rate(
+            loki_source_api_request_duration_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.received
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the gateway accepted over Prometheus remote write.
+      nominal: |
+        Empty unless something remote-writes to the gateway. The chart points
+        the Thanos ruler at it, so a default install carries the ruler's
+        recorded series here.
+      unhealthy: |
+        A fall to zero while a sender is configured. _Remote-Write Senders_
+        below says whether the sender is failing.
+    promQL: |
+      sum(
+        rate(
+          prometheus_forwarded_samples_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"prometheus\\.receive_http\\..*"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.samples
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the gateway accepted over remote write, beside the
+        samples it dropped for carrying invalid labels.
+      nominal: |
+        Accepted tracks the senders. Dropped stays at zero.
+      degraded: |
+        Dropped samples. A sender is writing label names or values the gateway
+        cannot store, and those samples are not kept.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_forwarded_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id=~"prometheus\\.receive_http\\..*"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_api_remote_write_invalid_labels_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.remote_write.requests
+    stability: experimental
+    description:
+      summary: |
+        Remote-write requests per second the gateway answered, split by status
+        code.
+      nominal: Every request a 2xx.
+      unhealthy: |
+        4xx is the gateway rejecting a batch as malformed, which the sender
+        does not retry. 5xx is the gateway failing to take a batch, usually
+        because it could not pass the samples on. The sender retries those,
+        and _Remote-Write Senders_ shows the retries accumulating.
+      notes: |
+        Only requests that reached the HTTP layer. A failed TLS handshake is
+        under _Connections_ below.
+    promQL: |
+      sum by (status_code) (
+        rate(
+          prometheus_receive_http_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.latency
+    stability: experimental
+    description:
+      summary: |
+        How long the gateway takes to answer a remote-write request, at the
+        99th percentile.
+      nominal: Milliseconds.
+      unhealthy: |
+        Seconds. Senders run out of parallelism waiting on the gateway, and
+        their queues grow.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le) (
+          rate(
+            prometheus_receive_http_request_duration_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.senders
+    stability: experimental
+    description:
+      summary: |
+        What each remote-write sender pointed at the gateway reports about its
+        own queue: samples sent, failed, and retried.
+      nominal: |
+        Sent steady. Failed and retried at zero.
+      unhealthy: |
+        Retried close to sent. Almost every attempt is a retry, so little or
+        nothing is arriving. This is the one view of remote-write ingest that
+        sees a sender which cannot connect at all, since such a sender reaches
+        no gateway counter.
+      notes: |
+        Found by the sender's own `url`, matched against `alloy-gateway`. Only
+        senders this stack scrapes appear, so an external sender, or one
+        addressing the gateway by IP, does not. The collector pickers do not
+        narrow it, because the series belong to the sender.
+    promQL:
+      - |
+        sum by (job) (
+          rate(
+            prometheus_remote_storage_samples_total{
+              url=~".*alloy-gateway.*"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (job) (
+          rate(
+            prometheus_remote_storage_samples_failed_total{
+              url=~".*alloy-gateway.*"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (job) (
+          rate(
+            prometheus_remote_storage_samples_retried_total{
+              url=~".*alloy-gateway.*"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.otlp.metrics
+    stability: experimental
+    description:
+      summary: |
+        Metric points per second the gateway accepted and refused over OTLP.
+      nominal: |
+        Empty unless something in the cluster sends metrics over OTLP. When
+        something does, nothing refused.
+      unhealthy: |
+        Refused points. The gateway could not take them, usually under memory
+        pressure, and the sender decides whether to retry.
+    promQL:
+      - |
+        sum(
+          rate(
+            otelcol_receiver_accepted_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            otelcol_receiver_refused_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.otlp.logs
+    stability: experimental
+    description:
+      summary: |
+        Log records per second the gateway accepted and refused over OTLP.
+      nominal: |
+        Empty unless something in the cluster sends logs over OTLP. When
+        something does, nothing refused.
+      unhealthy: |
+        Refused records. The gateway could not take them, usually under memory
+        pressure, and the sender decides whether to retry.
+    promQL:
+      - |
+        sum(
+          rate(
+            otelcol_receiver_accepted_log_records_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            otelcol_receiver_refused_log_records_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.tls_rejections
+    stability: experimental
+    description:
+      summary: |
+        TLS handshakes per minute that a collector's listener refused, usually
+        because the client presented a certificate the listener does not trust.
+      nominal: Zero.
+      unhealthy: |
+        A sustained rate. A client whose handshake fails never reaches any
+        counter, so its data is missing from every other panel as well. The
+        line names the client's address. `kubectl get pods -o wide` maps that
+        address to a pod.
+      notes: |
+        Read from the collectors' own logs, since no metric records a failed
+        handshake. Covers every listener a collector serves: log push, OTLP,
+        and remote write into the gateway. Its most common cause is a client
+        rolled onto a new certificate before or after the gateway trusts it.
+    logQL: |
+      sum by (app) (
+        rate(
+          {
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace"
+          }
+            |= "TLS handshake error"
+            | pod=~"$alloyPod"
+          %%{interval}
+        )
+      ) * 60
+
   # --- components: the controller, its configuration, and clustering ----------
   - id: infra.alloy.components.not_healthy
     stability: experimental
@@ -1536,32 +1819,48 @@ queries:
     stability: experimental
     description:
       summary: |
-        The configuration each collector is running, by content hash, and
-        whether its last load succeeded.
+        The configuration each collector is running, by content hash, whether
+        its last load succeeded, and how long the collector has been up.
       nominal: |
-        One hash per role, and every load successful.
+        One hash per role, every load successful, and uptimes that differ only
+        by when each pod last rolled.
       unhealthy: |
         A failed load. The collector is still running the hash shown, which is
         the last configuration that loaded, rather than the one it was given.
+      degraded: |
+        One collector with a much shorter uptime than its peers. It restarted
+        on its own rather than in a rollout, and _Overview -> Collection Health_
+        counts the restarts.
       notes: |
-        The chart restarts a collector to change its configuration, so two
+        The chart restarts a collector to change its configuration, so a
+        collector's uptime is also how long it has run the hash shown. Two
         hashes for one role is a rollout in progress. _Distinct Configurations_
         beside this says whether it finished.
     instant: true
-    promQL: |
-      max by (app, pod, sha256) (
-        alloy_config_hash{
-          app=~"$alloyRole",
-          namespace=~"$alloyNamespace",
-          pod=~"$alloyPod"
-        }
-        * on (namespace, pod) group_left ()
-        alloy_config_last_load_successful{
-          app=~"$alloyRole",
-          namespace=~"$alloyNamespace",
-          pod=~"$alloyPod"
-        }
-      )
+    promQL:
+      - |
+        max by (app, pod, sha256) (
+          alloy_config_hash{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          * on (namespace, pod) group_left ()
+          alloy_config_last_load_successful{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+      - |
+        max by (app, pod) (
+          time()
+          - alloy_resources_process_start_time_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
 
   - id: infra.alloy.components.distinct_configs
     stability: experimental
@@ -2052,6 +2351,113 @@ queries:
         pod=~"$alloyPod"
       }
 
+  # --- events: what Kubernetes reported about the collectors -------------------
+  - id: infra.alloy.events.rate.by_reason
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes events about the collectors' pods, DaemonSet, Deployment and
+        autoscaler, and about the configuration-validation Jobs that run before
+        each install and upgrade, per reason.
+      nominal: |
+        Bursts during a rollout or a scale-up, such as `ScalingReplicaSet`,
+        `Scheduled` and `Killing`, and quiet in between. Each upgrade adds a
+        `SuccessfulCreate` and a `Completed` per validation Job.
+      unhealthy: |
+        A reason that repeats. `BackOff` is a collector that starts and dies,
+        `Unhealthy` one whose probe fails, `FailedMount` a volume or
+        certificate secret that did not attach, and `FailedScheduling` an agent
+        with no room on a new node. `BackoffLimitExceeded` on a validation Job
+        is a pipeline configuration that failed to validate, and the install or
+        upgrade that ran it stopped there.
+      notes: |
+        Counts events as Loki received them. Kubernetes folds a repeat into one
+        event with a rising `count`, so a tight loop reports fewer lines than
+        it has occurrences.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {
+            job="loki.source.kubernetes_events",
+            namespace=~"$alloyNamespace"
+          }
+            %%{mzLogSearchFilter}
+            | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+            | name=~"$alloyPod"
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.events.rate.by_kind
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes events about the collectors, per kind of object they
+        concern.
+      nominal: |
+        `Pod` and `ReplicaSet` during a gateway rollout, `Pod` alone during an
+        agent rollout, and `HorizontalPodAutoscaler` when the gateway scales.
+      degraded: |
+        A steady stream of `HorizontalPodAutoscaler` events. The gateway is
+        scaling up and down repeatedly, which restarts scrapes each time.
+    logQL: |
+      sum by (kind) (
+        count_over_time(
+          {
+            job="loki.source.kubernetes_events",
+            namespace=~"$alloyNamespace"
+          }
+            %%{mzLogSearchFilter}
+            | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+            | name=~"$alloyPod"
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.events.warnings
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes warning events about the collectors, newest first.
+      nominal: Nothing.
+      unhealthy: |
+        Warnings that keep arriving. The reason and message name the cause.
+      notes: |
+        `Warning` is the reporting component's own judgement, not a threshold
+        of ours.
+    logQL: |
+      {
+        job="loki.source.kubernetes_events",
+        namespace=~"$alloyNamespace",
+        level="WARN"
+      }
+        %%{mzLogSearchFilter}
+        | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+        | name=~"$alloyPod"
+
+  - id: infra.alloy.events.stream
+    stability: experimental
+    description:
+      summary: |
+        Every Kubernetes event about the collectors, newest first.
+      notes: |
+        Matched on the involved object's name, since events carry no `app`
+        label. Choosing one collector narrows the feed to that pod's own
+        events, which leaves out its DaemonSet's or Deployment's.
+
+        The validation Jobs are named after the release, as
+        `<release>-validate-agent` and `<release>-validate-gateway`, rather
+        than after the role. Both run together on every install and upgrade, so
+        their events are shown whatever the role picker is set to.
+    logQL: |
+      {
+        job="loki.source.kubernetes_events",
+        namespace=~"$alloyNamespace"
+      }
+        %%{mzLogSearchFilter}
+        | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+        | name=~"$alloyPod"
+
   # --- logs: what the collectors themselves said ------------------------------
   - id: infra.alloy.logs.stream
     stability: experimental
@@ -2200,7 +2606,7 @@ metricOverrides:
   - metricPattern: "loki_write_(entry_propagation_latency|request_duration)_seconds_(bucket|sum)"
     importance: extended
     priority: 5
-  - metricPattern: "(prometheus_remote_storage_sent_batch_duration|alloy_component_evaluation|loki_source_api_request_duration)_seconds_(bucket|sum)"
+  - metricPattern: "(prometheus_remote_storage_sent_batch_duration|alloy_component_evaluation|loki_source_api_request_duration|prometheus_receive_http_request_duration)_seconds_(bucket|sum)"
     importance: extended
     priority: 5
 

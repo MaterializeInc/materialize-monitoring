@@ -408,21 +408,32 @@ The second meta-monitoring dashboard, and the second occupant of `Folder::MetaO1
 | 1 | Overview | `overview.rs` |
 | 2 | Log Pipeline | `log_pipeline.rs` |
 | 3 | Metric Pipeline | `metric_pipeline.rs` |
-| 4 | Components | `components.rs` |
-| 5 | Resources | `resources.rs` |
-| 6 | Logs | `logs.rs` |
+| 4 | Ingest | `ingest.rs` |
+| 5 | Components | `components.rs` |
+| 6 | Resources | `resources.rs` |
+| 7 | Events | `events.rs` |
+| 8 | Logs | `logs.rs` |
+
+Eight tabs on a seven-colour palette: Components and Resources share a shade, since neither shades a panel, and a
+test holds that pair as the only one.
 
 Queries are `packages/queries/infra-alloy.yaml`, which absorbed the six panel-less `infra.loki.pipeline.*` queries.
 
-Four things about it are not re-derivable by reading the modules:
+Six things about it are not re-derivable by reading the modules:
 
 - **Everything on it travels through the gateway.** The gateway scrapes Alloy's metrics and forwards Alloy's logs, so
   a gateway outage empties the whole dashboard. The verdict counts use the registry's `sum(A) or 0 * sum(B)` form so
   zero and absent read differently; the style guide has it under PromQL recipes.
 - **`$alloyRole`'s "All" is the literal `alloy-agent|alloy-gateway`**, and it is the anchor. `thanos-ruler` publishes
-  `prometheus_remote_storage_*` too, and on the reference install its queue was stuck in retries while the
-  gateway's was healthy. A test asserts every query carries the anchor, except the four `TARGET_WIDE` panels in
-  `metric_pipeline.rs` that read the scraped targets' own `up` and `scrape_*`.
+  `prometheus_remote_storage_*` too, and an unanchored query would add its queue to the gateway's. A test asserts
+  every query carries the anchor, except the `UNSCOPED` panels in `mod.rs`: the four that read the scraped targets'
+  own `up` and `scrape_*`, and the remote-write senders' panel, which reads the senders' queues by `url`.
+- **Events match on the involved object's `name`**, which reaches every object named after a role, plus the
+  pre-install validation Jobs by a second pattern, `.+-validate-(agent|gateway)`, since those are named after the
+  release. That second pattern ignores the role picker.
+- **Ingest reads three vantage points.** The gateway's request counters, the senders' own queues, and the gateway's
+  log for refused TLS handshakes. Each sees a failure the others miss, which is why the TLS panel lives there and
+  not on Overview.
 - **The internal Alloy dashboards were read and not ported.** They are mostly the upstream mixin. The findings are in
   the module doc of `infra_alloy/mod.rs`: `_bucket`-summed success rates, target `up` scoped by the collector's
   `job`, memory as RSS, and heap without `GOMEMLIMIT`.

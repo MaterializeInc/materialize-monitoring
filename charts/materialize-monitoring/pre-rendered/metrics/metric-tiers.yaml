@@ -165,6 +165,7 @@ recommended:
 - alloy_component_evaluation_seconds_count
 - alloy_component_evaluation_slow_seconds
 - alloy_config_hash
+- alloy_resources_process_start_time_seconds
 - awscni_assigned_ip_addresses
 - awscni_aws_api_latency_ms_count
 - awscni_aws_api_latency_ms_sum
@@ -215,6 +216,7 @@ recommended:
 - loki_process_cri_lines_truncated_total
 - loki_process_dropped_lines_total
 - loki_query_frontend_queries_in_progress
+- loki_source_api_entries_written
 - loki_source_api_request_duration_seconds_count
 - loki_source_file_files_active_total
 - loki_source_file_read_lines_total
@@ -325,7 +327,9 @@ recommended:
 - otelcol_receiver_accepted_metric_points_total
 - otelcol_receiver_refused_log_records_total
 - otelcol_receiver_refused_metric_points_total
+- prometheus_api_remote_write_invalid_labels_samples_total
 - prometheus_forwarded_samples_total
+- prometheus_receive_http_request_duration_seconds_count
 - prometheus_remote_storage_samples_retried_total
 - prometheus_remote_storage_shards
 - prometheus_remote_storage_shards_desired
@@ -357,10 +361,12 @@ extended:
 - loki_objstore_bucket_operation_duration_seconds_bucket
 - loki_query_scheduler_queue_duration_seconds_bucket
 - loki_request_duration_seconds_bucket
+- loki_source_api_request_duration_seconds_bucket
 - loki_tsdb_shipper_query_wait_time_seconds_bucket
 - loki_write_entry_propagation_latency_seconds_bucket
 - loki_write_request_duration_seconds_bucket
 - process_max_fds
 - process_open_fds
+- prometheus_receive_http_request_duration_seconds_bucket
 - prometheus_remote_storage_sent_batch_duration_seconds_bucket
 diagnostic: []

@@ -10,10 +10,13 @@
 //! Tab identities and their theme colours, for the whole dashboard.
 //!
 //! Same scheme as everywhere else here: one qualitative colour per tab, assigned
-//! in one place. Logs keeps the cyan it carries on every other logs tab, and
-//! Overview keeps the blue `infra-loki` gives its own, so the two
-//! meta-monitoring dashboards read alike. The other four are this dashboard's
-//! own.
+//! in one place. Logs keeps the cyan it carries on every other logs tab, Events
+//! the magenta it carries on `env-logs`, and Overview the blue `infra-loki` gives
+//! its own, so the dashboards read alike.
+//!
+//! Eight tabs against a seven-colour palette means one pair shares. Components
+//! and Resources are that pair: both describe the collectors' internals, and
+//! neither shades a single panel, so the shared colour is never on screen.
 
 use mzmon_lib::grafana::palette;
 
@@ -44,6 +47,12 @@ pub const METRIC_PIPELINE: Theme = Theme {
     shade: palette::THEME[3], // orange
 };
 
+/// What pushes into the gateway: log push, remote write, and OTLP.
+pub const INGEST: Theme = Theme {
+    title: "Ingest",
+    shade: palette::THEME[6], // gray
+};
+
 /// The controller running each pipeline, and the cluster the gateways form.
 pub const COMPONENTS: Theme = Theme {
     title: "Components",
@@ -51,8 +60,16 @@ pub const COMPONENTS: Theme = Theme {
 };
 
 /// Whether the collectors have room to do the work.
+///
+/// Shares Components' shade; see the module docs.
 pub const RESOURCES: Theme = Theme {
     title: "Resources",
+    shade: COMPONENTS.shade,
+};
+
+/// What Kubernetes reported about the collectors.
+pub const EVENTS: Theme = Theme {
+    title: "Events",
     shade: palette::THEME[5], // magenta
 };
 
@@ -63,12 +80,14 @@ pub const LOGS: Theme = Theme {
 };
 
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 6] = [
+pub const THEMED: [Theme; 8] = [
     OVERVIEW,
     LOG_PIPELINE,
     METRIC_PIPELINE,
+    INGEST,
     COMPONENTS,
     RESOURCES,
+    EVENTS,
     LOGS,
 ];
 
@@ -78,13 +97,22 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn no_two_tabs_share_a_shade_or_a_title() {
+    fn only_the_declared_pair_shares_a_shade() {
+        // Every colour in the palette is used, and the one repeat is the pair
+        // the module docs name.
         let shades: HashSet<&str> = THEMED.iter().map(|t| t.shade).collect();
         assert_eq!(
             shades.len(),
-            THEMED.len().min(palette::THEME.len()),
-            "two tabs share a shade while the palette still has a spare"
+            palette::THEME.len(),
+            "a palette colour is unused"
         );
+        for (i, a) in THEMED.iter().enumerate() {
+            for b in &THEMED[i + 1..] {
+                if a.shade == b.shade {
+                    assert_eq!((a.title, b.title), (COMPONENTS.title, RESOURCES.title));
+                }
+            }
+        }
         let titles: HashSet<&str> = THEMED.iter().map(|t| t.title).collect();
         assert_eq!(titles.len(), THEMED.len(), "two tabs share a title");
     }
@@ -107,6 +135,7 @@ mod tests {
         // any logs dashboard, should not have to work out that the cyan tab is
         // the same kind of tab.
         assert_eq!(LOGS.shade, palette::THEME[1]);
+        assert_eq!(EVENTS.shade, crate::grafana::env_logs::theme::EVENTS.shade);
         assert_eq!(
             OVERVIEW.shade,
             crate::grafana::infra_loki::theme::OVERVIEW.shade

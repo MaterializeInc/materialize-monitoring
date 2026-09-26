@@ -31,6 +31,207 @@ spec:
     The collectors watching themselves: the per-node agents, the gateway, both pipelines, and Alloy's own logs. Everything here reaches the dashboard through the gateway, so a dashboard that is empty throughout most likely means the gateway is down.
   editable: true
   elements:
+    alloy-event-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {
+                        job="loki.source.kubernetes_events",
+                        namespace=~"$alloyNamespace"
+                      }
+                        |~ "(?i)$logSearch"
+                        | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+                        | name=~"$alloyPod"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Every Kubernetes event about the collectors, newest first.**
+
+          Matched on the involved object's name, since events carry no `app` label. Choosing one collector narrows the feed to that pod's own events, which leaves out its DaemonSet's or Deployment's.
+
+          The validation Jobs are named after the release, as `<release>-validate-agent` and `<release>-validate-gateway`, rather than after the role. Both run together on every install and upgrade, so their events are shown whatever the role picker is set to.
+        id: 1083
+        links: []
+        title: All Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No events about the collectors in this time range
+              overrides: []
+            options:
+              dedupStrategy: signature
+              detailsMode: inline
+              displayedFields:
+              - reason
+              - name
+              - msg
+              enableInfiniteScrolling: true
+              enableLogDetails: true
+              fontSize: small
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
+              showLabels: false
+              showLevel: true
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: true
+              wrapLogMessage: false
+          version: ''
+    alloy-event-rate-by-kind:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (kind) (
+                        count_over_time(
+                          {
+                            job="loki.source.kubernetes_events",
+                            namespace=~"$alloyNamespace"
+                          }
+                            |~ "(?i)$logSearch"
+                            | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+                            | name=~"$alloyPod"
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{kind}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Kubernetes events about the collectors, per kind of object they concern.**
+
+          **Nominal:** `Pod` and `ReplicaSet` during a gateway rollout, `Pod` alone during an agent rollout, and `HorizontalPodAutoscaler` when the gateway scales.
+
+          **Degraded:** A steady stream of `HorizontalPodAutoscaler` events. The gateway is scaling up and down repeatedly, which restarts scrapes each time.
+        id: 1081
+        links: []
+        title: Event Rate by Object Kind
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No events about the collectors in this time range
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    alloy-event-rate-by-reason:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (reason) (
+                        count_over_time(
+                          {
+                            job="loki.source.kubernetes_events",
+                            namespace=~"$alloyNamespace"
+                          }
+                            |~ "(?i)$logSearch"
+                            | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+                            | name=~"$alloyPod"
+                          [$__auto]
+                        )
+                      )
+                    legendFormat: '{{reason}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Kubernetes events about the collectors' pods, DaemonSet, Deployment and autoscaler, and about the configuration-validation Jobs that run before each install and upgrade, per reason.**
+
+          **Nominal:** Bursts during a rollout or a scale-up, such as `ScalingReplicaSet`, `Scheduled` and `Killing`, and quiet in between. Each upgrade adds a `SuccessfulCreate` and a `Completed` per validation Job.
+
+          **Unhealthy:** A reason that repeats. `BackOff` is a collector that starts and dies, `Unhealthy` one whose probe fails, `FailedMount` a volume or certificate secret that did not attach, and `FailedScheduling` an agent with no room on a new node. `BackoffLimitExceeded` on a validation Job is a pipeline configuration that failed to validate, and the install or upgrade that ran it stopped there.
+
+          Counts events as Loki received them. Kubernetes folds a repeat into one event with a rising `count`, so a tight loop reports fewer lines than it has occurrences.
+        id: 1080
+        links: []
+        title: Event Rate by Reason
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No events about the collectors in this time range
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
     alloy-logs-errors-by-component:
       kind: Panel
       spec:
@@ -74,7 +275,7 @@ spec:
           **Unhealthy:** One component dominating. Its name says which stage of the pipeline is failing: `loki.write` and `prometheus.remote_write` are deliveries, `otelcol.exporter` an extra destination, `discovery` and `prometheus.operator` finding targets.
 
           Independent of the level picker, for the same reason as the warning feed.
-        id: 1072
+        id: 1085
         links: []
         title: Error Rate by Component
         vizConfig:
@@ -134,7 +335,7 @@ spec:
           These lines reach Loki through the gateway. The agents' own lines are read by the gateway over the Kubernetes API, and the gateway's lines are read off disk by the agent on its node. A gateway that is down takes both with it, and `kubectl logs` is then the tool.
 
           An empty search matches every line rather than none.
-        id: 1076
+        id: 1089
         links: []
         title: All Logs
         vizConfig:
@@ -206,7 +407,7 @@ spec:
           **Nominal:** A low, steady baseline. The agents log each file they start or stop tailing, so pod churn shows up here.
 
           **Degraded:** `UNKNOWN` climbing. Those are lines Alloy did not write in its own format, most often the Go HTTP server reporting failed TLS handshakes on a listener.
-        id: 1071
+        id: 1084
         links: []
         title: Log Rate by Role and Level
         vizConfig:
@@ -268,7 +469,7 @@ spec:
           **Unhealthy:** A steady stream from one component. The `component_id` on each line names it.
 
           Independent of the level picker, like the other warning feeds in this repository. Narrowing the selection to INFO would otherwise silently empty it.
-        id: 1075
+        id: 1088
         links: []
         title: Warnings and Errors
         vizConfig:
@@ -340,7 +541,7 @@ spec:
           **Nominal:** Zero, or close to it.
 
           **Unhealthy:** A sustained non-zero rate. _Error Rate by Component_ says which stage, and the feed below says why.
-        id: 1073
+        id: 1086
         links: []
         title: Warning Rate
         vizConfig:
@@ -379,7 +580,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: Why the volume panels are not drawn over long ranges.
-        id: 1074
+        id: 1087
         links: []
         title: Volume (skipped)
         vizConfig:
@@ -401,6 +602,78 @@ spec:
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
+          version: ''
+    alloy-warning-event-feed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      {
+                        job="loki.source.kubernetes_events",
+                        namespace=~"$alloyNamespace",
+                        level="WARN"
+                      }
+                        |~ "(?i)$logSearch"
+                        | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+                        | name=~"$alloyPod"
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Kubernetes warning events about the collectors, newest first.**
+
+          **Nominal:** Nothing.
+
+          **Unhealthy:** Warnings that keep arriving. The reason and message name the cause.
+
+          `Warning` is the reporting component's own judgement, not a threshold of ours.
+        id: 1082
+        links: []
+        title: Warning Events
+        vizConfig:
+          group: logs
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                noValue: No warning events about the collectors in this time range
+              overrides: []
+            options:
+              dedupStrategy: signature
+              detailsMode: inline
+              displayedFields:
+              - reason
+              - name
+              - msg
+              enableInfiniteScrolling: true
+              enableLogDetails: true
+              fontSize: small
+              prettifyLogMessage: false
+              showCommonLabels: false
+              showControls: true
+              showFieldSelector: true
+              showLabels: false
+              showLevel: true
+              showLogContextToggle: false
+              showTime: true
+              sortOrder: Descending
+              syntaxHighlighting: true
+              timestampResolution: ms
+              unwrappedColumns: true
+              wrapLogMessage: false
           version: ''
     cluster-health-score:
       kind: Panel
@@ -446,7 +719,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** Above zero. The replica is missing gossip messages, usually from CPU starvation or network trouble between replicas. _Resources -> CPU_ says whether it is being throttled.
-        id: 1059
+        id: 1068
         links: []
         title: Gossip Health Score
         vizConfig:
@@ -543,7 +816,7 @@ spec:
           **Degraded:** A replica not ready. The cluster has fewer members than its configured minimum, and the replica's clustered components wait rather than scrape.
 
           `terminating` is a replica shutting down and handing its targets on. It is expected during a rollout and should clear within a minute.
-        id: 1062
+        id: 1071
         links: []
         title: Cluster Members
         vizConfig:
@@ -644,7 +917,7 @@ spec:
           **Unhealthy:** A replica seeing fewer. It has lost gossip contact with its peers, and both sides assign themselves the targets they think are unowned. The result is targets scraped twice, and duplicate samples the store rejects.
 
           Only the gateway runs clustered. The agent reads only its own node and publishes no cluster metrics.
-        id: 1058
+        id: 1067
         links: []
         title: Peers Seen
         vizConfig:
@@ -715,7 +988,7 @@ spec:
           **Nominal:** Roughly even. Clustering splits targets across replicas by hashing them, so the split is close but not exact.
 
           **Degraded:** One replica carrying all of them while others carry none. Those replicas are not in the cluster, or clustering is not enabled for the components that scrape.
-        id: 1060
+        id: 1069
         links: []
         title: Targets per Gateway
         vizConfig:
@@ -811,7 +1084,7 @@ spec:
           **Nominal:** Zero.
 
           **Degraded:** A sustained rate. Replicas cannot reach each other on the clustering port, most often because a NetworkPolicy does not allow it.
-        id: 1061
+        id: 1070
         links: []
         title: Gossip Send Failures
         vizConfig:
@@ -869,6 +1142,7 @@ spec:
                       )
                     format: table
                     instant: true
+                    legendFormat: last load succeeded
                     qryType: 2
                     query: |
                       max by (app, pod, sha256) (
@@ -886,8 +1160,45 @@ spec:
                       )
                   version: v0
                 refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (app, pod) (
+                        time()
+                        - alloy_resources_process_start_time_seconds{
+                          app=~"$alloyRole",
+                          namespace=~"$alloyNamespace",
+                          pod=~"$alloyPod"
+                        }
+                      )
+                    format: table
+                    instant: true
+                    legendFormat: uptime
+                    qryType: 2
+                    query: |
+                      max by (app, pod) (
+                        time()
+                        - alloy_resources_process_start_time_seconds{
+                          app=~"$alloyRole",
+                          namespace=~"$alloyNamespace",
+                          pod=~"$alloyPod"
+                        }
+                      )
+                  version: v0
+                refId: query-1
             queryOptions: {}
             transformations:
+            - group: merge
+              kind: Transformation
+              spec:
+                options: {}
             - group: organize
               kind: Transformation
               spec:
@@ -895,22 +1206,28 @@ spec:
                   excludeByName:
                     Time: true
                   indexByName:
-                    Value: 3
+                    'Value #query-0': 5
+                    'Value #query-1': 6
                     app: 0
+                    last load succeeded: 3
                     pod: 1
                     sha256: 2
+                    uptime: 4
                   renameByName:
-                    Value: last load succeeded
+                    'Value #query-0': last load succeeded
+                    'Value #query-1': uptime
                     sha256: config hash
         description: |-
-          **The configuration each collector is running, by content hash, and whether its last load succeeded.**
+          **The configuration each collector is running, by content hash, whether its last load succeeded, and how long the collector has been up.**
 
-          **Nominal:** One hash per role, and every load successful.
+          **Nominal:** One hash per role, every load successful, and uptimes that differ only by when each pod last rolled.
+
+          **Degraded:** One collector with a much shorter uptime than its peers. It restarted on its own rather than in a rollout, and _Overview -> Collection Health_ counts the restarts.
 
           **Unhealthy:** A failed load. The collector is still running the hash shown, which is the last configuration that loaded, rather than the one it was given.
 
-          The chart restarts a collector to change its configuration, so two hashes for one role is a rollout in progress. _Distinct Configurations_ beside this says whether it finished.
-        id: 1052
+          The chart restarts a collector to change its configuration, so a collector's uptime is also how long it has run the hash shown. Two hashes for one role is a rollout in progress. _Distinct Configurations_ beside this says whether it finished.
+        id: 1061
         links: []
         title: Configuration by Collector
         vizConfig:
@@ -924,8 +1241,19 @@ spec:
                   filterable: true
                   inspect: false
                 noValue: No data from the collectors. Check that the gateway is running.
-                unit: bool_yes_no
-              overrides: []
+              overrides:
+              - matcher:
+                  id: byName
+                  options: last load succeeded
+                properties:
+                - id: unit
+                  value: bool_yes_no
+              - matcher:
+                  id: byName
+                  options: uptime
+                properties:
+                - id: unit
+                  value: dtdurations
             options:
               cellHeight: sm
               footer:
@@ -984,7 +1312,7 @@ spec:
           **Nominal:** One per role.
 
           **Degraded:** Two for longer than a rollout takes. Some collectors of that role did not restart onto the new configuration, and the fleet is split.
-        id: 1053
+        id: 1062
         links: []
         title: Distinct Configurations
         vizConfig:
@@ -1067,7 +1395,7 @@ spec:
           **Nominal:** Milliseconds.
 
           **Degraded:** Seconds. Evaluations queue behind the slow one, and changes such as a new scrape target take that much longer to take effect.
-        id: 1055
+        id: 1064
         links: []
         title: Evaluation Latency (p99)
         vizConfig:
@@ -1137,7 +1465,7 @@ spec:
           **Nominal:** Zero or one.
 
           **Degraded:** A queue that stays above a handful. The controller is not keeping up with changes to its inputs. _Evaluation Latency_ says whether one slow evaluation is the cause.
-        id: 1057
+        id: 1066
         links: []
         title: Evaluation Queue
         vizConfig:
@@ -1213,7 +1541,7 @@ spec:
           **Nominal:** A steady rate. Components re-evaluate when their inputs change, so a busier cluster evaluates more often.
 
           **Degraded:** A sustained step up with no change to the cluster. Some input is changing continuously, such as a discovery result that flaps, and every downstream component re-evaluates with it.
-        id: 1054
+        id: 1063
         links: []
         title: Evaluation Rate
         vizConfig:
@@ -1291,7 +1619,7 @@ spec:
           **Degraded:** Any component listed. It is holding up every evaluation queued behind it, and its name says where to look.
 
           Alloy records this only for an evaluation over its slowness threshold, so a healthy collector publishes no series here at all.
-        id: 1056
+        id: 1065
         links: []
         title: Slow Components
         vizConfig:
@@ -1365,7 +1693,7 @@ spec:
           **Unhealthy:** `unhealthy` is a component that failed to evaluate or failed while running, and it has stopped passing data on. `exited` is a component that stopped. `unknown` for more than a few seconds after startup is a component that never finished starting.
 
           Alloy publishes the count per state rather than per component. The collector's log under _Logs_ names the component.
-        id: 1050
+        id: 1059
         links: []
         title: Components Not Healthy
         vizConfig:
@@ -1435,7 +1763,7 @@ spec:
           **Nominal:** The same count for every collector of a role, since they share one configuration.
 
           **Degraded:** One collector running fewer than its peers. Part of its configuration failed to load, or it is running a different configuration.
-        id: 1051
+        id: 1060
         links: []
         title: Components Running
         vizConfig:
@@ -1447,6 +1775,1179 @@ spec:
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
                 unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-flow-lines:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          loki_source_api_entries_written{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: lines/s
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          loki_source_api_entries_written{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log lines per second the gateway accepted on its log-push listener.**
+
+          **Nominal:** Close to what the agents send, plus anything else in the cluster pushing logs to the gateway.
+
+          **Unhealthy:** A fall to zero while the agents are running. They are failing to reach the gateway, and _Log Pipeline -> Delivery_ shows their side of it.
+        id: 1047
+        links: []
+        title: Log Lines Received
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#BBBBBB'
+                  mode: shades
+                min: 0
+                noValue: Nothing is pushing logs to the gateway
+                unit: suffix:lines/s
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    ingest-flow-refused:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                      or
+                      0 * sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: refused/s
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                      or
+                      0 * sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Push requests per second the gateway answered with an error, across its log-push and remote-write listeners.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** A sustained rate. Something is sending data the gateway will not take, and that data is lost unless the sender retries successfully. _Ingest_ says which listener, which status, and which sender.
+
+          Counts requests that reached the gateway's HTTP layer. A sender whose TLS handshake fails never gets that far, and _Ingest -> Connections_ carries that case. OTLP refusals are counted in points rather than requests, and appear under _Ingest -> OTLP_.
+        id: 1049
+        links: []
+        title: Push Requests Refused
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is pushing to the gateway
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#FEDA8B'
+                    value: 0.01
+                  - color: '#FDB366'
+                    value: 2.5075
+                  - color: '#F67E4B'
+                    value: 5.005
+                  - color: '#DD3D2D'
+                    value: 7.5024999999999995
+                  - color: '#A50026'
+                    value: 10
+                unit: reqps
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    ingest-flow-samples:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          prometheus_forwarded_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"prometheus\\.receive_http\\..*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: samples/s
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          prometheus_forwarded_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"prometheus\\.receive_http\\..*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Samples per second the gateway accepted over Prometheus remote write.**
+
+          **Nominal:** Empty unless something remote-writes to the gateway. The chart points the Thanos ruler at it, so a default install carries the ruler's recorded series here.
+
+          **Unhealthy:** A fall to zero while a sender is configured. _Remote-Write Senders_ below says whether the sender is failing.
+        id: 1048
+        links: []
+        title: Remote-Write Samples Received
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#BBBBBB'
+                  mode: shades
+                min: 0
+                noValue: Nothing is remote-writing to the gateway
+                unit: suffix:samples/s
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
+    ingest-log-latency:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(
+                        0.99,
+                        sum by (le) (
+                          rate(
+                            loki_source_api_request_duration_seconds_bucket{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod"
+                            }
+                            [$__rate_interval]
+                          )
+                        )
+                      )
+                    legendFormat: p99
+                    qryType: 1
+                    query: |
+                      histogram_quantile(
+                        0.99,
+                        sum by (le) (
+                          rate(
+                            loki_source_api_request_duration_seconds_bucket{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod"
+                            }
+                            [$__rate_interval]
+                          )
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How long the gateway takes to accept a log push, at the 99th percentile.**
+
+          **Nominal:** Milliseconds.
+
+          **Unhealthy:** Seconds. The gateway is slow to take data, usually because its own delivery to Loki is backed up, and every sender queues behind it.
+        id: 1051
+        links: []
+        title: Log Push Latency (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is pushing logs to the gateway
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-log-requests:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (status_code) (
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{status_code}}'
+                    qryType: 1
+                    query: |
+                      sum by (status_code) (
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log push requests per second the gateway received, split by the status it returned.**
+
+          **Nominal:** Every request a 2xx.
+
+          **Unhealthy:** Non-2xx responses. The gateway is refusing its senders, most often because its own delivery to Loki is backed up. _Log Pipeline -> Delivery_ says whether it is.
+
+          Only requests that reached the HTTP layer. A sender whose TLS handshake fails never reaches this counter, and _Connections_ below carries that case.
+        id: 1050
+        links: []
+        title: Log Push Requests by Status
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is pushing logs to the gateway
+                unit: reqps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-otlp-logs:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          otelcol_receiver_accepted_log_records_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: accepted
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          otelcol_receiver_accepted_log_records_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          otelcol_receiver_refused_log_records_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: refused
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          otelcol_receiver_refused_log_records_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Log records per second the gateway accepted and refused over OTLP.**
+
+          **Nominal:** Empty unless something in the cluster sends logs over OTLP. When something does, nothing refused.
+
+          **Unhealthy:** Refused records. The gateway could not take them, usually under memory pressure, and the sender decides whether to retry.
+        id: 1057
+        links: []
+        title: OTLP Log Records
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing has sent logs to the gateway over OTLP
+                unit: suffix:records/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-otlp-metrics:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          otelcol_receiver_accepted_metric_points_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: accepted
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          otelcol_receiver_accepted_metric_points_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          otelcol_receiver_refused_metric_points_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: refused
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          otelcol_receiver_refused_metric_points_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Metric points per second the gateway accepted and refused over OTLP.**
+
+          **Nominal:** Empty unless something in the cluster sends metrics over OTLP. When something does, nothing refused.
+
+          **Unhealthy:** Refused points. The gateway could not take them, usually under memory pressure, and the sender decides whether to retry.
+        id: 1056
+        links: []
+        title: OTLP Metric Points
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing has sent metrics to the gateway over OTLP
+                unit: suffix:points/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-rw-latency:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      histogram_quantile(
+                        0.99,
+                        sum by (le) (
+                          rate(
+                            prometheus_receive_http_request_duration_seconds_bucket{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod"
+                            }
+                            [$__rate_interval]
+                          )
+                        )
+                      )
+                    legendFormat: p99
+                    qryType: 1
+                    query: |
+                      histogram_quantile(
+                        0.99,
+                        sum by (le) (
+                          rate(
+                            prometheus_receive_http_request_duration_seconds_bucket{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod"
+                            }
+                            [$__rate_interval]
+                          )
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How long the gateway takes to answer a remote-write request, at the 99th percentile.**
+
+          **Nominal:** Milliseconds.
+
+          **Unhealthy:** Seconds. Senders run out of parallelism waiting on the gateway, and their queues grow.
+        id: 1054
+        links: []
+        title: Remote-Write Latency (p99)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is remote-writing to the gateway
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-rw-requests:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (status_code) (
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{status_code}}'
+                    qryType: 1
+                    query: |
+                      sum by (status_code) (
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Remote-write requests per second the gateway answered, split by status code.**
+
+          **Nominal:** Every request a 2xx.
+
+          **Unhealthy:** 4xx is the gateway rejecting a batch as malformed, which the sender does not retry. 5xx is the gateway failing to take a batch, usually because it could not pass the samples on. The sender retries those, and _Remote-Write Senders_ shows the retries accumulating.
+
+          Only requests that reached the HTTP layer. A failed TLS handshake is under _Connections_ below.
+        id: 1052
+        links: []
+        title: Remote-Write Requests by Status
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is remote-writing to the gateway
+                unit: reqps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-rw-samples:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          prometheus_forwarded_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"prometheus\\.receive_http\\..*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: accepted
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          prometheus_forwarded_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"prometheus\\.receive_http\\..*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          prometheus_api_remote_write_invalid_labels_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: 'dropped: invalid labels'
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          prometheus_api_remote_write_invalid_labels_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Samples per second the gateway accepted over remote write, beside the samples it dropped for carrying invalid labels.**
+
+          **Nominal:** Accepted tracks the senders. Dropped stays at zero.
+
+          **Degraded:** Dropped samples. A sender is writing label names or values the gateway cannot store, and those samples are not kept.
+        id: 1053
+        links: []
+        title: Remote-Write Samples
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is remote-writing to the gateway
+                unit: suffix:samples/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-rw-senders:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job) (
+                        rate(
+                          prometheus_remote_storage_samples_total{
+                            url=~".*alloy-gateway.*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{job}} sent'
+                    qryType: 1
+                    query: |
+                      sum by (job) (
+                        rate(
+                          prometheus_remote_storage_samples_total{
+                            url=~".*alloy-gateway.*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job) (
+                        rate(
+                          prometheus_remote_storage_samples_failed_total{
+                            url=~".*alloy-gateway.*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{job}} failed'
+                    qryType: 1
+                    query: |
+                      sum by (job) (
+                        rate(
+                          prometheus_remote_storage_samples_failed_total{
+                            url=~".*alloy-gateway.*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (job) (
+                        rate(
+                          prometheus_remote_storage_samples_retried_total{
+                            url=~".*alloy-gateway.*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{job}} retried'
+                    qryType: 1
+                    query: |
+                      sum by (job) (
+                        rate(
+                          prometheus_remote_storage_samples_retried_total{
+                            url=~".*alloy-gateway.*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **What each remote-write sender pointed at the gateway reports about its own queue: samples sent, failed, and retried.**
+
+          **Nominal:** Sent steady. Failed and retried at zero.
+
+          **Unhealthy:** Retried close to sent. Almost every attempt is a retry, so little or nothing is arriving. This is the one view of remote-write ingest that sees a sender which cannot connect at all, since such a sender reaches no gateway counter.
+
+          Found by the sender's own `url`, matched against `alloy-gateway`. Only senders this stack scrapes appear, so an external sender, or one addressing the gateway by IP, does not. The collector pickers do not narrow it, because the series belong to the sender.
+        id: 1055
+        links: []
+        title: Remote-Write Senders
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No scraped sender is remote-writing to the gateway
+                unit: suffix:samples/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    ingest-tls-rejections:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${logsDatasource}
+                  group: loki
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (app) (
+                        rate(
+                          {
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace"
+                          }
+                            |= "TLS handshake error"
+                            | pod=~"$alloyPod"
+                          [$__auto]
+                        )
+                      ) * 60
+                    legendFormat: '{{app}}'
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **TLS handshakes per minute that a collector's listener refused, usually because the client presented a certificate the listener does not trust.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** A sustained rate. A client whose handshake fails never reaches any counter, so its data is missing from every other panel as well. The line names the client's address. `kubectl get pods -o wide` maps that address to a pod.
+
+          Read from the collectors' own logs, since no metric records a failed handshake. Covers every listener a collector serves: log push, OTLP, and remote write into the gateway. Its most common cause is a client rolled onto a new certificate before or after the gateway trusts it.
+        id: 1058
+        links: []
+        title: Rejected TLS Handshakes
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No listener has refused a TLS handshake in this range
+                unit: suffix:handshakes/min
               overrides: []
             options:
               legend:
@@ -2334,6 +3835,8 @@ spec:
           **Nominal:** Close to what the agents read, plus Kubernetes events. The gateway also drops the debug tap's echo and anything its guards discard, so a small shortfall against the agents is expected.
 
           **Unhealthy:** A widening gap against _Lines Read_. Lines are being lost between reading and storage, and _Delivery_ below says at which hop.
+
+          Both this and _Lines Read_ are short-window rates, and the gateway sends in batches, so at any instant the two can differ by half or more. Over the range they agree to within a few percent: on a reference install, 17.7 lines per second read against 17.6 delivered over six hours.
         id: 1012
         links: []
         title: Lines Delivered to Store
@@ -2362,195 +3865,6 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
-    logs-ingest-otlp:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(
-                        rate(
-                          otelcol_receiver_accepted_log_records_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                    legendFormat: accepted
-                    qryType: 1
-                    query: |
-                      sum(
-                        rate(
-                          otelcol_receiver_accepted_log_records_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                  version: v0
-                refId: query-0
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(
-                        rate(
-                          otelcol_receiver_refused_log_records_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                    legendFormat: refused
-                    qryType: 1
-                    query: |
-                      sum(
-                        rate(
-                          otelcol_receiver_refused_log_records_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                  version: v0
-                refId: query-1
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Log records per second the gateway accepted and refused over OTLP.**
-
-          **Nominal:** Empty unless something in the cluster sends logs over OTLP. When something does, nothing refused.
-
-          **Unhealthy:** Refused records. The gateway could not take them, usually under memory pressure, and the sender decides whether to retry.
-        id: 1025
-        links: []
-        title: OTLP Log Records Received
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                min: 0
-                noValue: Nothing has sent logs to the gateway over OTLP
-                unit: suffix:records/s
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
-          version: ''
-    logs-ingest-pushes:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum by (status_code) (
-                        rate(
-                          loki_source_api_request_duration_seconds_count{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                    legendFormat: '{{status_code}}'
-                    qryType: 1
-                    query: |
-                      sum by (status_code) (
-                        rate(
-                          loki_source_api_request_duration_seconds_count{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                  version: v0
-                refId: query-0
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Log push requests per second the gateway received, split by the status it returned.**
-
-          **Nominal:** Every request a 2xx.
-
-          **Unhealthy:** Non-2xx responses. The gateway is refusing its senders, most often because its own delivery is backed up. _Delivery_ above says which.
-
-          A sender whose TLS handshake fails never reaches this counter. _Overview -> Collection Health_ carries that case.
-        id: 1024
-        links: []
-        title: Pushes Received by Status
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                min: 0
-                noValue: No matches for the current filters
-                unit: reqps
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
           version: ''
     logs-processing-guards:
       kind: Panel
@@ -2772,7 +4086,7 @@ spec:
           **Unhealthy:** A delay that grows steadily. _Remote Write_ below says which queue and whether the destination is slow or refusing.
 
           The maximum of `infra.alloy.metric_pipeline.send_delay` across every queue and replica.
-        id: 1030
+        id: 1028
         links: []
         title: Worst Send Delay
         vizConfig:
@@ -2879,7 +4193,7 @@ spec:
           **Unhealthy:** A sustained rate. A burst right after a gateway restart is usually the write-ahead log replaying samples the store already has, which it rejects as duplicates with `409 Conflict`. That burst is not a finding.
 
           Remote-write failures are samples the destination rejected outright, which are not retried. Recoverable errors are retried instead, and appear under _Metric Pipeline -> Remote Write_ as retries.
-        id: 1029
+        id: 1027
         links: []
         title: Samples Lost
         vizConfig:
@@ -2970,7 +4284,7 @@ spec:
           **Nominal:** A steady rate that tracks the number of targets and how much each exposes.
 
           **Unhealthy:** A sudden fall with no matching fall in targets. The gateway is collecting and not delivering, and _Send Delay_ grows alongside.
-        id: 1028
+        id: 1026
         links: []
         title: Samples Written
         vizConfig:
@@ -3043,7 +4357,7 @@ spec:
           **Nominal:** A steady count that moves with the workloads running. Each target is scraped by one gateway replica, so the sum is the cluster's total.
 
           **Unhealthy:** A sudden drop. A monitor stopped matching its targets, or a gateway replica left the cluster and its share was not picked up.
-        id: 1026
+        id: 1024
         links: []
         title: Targets Scraped
         vizConfig:
@@ -3110,7 +4424,7 @@ spec:
           **Unhealthy:** Any. Each target down is a source whose metrics are missing from every dashboard. _Scraping_ below lists them.
 
           Covers every target the gateway scrapes, so the collector pickers do not narrow it.
-        id: 1027
+        id: 1025
         links: []
         title: Targets Down
         vizConfig:
@@ -3196,7 +4510,7 @@ spec:
           **Degraded:** A job climbing steadily. Series count drives the gateway's memory, the store's size, and the bill of any metered destination, and this is where a cardinality problem first shows.
 
           Covers every target the gateway scrapes, so the collector pickers do not narrow it.
-        id: 1036
+        id: 1035
         links: []
         title: Largest Scrapes (Top 10)
         vizConfig:
@@ -3266,7 +4580,7 @@ spec:
           **Degraded:** A job approaching its scrape timeout. When it passes it, that target reads as down with no fault on the target's side.
 
           Covers every target the gateway scrapes, so the collector pickers do not narrow it.
-        id: 1035
+        id: 1034
         links: []
         title: Slowest Scrapes (Top 10)
         vizConfig:
@@ -3278,195 +4592,6 @@ spec:
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
                 unit: s
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
-          version: ''
-    metrics-ingest-otlp:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(
-                        rate(
-                          otelcol_receiver_accepted_metric_points_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                    legendFormat: accepted
-                    qryType: 1
-                    query: |
-                      sum(
-                        rate(
-                          otelcol_receiver_accepted_metric_points_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                  version: v0
-                refId: query-0
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(
-                        rate(
-                          otelcol_receiver_refused_metric_points_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                    legendFormat: refused
-                    qryType: 1
-                    query: |
-                      sum(
-                        rate(
-                          otelcol_receiver_refused_metric_points_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                  version: v0
-                refId: query-1
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Metric points per second the gateway accepted and refused over OTLP.**
-
-          **Nominal:** Empty unless something in the cluster sends metrics over OTLP. When something does, nothing refused.
-
-          **Unhealthy:** Refused points. The gateway could not take them, usually under memory pressure, and the sender decides whether to retry.
-        id: 1038
-        links: []
-        title: OTLP Metric Points Received
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                min: 0
-                noValue: Nothing has sent metrics to the gateway over OTLP
-                unit: suffix:points/s
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
-          version: ''
-    metrics-ingest-sources:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum by (component_id) (
-                        rate(
-                          prometheus_forwarded_samples_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod",
-                            component_id=~"prometheus\\.(scrape|operator|receive_http)\\..*"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                    legendFormat: '{{component_id}}'
-                    qryType: 1
-                    query: |
-                      sum by (component_id) (
-                        rate(
-                          prometheus_forwarded_samples_total{
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace",
-                            pod=~"$alloyPod",
-                            component_id=~"prometheus\\.(scrape|operator|receive_http)\\..*"
-                          }
-                          [$__rate_interval]
-                        )
-                      )
-                  version: v0
-                refId: query-0
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **Samples per second entering the gateway, split by the component that brought them in.**
-
-          **Nominal:** The monitor-driven scrapes and the kubelet's cAdvisor scrape carry most of it. `prometheus.receive_http` carries what other senders remote-write into the gateway, such as the Thanos ruler's recorded series.
-
-          **Unhealthy:** A source at zero that should not be. For `prometheus.receive_http`, the senders are failing to reach the gateway, and _Overview -> Collection Health_ says whether their TLS handshakes are being refused.
-        id: 1037
-        links: []
-        title: Samples In by Source
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                min: 0
-                noValue: No data from the collectors. Check that the gateway is running.
-                unit: suffix:samples/s
               overrides: []
             options:
               legend:
@@ -3566,7 +4691,7 @@ spec:
           **Nominal:** Zero.
 
           **Unhealthy:** A sustained rate. The gateway's log names the exporter and quotes the destination's error, which is usually an authentication, quota or schema problem on the destination's side.
-        id: 1047
+        id: 1044
         links: []
         title: Export Failures
         vizConfig:
@@ -3642,7 +4767,7 @@ spec:
           **Nominal:** Non-zero and deliberate. A destination's egress filter keeps only the series that destination is meant to receive, so a steady rate is the configuration working.
 
           **Degraded:** A step change nobody made. A filter started matching more than it was written to match, and the points it removes never reach the destination.
-        id: 1049
+        id: 1046
         links: []
         title: Points Filtered
         vizConfig:
@@ -3722,7 +4847,7 @@ spec:
           **Nominal:** Close to zero.
 
           **Unhealthy:** A queue approaching full. The destination is slower than the gateway's output, and new data is refused once the queue is full.
-        id: 1048
+        id: 1045
         links: []
         title: Export Queue Fill
         vizConfig:
@@ -3834,7 +4959,7 @@ spec:
           **Nominal:** Empty unless an OpenTelemetry destination is configured. When one is, a steady line per exporter.
 
           **Unhealthy:** An exporter falling to zero. _Export Failures_ beside it says whether the destination is refusing.
-        id: 1046
+        id: 1043
         links: []
         title: Points Exported
         vizConfig:
@@ -3924,7 +5049,7 @@ spec:
           **Unhealthy:** A delay that grows steadily. The destination cannot accept samples as fast as the gateway collects them. The write-ahead log absorbs the backlog until the delay passes what the destination accepts as recent, and samples are lost from that point.
 
           The newest sample written to the write-ahead log, minus the newest sample the queue has sent. Values above a year are the queue's initial zero before its first send, and are left out.
-        id: 1040
+        id: 1037
         links: []
         title: Send Delay
         vizConfig:
@@ -4006,7 +5131,7 @@ spec:
           **Nominal:** Well under a second for the bundled store.
 
           **Unhealthy:** Seconds. The destination is saturated or far away. Shards rise to compensate until they reach their maximum.
-        id: 1042
+        id: 1039
         links: []
         title: Send Latency (p99)
         vizConfig:
@@ -4154,7 +5279,7 @@ spec:
           **Unhealthy:** Retried is the destination answering slowly or with a recoverable error. The samples are resent, and _Send Delay_ grows while they are. Failed is the destination rejecting samples outright, and those are lost.
 
           A burst of failures right after a gateway restart is usually the write-ahead log replaying samples the destination already has, which it rejects as duplicates.
-        id: 1039
+        id: 1036
         links: []
         title: Samples Sent, Failed and Retried
         vizConfig:
@@ -4282,7 +5407,7 @@ spec:
           **Nominal:** Desired well below running. One or two shards carry a small cluster.
 
           **Unhealthy:** Desired at or above the maximum. The queue cannot keep up with collection however many senders it runs, so the destination is the bottleneck. _Send Delay_ confirms it.
-        id: 1041
+        id: 1038
         links: []
         title: Shards
         vizConfig:
@@ -4374,7 +5499,7 @@ spec:
           **Degraded:** Zero for a monitor whose workload is running. Its selector matches nothing, and that workload's metrics are not collected.
 
           Zero is correct for the CNI monitors of vendors the cluster does not run. Those ship everywhere and match only their own dataplane.
-        id: 1032
+        id: 1030
         links: []
         title: Targets by Monitor
         vizConfig:
@@ -4449,7 +5574,7 @@ spec:
           **Nominal:** Empty.
 
           **Unhealthy:** Any row. The target is discovered and its scrape is failing. The usual causes are a scheme mismatch, where the scrape speaks HTTPS to a plaintext listener or the reverse, a NetworkPolicy blocking the gateway, or the target itself not serving.
-        id: 1031
+        id: 1029
         links: []
         title: Targets Down
         vizConfig:
@@ -4629,7 +5754,7 @@ spec:
           **Nominal:** Zero on every series.
 
           **Unhealthy:** Any. A scrape over its sample or body-size limit is dropped entirely, so the target's metrics go missing without the target reading as down. A scrape pool over its target or label limit is dropped the same way.
-        id: 1033
+        id: 1031
         links: []
         title: Rejected Scrapes
         vizConfig:
@@ -4775,9 +5900,89 @@ spec:
           **Nominal:** Zero on every series.
 
           **Degraded:** Out-of-order and duplicate-timestamp samples come from a target exposing the same series twice, or from two targets relabelled onto one series. Out-of-bounds samples carry timestamps too far from now to store.
-        id: 1034
+        id: 1032
         links: []
         title: Rejected Samples
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the collectors. Check that the gateway is running.
+                unit: suffix:samples/s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    metrics-scrape-samples:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (component_id) (
+                        rate(
+                          prometheus_forwarded_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"prometheus\\.(scrape|operator)\\..*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: '{{component_id}}'
+                    qryType: 1
+                    query: |
+                      sum by (component_id) (
+                        rate(
+                          prometheus_forwarded_samples_total{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            component_id=~"prometheus\\.(scrape|operator)\\..*"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Samples per second the gateway scraped, split by the component that scraped them.**
+
+          **Nominal:** The monitor-driven scrapes carry most of it, with the kubelet's cAdvisor scrape next.
+
+          **Unhealthy:** A component at zero that should not be. For a `prometheus.operator` component, its monitors stopped matching anything, and _Targets by Monitor_ above says which.
+
+          Samples pushed into the gateway rather than scraped by it are on _Ingest_.
+        id: 1033
+        links: []
+        title: Samples Scraped by Source
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -4956,7 +6161,7 @@ spec:
           **Nominal:** Zero on every series.
 
           **Unhealthy:** Any. The gateway's buffer against a slow destination is itself failing, most often because the volume under it is full.
-        id: 1045
+        id: 1042
         links: []
         title: Write-Ahead Log Errors
         vizConfig:
@@ -5026,7 +6231,7 @@ spec:
           **Nominal:** Roughly even across replicas, since clustering splits targets between them.
 
           **Degraded:** Steady growth with no new workloads. A target is producing new series faster than old ones go stale, which is a cardinality problem. _Heaviest Targets_ names the job.
-        id: 1043
+        id: 1040
         links: []
         title: Active Series
         vizConfig:
@@ -5096,7 +6301,7 @@ spec:
           **Nominal:** A sawtooth. The log grows between checkpoints and shrinks at each one.
 
           **Degraded:** Growth with no sawtooth. The log is not being truncated, most often because a remote-write queue is far behind and the log is holding samples it has not sent.
-        id: 1044
+        id: 1041
         links: []
         title: Write-Ahead Log Size
         vizConfig:
@@ -5507,6 +6712,161 @@ spec:
               textMode: value
               wideLayout: true
           version: ''
+    overview-pushes-refused:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                      or
+                      0 * sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                    legendFormat: refused/s
+                    qryType: 1
+                    query: |
+                      sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod",
+                            status_code!~"2.."
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                      or
+                      0 * sum(
+                        rate(
+                          loki_source_api_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                        or
+                        rate(
+                          prometheus_receive_http_request_duration_seconds_count{
+                            app=~"$alloyRole",
+                            namespace=~"$alloyNamespace",
+                            pod=~"$alloyPod"
+                          }
+                          [$__rate_interval]
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Push requests per second the gateway answered with an error, across its log-push and remote-write listeners.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** A sustained rate. Something is sending data the gateway will not take, and that data is lost unless the sender retries successfully. _Ingest_ says which listener, which status, and which sender.
+
+          Counts requests that reached the gateway's HTTP layer. A sender whose TLS handshake fails never gets that far, and _Ingest -> Connections_ carries that case. OTLP refusals are counted in points rather than requests, and appear under _Ingest -> OTLP_.
+        id: 1005
+        links: []
+        title: Push Requests Refused
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Nothing is pushing to the gateway
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#FEDA8B'
+                    value: 0.01
+                  - color: '#FDB366'
+                    value: 2.5075
+                  - color: '#F67E4B'
+                    value: 5.005
+                  - color: '#DD3D2D'
+                    value: 7.5024999999999995
+                  - color: '#A50026'
+                    value: 10
+                unit: reqps
+              overrides: []
+            options:
+              colorMode: background
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value
+              wideLayout: true
+          version: ''
     overview-restarts:
       kind: Panel
       spec:
@@ -5586,7 +6946,7 @@ spec:
           **Unhealthy:** Any restart on the gateway. Each one interrupts every scrape and every delivery in flight, and replays the write-ahead log on the way back up. _Resources -> Memory_ says whether memory was the cause.
 
           Only pods that were running at some point in the range appear.
-        id: 1006
+        id: 1007
         links: []
         title: Container Restarts
         vizConfig:
@@ -5899,7 +7259,7 @@ spec:
           **Unhealthy:** 0 for any of them. Every other panel about that collector is then empty, and an empty panel is indistinguishable from a quiet one.
 
           A collector missing from the table entirely is not being discovered. If every row is missing, the gateway is not writing metrics at all, and the check is `kubectl get pods` for the gateway.
-        id: 1005
+        id: 1006
         links: []
         title: Collector Scrape Health
         vizConfig:
@@ -5924,73 +7284,6 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
-    overview-tls-rejections:
-      kind: Panel
-      spec:
-        data:
-          kind: QueryGroup
-          spec:
-            queries:
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${logsDatasource}
-                  group: loki
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum by (app) (
-                        rate(
-                          {
-                            app=~"$alloyRole",
-                            namespace=~"$alloyNamespace"
-                          }
-                            |= "TLS handshake error"
-                            | pod=~"$alloyPod"
-                          [$__auto]
-                        )
-                      ) * 60
-                    legendFormat: '{{app}}'
-                  version: v0
-                refId: query-0
-            queryOptions: {}
-            transformations: []
-        description: |-
-          **TLS handshakes per minute that a collector's listener refused, usually because the client presented a certificate the listener does not trust.**
-
-          **Nominal:** Zero.
-
-          **Unhealthy:** A sustained rate. A client whose handshake fails never reaches any counter, so its data is missing from every other panel as well. The line names the client's address. `kubectl get pods -o wide` maps that address to a pod.
-
-          Read from the collectors' own logs, since no metric records a failed handshake. Covers every listener a collector serves: log push, OTLP, and remote write into the gateway. Its most common cause is a client rolled onto a new certificate before or after the gateway trusts it.
-        id: 1008
-        links: []
-        title: Rejected TLS Handshakes
-        vizConfig:
-          group: timeseries
-          kind: VizConfig
-          spec:
-            fieldConfig:
-              defaults:
-                min: 0
-                noValue: No listener has refused a TLS handshake in this range
-                unit: suffix:handshakes/min
-              overrides: []
-            options:
-              legend:
-                calcs:
-                - max
-                - mean
-                - lastNotNull
-                displayMode: table
-                placement: bottom
-                showLegend: true
-              tooltip:
-                mode: single
-                sort: asc
           version: ''
     overview-unhealthy-components:
       kind: Panel
@@ -6155,7 +7448,7 @@ spec:
           **Nominal:** One version per role.
 
           **Degraded:** Two versions for one role outside a rollout. Part of the fleet did not restart onto the new image.
-        id: 1007
+        id: 1008
         links: []
         title: Running Versions
         vizConfig:
@@ -6257,7 +7550,7 @@ spec:
           **Degraded:** Sustained near 1. The collector is throttled, and scrapes and deliveries take longer. _CPU Throttling_ beside this shows how often.
 
           Empty for a collector with no CPU limit set.
-        id: 1066
+        id: 1075
         links: []
         title: CPU Used Against Limit
         vizConfig:
@@ -6338,7 +7631,7 @@ spec:
           **Nominal:** Well below 1.
 
           **Unhealthy:** Approaching 1. The agent holds a descriptor for every log file it tails, and once none are left it stops opening new ones, so new containers on that node go uncollected.
-        id: 1069
+        id: 1078
         links: []
         title: File Descriptors Against Limit
         vizConfig:
@@ -6435,7 +7728,7 @@ spec:
           **Degraded:** Sustained near 1. The garbage collector is running almost continuously to stay under the limit, which spends CPU the pipeline needed and slows everything down. The remedy is more memory for the collector, with `GOMEMLIMIT` raised in step, or less for it to hold.
 
           The chart sets `GOMEMLIMIT` to about 80% of each collector's memory limit, so the runtime slows down before the kernel kills it. Heap in use alone understates this figure, because the limit also covers the runtime's stacks and metadata. A collector with no `GOMEMLIMIT` reads close to zero.
-        id: 1064
+        id: 1073
         links: []
         title: Go Memory Against GOMEMLIMIT
         vizConfig:
@@ -6506,7 +7799,7 @@ spec:
           **Nominal:** Flat, at a level set by the collector's workload. The gateway runs several times the agent's count.
 
           **Degraded:** Steady growth over hours. Something inside the collector is starting work it never finishes, and memory grows with it.
-        id: 1068
+        id: 1077
         links: []
         title: Goroutines
         vizConfig:
@@ -6602,7 +7895,7 @@ spec:
           **Unhealthy:** Approaching 1. The kernel kills the container at the limit, and every scrape and delivery in flight is lost with it.
 
           Reads the container's working set, which is what the limit is enforced against. The process's resident set is larger, because it counts file pages the kernel can reclaim, and reads as closer to the limit than the collector really is.
-        id: 1063
+        id: 1072
         links: []
         title: Memory Used Against Limit
         vizConfig:
@@ -6681,7 +7974,7 @@ spec:
           **Unhealthy:** Any. The gateway is over the memory threshold its limiter guards, and it is refusing data rather than risk being killed. The refused points are lost unless their sender retries.
 
           The limiter publishes a refusal series only once it has refused something, so a healthy gateway shows nothing here.
-        id: 1065
+        id: 1074
         links: []
         title: Memory Limiter Refusals
         vizConfig:
@@ -6773,7 +8066,7 @@ spec:
           **Nominal:** Empty.
 
           **Unhealthy:** `OOMKilled`. The collector reached its memory limit. _Go Memory Against GOMEMLIMIT_ says whether the runtime saw it coming.
-        id: 1070
+        id: 1079
         links: []
         title: Last Termination Reason
         vizConfig:
@@ -6876,7 +8169,7 @@ spec:
           **Nominal:** Close to zero.
 
           **Degraded:** A sustained few percent or more. Collection is bursty, since every scrape interval starts a wave of work, so a collector can be throttled while its average use looks low. The bursts are what the limit clips.
-        id: 1067
+        id: 1076
         links: []
         title: CPU Throttling
         vizConfig:
@@ -6948,7 +8241,12 @@ spec:
                           element:
                             kind: ElementReference
                             name: overview-samples-lost
-                      maxColumnCount: 5
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: overview-pushes-refused
+                      maxColumnCount: 6
                       rowHeightMode: short
                   title: Verdict
               - kind: RowsLayoutRow
@@ -6976,12 +8274,7 @@ spec:
                           element:
                             kind: ElementReference
                             name: overview-versions
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: overview-tls-rejections
-                      maxColumnCount: 4
+                      maxColumnCount: 3
                       rowHeightMode: standard
                   title: Collection Health
               - kind: RowsLayoutRow
@@ -7131,29 +8424,6 @@ spec:
                       maxColumnCount: 2
                       rowHeightMode: standard
                   title: Processing
-              - kind: RowsLayoutRow
-                spec:
-                  collapse: false
-                  hideHeader: false
-                  layout:
-                    kind: AutoGridLayout
-                    spec:
-                      columnWidthMode: standard
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: logs-ingest-pushes
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: logs-ingest-otlp
-                      maxColumnCount: 2
-                      rowHeightMode: standard
-                  title: Gateway Ingest
           title: Log Pipeline
       - kind: TabsLayoutTab
         spec:
@@ -7229,6 +8499,11 @@ spec:
                           element:
                             kind: ElementReference
                             name: metrics-scrape-rejected-samples
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: metrics-scrape-samples
                       maxColumnCount: 2
                       rowHeightMode: standard
                   title: Scraping
@@ -7255,29 +8530,6 @@ spec:
                       maxColumnCount: 2
                       rowHeightMode: standard
                   title: Heaviest Targets
-              - kind: RowsLayoutRow
-                spec:
-                  collapse: false
-                  hideHeader: false
-                  layout:
-                    kind: AutoGridLayout
-                    spec:
-                      columnWidthMode: standard
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: metrics-ingest-sources
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: metrics-ingest-otlp
-                      maxColumnCount: 2
-                      rowHeightMode: standard
-                  title: Gateway Ingest
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -7373,6 +8625,138 @@ spec:
                       rowHeightMode: standard
                   title: OpenTelemetry Exporters
           title: Metric Pipeline
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: narrow
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-flow-lines
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-flow-samples
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-flow-refused
+                      maxColumnCount: 3
+                      rowHeightMode: short
+                  title: Flow
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-log-requests
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-log-latency
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Log Push
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-rw-requests
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-rw-samples
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-rw-latency
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-rw-senders
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Remote Write
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-otlp-metrics
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-otlp-logs
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: OTLP
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: ingest-tls-rejections
+                      maxColumnCount: 1
+                      rowHeightMode: standard
+                  title: Connections
+          title: Ingest
       - kind: TabsLayoutTab
         spec:
           layout:
@@ -7583,6 +8967,72 @@ spec:
                       rowHeightMode: standard
                   title: Runtime
           title: Resources
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: alloy-event-rate-by-reason
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: alloy-event-rate-by-kind
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Activity
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: alloy-warning-event-feed
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: Warning Events
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: alloy-event-feed
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: All Events
+          title: Events
       - kind: TabsLayoutTab
         spec:
           layout:
