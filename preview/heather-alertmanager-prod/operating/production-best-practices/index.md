@@ -253,7 +253,7 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` **Verify coverage rather than assume it** after any node-pool change, the same way as for node-exporter: the agent's pod count should equal `count(kube_node_info)`. Narrowing the toleration list for a pool that cannot absorb the agent is a deliberate blind spot — record which pools those are.
 - [x] `[chart]` `priorityClassName: monitoring-critical` on both roles. The agent is a per-node singleton, so an eviction is a log gap on that node with nothing to cover it; the gateway is the single egress choke point for every signal. See [Scheduling priority](#scheduling-priority).
 - [ ] `[operator]` Persist the agent's file **positions** and journal cursor (hostPath) so a restart resumes where it left off instead of re-tailing (duplicate lines) or skipping (gaps).
-- [ ] `[consumer]` Set `CLUSTER_NAME` on the agent so every line carries a stable `cluster` label when several clusters share a log store.
+- [ ] `[consumer]` Set `clusterName` (Terraform: `cluster_name`) so every line carries a stable `cluster` label when several clusters share a log store.
 
 ### Security & meta-monitoring
 
@@ -1081,7 +1081,6 @@ Everything else on this list ships as a default or is checked at render time.
 - [ ] `[consumer]` On a cluster whose nodes carry **no zone label**, apply `no-zone-spread` or set `min_zones = 0`. The zone rule otherwise has no domain to place into, and both replicas stay `Pending`.
 - [x] `[chart]` **Readiness on `/-/ready`, liveness on `/-/healthy`**, rather than the subchart's `/`, which serves the UI. A replica joins the mesh and pulls its peer's state before it serves, so a rollout replacing one replica at a time loses no silences.
 - [x] `[chart]` `priorityClassName: monitoring-scalable`: a surviving replica absorbs the loss of the other. See [Scheduling priority](#scheduling-priority).
-- [ ] `[operator]` Expect **one unmeshed rollout** on the first upgrade from a single replica. The old replica carries no `--cluster.label`, so the new one cannot join it until it rolls, and starts with no silences. The window lasts about as long as the rollout.
 
 #### 2. State & storage
 
@@ -1097,8 +1096,8 @@ Everything else on this list ships as a default or is checked at render time.
 - [x] `[chart]` A render-time check **errors** when the selected preset names a class no receiver serves, on a route naming an undefined receiver or time interval, and on a receiver key that is not an Alertmanager integration.
 - [x] `[chart]` **`amtool check-config`** runs in CI over representative configurations, in the Alertmanager image the chart pins, so the tree the chart generates is one Alertmanager accepts.
 - [x] `[chart]` Routing changes **reload in place**: the config-reloader sidecar POSTs `/-/reload` when the rendered Secret changes. A configuration Alertmanager rejects leaves the previous one running. A validator warns when the sidecar is turned off.
-- [x] `[chart]` **Every alert carries `cluster`**, stamped by both rulers from `pipeline.env.CLUSTER_NAME`, and the default `group_by` includes it. PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of the Alertmanager group key, so without it two clusters sending one condition to one service share an incident and resolve each other's. The render fails on an empty name, or one Loki's configuration cannot hold unquoted. See [The `cluster` label](../../alerting/architecture/#cluster-label).
-- [ ] `[consumer]` **Give every cluster its own name** — `cluster_name` on Terraform, `pipeline.env.CLUSTER_NAME` on Helm. The default, `default`, is present on every alert and distinguishes nothing once two clusters share a channel or an incident tool.
+- [x] `[chart]` **Every alert carries `cluster`**, stamped by both rulers from `clusterName`, and the default `group_by` includes it. PagerDuty's `dedup_key` and Opsgenie's `alias` are hashes of the Alertmanager group key, so without it two clusters sending one condition to one service share an incident and resolve each other's. The render fails on an empty name, or one Loki's configuration cannot hold unquoted. See [The `cluster` label](../../alerting/architecture/#cluster-label).
+- [ ] `[consumer]` **Give every cluster its own name** — `cluster_name` on Terraform, `clusterName` on Helm. The default, `default`, is present on every alert and distinguishes nothing once two clusters share a channel or an incident tool.
 - [ ] `[operator]` **Test a receiver end to end** after configuring it, with `amtool alert add` from inside a pod. The render proves the configuration is well-formed, not that a vendor accepts the notification.
 
 #### 4. Credentials
@@ -1106,6 +1105,7 @@ Everything else on this list ships as a default or is checked at render time.
 - [x] `[chart]` A render-time check **errors on an inline credential** in a receiver or in `alerting.global`. `alerting.assertNoInlineCredentials` turns it off; leave it on.
 - [x] `[chart]` A render-time check **errors on a `*_file` path under no mounted volume**, which would otherwise fail every notification through that receiver at send time.
 - [ ] `[consumer]` **Provision the `alertmanager-receivers` Secret** in the namespace the Alertmanager pods run in, with External Secrets Operator, Vault Agent, SOPS, or a CSI driver. The chart consumes it by name and never creates it. It is mounted as optional, so a missing Secret shows up as failed notifications, not as a pod that will not start.
+- [ ] `[consumer]` **Publish to Amazon SNS with workload identity**, not keys: an IRSA role or EKS Pod Identity association for the `alertmanager` ServiceAccount, allowing `sns:Publish` on the topic (plus `kms:GenerateDataKey*` and `kms:Decrypt` for an encrypted topic). SNS is the only integration that can use one; SES and Azure Communication Services email authenticate over SMTP with a credential in the Secret. See [Cloud provider services](../../alerting/channels/#cloud).
 - [ ] `[operator]` Rotating a credential needs **no restart**: Alertmanager reads a `*_file` credential on each send, and the kubelet refreshes the mount within about a minute.
 
 #### 5. Hardening

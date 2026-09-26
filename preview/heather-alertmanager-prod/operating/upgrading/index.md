@@ -52,40 +52,18 @@ The Compactor's scratch is not authoritative at all — the bucket is, and compa
 
 If a Compactor later gets wedged in an unavailable zone by the volume it just gained, that is recoverable by hand; see [The Thanos Compactor is stuck in a zone](../o11y-troubleshooting/#the-thanos-compactor-is-stuck-in-a-zone) for the ordering, which matters because two Compactors running at once is the one thing that corrupts data.
 
-## Alertmanager: one replica to two, renamed, and `alerting`
+## Alertmanager: two replicas, renamed
 
 The release that made Alertmanager highly available ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) also pinned its resource
 names to `alertmanager`, which were previously derived from the release name as `<release>-alertmanager`.
-`helm upgrade` applies it without error, and it carries one step to take by hand if the existing silences matter.
+`helm upgrade` applies it without error.
 
 | Change | What to expect |
 |---|---|
-| Resources renamed to `alertmanager` | Helm deletes the old StatefulSet and creates a new one. A StatefulSet's volumes are named after it, so the new replicas start on new, empty volumes and the old ones are left orphaned. **Silences do not carry across** unless exported and imported, below. The notification log does not either, so each alert already firing notifies once more. |
-| Replicas go from one to two | Both new volumes are 4Gi, in different zones under the hard zone spread. A cluster whose nodes carry no zone label needs `no-zone-spread` or `min_zones = 0` first, or a replica stays `Pending`. |
+| Resources renamed to `alertmanager` | Helm deletes the old StatefulSet and creates a new one, whose two replicas start together on new volumes. The old volume is left orphaned: `storage-<release>-alertmanager-0`, safe to delete. Nothing routed alerts anywhere before this release, so there is no configuration to carry over; an install with silences worth keeping can move them with `amtool silence query --output=json` and `amtool silence import`. |
+| Hard zone spread | A cluster whose nodes carry no zone label needs `no-zone-spread` or `min_zones = 0` first, or a replica stays `Pending`. |
 | Both rulers retarget `alertmanager-headless` | The Loki ruler's address lives in Loki's shared configuration, so every Loki pod rolls once. |
-| Both rulers stamp `cluster` on alerts | Read from a new `ruler-env` ConfigMap in each ruler's namespace; both rulers roll once. Set `pipeline.env.CLUSTER_NAME` (Terraform: `cluster_name`) first if it is still `default`. |
-| Routing moves to `alerting` | The subchart's `alertmanager.config` is no longer read. A values file still carrying receivers or routes there fails the render, with the keys to move them to. See [Alert Channels](../../alerting/channels/). |
-
-To keep silences across the upgrade, export them from the old replica first, then import them into the new one.
-The old name is `<release>-alertmanager`, or `<release>` alone when the release name already contains `alertmanager`.
-
-```bash
-kubectl --namespace monitoring exec mzmon-alertmanager-0 -c alertmanager -- \
-  amtool silence query --output=json --alertmanager.url=http://127.0.0.1:9093 > silences.json
-```
-
-```bash
-kubectl --namespace monitoring exec -i alertmanager-0 -c alertmanager -- \
-  amtool silence import --alertmanager.url=http://127.0.0.1:9093 < silences.json
-```
-
-The imported silences get new IDs and gossip to the other replica.
-Once they are in place, the orphaned volume can go.
-It is `storage-<old name>-0`, plus `-1` on an install that ran two replicas under the old name.
-
-```bash
-kubectl --namespace monitoring delete pvc storage-mzmon-alertmanager-0
-```
+| Both rulers stamp `cluster` on alerts | Read from a new `ruler-env` ConfigMap in each ruler's namespace; both rulers roll once. Set `clusterName` (Terraform: `cluster_name`) first if it is still `default`; it replaces setting `pipeline.env.CLUSTER_NAME` directly. |
 
 ## Ingester rollouts: duration and deploy timeouts
 

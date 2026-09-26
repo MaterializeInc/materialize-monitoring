@@ -92,7 +92,8 @@ Metric relabeling splits across three places; putting a rule in the wrong one is
 `inputMetricProcessor` is intentionally a **rule-free passthrough** today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
 It's where the metric `filter`/`transform` work (cardinality tiers) will land as genuinely cross-cutting rules come up.
 
-Note: identity is stamped as a `cluster` `external_labels` entry on every `remote_write` destination, sourced from `env.CLUSTER_NAME` (default `default`).
+Note: identity is stamped as a `cluster` `external_labels` entry on every `remote_write` destination, sourced from
+`env.CLUSTER_NAME`, which the chart fills from `clusterName` (default `default`).
 A destination's own `externalLabels` map adds to it, and setting `cluster` there replaces the environment-derived value for that destination alone.
 
 ### Node-label curation (cAdvisor)

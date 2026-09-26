@@ -521,7 +521,7 @@ What the chart still owes that operator is the **label contract**: which labels 
 That contract MUST be documented and MUST move only under the deprecation cycle, because an external routing tree is written against it and cannot be migrated by this chart.
 That contract is a documentation deliverable and is listed as one.
 
-As built, the contract has one label every alert carries whatever its rule says: `cluster`, stamped by both rulers from `pipeline.env.CLUSTER_NAME`.
+As built, the contract has one label every alert carries whatever its rule says: `cluster`, stamped by both rulers from `clusterName`.
 It is filled only where a rule's result lacks it, and the default `group_by` includes it, because an Alertmanager group
 key feeds PagerDuty's `dedup_key` and Opsgenie's `alias`.
 Without it, two clusters routing one condition to one service share an incident, and an external Alertmanager shared by

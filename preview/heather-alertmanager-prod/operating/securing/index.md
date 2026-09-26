@@ -96,6 +96,7 @@ Every workload now ships a NetworkPolicy, on by default.
 ### The stack → outside
 
 - [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
+- [ ] `[consumer]` Give Alertmanager a **workload identity** for Amazon SNS rather than static keys, scoped to `sns:Publish` on its topics. It is the only notification integration a cloud identity can authorize; the rest read a credential from the `alertmanager-receivers` Secret. See [Alert Channels > Cloud provider services](../../alerting/channels/#cloud).
 - [ ] `[operator]` Narrow the `0.0.0.0/0` egress rules where your infrastructure gives you something tighter — a VPC endpoint's CIDR, or Cilium's `toFQDNs`. The chart cannot derive the API server's or the object store's address, so it ships the broad form and says so.
 - [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/#11-security--credentials) covers the symptom in detail.
 
