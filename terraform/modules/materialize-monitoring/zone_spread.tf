@@ -39,12 +39,16 @@
 locals {
   zone_topology_key = "topology.kubernetes.io/zone"
 
-  # The two workloads whose zone constraint is hard, keyed by the values path it
-  # is written back to. Both are replication-factor-3 ring members, which is why
-  # they are the two that are hard in the first place.
+  # The workloads whose zone constraint is hard, keyed by the values path it is
+  # written back to. Receive and the ingesters are replication-factor-3 ring
+  # members. Alertmanager is hard for a different reason — two notifiers in one
+  # zone are one notifier to a zone outage — and carries no `minDomains` of its
+  # own, so it schedules on a single zone already; `min_zones` still has to
+  # reach it, because a cluster with no zone labels breaks it just the same.
   zone_spread_source = {
     thanos_receive = local.chart_values.thanos.receive.topologySpreadConstraints
     loki_ingester  = local.chart_values.loki.ingester.topologySpreadConstraints
+    alertmanager   = local.chart_values.alertmanager.topologySpreadConstraints
   }
 
   # Split, adjust, recombine — deliberately without a conditional expression
@@ -77,5 +81,6 @@ locals {
     loki = {
       ingester = { topologySpreadConstraints = local.zone_spread_adjusted.loki_ingester }
     }
+    alertmanager = { topologySpreadConstraints = local.zone_spread_adjusted.alertmanager }
   })]
 }

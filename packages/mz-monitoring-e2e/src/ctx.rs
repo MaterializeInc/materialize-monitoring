@@ -24,6 +24,9 @@ use crate::tls::ClientTls;
 pub struct Ctx {
     pub cluster: Cluster,
     pub features: Features,
+    /// The Helm release under test. Most names in the chart are pinned, but the
+    /// Alertmanager subchart's follow the release.
+    pub release: String,
     /// How long any single assertion may retry before it is a failure.
     pub deadline: Duration,
     /// Gap between retries.

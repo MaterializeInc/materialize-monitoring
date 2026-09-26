@@ -12,9 +12,11 @@ params:
 A default install runs two rule evaluators and one notifier.
 Thanos Ruler evaluates PromQL, Loki Ruler evaluates LogQL, and both send what they produce to a single Alertmanager.
 
-**The evaluators are wired; the rules and the routing are not built yet.**
-`pre-rendered/rules/` ships empty, and the bundled Alertmanager carries no routing tree, so an alert that fires today reaches a null receiver.
-What this page describes is the path an alert will travel, and the parts of it an operator configures now.
+**The evaluators and the notifier are wired; the shipped rule set is not built yet.**
+`pre-rendered/rules/` ships empty, so the only rules evaluated are those an operator applies and the Thanos subchart's own mixin rules.
+Where an alert goes is configured under `alerting`, and until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
+This page describes the two evaluators and how they reach Alertmanager.
+[Alert Architecture](../architecture/) describes Alertmanager itself, and [Alert Channels](../channels/) describes routing and receivers.
 The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
 <!-- more -->
@@ -35,6 +37,18 @@ No component evaluates both PromQL and LogQL, which is why there are two.
 
 Alertmanager is the single notification surface.
 An operator configuring where alerts go configures one thing, whether the alert came from a metric or a log line.
+
+## Both rulers notify every Alertmanager replica
+
+The bundled Alertmanager runs two replicas that gossip silences and the notification log to each other, but not alerts.
+Each replica therefore has to receive every alert from the rulers directly.
+
+So neither ruler notifies the load-balanced Service.
+Both resolve the headless Service to one address per ready replica, the Thanos ruler through a `dns+` lookup and the
+Loki ruler through an SRV lookup with `enable_alertmanager_discovery`.
+A deployment overriding either address SHOULD keep that shape; one that points a ruler at the load-balanced Service
+leaves a surviving replica without the alerts its peer was holding.
+See [Why the rulers address every replica](../architecture/#every-replica).
 
 ## Both rulers depend on the query path
 
@@ -86,14 +100,16 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 |---|---|---|
 | `thanos.ruler.enabled` | `true` | Deploys the PromQL evaluator. Turning it off makes every `PrometheusRule` in the cluster inert |
 | `thanos.ruler.query.urls` | Thanos Query | Deliberately Query rather than Query Frontend. See below |
-| `thanos.ruler.alertmanagers.config` | The bundled Alertmanager | Thanos's own Alertmanager configuration format, passed through |
+| `thanos.ruler.alertmanagers.config` | Every replica of the bundled Alertmanager, by `dns+` lookup | Thanos's own Alertmanager configuration format, passed through |
 | `thanos.ruler.autoImportPrometheusRules.labelSelector` | `{}` | Which `PrometheusRule` resources to import. Empty means all of them |
 | `loki.ruler.enabled` | `true` | Deploys the LogQL evaluator |
-| `loki.loki.rulerConfig.alertmanager_url` | The bundled Alertmanager | Clearing it leaves the ruler evaluating recording rules and discarding alerts |
+| `loki.loki.rulerConfig.alertmanager_url` | Every replica of the bundled Alertmanager, by SRV lookup | Clearing it leaves the ruler evaluating recording rules and discarding alerts. The `_http._tcp.` form requires `enable_alertmanager_discovery: true` |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
+| `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
-The bundled Alertmanager can then be excluded with `tags.alertmanager: false`, or `alertmanager.enabled: false`.
+The bundled Alertmanager can then be excluded with `alertmanager.enabled: false`.
+`tags.alertmanager: false` alone does not exclude it, because the tags are OR'd and `tags.default` and `tags.bundled-backends` both include it.
 
 ## The rulers do not follow the query frontend
 
@@ -116,11 +132,12 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 
 | Missing | Consequence |
 |---|---|
-| The shipped rule set | Nothing fires unless an operator supplies rules |
+| The shipped rule set | Only rules an operator supplies, and the Thanos subchart's mixin rules, fire |
 | `gen-rules` | The alert definitions in the query registry render to [Common Alerts](../../reference/stable-metrics/common-alerts/) and are not deployed |
-| Alertmanager routing, receivers, grouping, inhibition | A firing alert reaches a null receiver |
 | Log-derived alert definitions | Panic and correctness detection is not yet expressible here |
 | Runbook links | An alert with no stated action is half an alert |
-| An Alertmanager scrape | Delivery failures are not observable |
+| A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
+| Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
 
-[Alert Channels](../channels/) and [Maintenance Windows](../maintenance/) cover the parts of that list closest to an operator, and are stubs until the routing surface exists.
+Routing, receivers, grouping, inhibition and silences are configurable today; [Alert Channels](../channels/) and
+[Maintenance Windows](../maintenance/) cover them.

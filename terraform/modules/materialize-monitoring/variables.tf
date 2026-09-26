@@ -115,11 +115,12 @@ variable "create_namespace" {
 
 variable "cluster_name" {
   description = <<-EOT
-    Name of the Kubernetes cluster, stamped as the `cluster` label on every log line and metric
-    sample the stack collects.
+    Name of the Kubernetes cluster, stamped as the `cluster` label on every log line, metric
+    sample and alert the stack produces. Written to the chart's `clusterName`.
 
-    Set it whenever more than one cluster writes to the same log or metrics store — the label is
-    the only thing that tells their data apart. Null leaves the chart's default, `default`.
+    Set it whenever more than one cluster writes to the same log or metrics store, or notifies the
+    same channel or incident tool — the label is the only thing that tells them apart. Null leaves
+    the chart's default, `default`.
   EOT
   type        = string
   default     = null
@@ -840,8 +841,8 @@ variable "storage_class" {
 variable "min_zones" {
   description = <<-EOT
     Number of availability zones the node pool can actually launch in, used to adjust the hard zone
-    spread on Thanos Receive and Loki's ingesters. Null leaves the chart's defaults alone, which
-    assume two or more zones and is correct for every managed cloud default.
+    spread on Thanos Receive, Loki's ingesters and Alertmanager. Null leaves the chart's defaults
+    alone, which assume two or more zones and is correct for every managed cloud default.
 
     Set this when that assumption does not hold, because the chart's constraints fail closed rather
     than degrading:
@@ -856,7 +857,8 @@ variable "min_zones" {
     Leaving this null on a cluster with fewer than two zones leaves those pods **Pending forever**
     rather than unbalanced: below `minDomains` Kubernetes treats the global minimum as 0, so one
     zone holding every replica computes a skew equal to the replica count. One zone is exactly as
-    broken as none.
+    broken as none. Alertmanager's rule sets no `minDomains`, so it survives one zone and breaks
+    only at zero.
   EOT
   type        = number
   default     = null

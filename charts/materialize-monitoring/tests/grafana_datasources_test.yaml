@@ -31,10 +31,10 @@ set:
 templates:
   - templates/grafana-datasources.yaml
 tests:
-  - it: should provision exactly the Thanos and Loki datasources
+  - it: should provision exactly the Thanos, Loki and Alertmanager datasources
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
       - containsDocument:
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaDatasource
@@ -47,6 +47,12 @@ tests:
           name: mzmon-loki-datasource
           namespace: test-monitoring
         documentIndex: 1
+      - containsDocument:
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaDatasource
+          name: mzmon-alertmanager-datasource
+          namespace: test-monitoring
+        documentIndex: 2
 
   - it: should point Thanos at Thanos Query and make it the default
     documentIndex: 0
@@ -227,9 +233,66 @@ tests:
       connections.datasources.loki.enabled: false
     asserts:
       - hasDocuments:
-          count: 1
+          count: 2
       - equal:
           path: spec.datasource.type
+          value: prometheus
+        documentIndex: 0
+      - equal:
+          path: spec.datasource.type
+          value: alertmanager
+        documentIndex: 1
+
+  # --- Alertmanager ---------------------------------------------------------
+
+  # Grafana reads and writes Alertmanager's state and owns none of it.
+  # `handleGrafanaManagedAlerts` stays off, so Grafana-managed rules do not start
+  # notifying through the bundled Alertmanager as a side effect of being able to
+  # see it.
+  - it: should point the Alertmanager datasource at the bundled Alertmanager
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.datasource.type
+          value: alertmanager
+      - equal:
+          path: spec.datasource.uid
+          value: mzmon-alertmanager
+      - equal:
+          path: spec.datasource.url
+          value: http://alertmanager.test-monitoring.svc.cluster.local:9093
+      - equal:
+          path: spec.datasource.isDefault
+          value: false
+      - equal:
+          path: spec.datasource.jsonData
+          value:
+            implementation: prometheus
+            handleGrafanaManagedAlerts: false
+
+  - it: should follow the bundled Alertmanager being off
+    set:
+      tags.bundled-backends: false
+      tags.loki: true
+      tags.thanos: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - notEqual:
+          path: spec.datasource.type
+          value: alertmanager
+
+  - it: should merge extra Alertmanager jsonData over the defaults
+    set:
+      connections.datasources.alertmanager.jsonData:
+        handleGrafanaManagedAlerts: true
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.handleGrafanaManagedAlerts
+          value: true
+      - equal:
+          path: spec.datasource.jsonData.implementation
           value: prometheus
 
   - it: should provision nothing when the group is disabled
@@ -256,3 +319,7 @@ tests:
           path: spec.datasource.url
           value: http://loki-query-frontend.loki.svc:3100
         documentIndex: 1
+      - equal:
+          path: spec.datasource.url
+          value: http://alertmanager.alertmanager.svc.cluster.local:9093
+        documentIndex: 2

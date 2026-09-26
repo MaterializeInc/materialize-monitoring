@@ -1,0 +1,48 @@
+{{- /*
+The cluster name, carried into each ruler's namespace.
+
+Both rulers stamp `cluster` on every alert they send, from the same value the
+pipeline stamps on every log line and every metric: `clusterName`, which
+Terraform's `cluster_name` sets. Without it, two clusters sending the same
+condition to one incident tool are indistinguishable, and share an Alertmanager
+group key — which is what PagerDuty's `dedup_key` and Opsgenie's `alias` are
+built from, so one cluster's resolution closes the other's incident.
+
+**This exists because neither subchart can read that value.** Each renders from
+its own values, so the chart puts the name in a ConfigMap in each ruler's
+namespace and each ruler reads it as an environment variable:
+
+  * the Thanos ruler through Kubernetes' `$(VAR)` expansion, in
+    `--label=cluster="$(CLUSTER_NAME)"` (`thanos.ruler.extraArgs`);
+  * the Loki ruler through `-config.expand-env`, in
+    `loki.loki.rulerConfig.alert_relabel_configs`.
+
+Both fill `cluster` only where an alert does not already carry one, so an alert
+whose expression kept the label from its series is unchanged.
+
+One ConfigMap per namespace: one in a single-namespace install, two under
+`split-namespace`. Rendered whenever a ruler is, because a missing ConfigMap
+leaves the ruler pod in `CreateContainerConfigError` rather than degrading.
+*/}}
+{{- $namespaces := list }}
+{{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+  {{- $namespaces = append $namespaces ( include "mzmon.thanos.namespace" $ ) }}
+{{- end }}
+{{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
+  {{- $namespaces = append $namespaces ( include "mzmon.loki.namespace" $ ) }}
+{{- end }}
+{{- range $namespace := $namespaces | uniq }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ruler-env
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: ruler
+  annotations:
+    {{- include "mzmon.annotations" $ | nindent 4 }}
+data:
+  CLUSTER_NAME: {{ include "mzmon.clusterName" $ | quote }}
+{{- end }}

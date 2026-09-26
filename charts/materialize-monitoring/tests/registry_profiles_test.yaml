@@ -192,15 +192,20 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: '^cgr\.dev/<ORG>/thanos:'
 
-  # This chart's `image.repository` carries the registry host inline.
+  # This chart's `image.repository` carries the registry host inline. The
+  # config-reloader sidecar is on by default and the subchart renders it first,
+  # so both images are in play and both have to move.
   - it: chainguard profile repoints Alertmanager, whose repository holds the host
     values:
       - ../profiles/registry/chainguard.values.yaml
     template: ../charts/alertmanager/templates/statefulset.yaml
     asserts:
       - matchRegex:
-          path: spec.template.spec.containers[0].image
+          path: spec.template.spec.containers[1].image
           pattern: '^cgr\.dev/<ORG>/prometheus-alertmanager:'
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^cgr\.dev/<ORG>/prometheus-config-reloader:'
 
   # `distroless: true` appends `-distroless` to the tag — an upstream quay.io
   # naming convention that resolves to nothing at any of the three vendors.
@@ -303,7 +308,16 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[0].image
-          pattern: '^<REGISTRY>/(quay/prometheus/alertmanager|registry-k8s-io/metrics-server/metrics-server):'
+          pattern: '^<REGISTRY>/(quay/prometheus-operator/prometheus-config-reloader|registry-k8s-io/metrics-server/metrics-server):'
+
+  - it: mirror profile covers Alertmanager behind its reloader sidecar
+    values:
+      - ../profiles/registry/mirror.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[1].image
+          pattern: '^<REGISTRY>/quay/prometheus/alertmanager:'
 
   # memcached composes the anchor with the chart's own `library/memcached`
   # default rather than being spelled out, so this pins that the two halves

@@ -46,6 +46,27 @@ Thanos is installed and configured to store metrics.
   Thanos namespace: {{ include "mzmon.thanos.namespace" $ }}
 {{- end }}
 
+{{- if ( include "mzmon.alertmanager.enabled" $ ) }}
+  {{- $amReplicas := dig "replicaCount" 1 ( index $.Values "alertmanager" ) | int }}
+  {{- $amReceivers := include "mzmon.alerting.receivers" $ | fromYaml }}
+
+Alertmanager is installed and notifies for both rulers.
+  Alertmanager namespace: {{ include "mzmon.alertmanager.namespace" $ }}
+  Service: {{ include "mzmon.alertmanager.hostPort" $ }}
+  Replicas: {{ $amReplicas }}{{ if gt $amReplicas 1 }} (gossiping){{ end }}
+  Preset: {{ $.Values.alerting.preset }}
+  Alerts are labelled: cluster={{ include "mzmon.clusterName" $ | quote }} (clusterName)
+  {{- if $amReceivers }}
+  Receivers:
+    {{- range $name := keys $amReceivers | sortAlpha }}
+      {{- $classes := include "mzmon.alerting.receiverClasses" ( index $amReceivers $name ) | fromYamlArray }}
+    {{ $name }} ({{ if $classes }}{{ join ", " $classes }}{{ else }}extra routes only{{ end }})
+    {{- end }}
+  {{- else }}
+  Receivers: none -- alerts are not delivered to anyone. Configure alerting.receivers.
+  {{- end }}
+{{- end }}
+
 {{- if ( include "mzmon.grafana.enabled" $ ) }}
   {{- $gfNamespace := include "mzmon.grafana.namespace" $ }}
   {{- $gfName := include "mzmon.grafana.fullname" $ }}
@@ -149,7 +170,8 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
   {{- end }}
   {{- $thanosDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) }}
   {{- $lokiDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) }}
-  {{- if or $thanosDs $lokiDs }}
+  {{- $amDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "alertmanager" ) }}
+  {{- if or $thanosDs $lokiDs $amDs }}
 
   Datasources:
     {{- if $thanosDs }}
@@ -158,6 +180,9 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
     {{- if $lokiDs }}
       {{- $tenant := include "mzmon.grafana.loki.tenant" $ }}
     - {{ $.Values.connections.datasources.loki.name }} (loki{{ if $tenant }}, tenant {{ $tenant | quote }}{{ end }}) -> {{ tpl $.Values.connections.datasources.loki.url $ }}
+    {{- end }}
+    {{- if $amDs }}
+    - {{ $.Values.connections.datasources.alertmanager.name }} (alertmanager) -> {{ tpl $.Values.connections.datasources.alertmanager.url $ }}
     {{- end }}
   {{- end }}
 

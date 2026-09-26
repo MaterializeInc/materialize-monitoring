@@ -16,6 +16,8 @@
 # claim about surviving a lost availability zone rather than three copies that
 # might all sit in the same one. A pod that cannot satisfy it goes `Pending`,
 # which is the signal Karpenter uses to add a node in the deficient zone.
+# Alertmanager's two replicas carry a hard zone rule as well, without
+# `minDomains`; see its entry at the end.
 #
 # The assumption is two or more zones, and where it fails it **fails closed**:
 #
@@ -88,3 +90,17 @@ loki:
             app.kubernetes.io/component: ingester
             app.kubernetes.io/name: '{{ include "loki.name" . }}'
             app.kubernetes.io/instance: '{{ .Release.Name }}'
+
+alertmanager:
+  # The Alertmanager zone rule is hard for a different reason — two notifiers in
+  # one zone are one notifier to a zone outage — and it carries no `minDomains`,
+  # so a single-zone cluster already schedules. What breaks it is the same
+  # missing label: with no node carrying `topology.kubernetes.io/zone`, neither
+  # replica has a domain to land in.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: alertmanager

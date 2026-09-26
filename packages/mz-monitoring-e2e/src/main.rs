@@ -153,6 +153,7 @@ async fn connect(args: &Args) -> Result<Ctx> {
     Ok(Ctx {
         cluster,
         features,
+        release: args.release.clone(),
         deadline: args.deadline(),
         interval: args.retry_interval(),
         recent_window: args.recent_window(),
@@ -293,6 +294,44 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         "thanos::samples_scraped",
         thanos,
         checks::thanos::samples_scraped,
+    ));
+
+    // Alertmanager. Gated on it running in the release namespace, which is
+    // where every Service this suite dials is looked up; under split-namespace
+    // it is somewhere else, and these would fail on the address rather than on
+    // anything about Alertmanager.
+    let alertmanager = ctx.features.enabled("alertmanager")
+        && ctx
+            .features
+            .string("alertmanager.namespaceOverride")
+            .unwrap_or_default()
+            .is_empty();
+    let thanos_ruler = thanos
+        && ctx
+            .features
+            .get("thanos.ruler.enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+    trials.push(trial(
+        runtime,
+        ctx,
+        "alertmanager::mesh_converged",
+        alertmanager,
+        checks::alertmanager::mesh_converged,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "alertmanager::thanos_ruler_reaches_every_replica",
+        alertmanager && thanos_ruler,
+        checks::alertmanager::thanos_ruler_reaches_every_replica,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "alertmanager::scraped_once_per_replica",
+        alertmanager && thanos,
+        checks::alertmanager::scraped_once_per_replica,
     ));
 
     // Gated on both: the assertion reads kube-state-metrics series *through*

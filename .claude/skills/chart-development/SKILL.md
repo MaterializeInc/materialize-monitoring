@@ -141,6 +141,19 @@ subchart's own `values.yaml` defaults**. A few non-obvious consequences:
   loki chart the ingester's persistence uses a `claims:` list while the
   compactor/index-gateway/ruler use a flat `persistence.size`. Check the
   subchart `values.yaml` per component rather than assuming uniformity.
+- **Pin every image a subchart runs in this chart's `values.yaml`**, with
+  `repository` and `tag` (and `registry`, where the subchart has one), rather
+  than inheriting the tag from the subchart's `appVersion`. Renovate's
+  `helm-values` manager reads those blocks, so it opens a PR for the image
+  itself — with that component's release notes — even when no chart release
+  carries the bump; a tag resolved from `appVersion` only moves when the whole
+  subchart does. Sidecars count: Alertmanager's config reloader is pinned
+  alongside Alertmanager. Anything else that needs the version, such as a script
+  pulling the same image, reads it from `values.yaml` rather than the vendored
+  `Chart.yaml` (`bin/check-alertmanager-config.sh` does). The registry profiles
+  under `profiles/registry/` repoint `repository` and leave `tag` alone, so the
+  pin stays in one place. Grafana and Alertmanager follow this; the others
+  still inherit and are converted as they are touched.
 
 ## Helm Template Best Practices
 

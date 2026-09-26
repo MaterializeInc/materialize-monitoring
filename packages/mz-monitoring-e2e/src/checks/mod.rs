@@ -16,6 +16,7 @@
 //! backwards yields either a suite that passes while blind, or one that flakes on
 //! empty Materialize series forever.
 
+pub mod alertmanager;
 pub mod alloy;
 pub mod grafana;
 pub mod kube_state;

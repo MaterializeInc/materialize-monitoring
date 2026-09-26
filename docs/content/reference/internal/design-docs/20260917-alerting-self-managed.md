@@ -5,7 +5,7 @@ weight: 20260917
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-17
-lastmod: 2026-09-17
+lastmod: 2026-09-25
 # custom parameters
 params:
   author: Heather Lapointe
@@ -355,6 +355,11 @@ This is the requirement that a Materialize deployment can be critical infrastruc
 
 **Decision: rules carry `severity`; a single values key selects the severity-to-route mapping.**
 
+> [!NOTE]
+>   **As built, the key is `alerting.preset`, selecting an entry of `alerting.presets`**, rather than `alerting.criticality` and `alerting.matrix`.
+>   The entries are user-extensible, and a deployment's own entry named after its criticality reads oddly.
+>   The three shipped presets are still the three criticalities below, and this section's reasoning is unchanged.
+
 The rules already carry `severity`, with three values.
 Their meanings should be written down, because a label with an intuitive name and no definition drifts within two releases.
 
@@ -433,6 +438,14 @@ alerting:
     - name: mzmon-alerting
 ```
 
+> [!NOTE]
+>   **As built, `alerting.secrets` does not exist.**
+>   The Secret mounts are a subchart value, `alertmanager.extraSecretMounts`, which the subchart renders with `toYaml`
+>   and which the umbrella therefore cannot compute from anything else.
+>   The chart instead mounts one conventional, optional Secret by default — `alertmanager-receivers`, at
+>   `/etc/alertmanager/secrets/alertmanager-receivers/` — and further Secrets are added to that list directly.
+>   A render-time check fails any `*_file` path that no mount covers, which recovers the safety the key was meant to provide.
+
 Three properties make this more than a passthrough.
 
 **`class` is the chart's one addition**, and it is what attaches a receiver to the severity matrix.
@@ -444,6 +457,9 @@ A class with no receiver MUST be a render-time error rather than a silent drop, 
 
 **The chart still validates.**
 A `config` block is checked with `amtool check-config` at render, so a malformed receiver fails the install rather than the reload.
+As built, Helm cannot run `amtool`, so this splits in two: render-time validators check the structure the chart can see
+— integration keys, receiver and time-interval references, credential fields and paths — and `amtool check-config` runs
+in CI over representative renders, in the Alertmanager image the chart pins.
 
 ### Credentials are referenced, never inlined
 
@@ -481,6 +497,12 @@ In `external` mode the chart configures both rulers to notify the given endpoint
 What the chart still owes that operator is the **label contract**: which labels the rules emit, what values they take, and what they mean, so that routing can be written against them.
 That contract MUST be documented and MUST move only under the deprecation cycle, because an external routing tree is written against it and cannot be migrated by this chart.
 That contract is a documentation deliverable and is listed as one.
+
+As built, the contract has one label every alert carries whatever its rule says: `cluster`, stamped by both rulers from `clusterName`.
+It is filled only where a rule's result lacks it, and the default `group_by` includes it, because an Alertmanager group
+key feeds PagerDuty's `dedup_key` and Opsgenie's `alias`.
+Without it, two clusters routing one condition to one service share an incident, and an external Alertmanager shared by
+several clusters merges their identical label sets into one alert.
 
 ## Choosing what ships enabled
 
@@ -800,21 +822,21 @@ Work in this repository, roughly in dependency order.
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
-| Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | The routing half of the feature |
-| `amtool check-config` over the rendered configuration | The chart validates a passthrough it does not model |
-| `alerting.secrets` mounting, and the `_file` credential convention | Credentials are referenced, never inlined |
-| Alertmanager at two replicas with gossip, and a PDB of one | HA is the default rather than a hardening profile |
-| Alertmanager ServiceMonitor | Two of three meta-alerting rows depend on it, and it is an existing recorded gap |
+| Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
+| `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |
+| `alerting.secrets` mounting, and the `_file` credential convention | ✅ done, through `alertmanager.extraSecretMounts` rather than `alerting.secrets` — see the note under [Notification channels](#notification-channels). Inline credentials and unmounted `*_file` paths both fail the render |
+| Alertmanager at two replicas with gossip, and a PDB of one | ✅ done ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)), with hard zone spread. Both rulers address the headless Service by DNS discovery so every replica receives every alert — gossip does not replicate alerts, which this table did not anticipate |
+| Alertmanager ServiceMonitor | ✅ done |
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | An alert with no stated action is half an alert |
 | Alert names added to the committed-surface check | Three extension points name alerts |
 | `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | The extension surface |
-| `alerting.routes.extra`, spliced ahead of the matrix | The extension point whose absence forces forks |
+| `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |
 | Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
-| Alertmanager datasource in Grafana, and an alerts dashboard | Alert state has no view today |
+| Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
 | Terraform module surface for receivers and criticality, with `sensitive` credential variables | Where the Secret-creation ergonomics belong |
 | Remove `config.rules.*` / `config.alerts.enabled` or make them load-bearing | Four values keys currently read by nothing |
@@ -829,13 +851,21 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **An alert reaches Alertmanager.** Install a rule that fires on `vector(1)`, assert it appears in Alertmanager's API within the evaluation and group-wait interval. This is the end-to-end assertion the whole page exists for.
 - **The routing matrix routes.** For each of the three criticality settings, assert that a synthetic alert at each severity lands on the expected receiver, read from Alertmanager's own routing-tree API rather than from the rendered config. Rendering the tree correctly and Alertmanager interpreting it as intended are different claims.
 - **Extra routes take precedence.** A route added through `alerting.routes.extra` wins over the matrix for a matching alert, and a non-matching alert still reaches the matrix. Ordering bugs here are invisible until the wrong team is paged.
-- **An unroutable class fails the render.** A receiver set missing a class that the matrix references is a render-time error, tested as one.
-- **A malformed receiver fails the render.** `amtool check-config` over the rendered configuration, asserted on a deliberately broken passthrough. The chart does not model these blocks, so this is the only thing standing between a typo and a failed reload in a running Alertmanager.
-- **Gossip converges and deduplicates.** Create a silence on one replica and assert it is visible on the other; fire an alert and assert one notification rather than two. The second half is the check that a two-replica default does not double every page.
+- ✅ **An unroutable class fails the render.** A receiver set missing a class that the matrix references is a render-time error, tested as one.
+- ✅ **A malformed receiver fails the render.** As built, in two halves: validators at render for the structure the chart
+  sees, and `amtool check-config` in CI (`make alertmanager-config-check`). `amtool check-config` over the rendered
+  configuration, asserted on a deliberately broken passthrough. The chart does not model these blocks, so this is the
+  only thing standing between a typo and a failed reload in a running Alertmanager.
+- 🔨 **Gossip converges and deduplicates.** Convergence is asserted by `alertmanager::mesh_converged` in the E2E suite,
+  and `alertmanager::thanos_ruler_reaches_every_replica` asserts the prerequisite this list missed: that each ruler
+  reaches every replica. Deduplication and silence replication were verified by hand on a live install, not automated.
+  Create a silence on one replica and assert it is visible on the other; fire an alert and assert one notification
+  rather than two. The second half is the check that a two-replica default does not double every page.
 - **Losing a replica keeps notifying.** Delete one Alertmanager pod and assert an alert still reaches its receiver, which is the node-drain case the HA default exists for.
 - **Every shipped alert has a reachable runbook.** Assert each `runbook_url` resolves to a page that exists in the built docsite, in CI without a cluster. A dead runbook link is discovered at 03:00 otherwise.
 - **Capability-tagged rules stay out until selected.** Assert a `crdb-dedicated` rule is absent by default and present once the tag is selected, since a tag that fails open is worse than no tag.
-- **Credentials do not appear in the render.** Assert no receiver credential is present in any rendered object except by Secret reference, which is the mechanical half of the inlining rule.
+- ✅ **Credentials do not appear in the render.** Assert no receiver credential is present in any rendered object except
+  by Secret reference, which is the mechanical half of the inlining rule.
 - **`ALERTS` arrives through the gateway.** Assert the series is queryable in Thanos *and* visible to a gateway destination, because landing in Thanos by a second path would satisfy a naive version of this test.
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
 - **Silences suppress notification and not state.** Silence an alert, assert no notification and a firing `ALERTS` series. This is the over-reporting behaviour the call-home level inherits, and pinning it keeps it a known property rather than a surprise.
@@ -846,13 +876,18 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 ## Documentation to update
 
 - **`alerting/configuring.md`** — 🔨 written, covering the two evaluators, what each is wired to, and what an operator sets today. Still owed once routing exists: the severity table, the criticality matrix, and the receiver map. This is the page an operator reads once and configures from.
-- **`alerting/channels.md`** — currently a heading. The `class` concept, the Secret-mounting and `_file` convention, one worked example, and a link to Alertmanager's own receiver reference for everything else. This page documents a pattern rather than a schema, deliberately.
-- **`alerting/maintenance.md`** — currently a heading. Inhibition on the rollout signal first, mute timings second, and why that order.
+- **`alerting/channels.md`** — ✅ written: the `class` concept, the Secret-mounting and `_file` convention, worked
+  examples, and a link to Alertmanager's own receiver reference for everything else. It documents a pattern rather than a schema, deliberately.
+- **`alerting/maintenance.md`** — 🔨 written for silences, mute windows and inhibition. Inhibition on the rollout signal
+  leads it once that rule exists.
+- **`alerting/architecture.md`** — ✅ written, as the section's landing page: the notifier's shape, why the rulers
+  address every replica, state, and failure modes.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.
 - **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
 - **`operating/runbooks/`** — a new section, one page per shipped alert, and the convention that a stable runbook graduates to the product documentation.
-- **`operating/production-best-practices.md`** — alerting is a shared-responsibility item and has no entry. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
-- **`architecture.md`** — the alerting path is absent from the architecture page.
+- **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
+  for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
+- **`architecture.md`** — ✅ the Alertmanager entry describes the notifier and points at the alerting section.
 - **`reference/internal/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
 - **`reference/internal/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
 - **A migration note for Cloud** — Cloud adopts these rules when it adopts this stack's Alertmanager. The note that is owed is what changes for the definitions in the process, since per-region duplication, the `tier`/`team` label vocabulary, and the stack-type exclusions have no equivalent here.

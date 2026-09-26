@@ -19,7 +19,7 @@ loki:
     # ruler resolves nothing: no alert is notified and every recording-rule
     # sample is dropped, with the component reporting healthy throughout.
     rulerConfig:
-      alertmanager_url: 'http://{{ include "mzmon.alertmanager.releaseFullname" . }}.alertmanager.svc.{{ include "mzmon.clusterDomain" . }}:9093'
+      alertmanager_url: 'http://_http._tcp.alertmanager-headless.alertmanager.svc.{{ include "mzmon.clusterDomain" . }}'
       remote_write:
         clients:
           gateway:
@@ -35,7 +35,7 @@ thanos:
       config: |
         alertmanagers:
           - static_configs:
-              - {{ include "mzmon.alertmanager.releaseFullname" . }}.alertmanager.svc.{{ include "mzmon.clusterDomain" . }}:9093
+              - dns+alertmanager-headless.alertmanager.svc.{{ include "mzmon.clusterDomain" . }}:9093
             scheme: http
             api_version: v2
             timeout: 10s
@@ -60,8 +60,9 @@ alertmanager:
 networkPolicies:
   alertmanager:
     ingress:
-      # Both rulers dial 9093. `extra` rather than `allowExternal`, which would
-      # open the API to the whole cluster and to anything off it.
+      # Both rulers dial 9093, and so does Grafana's Alertmanager datasource.
+      # `extra` rather than `allowExternal`, which would open the API to the
+      # whole cluster and to anything off it.
       extra:
         - from:
             - namespaceSelector:
@@ -70,6 +71,9 @@ networkPolicies:
             - namespaceSelector:
                 matchLabels:
                   kubernetes.io/metadata.name: loki
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: grafana
           ports:
             - port: 9093
               protocol: TCP

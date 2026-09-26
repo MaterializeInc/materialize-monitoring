@@ -1,0 +1,1066 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# The bundled Alertmanager: its production shape, the configuration the chart
+# renders into it from `alerting`, and the validators guarding both.
+#
+# Nearly every failure pinned here is silent at runtime. A notifier that cannot
+# gossip sends every page twice; a notifier whose peer never received an alert
+# cannot send it at all; a severity with no receiver, a credential file nobody
+# mounted and a routing change nothing reloads all leave Alertmanager healthy
+# and nobody paged.
+#
+# Warnings are asserted against `NOTES.txt`; `templates/validate.yaml` renders
+# them as YAML comments, which no content assertion can match.
+suite: alertmanager
+chart:
+  version: 1.2.3
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+tests:
+  # --- high availability ----------------------------------------------------
+
+  # Above one replica the subchart wires a peer per ordinal and the mesh
+  # listener; one replica is a notifier lost to any node drain.
+  - it: runs two gossiping replicas by default
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cluster.peer=alertmanager-0.alertmanager-headless:9094
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cluster.peer=alertmanager-1.alertmanager-headless:9094
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cluster.listen-address=0.0.0.0:9094
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --cluster.label=materialize-monitoring
+
+  # Memberlist joins over TCP and gossips over UDP. The headless Service is
+  # what the peer names resolve through, so it needs both.
+  - it: publishes the mesh port on both transports on the headless Service
+    template: ../charts/alertmanager/templates/services.yaml
+    documentSelector:
+      path: metadata.name
+      value: alertmanager-headless
+    asserts:
+      - contains:
+          path: spec.ports
+          content:
+            port: 9094
+            targetPort: clusterpeer-tcp
+            protocol: TCP
+            name: cluster-tcp
+      - contains:
+          path: spec.ports
+          content:
+            port: 9094
+            targetPort: clusterpeer-udp
+            protocol: UDP
+            name: cluster-udp
+
+  - it: budgets one voluntary disruption at a time
+    template: ../charts/alertmanager/templates/pdb.yaml
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+
+  # Hard on zones: two notifiers in one zone are one notifier to a zone outage.
+  # No `matchLabelKeys`, deliberately. With it, the new replica of a 1→2 upgrade
+  # would ignore its old-revision peer, could land in that peer's zone, and the
+  # peer — pinned there by its volume — would then never reschedule.
+  - it: spreads replicas hard across zones and soft across hosts
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints
+          value:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              nodeTaintsPolicy: Honor
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: alertmanager
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: alertmanager
+
+  # Zone-less clusters (kind, many on-premises distributions) cannot satisfy a
+  # hard zone rule at all; the profile keeps the host rule.
+  - it: drops only the zone rule under no-zone-spread
+    values:
+      - ../profiles/no-zone-spread.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints
+          value:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: alertmanager
+
+  # Gossip replicates state between replicas; the volume is what survives
+  # losing both at once. 4Gi because cloud disks refuse to provision smaller.
+  - it: keeps a 4Gi volume per replica
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 4Gi
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.accessModes
+          value:
+            - ReadWriteOnce
+
+  # --- hardening ------------------------------------------------------------
+
+  - it: runs both containers read-only, unprivileged, with every capability dropped
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: alertmanager-configmap-reload
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: alertmanager
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[1].securityContext.capabilities.drop
+          value:
+            - ALL
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: probes the health endpoints rather than the UI
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].livenessProbe.httpGet.path
+          value: /-/healthy
+      - equal:
+          path: spec.template.spec.containers[1].readinessProbe.httpGet.path
+          value: /-/ready
+
+  # No CPU limit, following the rest of the chart; a memory limit well above
+  # the request, because it is what can take both replicas down in a storm.
+  - it: sets requests and a memory limit on both containers
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].resources
+          value:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      - isNotNull:
+          path: spec.template.spec.containers[0].resources.requests
+      - isNull:
+          path: spec.template.spec.containers[1].resources.limits.cpu
+
+  - it: sends kubectl to the Alertmanager container, not the sidecar
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["kubectl.kubernetes.io/default-container"]
+          value: alertmanager
+
+  # --- configuration wiring -------------------------------------------------
+
+  # The subchart cannot compute a configuration, so the chart renders one and
+  # these three settings are what make Alertmanager load it. Each is
+  # load-bearing, and dropping any of them leaves a healthy pod routing nothing.
+  - it: loads the configuration the chart renders, not the subchart's
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --config.file=/etc/alertmanager/config/alertmanager.yml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: mzmon-config
+            secret:
+              secretName: alertmanager-config
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: mzmon-config
+            mountPath: /etc/alertmanager/config
+            readOnly: true
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: config
+          any: true
+
+  - it: renders no subchart ConfigMap
+    template: ../charts/alertmanager/templates/configmap.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The pod-template checksum covers only the ConfigMap the subchart no longer
+  # renders, so without the sidecar a routing change waits for a restart.
+  - it: reloads in place when the configuration changes
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --watched-dir=/etc/alertmanager/config
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --reload-url=http://127.0.0.1:9093/-/reload
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: mzmon-config
+            mountPath: /etc/alertmanager/config
+            readOnly: true
+
+  # Optional, so the pods start before an operator has created it.
+  - it: mounts the conventional receiver-credentials Secret, optionally
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: alertmanager-receivers
+            secret:
+              secretName: alertmanager-receivers
+              optional: true
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: alertmanager-receivers
+            mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+            subPath: null
+            readOnly: true
+
+  # --- meta-monitoring ------------------------------------------------------
+
+  # Both Services carry the same labels, so without the drop every replica is
+  # scraped twice, once through each.
+  - it: scrapes itself, through the ClusterIP Service only
+    template: ../charts/alertmanager/templates/servicemonitor.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.endpoints[0].relabelings
+          value:
+            - sourceLabels:
+                - __meta_kubernetes_service_name
+              regex: ".*-headless"
+              action: drop
+
+  # --- the rendered configuration -------------------------------------------
+
+  # With no receiver there is nothing to route to, and the tree says so: every
+  # alert lands on the root and its null receiver.
+  - it: renders a configuration that notifies nobody until a receiver exists
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: alertmanager-config
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - equal:
+          path: stringData["alertmanager.yml"]
+          value: |
+            receivers:
+            - name: mzmon-null
+            route:
+              group_by:
+              - alertname
+              - cluster
+              - namespace
+              group_interval: 5m
+              group_wait: 30s
+              receiver: mzmon-null
+              repeat_interval: 4h
+            templates:
+            - /etc/alertmanager/config/*.tmpl
+
+  - it: follows split-namespace into Alertmanager's namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: alertmanager
+
+  - it: renders nothing when the bundled Alertmanager is off
+    set:
+      tags.alertmanager: false
+      tags.default: false
+      tags.bundled-backends: false
+      tags.thanos: true
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # One receiver for everything is the common small-deployment case.
+  - it: routes every severity through the preset to the receivers that serve its class
+    set:
+      alerting:
+        receivers:
+          chat:
+            class: [high, normal, low]
+            config:
+              slack_configs:
+                - channel: "#mz"
+                  api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - equal:
+          path: stringData["alertmanager.yml"]
+          value: |
+            receivers:
+            - name: mzmon-null
+            - name: chat
+              slack_configs:
+              - api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+                channel: '#mz'
+            route:
+              group_by:
+              - alertname
+              - cluster
+              - namespace
+              group_interval: 5m
+              group_wait: 30s
+              receiver: mzmon-null
+              repeat_interval: 4h
+              routes:
+              - matchers:
+                - severity="critical"
+                receiver: chat
+              - matchers:
+                - severity="notice"
+                receiver: chat
+              - matchers:
+                - severity="warning"
+                receiver: chat
+              - receiver: chat
+            templates:
+            - /etc/alertmanager/config/*.tmpl
+
+  # `suppressed` still fires and still shows; it just notifies nobody.
+  - it: routes a suppressed severity to the null receiver
+    set:
+      alerting:
+        preset: evaluation
+        receivers:
+          chat:
+            class: normal
+            config:
+              webhook_configs:
+                - url: http://hooks.example.invalid/
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="notice"\n    receiver: mzmon-null\n'
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="critical"\n    receiver: chat\n'
+
+  # Presets are a map, so one of your own is one more key, with severities and
+  # classes of its own. The shipped presets are merged in alongside it.
+  - it: routes through a preset of your own
+    set:
+      alerting:
+        preset: oncall-lite
+        presets:
+          oncall-lite:
+            critical: page
+            warning: ticket
+            notice: suppressed
+        receivers:
+          pager:
+            class: page
+            config:
+              webhook_configs:
+                - url: http://pager.example.invalid/
+          tickets:
+            class: ticket
+            config:
+              webhook_configs:
+                - url: http://tickets.example.invalid/
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="critical"\n    receiver: pager\n'
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="warning"\n    receiver: tickets\n'
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="notice"\n    receiver: mzmon-null\n'
+
+  # An Alertmanager route names one receiver. Several serving one class become
+  # sibling children that all continue, so each is notified.
+  - it: fans a class served by several receivers out to all of them
+    set:
+      alerting:
+        receivers:
+          chat:
+            class: [normal]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+          tickets:
+            class: [normal]
+            route:
+              repeat_interval: 24h
+            config:
+              webhook_configs:
+                - url: http://tickets.example.invalid/
+          pager:
+            class: [high, low]
+            config:
+              webhook_configs:
+                - url: http://pager.example.invalid/
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: |-
+            - matchers:
+                - severity="warning"
+                receiver: mzmon-null
+                routes:
+                - continue: true
+                  receiver: chat
+                - continue: true
+                  receiver: tickets
+                  repeat_interval: 24h
+      # A receiver's own route options follow it into the single-receiver case
+      # too — here, not at all, since `pager` sets none.
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="critical"\n    receiver: pager\n'
+
+  # A class listed twice would otherwise put the receiver into its class's
+  # route twice, as two continuing children, and notify it twice per alert.
+  - it: routes to a receiver once however many times it lists a class
+    set:
+      alerting:
+        preset: evaluation
+        receivers:
+          chat:
+            class: [normal, normal]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '- matchers:\n    - severity="critical"\n    receiver: chat\n'
+      - notMatchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: 'continue: true'
+
+  # Extra routes go first so a specific match wins; the preset is the fallback.
+  - it: places extra routes ahead of the preset, verbatim
+    set:
+      alerting:
+        receivers:
+          chat:
+            class: [high, normal, low]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+          data-team:
+            config:
+              webhook_configs:
+                - url: http://data.example.invalid/
+        routes:
+          extra:
+            - matchers: ['component="storage"']
+              receiver: data-team
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: '  routes:\n  - matchers:\n    - component="storage"\n    receiver: data-team\n  - matchers:\n    - severity="critical"'
+
+  - it: passes global, inhibition, time intervals and templates through
+    set:
+      alerting:
+        global:
+          resolve_timeout: 10m
+        inhibitRules:
+          - source_matchers: ['severity="critical"']
+            target_matchers: ['severity="warning"']
+            equal: [alertname]
+        timeIntervals:
+          - name: weekends
+            time_intervals:
+              - weekdays: [saturday, sunday]
+        templates:
+          mzmon.tmpl: '{{ define "mzmon.title" }}{{ .CommonLabels.alertname }}{{ end }}'
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: "global:\n  resolve_timeout: 10m\n"
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: "inhibit_rules:\n- equal:\n  - alertname\n"
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: "time_intervals:\n- name: weekends\n"
+      - equal:
+          path: stringData["mzmon.tmpl"]
+          value: |
+            {{ define "mzmon.title" }}{{ .CommonLabels.alertname }}{{ end }}
+
+  # --- validators: the workload ---------------------------------------------
+
+  - it: renders the defaults without error
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: warns that no receiver means nobody is notified
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alerting.receivers is empty, so every alert reaches the mzmon-null receiver"
+
+  - it: stays quiet about receivers once one exists
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "alerting.receivers is empty"
+      - matchRegexRaw:
+          pattern: "chat \\(high, normal, low\\)"
+
+  - it: warns on a single replica
+    set:
+      alertmanager.replicaCount: 1
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alertmanager.replicaCount is 1. A single Alertmanager is lost to an ordinary node drain"
+
+  - it: warns on a single replica with no volume, which loses every silence on restart
+    set:
+      alertmanager.replicaCount: 1
+      alertmanager.persistence.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "persistence.enabled is false with a single replica"
+
+  - it: warns on replicas with no disruption budget or spread
+    set:
+      alertmanager.podDisruptionBudget: null
+      alertmanager.topologySpreadConstraints: null
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "podDisruptionBudget is unset"
+      - matchRegexRaw:
+          pattern: "no topologySpreadConstraints or pod anti-affinity"
+
+  # TCP alone is the worst version: the cluster forms and never converges.
+  - it: warns when the gossip port is open on TCP only
+    set:
+      networkPolicies.alertmanager.ingress.ports:
+        - 9093
+        - 9094
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "does not open 9094 on both TCP and UDP \\(TCP: true, UDP: false\\)"
+
+  - it: stays quiet about gossip at the default policy
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "9094 on both TCP and UDP"
+      - notMatchRegexRaw:
+          pattern: "gossip port is closed"
+
+  - it: warns when the root filesystem is made writable
+    set:
+      alertmanager.securityContext.readOnlyRootFilesystem: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "readOnlyRootFilesystem is not true"
+
+  - it: warns when the reloader is turned off
+    set:
+      alertmanager.configmapReload.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "reaches the running replicas only when they next restart"
+
+  - it: warns when the configuration file flag stops pointing at the rendered config
+    set:
+      alertmanager.extraArgs:
+        config.file: /etc/alertmanager/alertmanager.yml
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "does not load the configuration rendered from alerting"
+
+  - it: fails when the subchart's own configuration is turned back on
+    set:
+      alertmanager.config.enabled: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alertmanager.config.enabled is true, but the chart renders"
+
+  # --- validators: routing --------------------------------------------------
+
+  - it: fails on a preset that is not defined
+    set:
+      alerting.preset: critical
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alerting.preset is "critical", which is not an entry of alerting.presets'
+
+  # An unroutable severity is otherwise discovered during the incident it
+  # should have reported.
+  - it: fails when the selected preset names a class no receiver serves
+    set:
+      alerting.receivers.chat:
+        class: normal
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alerting.presets.important.critical routes critical alerts to class "high", which no receiver serves'
+
+  - it: accepts a preset every class of which is served or suppressed
+    set:
+      alerting.preset: evaluation
+      alerting.receivers.chat:
+        class: normal
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: fails on an unknownSeverity the preset does not name
+    set:
+      alerting.unknownSeverity: info
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alerting.unknownSeverity is "info"'
+
+  - it: fails on a receiver using the reserved null name
+    set:
+      alerting.receivers.mzmon-null:
+        config: {}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.receivers.mzmon-null uses a reserved name"
+
+  - it: fails on a receiver claiming the suppressed class
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low, suppressed]
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "names `suppressed`, which is reserved"
+
+  # Alertmanager rejects an unknown key and keeps its previous configuration,
+  # so a typo would otherwise be a change that silently never applies.
+  - it: fails on a receiver key that is not an integration
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          slack_config:
+            - channel: "#mz"
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.receivers.chat.config.slack_config is not an Alertmanager integration"
+
+  - it: warns on a receiver with no integrations
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config: {}
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alerting.receivers.chat.config has no integrations"
+
+  - it: fails when a receiver's route options try to take over routing
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        route:
+          matchers: ['team="x"']
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.receivers.chat.route.matchers is set"
+
+  - it: fails when the root route names a receiver
+    set:
+      alerting.routes.root.receiver: chat
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.routes.root.receiver is set"
+
+  # Alertmanager refuses to load a route naming an unknown receiver: on a
+  # reload that keeps the old routing, and on a fresh start it crash-loops.
+  - it: fails on an extra route naming an undefined receiver, at any depth
+    set:
+      alerting:
+        receivers:
+          chat:
+            class: [high, normal, low]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+        routes:
+          extra:
+            - matchers: ['team="data"']
+              receiver: chat
+              routes:
+                - matchers: ['severity="critical"']
+                  receiver: ghost
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alerting.routes.extra\[0\].routes\[0\].receiver names receiver "ghost"'
+
+  - it: warns on an extra route that neither names a receiver nor continues
+    set:
+      alerting:
+        receivers:
+          chat:
+            class: [high, normal, low]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+        routes:
+          extra:
+            - matchers: ['team="data"']
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alerting.routes.extra\\[0\\] names no receiver and does not continue"
+
+  - it: fails on a reference to an undefined time interval
+    set:
+      alerting:
+        receivers:
+          chat:
+            class: [high, normal, low]
+            route:
+              mute_time_intervals: [weekends]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'names time interval "weekends", which is not defined'
+
+  - it: accepts a reference to a defined time interval
+    set:
+      alerting:
+        timeIntervals:
+          - name: weekends
+            time_intervals:
+              - weekdays: [saturday, sunday]
+        receivers:
+          chat:
+            class: [high, normal, low]
+            route:
+              mute_time_intervals: [weekends]
+            config:
+              webhook_configs:
+                - url: http://chat.example.invalid/
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: fails on a template Alertmanager would not load
+    set:
+      alerting.templates:
+        notes.txt: hello
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.templates.notes.txt does not end in .tmpl"
+
+  # --- validators: credentials ----------------------------------------------
+
+  # The Slack webhook URL is the credential. Opsgenie's `api_url` is a base URL,
+  # which is why the check reads the enclosing integration.
+  - it: fails on an inline Slack webhook URL
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          slack_configs:
+            - channel: "#mz"
+              api_url: https://hooks.slack.com/services/T0/B0/XXXX
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alerting.receivers.chat.config.slack_configs\[0\].api_url is an inline credential'
+
+  - it: accepts an Opsgenie base URL, which is not a credential
+    set:
+      alerting.receivers.ops:
+        class: [high, normal, low]
+        config:
+          opsgenie_configs:
+            - api_url: https://api.eu.opsgenie.com/
+              api_key_file: /etc/alertmanager/secrets/alertmanager-receivers/opsgenie
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: fails on inline credentials in http_config and in global
+    set:
+      alerting:
+        global:
+          smtp_auth_password: hunter2
+        receivers:
+          hook:
+            class: [high, normal, low]
+            config:
+              webhook_configs:
+                - url: https://hooks.example.invalid/
+                  http_config:
+                    authorization:
+                      credentials: s3cret
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alerting.global.smtp_auth_password is an inline credential"
+      - failedTemplate:
+          errorPattern: 'webhook_configs\[0\].http_config.authorization.credentials is an inline credential'
+
+  - it: allows an inline credential when the check is turned off
+    set:
+      alerting.assertNoInlineCredentials: false
+      alerting.receivers.pd:
+        class: [high, normal, low]
+        config:
+          pagerduty_configs:
+            - routing_key: abc123
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # A credential file nobody mounted fails at send time, as a page that never
+  # arrives.
+  - it: fails on a credential file under no mount
+    set:
+      alerting.receivers.pd:
+        class: [high, normal, low]
+        config:
+          pagerduty_configs:
+            - routing_key_file: /etc/alertmanager/secrets/pagerduty/key
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pagerduty_configs\[0\].routing_key_file reads /etc/alertmanager/secrets/pagerduty/key, which no volume mounts'
+
+  - it: accepts a credential file under an added Secret mount
+    set:
+      alertmanager.extraSecretMounts:
+        - name: alertmanager-receivers
+          secretName: alertmanager-receivers
+          mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+          readOnly: true
+          optional: true
+        - name: pagerduty
+          secretName: pagerduty
+          mountPath: /etc/alertmanager/secrets/pagerduty
+          readOnly: true
+      alerting.receivers.pd:
+        class: [high, normal, low]
+        config:
+          pagerduty_configs:
+            - routing_key_file: /etc/alertmanager/secrets/pagerduty/key
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # The image's own trust store is the one path that needs no mount.
+  - it: accepts a CA file from the image's trust store
+    set:
+      alerting.receivers.hook:
+        class: [high, normal, low]
+        config:
+          webhook_configs:
+            - url: https://hooks.example.invalid/
+              http_config:
+                tls_config:
+                  ca_file: /etc/ssl/certs/ca-certificates.crt
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: warns when receivers are set but the bundled Alertmanager is off
+    set:
+      tags.default: false
+      tags.thanos: true
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "alerting.receivers is set but the bundled Alertmanager is disabled"
+
+  # --- names and addressing -------------------------------------------------
+
+  # Pinned like Loki, Thanos and Grafana, so nothing that addresses
+  # Alertmanager depends on what the release is called.
+  - it: names its resources alertmanager regardless of the release name
+    release:
+      name: some-other-release
+      namespace: test-monitoring
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: alertmanager
+      - equal:
+          path: spec.serviceName
+          value: alertmanager-headless
+
+  - it: reports the pinned Service in NOTES
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Service: alertmanager\\.test-monitoring\\.svc\\.cluster\\.local:9093"
+
+  - it: reports the cluster label alerts carry
+    set:
+      clusterName: prod-us-east
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Alerts are labelled: cluster="prod-us-east"'
+
+  # Unset, Alertmanager takes its route prefix from the path of baseURL.
+  - it: keeps every endpoint at the root whatever baseURL is
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[1].args
+          content: --web.route-prefix=/
+
+  - it: fails on a baseURL path with no route prefix to hold the endpoints at the root
+    values:
+      - fixtures/alertmanager-baseurl-path-no-prefix.values.yaml
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "alertmanager.baseURL has a path \\(/alertmanager\\) and alertmanager.extraArgs.web.route-prefix is unset"
+
+  - it: accepts a baseURL path while the route prefix stays pinned
+    set:
+      alertmanager.baseURL: https://ops.example.com/alertmanager
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # Alertmanager builds links into its own UI; Grafana serves none of them.
+  - it: warns when baseURL points at Grafana
+    set:
+      alertmanager.baseURL: https://grafana.example.com
+      grafana:
+        grafana.ini:
+          server:
+            root_url: https://grafana.example.com/
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "points at Grafana's host"

@@ -1,0 +1,7 @@
+# Test fixture for tests/alertmanager_test.yaml: a sub-path baseURL with the
+# chart's route-prefix pin removed. Kept as a file because `set:` cannot address
+# the dotted `web.route-prefix` key.
+alertmanager:
+  baseURL: https://ops.example.com/alertmanager
+  extraArgs:
+    web.route-prefix: null

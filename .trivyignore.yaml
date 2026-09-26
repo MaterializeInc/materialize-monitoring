@@ -39,7 +39,7 @@ misconfigurations:
   # likely to become fixable through values — revisit when bumping the
   # subcharts, and drop the entry rather than keeping a stale suppression.
   - id: KSV-0014
-    statement: "grafana and alertmanager containers write to their root filesystem; upstream charts do not expose readOnlyRootFilesystem cleanly."
+    statement: "The grafana container writes to its root filesystem; the upstream chart does not expose readOnlyRootFilesystem cleanly. Alertmanager no longer needs this entry: it runs read-only through values since DEP-226."
   - id: KSV-0118
     statement: "grafana-operator and thanos-query ship without a pod securityContext upstream."
 

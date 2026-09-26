@@ -176,10 +176,11 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
     fi
     echo "    node-exporter enabled=${want_ne}, rendered=${got_ne}"
 
-    # cluster_name has to reach both env ConfigMaps: the agent stamps it on pod
-    # logs, and the gateway uses it as the `cluster` fallback for every other log
-    # source and as the metrics `external_labels`. A value that lands in only one
-    # splits a cluster's data across two label values with nothing said.
+    # cluster_name has to reach both Alloy env ConfigMaps and the rulers' one:
+    # the agent stamps it on pod logs, the gateway uses it as the `cluster`
+    # fallback for every other log source and as the metrics `external_labels`,
+    # and both rulers stamp it on every alert. A value that lands in only some of
+    # them splits a cluster's signals across two label values with nothing said.
     # Gated on the module call, like the credential check below, so a module
     # that stops composing the value cannot also switch the check off.
     expected_cluster="$(jq -r '
@@ -187,13 +188,35 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
         .cluster_name.constant_value // empty
     ' "${plan_json}" 2>/dev/null || true)"
     if [ -n "${expected_cluster}" ]; then
-        got_cluster="$(grep -cE "^  CLUSTER_NAME: \"?${expected_cluster}\"?$" "${rendered}" || true)"
-        if [ "${got_cluster}" != "2" ]; then
-            echo "  !! ${example}: cluster_name reached ${got_cluster} of 2 Alloy env ConfigMaps" >&2
+        if ! cluster_report="$(
+            ${PY_RUN} python - "${expected_cluster}" "${rendered}" <<'PYEOF'
+import sys
+
+import yaml
+
+want, path = sys.argv[1], sys.argv[2]
+alloy, rulers = [], []
+with open(path) as f:
+    for doc in yaml.safe_load_all(f):
+        if not doc or doc.get("kind") != "ConfigMap":
+            continue
+        data = doc.get("data") or {}
+        if "CLUSTER_NAME" not in data:
+            continue
+        name = doc["metadata"]["name"]
+        (rulers if name == "ruler-env" else alloy).append((name, str(data["CLUSTER_NAME"])))
+wrong = [f"{name}={value!r}" for name, value in alloy + rulers if value != want]
+if len(alloy) != 2 or not rulers or wrong:
+    print(f"{len(alloy)} of 2 Alloy env ConfigMaps and {len(rulers)} ruler-env ConfigMap(s); wrong: {wrong}")
+    sys.exit(1)
+print(f"both Alloy env ConfigMaps and {len(rulers)} ruler-env ConfigMap(s)")
+PYEOF
+        )"; then
+            echo "  !! ${example}: cluster_name did not reach everything that stamps it: ${cluster_report}" >&2
             status=1
             continue
         fi
-        echo "    cluster_name reached both Alloy env ConfigMaps"
+        echo "    cluster_name reached ${cluster_report}"
     fi
 
     # Loki's S3 endpoint, which has no default inside Loki and is not derivable

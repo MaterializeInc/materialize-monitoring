@@ -1,9 +1,9 @@
 {{/*
 Datasources pushed into the Grafana instance grafana-operator manages.
 
-Both are built from the same shape and share the instance targeting used by the
-dashboards, so a datasource and the dashboards that query it always land in the
-same instance.
+All three are built from the same shape and share the instance targeting used
+by the dashboards, so a datasource and the dashboards that query it always land in
+the same instance.
 */}}
 {{- $ds := $.Values.connections.datasources }}
 {{- $selector := $.Values.dashboards.config.grafana.manifest.instanceSelector
@@ -65,6 +65,30 @@ in first so user `jsonData` / `secureJsonData` merges over them.
     "jsonData" ( merge ( deepCopy ( $loki.jsonData | default dict ) ) $defaults ( $lokiTls.jsonData | default dict ) )
     "secureJsonData" ( merge $secure ( $lokiTls.secureJsonData | default dict ) )
     "valuesFrom" ( concat ( $loki.valuesFrom | default list ) ( $lokiTls.valuesFrom | default list ) )
+  ) }}
+{{- end }}
+
+{{- /*
+Alertmanager, read and written by Grafana's alerting UI. `handleGrafanaManagedAlerts`
+stays off: this Grafana does not own alert state, and turning it on would have
+Grafana-managed rules notify through the bundled Alertmanager as well, which is a
+separate decision from being able to see and silence what the rulers send.
+*/}}
+{{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "alertmanager" ) ) }}
+  {{- $am := $ds.alertmanager }}
+  {{- $specs = append $specs ( dict
+    "key" "alertmanager"
+    "name" $am.name
+    "uid" $am.uid
+    "type" "alertmanager"
+    "url" ( tpl $am.url $ )
+    "isDefault" false
+    "jsonData" ( merge
+      ( deepCopy ( $am.jsonData | default dict ) )
+      ( dict "implementation" "prometheus" "handleGrafanaManagedAlerts" false )
+    )
+    "secureJsonData" dict
+    "valuesFrom" ( $am.valuesFrom | default list )
   ) }}
 {{- end }}
 

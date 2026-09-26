@@ -121,7 +121,16 @@ loki config configmap:
                 timeout: 500ms
                 update_interval: 1m
         ruler:
-          alertmanager_url: http://t-alertmanager.loki.svc.cluster.local:9093
+          alert_relabel_configs:
+          - action: replace
+            regex: ""
+            replacement: ${CLUSTER_NAME}
+            source_labels:
+            - cluster
+            target_label: cluster
+          alertmanager_refresh_interval: 30s
+          alertmanager_url: http://_http._tcp.alertmanager-headless.loki.svc.cluster.local
+          enable_alertmanager_discovery: true
           enable_alertmanager_v2: true
           evaluation_interval: 1m
           poll_interval: 1m
@@ -1004,7 +1013,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: compactor
           labels:
             app.kubernetes.io/component: compactor
@@ -1143,7 +1152,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: distributor
           labels:
             app.kubernetes.io/component: distributor
@@ -1277,7 +1286,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: index-gateway
           labels:
             app.kubernetes.io/component: index-gateway
@@ -1414,7 +1423,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: ingester
           labels:
             app.kubernetes.io/component: ingester
@@ -1652,7 +1661,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: querier
           labels:
             app.kubernetes.io/component: querier
@@ -1798,7 +1807,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: query-frontend
           labels:
             app.kubernetes.io/component: query-frontend
@@ -1936,7 +1945,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: query-scheduler
           labels:
             app.kubernetes.io/component: query-scheduler
@@ -2202,7 +2211,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 3606173ce1bc0ed6cbf12af8daf00a720357de62aa7f86f182a5269f2b08d545
+            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
             kubectl.kubernetes.io/default-container: ruler
           labels:
             app.kubernetes.io/component: ruler
@@ -2229,6 +2238,11 @@ medium (base) workloads:
                 - -memberlist.advertise-addr=$(POD_IP)
                 - -target=ruler
               env:
+                - name: CLUSTER_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      key: CLUSTER_NAME
+                      name: ruler-env
                 - name: GOGC
                   value: "80"
                 - name: POD_IP

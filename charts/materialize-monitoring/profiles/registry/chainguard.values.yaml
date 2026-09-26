@@ -21,10 +21,11 @@
 # ---------------------------------------------------------------------------
 # Read this before rolling it out
 # ---------------------------------------------------------------------------
-# **Tags are inherited, not restated.** Where the chart resolves a tag from a
-# subchart's `appVersion` (Loki, Thanos, kube-state-metrics, grafana-operator,
-# Alertmanager, metrics-server) this profile leaves `tag` alone, so the version
-# stays pinned in exactly one place and Renovate keeps owning it. Chainguard
+# **Tags are inherited, not restated.** Where the chart pins a tag in its own
+# `values.yaml` (Grafana, Alertmanager and its config reloader) or resolves one
+# from a subchart's `appVersion` (Loki, Thanos, kube-state-metrics,
+# grafana-operator, metrics-server), this profile leaves `tag` alone, so the
+# version stays pinned in exactly one place and Renovate keeps owning it. Chainguard
 # tracks upstream versions but does not always spell them identically —
 # a leading `v` is commonly dropped. Confirm before you install:
 #
