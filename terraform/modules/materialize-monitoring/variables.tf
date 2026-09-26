@@ -992,11 +992,12 @@ variable "internal_tls" {
     `issuer_ref` null and letting the chart bootstrap a root scoped to this
     release.
 
-    Two hops stop short of `authenticate` by nature rather than by choice, and
-    the chart refuses to configure them otherwise: Loki's HTTP port is probed by
-    the kubelet, and a `httpGet` probe has no field for a client certificate, so
-    that hop's terminal state is `present`. Grafana's datasource verifies the
-    backend but presents nothing.
+    Two ports stop short of `authenticate` by nature rather than by choice, and
+    the chart refuses to configure them otherwise: Loki's HTTP port and
+    Alertmanager's API port are probed by the kubelet, and a `httpGet` probe has
+    no field for a client certificate, so their terminal state is `present`.
+    Grafana's datasources verify the backend, and present a certificate only to
+    Alertmanager.
   EOT
   type        = string
   default     = "off"

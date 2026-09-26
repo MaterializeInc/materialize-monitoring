@@ -558,7 +558,10 @@ PYEOF
             #
             # Phase 1 is the floor for every non-`off` stage: Loki serves TLS on
             # its HTTP port and Thanos Receive on its remote-write listener.
-            if ! grep -q '^[[:space:]]*cert_file: /etc/mzmon/tls/tls.crt$' "${rendered}"; then
+            # Anchored on `http_tls_config:` because Alertmanager's web config
+            # carries the same `cert_file` line, so a bare match passes on it.
+            if ! grep -A3 '^[[:space:]]*http_tls_config:$' "${rendered}" \
+                | grep -q '^[[:space:]]*cert_file: /etc/mzmon/tls/tls.crt$'; then
                 echo "  !! ${example}: internal_tls=${stage} but Loki's server TLS did not render" >&2
                 status=1
                 continue
@@ -612,7 +615,49 @@ PYEOF
                 status=1
                 continue
             fi
-            echo "    internal_tls=${stage} composed the mTLS profiles onto the hops"
+
+            # Alertmanager's API port, when Alertmanager renders. The listener
+            # settings are the chart's own `web.yml`, and they only take effect
+            # through the flag, so both are asserted. Like Loki's, the port tops
+            # out at verify-if-given.
+            if ! am_report="$(
+                ${PY_RUN} python - "${stage}" "${rendered}" <<'PYEOF'
+import sys
+
+import yaml
+
+stage, path = sys.argv[1], sys.argv[2]
+web, args = None, None
+with open(path) as f:
+    for doc in yaml.safe_load_all(f):
+        if not doc:
+            continue
+        name = (doc.get("metadata") or {}).get("name")
+        if doc.get("kind") == "Secret" and name == "alertmanager-config":
+            web = yaml.safe_load((doc.get("stringData") or {}).get("web.yml") or "{}") or {}
+        if doc.get("kind") == "StatefulSet" and name == "alertmanager":
+            for c in doc["spec"]["template"]["spec"]["containers"]:
+                if c["name"] == "alertmanager":
+                    args = c.get("args") or []
+if web is None:
+    print("not rendered")
+    sys.exit(0)
+want = "NoClientCert" if stage == "encrypt" else "VerifyClientCertIfGiven"
+got = (web.get("tls_server_config") or {}).get("client_auth_type")
+if got != want:
+    print(f"web.yml client_auth_type is {got!r}, want {want!r}")
+    sys.exit(1)
+if "--web.config.file=/etc/alertmanager/config/web.yml" not in (args or []):
+    print("web.yml rendered but the StatefulSet does not pass --web.config.file, so Alertmanager serves plaintext")
+    sys.exit(1)
+print(f"Alertmanager serves TLS, {want}")
+PYEOF
+            )"; then
+                echo "  !! ${example}: internal_tls=${stage}: ${am_report}" >&2
+                status=1
+                continue
+            fi
+            echo "    internal_tls=${stage} composed the mTLS profiles onto the hops (${am_report})"
         fi
     fi
 

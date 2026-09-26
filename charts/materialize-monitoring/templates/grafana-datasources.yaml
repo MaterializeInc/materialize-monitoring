@@ -76,19 +76,22 @@ separate decision from being able to see and silence what the rulers send.
 */}}
 {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "alertmanager" ) ) }}
   {{- $am := $ds.alertmanager }}
+  {{- $amUrl := tpl $am.url $ }}
+  {{- $amTls := include "mzmon.grafana.datasource.tls" ( dict "root" $ "name" "alertmanager" "url" $amUrl ) | fromYaml }}
   {{- $specs = append $specs ( dict
     "key" "alertmanager"
     "name" $am.name
     "uid" $am.uid
     "type" "alertmanager"
-    "url" ( tpl $am.url $ )
+    "url" $amUrl
     "isDefault" false
     "jsonData" ( merge
       ( deepCopy ( $am.jsonData | default dict ) )
       ( dict "implementation" "prometheus" "handleGrafanaManagedAlerts" false )
+      ( $amTls.jsonData | default dict )
     )
-    "secureJsonData" dict
-    "valuesFrom" ( $am.valuesFrom | default list )
+    "secureJsonData" ( $amTls.secureJsonData | default dict )
+    "valuesFrom" ( concat ( $am.valuesFrom | default list ) ( $amTls.valuesFrom | default list ) )
   ) }}
 {{- end }}
 

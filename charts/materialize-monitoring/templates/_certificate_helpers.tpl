@@ -650,7 +650,7 @@ Usage:
   {{- $errors := list }}
   {{- $warnings := list }}
 
-  {{- range $name := ( list "loki" "thanos" ) }}
+  {{- range $name := ( list "loki" "thanos" "alertmanager" ) }}
     {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" $name ) ) }}
       {{- $ds := dig "datasources" $name dict ( $.Values.connections | default dict ) }}
       {{- $url := tpl ( $ds.url | default "" | toString ) $ }}

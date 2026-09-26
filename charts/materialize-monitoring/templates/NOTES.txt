@@ -52,7 +52,12 @@ Thanos is installed and configured to store metrics.
 
 Alertmanager is installed and notifies for both rulers.
   Alertmanager namespace: {{ include "mzmon.alertmanager.namespace" $ }}
-  Service: {{ include "mzmon.alertmanager.hostPort" $ }}
+  Service: {{ include "mzmon.alertmanager.url" $ }}
+  {{- if ( include "mzmon.alertmanager.tls.enabled" $ ) }}
+  TLS: on, client certificates: {{ dig "server" "tls" "clientAuth" "NoClientCert" $.Values.alerting }} (alerting.server.tls)
+  {{- else }}
+  TLS: off (alerting.server.tls)
+  {{- end }}
   Replicas: {{ $amReplicas }}{{ if gt $amReplicas 1 }} (gossiping){{ end }}
   Preset: {{ $.Values.alerting.preset }}
   Alerts are labelled: cluster={{ include "mzmon.clusterName" $ | quote }} (clusterName)

@@ -34,6 +34,15 @@ type: Opaque
 stringData:
   alertmanager.yml: |
     {{- include "mzmon.alertmanager.config" $ | nindent 4 }}
+  {{- /* Read by Alertmanager when `alertmanager.extraArgs.web.config.file` names
+         it, and by `amtool` from `/etc/amtool`. Neither matches the `*.tmpl`
+         glob the configuration loads templates from. */}}
+  web.yml: |
+    {{- include "mzmon.alertmanager.webConfig" $ | nindent 4 }}
+  amtool.yml: |
+    {{- include "mzmon.alertmanager.amtoolConfig" $ | nindent 4 }}
+  amtool-http.yml: |
+    {{- include "mzmon.alertmanager.amtoolHTTPConfig" $ | nindent 4 }}
   {{- range $name := keys ( $.Values.alerting.templates | default dict ) | sortAlpha }}
   {{ $name }}: |
     {{- index $.Values.alerting.templates $name | nindent 4 }}

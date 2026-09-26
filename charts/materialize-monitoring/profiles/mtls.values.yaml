@@ -1,4 +1,4 @@
-# Profile: in-cluster TLS on the two hops whose server half the chart can reach.
+# Profile: in-cluster TLS on the hops whose server half the chart can reach.
 #
 # Compose it after your platform profile:
 #
@@ -9,11 +9,13 @@
 # ---------------------------------------------------------------------------
 # What this turns on, and what it does not
 # ---------------------------------------------------------------------------
-# Two hops, both of which have a Helm-rendered client and a server this chart
-# can configure through its subchart:
+# Hops with a Helm-rendered client and a server this chart can configure
+# through its subchart:
 #
 #   alloy-gateway -> Loki distributor      (Loki serves TLS on 3100)
 #   alloy-gateway -> Thanos Receive        (Receive serves TLS on remote-write)
+#   both rulers   -> Alertmanager          (Alertmanager serves TLS on 9093)
+#   Grafana       -> Alertmanager          (the same listener)
 #
 # **This is phase 1, not mTLS.** Traffic is encrypted and the client verifies the
 # server; neither server requires a client certificate yet, so nothing here
@@ -29,9 +31,10 @@
 #
 # Not covered, and deliberately so:
 #
-#   * **Intra-Loki and intra-Thanos.** Distributor->ingester gRPC, the memberlist
-#     ring, query->store: all real hops, all inside a single subchart's trust
-#     boundary, none of them reachable from here.
+#   * **Intra-Loki, intra-Thanos and intra-Alertmanager.** Distributor->ingester
+#     gRPC, the memberlist ring, query->store, Alertmanager's gossip on 9094: all
+#     real hops, all inside a single subchart's trust boundary, none of them
+#     reachable from here.
 #   * **Grafana -> backends.** The datasource URLs below move to `https://` and
 #     the CA reaches Grafana by reference — see `connections.datasources.*.tls`
 #     at the bottom of this file, which the profile now wires to Grafana's own
@@ -76,6 +79,11 @@
 #
 # Loki's own HTTP port stops at phase 2 and cannot go further: the kubelet probes
 # it and a `httpGet` probe has no field for a client certificate.
+#
+# Alertmanager's API port follows Loki's column and stops at phase 2 for the same
+# reason, and for a second one: its config reloader cannot present a certificate
+# either. Both rulers present theirs from phase 1, which the server ignores until
+# phase 2, so its clients need no ordering against it.
 #
 # Compose the next phase over this one:
 #
@@ -125,6 +133,26 @@ loki:
         cert_file: /etc/mzmon/tls/tls.crt
         key_file: /etc/mzmon/tls/tls.key
         client_auth_type: NoClientCert
+
+    # The Loki ruler as a client of Alertmanager, which serves TLS below. The
+    # material is Loki's own certificate, which the `defaults` mount below
+    # reaches the ruler with. See the Alertmanager section for why the server
+    # name is not the address.
+    #
+    # Every Loki component reads one shared configuration, so changing these
+    # rolls all of Loki, not only the ruler.
+    #
+    # The address is restated whole because the scheme is part of it, so this
+    # overrides `profiles/split-namespace.values.yaml` when composed after it.
+    # Under that layout, restate it with the `alertmanager` namespace, last; the
+    # render warns when the namespace is wrong.
+    rulerConfig:
+      alertmanager_url: 'https://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}'
+      alertmanager_client:
+        tls_ca_path: /etc/mzmon/tls/ca.crt
+        tls_cert_path: /etc/mzmon/tls/tls.crt
+        tls_key_path: /etc/mzmon/tls/tls.key
+        tls_server_name: alertmanager
 
   # The mount. `defaults` rather than a per-component list because Loki's
   # `_pod.tpl` coalesces component -> defaults -> loki, so this one entry reaches
@@ -251,6 +279,103 @@ thanos:
         mountPath: /etc/mzmon/tls
         readOnly: true
 
+  # The Thanos ruler as a client of Alertmanager. The base values already mount
+  # the Thanos certificate into the ruler; this restates the list to make the
+  # Secret required, and restates `remote-write` with it because Helm replaces
+  # lists.
+  #
+  # The address is restated whole, with the same split-namespace caveat as the
+  # Loki ruler's above.
+  ruler:
+    alertmanagers:
+      config: |
+        alertmanagers:
+          - static_configs:
+              - dns+alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}:9093
+            scheme: https
+            http_config:
+              tls_config:
+                ca_file: /etc/mzmon/tls/ca.crt
+                cert_file: /etc/mzmon/tls/tls.crt
+                key_file: /etc/mzmon/tls/tls.key
+                server_name: alertmanager
+            api_version: v2
+            timeout: 10s
+    extraVolumes:
+      - name: remote-write
+        configMap:
+          name: thanos-ruler-remote-write
+      - name: mzmon-tls
+        secret:
+          secretName: mzmon-thanos-tls
+          optional: false
+
+# ---------------------------------------------------------------------------
+# Alertmanager: serve TLS on the API port
+# ---------------------------------------------------------------------------
+# One switch and the settings that move with it. The chart renders the listener
+# settings into `web.yml`, and `amtool` and the Grafana datasource follow the
+# switch on their own; everything below is configured in the subchart, which
+# cannot read it. A validator checks the set.
+#
+# **The server name is `alertmanager`, not the address.** Both rulers address the
+# headless Service and reach each replica by pod IP (Thanos) or per-pod name
+# (Loki), and the certificate carries neither. It carries the load-balanced
+# Service's names, and the bare `alertmanager` is one of them that needs no
+# namespace.
+alerting:
+  server:
+    tls:
+      enabled: true
+
+alertmanager:
+  # What moves Alertmanager onto TLS. It decides at startup whether to serve TLS,
+  # so this flag appearing is what rolls the replicas, one at a time. A map, so
+  # the base values' flags survive.
+  extraArgs:
+    web.config.file: /etc/alertmanager/config/web.yml
+
+  # Restated to make the certificate required; see the note at the end of this
+  # file. `alertmanager-receivers` stays optional: nothing reads it until a
+  # receiver names a file in it.
+  extraSecretMounts:
+    - name: alertmanager-receivers
+      secretName: alertmanager-receivers
+      mountPath: /etc/alertmanager/secrets/alertmanager-receivers
+      readOnly: true
+      optional: true
+    - name: mzmon-tls
+      secretName: mzmon-alertmanager-tls
+      mountPath: /etc/mzmon/tls
+      readOnly: true
+      optional: false
+
+  # Same reason as Loki's: the kubelet speaks TLS without verifying, and both
+  # probes move together.
+  livenessProbe:
+    httpGet:
+      scheme: HTTPS
+  readinessProbe:
+    httpGet:
+      scheme: HTTPS
+
+  # The reloader's client speaks TLS without verifying, and cannot present a
+  # certificate, which is what stops this port at phase 2.
+  configmapReload:
+    extraArgs:
+      reload-url: https://127.0.0.1:9093/-/reload
+
+  # Unlike Loki's scrape, this one verifies. The monitor lives in Alertmanager's
+  # namespace alongside the Secret, and the gateway reads the CA from it.
+  serviceMonitor:
+    scheme: https
+    tlsConfig:
+      serverName: alertmanager
+      ca:
+        secret:
+          name: mzmon-alertmanager-tls
+          key: ca.crt
+
 # ---------------------------------------------------------------------------
 # The clients
 # ---------------------------------------------------------------------------
@@ -361,6 +486,11 @@ connections:
       # HTTP endpoints — including the ones the kubelet probes, which is the same
       # dead end Loki's HTTP port hits at phase 3.
       url: 'http://thanos-query.{{ include "mzmon.thanos.namespace" $ }}.svc:9090'
+    alertmanager:
+      # The URL needs no override: its default follows `alerting.server.tls`.
+      tls:
+        caSecret:
+          name: '{{ include "mzmon.certificates.secretName" ( dict "context" $ "component" "grafana" ) }}'
 
 # ---------------------------------------------------------------------------
 # The certificate Secrets stop being optional here

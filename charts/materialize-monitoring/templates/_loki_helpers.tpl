@@ -441,7 +441,7 @@ Usage:
          `http://` in values, and no CA reaches the pod. The `mtls` profile
          family turns that listener on, so the composition is reachable. */}}
   {{- if and $rwOn ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) }}
-    {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, but loki.loki.rulerConfig.remote_write still addresses it over http and no CA is mounted into the Loki ruler. Recording-rule samples fill the ruler's WAL and are dropped. Alert evaluation and notification are unaffected. Set loki.loki.rulerConfig.remote_write.enabled to false, or leave the gateway's metrics listener plaintext, until the ruler carries certificate material." }}
+    {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, but loki.loki.rulerConfig.remote_write still addresses it over http, with no tls_config. Recording-rule samples fill the ruler's WAL and are dropped. Alert evaluation and notification are unaffected. Set loki.loki.rulerConfig.remote_write.enabled to false, or leave the gateway's metrics listener plaintext, until the ruler's remote_write carries certificate material." }}
   {{- end }}
 
   {{- /* Same reasoning as the Thanos ruler's: the samples are lost, the alerts
