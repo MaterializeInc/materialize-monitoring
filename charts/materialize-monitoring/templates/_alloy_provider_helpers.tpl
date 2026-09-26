@@ -458,8 +458,17 @@ Usage:
         {{- $errors = append $errors ( printf "pipeline.metrics.provider.gcp.cloudSql.instances entry %q contains a colon. List the instance name alone; the project is prefixed from projectId." . ) }}
       {{- end }}
     {{- end }}
-    {{- if not ( hasKey $saAnnotations "iam.gke.io/gcp-service-account" ) }}
-      {{- $warnings = append $warnings "pipeline.metrics.provider.gcp is enabled and alloy-gateway.serviceAccount has no iam.gke.io/gcp-service-account annotation. The pull will run as whatever identity the metadata server gives the pod — a direct Workload Identity principal, or the node's service account. That identity needs roles/monitoring.viewer, or every pull fails at run time." }}
+    {{- /* Unlike CloudWatch, the GCP exporter resolves its credential when it is
+           built. With no ADC source at all — no GOOGLE_APPLICATION_CREDENTIALS
+           and no metadata server — it fails to build, and so does the gateway's
+           whole initial load. On GKE the metadata server always answers, so
+           there it degrades to empty pulls instead. The render cannot tell a
+           direct Workload Identity principal (valid, no annotation) from an
+           install outside Google Cloud, so this is a warning. */}}
+    {{- $adcSource := include "mzmon.alloy.envSource" ( dict
+          "context" $ "role" "alloy-gateway" "env" "GOOGLE_APPLICATION_CREDENTIALS" ) | trim }}
+    {{- if and ( not ( hasKey $saAnnotations "iam.gke.io/gcp-service-account" ) ) ( ne $adcSource "extraEnv" ) }}
+      {{- $warnings = append $warnings "pipeline.metrics.provider.gcp is enabled, and the gateway has neither an iam.gke.io/gcp-service-account annotation on alloy-gateway.serviceAccount nor GOOGLE_APPLICATION_CREDENTIALS in alloy-gateway.alloy.extraEnv. On GKE the pull runs as whatever identity the metadata server gives the pod, which needs roles/monitoring.viewer or every pull returns nothing. Outside Google Cloud, with no credential at all, the exporter cannot be built and the whole gateway fails to start." }}
     {{- end }}
   {{- end }}
 

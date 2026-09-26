@@ -99,7 +99,14 @@ On GCP, the service account the Terraform module creates for the Google Cloud Me
 Reading needs `roles/monitoring.viewer` added to the same account.
 
 The chart warns at render when a provider is enabled and the gateway's service account carries no matching annotation.
-It cannot tell whether EKS Pod Identity or a static key is in use instead, so the warning is advisory.
+It cannot tell whether EKS Pod Identity, a static key, or a direct Workload Identity principal is in use instead, so the warning is advisory.
+
+The two providers fail differently without a credential.
+CloudWatch resolves its credential on each pull, so a missing one produces empty pulls and the gateway keeps running.
+The GCP exporter resolves its credential when it starts.
+On GKE the metadata server always supplies one, so the result is again empty pulls.
+Outside Google Cloud there is no metadata server, so `GOOGLE_APPLICATION_CREDENTIALS` has to point at a mounted key or a Workload Identity Federation configuration.
+Without one the exporter cannot start, and the gateway fails to load along with every log and metric it carries.
 
 ## Lag
 
@@ -117,7 +124,7 @@ Stamping a daily S3 datapoint with its own time would put it a day in the past, 
 
 Cloud Monitoring samples keep their own timestamps.
 An instant query at "now" looks back five minutes by default and finds no GCS sample at all.
-Queries on provider families SHOULD use `last_over_time(<series>[15m])` or a wider window.
+Queries on provider families need `last_over_time(<series>[15m])` or a wider window.
 
 No provider signal backs a fast page.
 Provider alerts cover the slow-moving conditions — storage headroom, burst-credit exhaustion, connection ceilings — with `for:` windows well above the publication delay.
@@ -162,7 +169,7 @@ A destination that bills per series, such as Datadog or a BYOC fan-out, therefor
 
 **`up` does not say whether a pull succeeded.**
 An exporter whose provider call fails still answers its scrape, with no provider series in it.
-Measured with no credentials at all, both exporters return HTTP 200 and report healthy, so `up` stays 1.
+Measured with credentials missing — for CloudWatch anywhere, and for GCP where a metadata server exists — both exporters return HTTP 200 and report healthy, so `up` stays 1.
 `up` only says the exporter exists and is being scraped.
 
 | Question | Query |

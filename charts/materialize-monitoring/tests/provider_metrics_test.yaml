@@ -444,12 +444,28 @@ tests:
           pattern: "eks.amazonaws.com/role-arn annotation"
         not: true
 
+  # Off Google Cloud with no credential, the exporter fails to build and takes
+  # the gateway's initial load with it, so the warning has to say so.
   - it: should warn when GCP has no Workload Identity binding
     template: NOTES.txt
     set: *gcp
     asserts:
       - matchRegexRaw:
-          pattern: "no iam.gke.io/gcp-service-account annotation"
+          pattern: "neither an iam.gke.io/gcp-service-account annotation"
+      - matchRegexRaw:
+          pattern: "the whole gateway fails to start"
+
+  - it: should stay quiet when a credential file is supplied through extraEnv
+    template: NOTES.txt
+    set:
+      <<: *gcp
+      alloy-gateway.alloy.extraEnv:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/gcp/credentials.json
+    asserts:
+      - matchRegexRaw:
+          pattern: "iam.gke.io/gcp-service-account annotation"
+        not: true
 
   - it: should stay quiet when the gateway has a Workload Identity binding
     template: NOTES.txt
