@@ -1516,22 +1516,24 @@ like our bundled Thanos provider.
     </li>
     <li id="prometheus_remote_storage_samples_failed_total">prometheus_remote_storage_samples_failed_total
         <details>
-            Used labels: app, namespace, pod
+            Used labels: app, namespace, pod, url
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
             </ul>
         </details>
     </li>
     <li id="prometheus_remote_storage_samples_total">prometheus_remote_storage_samples_total
         <details>
-            Used labels: app, namespace, pod
+            Used labels: app, namespace, pod, url
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.samples_delivered">infra.alloy.health.samples_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.samples_sent">infra.alloy.metric_pipeline.samples_sent</a></li>
             </ul>
@@ -1636,6 +1638,16 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.alloy.components.config_by_pod">infra.alloy.components.config_by_pod</a></li>
                 <li><a href="../common-queries#infra.alloy.components.distinct_configs">infra.alloy.components.distinct_configs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_resources_process_start_time_seconds">alloy_resources_process_start_time_seconds
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.config_by_pod">infra.alloy.components.config_by_pod</a></li>
             </ul>
         </details>
     </li>
@@ -2127,13 +2139,24 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="loki_source_api_request_duration_seconds_count">loki_source_api_request_duration_seconds_count
+    <li id="loki_source_api_entries_written">loki_source_api_entries_written
         <details>
             Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.alloy.log_pipeline.pushes_received">infra.alloy.log_pipeline.pushes_received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.log_push.lines">infra.alloy.ingest.log_push.lines</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_source_api_request_duration_seconds_count">loki_source_api_request_duration_seconds_count
+        <details>
+            Used labels: app, namespace, pod, status_code
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.pushes_refused">infra.alloy.health.pushes_refused</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.log_push.requests">infra.alloy.ingest.log_push.requests</a></li>
             </ul>
         </details>
     </li>
@@ -3323,7 +3346,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.alloy.log_pipeline.otlp_received">infra.alloy.log_pipeline.otlp_received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.logs">infra.alloy.ingest.otlp.logs</a></li>
             </ul>
         </details>
     </li>
@@ -3333,7 +3356,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.alloy.metric_pipeline.otlp_received">infra.alloy.metric_pipeline.otlp_received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.metrics">infra.alloy.ingest.otlp.metrics</a></li>
             </ul>
         </details>
     </li>
@@ -3343,7 +3366,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.alloy.log_pipeline.otlp_received">infra.alloy.log_pipeline.otlp_received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.logs">infra.alloy.ingest.otlp.logs</a></li>
             </ul>
         </details>
     </li>
@@ -3353,7 +3376,17 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.alloy.metric_pipeline.otlp_received">infra.alloy.metric_pipeline.otlp_received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.metrics">infra.alloy.ingest.otlp.metrics</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_api_remote_write_invalid_labels_samples_total">prometheus_api_remote_write_invalid_labels_samples_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.samples">infra.alloy.ingest.remote_write.samples</a></li>
             </ul>
         </details>
     </li>
@@ -3363,16 +3396,30 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.alloy.metric_pipeline.samples_in">infra.alloy.metric_pipeline.samples_in</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.received">infra.alloy.ingest.remote_write.received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.samples">infra.alloy.ingest.remote_write.samples</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.samples_scraped">infra.alloy.metric_pipeline.samples_scraped</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_receive_http_request_duration_seconds_count">prometheus_receive_http_request_duration_seconds_count
+        <details>
+            Used labels: app, namespace, pod, status_code
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.pushes_refused">infra.alloy.health.pushes_refused</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.requests">infra.alloy.ingest.remote_write.requests</a></li>
             </ul>
         </details>
     </li>
     <li id="prometheus_remote_storage_samples_retried_total">prometheus_remote_storage_samples_retried_total
         <details>
-            Used labels: app, namespace, pod
+            Used labels: app, namespace, pod, url
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
             </ul>
         </details>
