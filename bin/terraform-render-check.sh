@@ -92,7 +92,9 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
     # silently ignored, so rendering alone proves nothing here. When an example
     # sets one, require every volumeClaimTemplate to carry it.
     #
-    # The key may be quoted or not (Terraform's `yamlencode` quotes every key).
+    # The key may be quoted or not (Terraform's `yamlencode` quotes every key),
+    # and so may the rendered value: the Thanos subchart quotes its
+    # `storageClassName` and the others do not.
     # `|| true` because most examples set none, and a no-match grep would take
     # the script down under `pipefail`.
     expected_sc="$(grep -hoE '"?storageClass"?:[[:space:]]*"?[^"[:space:]]+' \
@@ -101,7 +103,7 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
 
     if [ -n "${expected_sc}" ]; then
         want="$(grep -c 'volumeClaimTemplates:' "${rendered}" || true)"
-        got="$(grep -c "storageClassName: ${expected_sc}" "${rendered}" || true)"
+        got="$(grep -cE "storageClassName: \"?${expected_sc}\"?[[:space:]]*$" "${rendered}" || true)"
         if [ "${want}" != "${got}" ]; then
             echo "  !! ${example}: ${want} volumeClaimTemplates but ${got} carry storageClassName ${expected_sc}" >&2
             echo "     A PVC-backed workload is missing from storage_class.tf's fan-out." >&2
