@@ -1895,6 +1895,193 @@ bug this repo has shipped once already.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
+
+The gateway can pull what a cloud provider's monitoring API publishes about
+the managed database and the buckets a deployment depends on, and write it
+beside every other metric. The result shares retention, PromQL and alerting
+with the rest of the stack, so a provider series is joinable with
+`mz_persist_*` in one expression. The [external-dependency
+design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+records why this is a pull rather than a Grafana datasource.
+
+| Provider | Services | Alloy component |
+| --- | --- | --- |
+| `cloudwatch` | RDS instances, S3 buckets | `prometheus.exporter.cloudwatch` |
+| `gcp` | Cloud SQL instances, GCS buckets | `prometheus.exporter.gcp` |
+
+Every provider is off by default. Provider collection is an addition to
+what the clients already report about the same dependencies, not a
+replacement for it.
+
+**Resources are named, not discovered.** Each service lists the instances
+or buckets to watch, and nothing else is pulled. Tag discovery would find
+every resource in the account and bill for each of them. A provider that is
+enabled with nothing listed fails at render.
+
+**Credentials never travel through values.** The pull uses the gateway
+pod's own cloud identity, bound through
+`alloy-gateway.serviceAccount.annotations`:
+
+| Provider | Identity | Grant |
+| --- | --- | --- |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning |
+| `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
+
+**The data is minutes old when it arrives.** CloudWatch publishes RDS
+metrics a few minutes late and S3 storage metrics once a day. Cloud
+Monitoring stamps each sample with its own time: Cloud SQL samples arrive
+about three minutes old, and GCS storage samples over ten. Query these
+families with `last_over_time(...[15m])` or wider, and do not page on them.
+
+**Each pull is billed by the provider.** The cost is a function of the
+interval and of how many resources and metrics are listed, not of how many
+dashboards are open. The interval is the main lever.
+
+**Every replica runs the exporter, and one scrapes it.** The scrape is
+clustered, so a provider's API is called once per interval however many
+gateway replicas there are.
+
+**The metric sets are fixed, and live in the pipeline, not here.** Each
+pull is a custom component in the chart's `gateway-provider` pipeline,
+instantiated once per resource listed below. Changing what is pulled is
+a change to that pipeline.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Pull CloudWatch metrics for the resources listed below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.region</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">AWS region the resources live in, and the region CloudWatch and STS are called in. Required when enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the gateway pulls. Every pull is one billed `GetMetricStatistics` call per metric per resource.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.scrapeTimeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">Scrape timeout. Must not exceed `scrapeInterval`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.metricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"extended"</code></td>
+      <td class="helm-value-desc">Importance tier assigned to every CloudWatch family, for destinations that filter by `minMetricImportance`. One of `essential`, `recommended`, `extended`, `diagnostic`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.instances</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">RDS DB instance identifiers to watch, as `DBInstanceIdentifier`.
+Each is pulled for a fixed set: CPU, and the credit balance of a
+burstable `db.t*` class; freeable memory, free storage and
+connections; read and write latency and queue depth; the burst and
+EBS balances whose exhaustion slows every write while every
+in-database metric stays flat; and transaction-ID consumption.
+A metric CloudWatch does not publish for an instance is absent,
+never zero.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.s3<wbr>.buckets</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">S3 bucket names to watch, for their size in standard storage and their object count, which S3 publishes daily.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Pull Cloud Monitoring metrics for the resources listed below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.projectId</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Google Cloud project that holds the resources. Required when enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the gateway pulls. Every pull lists time series once per metric type.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.scrapeTimeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">Scrape timeout. Must not exceed `scrapeInterval`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.requestInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"10m"</code></td>
+      <td class="helm-value-desc">How far back each pull reaches. Only the newest point per series is kept, so a window longer than the interval costs nothing in samples and covers a late point.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.metricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"extended"</code></td>
+      <td class="helm-value-desc">Importance tier assigned to every Cloud Monitoring family, for destinations that filter by `minMetricImportance`. One of `essential`, `recommended`, `extended`, `diagnostic`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.cloudSql<wbr>.instances</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Cloud SQL instance names to watch — the instance name, not the `project:region:instance` connection name.
+Each is pulled for a fixed set: CPU, memory and disk utilization,
+backends by database, state and application, transaction-ID
+utilization, and whether the instance is up.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.gcs<wbr>.buckets</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">GCS bucket names to watch.
+Each is pulled for its stored bytes and object count, split into
+live, noncurrent and soft-deleted, which is what shows reclaimable
+waste. GCS request counts are deliberately not pulled: they are a
+per-minute DELTA, and the exporter counts only the newest point of
+each pull, so at a five-minute interval they read about a fifth of
+the truth. The Loki, Thanos and persist clients report the same
+requests exactly.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.denyMetrics</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
