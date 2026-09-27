@@ -134,18 +134,19 @@ loki:
         key_file: /etc/mzmon/tls/tls.key
         client_auth_type: NoClientCert
 
-    # The Loki ruler as a client of Alertmanager, which serves TLS below. The
-    # material is Loki's own certificate, which the `defaults` mount below
-    # reaches the ruler with. See the Alertmanager section for why the server
-    # name is not the address.
+    # The Loki ruler as a client of Alertmanager and of the gateway, both of
+    # which serve TLS below. The material is Loki's own certificate, which the
+    # `defaults` mount below reaches the ruler with. See the Alertmanager section
+    # for why its server name is not the address.
     #
     # Every Loki component reads one shared configuration, so changing these
     # rolls all of Loki, not only the ruler.
     #
-    # The address is restated whole because the scheme is part of it, so this
-    # overrides `profiles/split-namespace.values.yaml` when composed after it.
-    # Under that layout, restate it with the `alertmanager` namespace, last; the
-    # render warns when the namespace is wrong.
+    # The addresses are restated whole because the scheme is part of them, so
+    # this overrides `profiles/split-namespace.values.yaml` when composed after
+    # it. Under that layout, restate them with the `alertmanager` and
+    # `alloy-gateway` namespaces, last; the render warns when a namespace is
+    # wrong.
     rulerConfig:
       alertmanager_url: 'https://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}'
       alertmanager_client:
@@ -153,6 +154,22 @@ loki:
         tls_cert_path: /etc/mzmon/tls/tls.crt
         tls_key_path: /etc/mzmon/tls/tls.key
         tls_server_name: alertmanager
+      # The Loki ruler as a client of the gateway's metrics listener, which
+      # serves TLS below. Same material, same split-namespace caveat, and no
+      # server name: the URL is the gateway Service's own name, which its
+      # certificate carries. It presents from phase 1 so that phase 3 can
+      # require a certificate in any rollout order.
+      #
+      # The Thanos ruler's equivalent is its `remote-write` volume, under
+      # `thanos.ruler` below.
+      remote_write:
+        clients:
+          gateway:
+            url: 'https://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include "mzmon.clusterDomain" . }}:9090/api/v1/metrics/write'
+            tls_config:
+              ca_file: /etc/mzmon/tls/ca.crt
+              cert_file: /etc/mzmon/tls/tls.crt
+              key_file: /etc/mzmon/tls/tls.key
 
   # The mount. `defaults` rather than a per-component list because Loki's
   # `_pod.tpl` coalesces component -> defaults -> loki, so this one entry reaches
@@ -279,10 +296,12 @@ thanos:
         mountPath: /etc/mzmon/tls
         readOnly: true
 
-  # The Thanos ruler as a client of Alertmanager. The base values already mount
-  # the Thanos certificate into the ruler; this restates the list to make the
-  # Secret required, and restates `remote-write` with it because Helm replaces
-  # lists.
+  # The Thanos ruler as a client of Alertmanager and of the gateway. The base
+  # values already mount the Thanos certificate into the ruler; this restates
+  # the list to make the Secret required, and points `remote-write` at the TLS
+  # variant of the ruler's remote-write configuration. The ruler reads that file
+  # once, at startup, so the switch is a different ConfigMap rather than
+  # different contents: changing the volume is what rolls the ruler onto it.
   #
   # The address is restated whole, with the same split-namespace caveat as the
   # Loki ruler's above.
@@ -304,7 +323,7 @@ thanos:
     extraVolumes:
       - name: remote-write
         configMap:
-          name: thanos-ruler-remote-write
+          name: thanos-ruler-remote-write-v2-tls
       - name: mzmon-tls
         secret:
           secretName: mzmon-thanos-tls

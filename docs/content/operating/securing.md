@@ -295,8 +295,20 @@ Both rulers reach each replica by pod IP or per-pod name, and the certificate ca
 Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare name.
 Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
 
-Composing `profiles/split-namespace.values.yaml` with the mTLS profiles needs one extra step, because both restate the two ruler addresses in full.
-Whichever profile comes last wins, and the render warns when a ruler address names the wrong namespace or the wrong scheme.
+Both rulers also remote-write rule results, including the `ALERTS` series, to the gateway's metrics listener on 9090, which the profile moves to TLS.
+The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` ConfigMap.
+The profile points the ruler at the TLS one.
+The ruler reads that file once at startup, so switching ConfigMaps, which changes its pod template, is what rolls it onto TLS.
+The names also carry a revision, which is bumped whenever the contents change, so a chart upgrade rolls the ruler onto new contents too.
+The Loki ruler's is in its subchart's values, so the profile restates its URL as https and adds a `tls_config`.
+Both present their own component's certificate from phase 1, so phase 3 can require one in any rollout order.
+A ruler left on the other scheme still evaluates and notifies, but it retries every write indefinitely.
+The gateway logs a TLS handshake error for each attempt, so the render refuses the combination.
+
+Composing `profiles/split-namespace.values.yaml` with the mTLS profiles needs one extra step.
+Both restate the rulers' Alertmanager addresses and the Loki ruler's remote-write URL in full.
+Whichever profile comes last wins.
+The render warns when one of those addresses names the wrong namespace, and fails when it names the wrong scheme.
 
 #### Through Terraform
 
@@ -365,6 +377,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
 | **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
 | **In-cluster TLS, rulers and Grafana → Alertmanager** | 🔨 Encrypted, and presented certificates verified, at phase 2, which is its ceiling. The kubelet and the config reloader dial the same port and cannot present a certificate |
+| **In-cluster TLS, rulers → gateway** | ✅ Shipped and **authenticated** at phase 3. Both rulers remote-write to `9090` over TLS and present their component's certificate from phase 1 |
 | **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
 | **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port and Alertmanager's API port are the exceptions and stay at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |

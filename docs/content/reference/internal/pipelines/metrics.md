@@ -13,10 +13,19 @@ They are authored the same way as log pipelines — see [Authoring]({{< relref "
 ## Gateway topology
 
 The gateway carries metrics alongside logs (`packages/alloy-pipelines/gateway.yaml`).
-Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write:
+Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write.
+
+The bridge refuses a sample without both `job` and `instance`, and fails the whole remote-write batch it arrived in with a 500.
+Scraped series always carry both, and pushed ones need not, so `prometheus.relabel "receiveIdentity"` fills them for pushed samples.
+It recognises the Thanos ruler by `ruler_replica` and gives its results `job="thanos-ruler"` and a constant `instance`.
+The constant keeps Thanos Query's deduplication on `ruler_replica` working.
+Anything else pushed without them gets `job="remote-write"` and `instance="unknown"`.
+The Loki ruler fills its own in `loki.loki.rulerConfig`.
+The Thanos ruler cannot, because a `replace` in its `write_relabel_configs` panics it at startup.
 
 ```
-prometheus.receive_http "gateway"             (pushed remote-write, :9090) ─┐
+prometheus.receive_http "gateway"             (pushed remote-write, :9090)
+  → prometheus.relabel "receiveIdentity"      (fill job/instance)          ─┐
 prometheus.operator.podmonitors "default"     (PodMonitor CRs)             ─┤
 prometheus.operator.servicemonitors "default" (ServiceMonitor CRs)         ─┴─→ otelcol.receiver.prometheus "inputBridge"  (Prometheus → OTLP) ─┐
 otelcol.receiver.otlp                          (OTLP metrics) ─────────────────────────────────────────────────────────────────────────────┤

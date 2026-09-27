@@ -278,12 +278,61 @@ otelcol.receiver.otlp "gateway" {
        metrics path. Same dskit-flavoured server block as loki.source.api. */}}
 prometheus.receive_http "gateway" {
     forward_to = [
-        otelcol.receiver.prometheus.inputBridge.receiver,
+        prometheus.relabel.receiveIdentity.receiver,
     ]
 
     http {
         listen_port = 9090
       {{- include "mzmon.alloy.serverTls" ( dict "tls" $metricTls "flavor" "alloy" "indent" 8 ) }}
+    }
+}
+
+{{- /* The OTLP bridge refuses a sample without both `job` and `instance`
+       ("job or instance cannot be found from labels"), and refuses the whole
+       remote-write batch it arrived in with a 500, which the sender retries
+       forever. Scraped series always carry both; pushed ones need not, and
+       rule results never do. So a pushed sample missing either gets one here,
+       before the bridge, and a sample that has both is left alone.
+
+       The Thanos ruler is recognised by `ruler_replica`, the pod name its
+       subchart stamps on every sample. Its `instance` is a constant, not that
+       pod name: Thanos Query deduplicates the two replicas on `ruler_replica`
+       alone, and a per-pod `instance` would keep every alert and recording
+       rule twice. It cannot fill these itself: Thanos
+       loads its remote-write file without a label-name validation scheme, and
+       any `replace` in `write_relabel_configs` panics the ruler at startup.
+       The Loki ruler fills its own, in `loki.loki.rulerConfig`. */}}
+prometheus.relabel "receiveIdentity" {
+    forward_to = [
+        otelcol.receiver.prometheus.inputBridge.receiver,
+    ]
+
+    rule {
+        source_labels = ["job", "ruler_replica"]
+        regex         = ";.+"
+        target_label  = "job"
+        replacement   = "thanos-ruler"
+    }
+
+    rule {
+        source_labels = ["instance", "ruler_replica"]
+        regex         = ";.+"
+        target_label  = "instance"
+        replacement   = "thanos-ruler"
+    }
+
+    rule {
+        source_labels = ["job"]
+        regex         = ""
+        target_label  = "job"
+        replacement   = "remote-write"
+    }
+
+    rule {
+        source_labels = ["instance"]
+        regex         = ""
+        target_label  = "instance"
+        replacement   = "unknown"
     }
 }
 {{- end }}
@@ -1725,5 +1774,16 @@ Usage:
 {{- define "mzmon.alloyGateway.remoteWriteUrl" }}
   {{- $tls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
   {{- $scheme := ternary "https" "http" ( $tls.enabled | default false ) }}
-  {{- printf "%s://alloy-gateway.%s.svc.%s:9090/api/v1/metrics/write" $scheme ( include "mzmon.alloyGateway.namespace" $ ) ( include "mzmon.clusterDomain" $ ) }}
+  {{- printf "%s://%s" $scheme ( include "mzmon.alloyGateway.remoteWriteAddress" $ ) }}
+{{- end }}
+
+{{- /*
+The alloy-gateway remote-write endpoint without its scheme, for a caller that
+decides the scheme itself.
+
+Usage:
+  {{- include "mzmon.alloyGateway.remoteWriteAddress" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.remoteWriteAddress" }}
+  {{- printf "alloy-gateway.%s.svc.%s:9090/api/v1/metrics/write" ( include "mzmon.alloyGateway.namespace" $ ) ( include "mzmon.clusterDomain" $ ) }}
 {{- end }}

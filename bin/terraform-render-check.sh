@@ -627,30 +627,69 @@ import sys
 import yaml
 
 stage, path = sys.argv[1], sys.argv[2]
-web, args = None, None
+web, args, loki_rw = None, None, None
+thanos_rw, thanos_cm = {}, None
 with open(path) as f:
     for doc in yaml.safe_load_all(f):
         if not doc:
             continue
         name = (doc.get("metadata") or {}).get("name")
+        data = doc.get("data") or {}
         if doc.get("kind") == "Secret" and name == "alertmanager-config":
             web = yaml.safe_load((doc.get("stringData") or {}).get("web.yml") or "{}") or {}
         if doc.get("kind") == "StatefulSet" and name == "alertmanager":
             for c in doc["spec"]["template"]["spec"]["containers"]:
                 if c["name"] == "alertmanager":
                     args = c.get("args") or []
-if web is None:
-    print("not rendered")
-    sys.exit(0)
-want = "NoClientCert" if stage == "encrypt" else "VerifyClientCertIfGiven"
-got = (web.get("tls_server_config") or {}).get("client_auth_type")
-if got != want:
-    print(f"web.yml client_auth_type is {got!r}, want {want!r}")
-    sys.exit(1)
-if "--web.config.file=/etc/alertmanager/config/web.yml" not in (args or []):
-    print("web.yml rendered but the StatefulSet does not pass --web.config.file, so Alertmanager serves plaintext")
-    sys.exit(1)
-print(f"Alertmanager serves TLS, {want}")
+        if doc.get("kind") == "ConfigMap" and str(name).startswith("thanos-ruler-remote-write"):
+            thanos_rw[name] = (yaml.safe_load(data["remote-write.yaml"]) or {}).get("remote_write") or []
+        # The chart renders a plaintext and a TLS variant; what matters is the
+        # one the Ruler mounts.
+        if doc.get("kind") == "StatefulSet" and name == "thanos-ruler":
+            for v in doc["spec"]["template"]["spec"].get("volumes") or []:
+                if str((v.get("configMap") or {}).get("name", "")).startswith("thanos-ruler-remote-write"):
+                    thanos_cm = v["configMap"]["name"]
+        if doc.get("kind") == "ConfigMap" and name == "loki" and "config.yaml" in data:
+            cfg = yaml.safe_load(data["config.yaml"]) or {}
+            loki_rw = (((cfg.get("ruler") or {}).get("remote_write") or {}).get("clients") or {})
+
+report = []
+if web is not None:
+    want = "NoClientCert" if stage == "encrypt" else "VerifyClientCertIfGiven"
+    got = (web.get("tls_server_config") or {}).get("client_auth_type")
+    if got != want:
+        print(f"web.yml client_auth_type is {got!r}, want {want!r}")
+        sys.exit(1)
+    if "--web.config.file=/etc/alertmanager/config/web.yml" not in (args or []):
+        print("web.yml rendered but the StatefulSet does not pass --web.config.file, so Alertmanager serves plaintext")
+        sys.exit(1)
+    report.append(f"Alertmanager serves TLS, {want}")
+
+# Both rulers write to the gateway's metrics listener, which every non-off
+# stage serves over TLS and `authenticate` requires a certificate on. A ruler
+# without a keypair there retries every batch forever.
+for who, clients in (("Thanos ruler", thanos_rw.get(thanos_cm) if thanos_cm else None), ("Loki ruler", loki_rw and list(loki_rw.values()))):
+    if clients is None:
+        continue
+    for c in clients:
+        url, tls = str(c.get("url", "")), c.get("tls_config") or {}
+        if "alloy-gateway" not in url:
+            continue
+        if not url.startswith("https://") or not all(tls.get(k) for k in ("ca_file", "cert_file", "key_file")):
+            print(f"{who} remote-writes to {url} without a CA and keypair (tls_config: {tls})")
+            sys.exit(1)
+        # The gateway's OTLP bridge refuses samples without job and instance.
+        # The Loki ruler fills them itself; the gateway fills the Thanos
+        # ruler's, because a replace in Thanos's write_relabel_configs panics it.
+        filled = {str(r.get("target_label")) for r in c.get("write_relabel_configs") or []}
+        if who == "Loki ruler" and not {"job", "instance"} <= filled:
+            print(f"{who} remote-writes without filling job and instance, which the gateway refuses (fills: {sorted(filled)})")
+            sys.exit(1)
+        if who == "Thanos ruler" and c.get("write_relabel_configs"):
+            print(f"{who} has write_relabel_configs, and Thanos panics on a replace in them at startup")
+            sys.exit(1)
+    report.append(f"{who} remote-writes over TLS")
+print(", ".join(report) or "nothing to check")
 PYEOF
             )"; then
                 echo "  !! ${example}: internal_tls=${stage}: ${am_report}" >&2

@@ -215,7 +215,7 @@ tests:
           path: data["alertmanagers.yaml"]
           pattern: "ca_file: /etc/mzmon/tls/ca\\.crt\\n\\s+cert_file: /etc/mzmon/tls/tls\\.crt\\n\\s+key_file: /etc/mzmon/tls/tls\\.key\\n\\s+server_name: alertmanager\\n"
 
-  - it: keeps the Thanos ruler's remote-write volume when requiring its certificate
+  - it: keeps the Thanos ruler's remote-write volume, on its TLS variant, when requiring its certificate
     values:
       - ../profiles/mtls.values.yaml
     template: ../charts/thanos/templates/ruler/statefulset.yaml
@@ -225,7 +225,7 @@ tests:
           content:
             name: remote-write
             configMap:
-              name: thanos-ruler-remote-write
+              name: thanos-ruler-remote-write-v2-tls
       - contains:
           path: spec.template.spec.volumes
           content:

@@ -436,12 +436,80 @@ Usage:
     {{- $warnings = append $warnings "loki.ruler.persistence is enabled but loki.loki.rulerConfig.remote_write is not, so the PVC the ruler keeps for its remote-write WAL buffers nothing. Either configure remote_write or drop the volume." }}
   {{- end }}
 
-  {{- /* The gateway's metrics listener is where recording-rule samples go, and
-         this ruler cannot speak TLS to it: its remote_write URL is a literal
-         `http://` in values, and no CA reaches the pod. The `mtls` profile
-         family turns that listener on, so the composition is reachable. */}}
-  {{- if and $rwOn ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) }}
-    {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, but loki.loki.rulerConfig.remote_write still addresses it over http, with no tls_config. Recording-rule samples fill the ruler's WAL and are dropped. Alert evaluation and notification are unaffected. Set loki.loki.rulerConfig.remote_write.enabled to false, or leave the gateway's metrics listener plaintext, until the ruler's remote_write carries certificate material." }}
+  {{- /* The gateway's metrics listener is where recording-rule samples go. Its
+         TLS is `pipeline.metrics.gateway.server.tls`, which the Loki subchart
+         cannot read, so `profiles/mtls.values.yaml` restates the client's URL
+         and adds its `tls_config`. Checked per client that addresses the
+         bundled gateway, because a client pointed elsewhere is its operator's
+         business.
+
+         Each mismatch is an error. A ruler that cannot write to the gateway
+         still evaluates and still notifies, but it retries every batch forever,
+         and the gateway logs a TLS handshake error for each attempt. */}}
+  {{- if and $rwOn ( include "mzmon.alloyGateway.enabled" $ ) }}
+    {{- $gwTls := dig "metrics" "gateway" "server" "tls" dict ( $.Values.pipeline | default dict ) }}
+    {{- $gwOn := dig "enabled" false $gwTls }}
+    {{- $scheme := ternary "https" "http" $gwOn }}
+    {{- $requires := has ( $gwTls.clientAuth | default "NoClientCert" | toString ) ( list "RequireAndVerifyClientCert" "RequireAnyClientCert" ) }}
+    {{- $inNamespace := printf "alloy-gateway.%s.svc" ( include "mzmon.alloyGateway.namespace" $ ) }}
+    {{- /* Loki's `_pod.tpl` concatenates these three, so a mount on any one
+           reaches the ruler. */}}
+    {{- $mounts := list }}
+    {{- range ( concat ( dig "global" "extraVolumeMounts" list $values ) ( dig "defaults" "extraVolumeMounts" list $values ) ( dig "ruler" "extraVolumeMounts" list $values ) ) }}
+      {{- if and ( kindIs "map" . ) .mountPath }}
+        {{- $mounts = append $mounts ( trimSuffix "/" ( toString .mountPath ) ) }}
+      {{- end }}
+    {{- end }}
+    {{- range $name, $client := ( dig "clients" dict $remoteWrite ) }}
+      {{- $path := printf "loki.loki.rulerConfig.remote_write.clients.%s" $name }}
+      {{- $url := tpl ( dig "url" "" ( $client | default dict ) | toString ) $ }}
+      {{- if regexMatch "^[a-z]+://alloy-gateway[.:/]" $url }}
+        {{- $tlsConfig := dig "tls_config" dict ( $client | default dict ) }}
+        {{- /* The gateway converts every series to OTLP, which needs `job` and
+               `instance`. Recording-rule results carry neither, so the chart
+               fills both here, in a list an override replaces whole. Without
+               them the gateway falls back to a generic pair, and the two ruler
+               replicas' results can no longer be told apart. */}}
+        {{- $filled := list }}
+        {{- range ( dig "write_relabel_configs" list ( $client | default dict ) | default list ) }}
+          {{- if kindIs "map" . }}
+            {{- $filled = append $filled ( toString .target_label ) }}
+          {{- end }}
+        {{- end }}
+        {{- range $label := list "job" "instance" }}
+          {{- if not ( has $label $filled ) }}
+            {{- $warnings = append $warnings ( printf "%s.write_relabel_configs does not set %s. The gateway converts every series to OTLP, which needs job and instance, so it fills a generic job=\"remote-write\" and instance=\"unknown\". Recording-rule results then do not say they came from the Loki ruler, and the per-replica instance that keeps two ruler replicas' results apart is lost. Restate the chart's two write_relabel_configs entries alongside any you add; the list replaces the chart's." $path $label ) }}
+          {{- end }}
+        {{- end }}
+        {{- if not ( hasPrefix ( printf "%s://" $scheme ) $url ) }}
+          {{- $errors = append $errors ( printf "%s.url is %s, but the gateway's metrics listener serves %s (pipeline.metrics.gateway.server.tls.enabled is %t). Every recording-rule write fails, the ruler retries each batch indefinitely, and the gateway logs a TLS handshake error per attempt. %s" $path $url $scheme $gwOn ( ternary "Use https:// and set tls_config; profiles/mtls.values.yaml does." "Use http://, and drop tls_config." $gwOn ) ) }}
+        {{- else if $gwOn }}
+          {{- if not $tlsConfig.ca_file }}
+            {{- $errors = append $errors ( printf "%s is https with no tls_config.ca_file, so the ruler verifies the gateway against public roots and every write fails with \"certificate signed by unknown authority\". Set ca_file to the internal CA; profiles/mtls.values.yaml uses /etc/mzmon/tls/ca.crt." $path ) }}
+          {{- end }}
+          {{- if and $requires ( not ( and $tlsConfig.cert_file $tlsConfig.key_file ) ) }}
+            {{- $errors = append $errors ( printf "pipeline.metrics.gateway.server.tls.clientAuth is %s but %s presents no client certificate (tls_config.cert_file and key_file), so the gateway refuses every write at the handshake." ( $gwTls.clientAuth | toString ) $path ) }}
+          {{- end }}
+          {{- range $key := list "ca_file" "cert_file" "key_file" }}
+            {{- $f := index $tlsConfig $key | default "" | toString }}
+            {{- if $f }}
+              {{- $covered := false }}
+              {{- range $m := $mounts }}
+                {{- if or ( eq $f $m ) ( hasPrefix ( printf "%s/" $m ) $f ) }}{{- $covered = true }}{{- end }}
+              {{- end }}
+              {{- if not $covered }}
+                {{- $errors = append $errors ( printf "%s.tls_config.%s is %s, which no entry in loki.defaults.extraVolumeMounts or loki.ruler.extraVolumeMounts mounts (mounted: %s). The ruler cannot load it, and every Loki component reads the same configuration." $path $key $f ( $mounts | join ", " | default "nothing" ) ) }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- /* `split-namespace` and the mTLS profile each restate this URL whole,
+               so the one composed last wins, scheme and namespace together. */}}
+        {{- if not ( contains $inNamespace $url ) }}
+          {{- $warnings = append $warnings ( printf "%s.url is %s, which does not name the gateway in its namespace (%s), so recording-rule samples are written to a Service that does not exist. When composing profiles/split-namespace.values.yaml with an mTLS profile, both restate this URL; restate it once more, last, with the gateway's namespace." $path $url $inNamespace ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
   {{- end }}
 
   {{- /* Same reasoning as the Thanos ruler's: the samples are lost, the alerts
