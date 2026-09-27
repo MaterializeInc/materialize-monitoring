@@ -143,7 +143,7 @@ The provider bills each pull, and the bill depends on configuration, not on how 
 
 | Provider | Calls per pull | Measured |
 |---|---|---|
-| `cloudwatch` | 12 `GetMetricStatistics` calls per RDS instance and 2 per bucket | 28 calls for two instances and two buckets, counted by `yace_cloudwatch_getmetricstatistics_requests_total` |
+| `cloudwatch` | 12 `GetMetricStatistics` calls per RDS instance and 2 per bucket | 30 calls for two instances and three buckets, in-cluster |
 | `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets, counted by `stackdriver_monitoring_api_calls_total` |
 
 `scrapeInterval` is the main lever, and defaults to five minutes.
@@ -193,5 +193,7 @@ Measured with credentials missing — for CloudWatch anywhere, and for GCP where
 | Is Cloud Monitoring returning data, per instance | `count by (database_id) (last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m]))` |
 
 CloudWatch publishes no equivalent of the GCP error series.
-Its `yace_cloudwatch_getmetricstatistics_requests_total` counts the billed calls, which makes it the measure of cost, not of health.
+Its `yace_cloudwatch_getmetricstatistics_requests_total` counts billed calls, but it is one counter per gateway replica, and every CloudWatch target a replica owns reports it.
+Measured with five targets across two replicas, the five series read 12, 14, 26, 28 and 2: running totals of 28 and 2 calls, not 82.
+It cannot be summed across `instance`, so the cost is best read from the configuration: 12 calls per RDS instance and 2 per bucket, each interval.
 A CloudWatch pull that fails for want of an identity or a grant is visible only as missing series and as errors in the gateway's logs, such as `Couldn't get account Id`.
