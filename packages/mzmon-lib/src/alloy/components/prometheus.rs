@@ -20,7 +20,7 @@
 
 use crate::alloy::ast::{
     AttributeValue, Block, Expressable, ExpressableList, GoDuration, Identifier, RawOnlySubBlock,
-    ToBlock, impl_to_block_dispatch, string_map,
+    ToBlock, expressable_string_map, impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     MetricsReceiver, TargetEntry, metrics_receiver_list, target_list,
@@ -988,7 +988,9 @@ impl ToBlock for PrometheusExporterCloudwatchBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CloudwatchSubBlock {
     #[serde(rename = "static")]
-    Static(CloudwatchStaticBlock),
+    // Boxed: expression-capable `regions` and `dimensions` make it far wider
+    // than `raw` (clippy::large_enum_variant).
+    Static(Box<CloudwatchStaticBlock>),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -1006,12 +1008,14 @@ impl_to_block_dispatch!(CloudwatchSubBlock { Static, Raw });
 pub struct CloudwatchStaticBlock {
     /// The job name. Required, and written to every series as `name`.
     pub label: Identifier,
-    /// Regions to query. Required by the schema.
-    pub regions: Vec<String>,
+    /// Regions to query. Required by the schema. A list whose members may be
+    /// expressions, so a `declare` body can pass `[argument.region.value]`.
+    pub regions: ExpressableList,
     /// CloudWatch namespace, such as `AWS/RDS`. Required by the schema.
     pub namespace: String,
-    /// The exact dimension set of the resource. Required by the schema.
-    pub dimensions: IndexMap<String, String>,
+    /// The exact dimension set of the resource. Required by the schema. Values
+    /// may be expressions, which is how a `declare` body names its resource.
+    pub dimensions: IndexMap<String, Expressable<String>>,
     /// Extra labels, written as `custom_tag_<key>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_tags: Option<IndexMap<String, String>>,
@@ -1026,7 +1030,7 @@ pub struct CloudwatchStaticBlock {
 impl ToBlock for CloudwatchStaticBlock {
     fn to_block(&self) -> Result<Block> {
         let mut attributes = IndexMap::new();
-        attributes.insert("regions".into(), string_array(&self.regions));
+        attributes.insert("regions".into(), self.regions.to_attribute_value()?);
         attributes.insert(
             "namespace".into(),
             AttributeValue::String(self.namespace.clone()),
@@ -1034,7 +1038,10 @@ impl ToBlock for CloudwatchStaticBlock {
         if let Some(v) = self.nil_to_zero {
             attributes.insert("nil_to_zero".into(), AttributeValue::Bool(v));
         }
-        attributes.insert("dimensions".into(), string_map(&self.dimensions));
+        attributes.insert(
+            "dimensions".into(),
+            expressable_string_map(&self.dimensions)?,
+        );
         if let Some(v) = &self.custom_tags {
             attributes.insert("custom_tags".into(), string_map(v));
         }
@@ -1178,9 +1185,10 @@ pub struct PrometheusExporterGcpBlock {
     /// `<prefix>:<filter>` entries narrowing what each prefix pulls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra_filters: Option<ExpressableList>,
-    /// How far back each pull reaches. Defaults to 5m.
+    /// How far back each pull reaches. Defaults to 5m. `Expressable`, so a
+    /// `declare` body can take it as an argument.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub request_interval: Option<GoDuration>,
+    pub request_interval: Option<Expressable<GoDuration>>,
     /// Shift the window back by this much. Defaults to 0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_offset: Option<GoDuration>,
@@ -1206,8 +1214,10 @@ impl ToBlock for PrometheusExporterGcpBlock {
         if let Some(v) = &self.extra_filters {
             attributes.insert("extra_filters".into(), v.to_attribute_value()?);
         }
+        if let Some(v) = &self.request_interval {
+            attributes.insert("request_interval".into(), v.to_attribute_value()?);
+        }
         for (name, value) in [
-            ("request_interval", &self.request_interval),
             ("request_offset", &self.request_offset),
             ("gcp_client_timeout", &self.gcp_client_timeout),
         ] {

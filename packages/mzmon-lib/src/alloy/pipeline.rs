@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{Block, ToBlock, impl_to_block_dispatch};
-use crate::alloy::components::{discovery, loki, otelcol, prometheus, top};
+use crate::alloy::components::{declare, discovery, loki, otelcol, prometheus, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -107,6 +107,13 @@ pub enum ComponentBlock {
     OtelcolExporterPrometheus(otelcol::OtelcolExporterPrometheusBlock),
     #[serde(rename = "otelcol.processor.transform")]
     OtelcolProcessorTransform(otelcol::OtelcolProcessorTransformBlock),
+    #[serde(rename = "declare")]
+    Declare(declare::DeclareBlock),
+    // Only valid inside a `declare` body; the schema enforces that.
+    #[serde(rename = "argument")]
+    Argument(declare::ArgumentBlock),
+    #[serde(rename = "custom")]
+    Custom(declare::CustomBlock),
 }
 impl_to_block_dispatch!(ComponentBlock {
     Raw,
@@ -141,7 +148,10 @@ impl_to_block_dispatch!(ComponentBlock {
     OtelcolReceiverPrometheus,
     OtelcolExporterOtlp,
     OtelcolExporterLoki,
-    OtelcolExporterPrometheus
+    OtelcolExporterPrometheus,
+    Declare,
+    Argument,
+    Custom
 });
 
 impl Pipeline {

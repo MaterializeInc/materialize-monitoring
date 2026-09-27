@@ -221,6 +221,11 @@ Usage:
   {{- /* Metric processors */}}
   {{- $.Files.Get "pre-rendered/pipelines/gateway-metrics.alloy" }}
 
+  {{- /* Cloud provider pulls, as custom components. Always included: a
+         `declare` nothing instantiates costs nothing, and this way the file the
+         pre-validate job checks is the one `make pipelines` validated. */}}
+  {{- $.Files.Get "pre-rendered/pipelines/gateway-provider.alloy" }}
+
   {{- /* Output rendered sources */}}
   {{- include "mzmon.alloyGateway.pipeline.sources" $ }}
 

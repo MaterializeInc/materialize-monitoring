@@ -781,12 +781,17 @@ $defs:
       example `encoding.from_json(sys.env("VAR"))`, which is how a JSON array in
       an environment variable becomes a list here.
 
+      The members of a literal list may themselves be expressions, such as
+      `[argument.region.value]` inside a `declare` body.
+
       Unlike a literal *map*, a literal *list* is shape-distinguishable from the
       expression object, so this union is unambiguous.
     oneOf:
       - type: array
         items:
-          type: string
+          anyOf:
+            - type: string
+            - $ref: "./common/expression.schema.yaml"
       - $ref: "./common/expression.schema.yaml"
 
   prometheus.exporter.cadvisor:
@@ -955,19 +960,20 @@ $defs:
         type: string
         pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
       regions:
-        description: Regions to query.
-        type: array
-        items:
-          type: string
-        minItems: 1
+        description: Regions to query. Members may be expressions.
+        $ref: "#/$defs/expressionOrStringList"
       namespace:
         description: CloudWatch namespace, such as `AWS/RDS`.
         type: string
       dimensions:
-        description: The exact dimension set of the resource.
+        description: |
+          The exact dimension set of the resource. Values may be expressions,
+          which is how a `declare` body names its resource.
         type: object
         additionalProperties:
-          type: string
+          anyOf:
+            - type: string
+            - $ref: "./common/expression.schema.yaml"
       custom_tags:
         description: Extra labels, written as `custom_tag_<key>`.
         type: object
@@ -1100,8 +1106,7 @@ $defs:
         description: |
           How far back each pull reaches. Only the newest point per series is
           kept. Defaults to 5m.
-        type: string
-        format: go-duration
+        $ref: "#/$defs/expressionOrDuration"
       request_offset:
         description: Shift the window back by this much. Defaults to 0.
         type: string

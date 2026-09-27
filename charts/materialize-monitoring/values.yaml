@@ -1169,7 +1169,7 @@ pipeline:
     #
     # | Provider | Identity | Grant |
     # | --- | --- | --- |
-    # | `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning; `sts:AssumeRole` on `roleArn` when it is set |
+    # | `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning |
     # | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
     #
     # **The data is minutes old when it arrives.** CloudWatch publishes RDS
@@ -1185,6 +1185,11 @@ pipeline:
     # **Every replica runs the exporter, and one scrapes it.** The scrape is
     # clustered, so a provider's API is called once per interval however many
     # gateway replicas there are.
+    #
+    # **The metric sets are fixed, and live in the pipeline, not here.** Each
+    # pull is a custom component in the chart's `gateway-provider` pipeline,
+    # instantiated once per resource listed below. Changing what is pulled is
+    # a change to that pipeline.
     provider:
       # CloudWatch: RDS and S3.
       cloudwatch:
@@ -1193,13 +1198,8 @@ pipeline:
         # -- AWS region the resources live in, and the region CloudWatch and STS
         # are called in. Required when enabled.
         region: ""
-        # -- IAM role to assume before calling CloudWatch.
-        # Empty uses the gateway's own identity, which is the usual setup under IRSA.
-        roleArn: ""
-        # -- External ID presented when assuming `roleArn`.
-        externalId: ""
-        # -- How often the gateway pulls. Every pull is one set of billed
-        # `GetMetricData` requests.
+        # -- How often the gateway pulls. Every pull is one billed
+        # `GetMetricStatistics` call per metric per resource.
         scrapeInterval: 5m
         # -- Scrape timeout. Must not exceed `scrapeInterval`.
         scrapeTimeout: 2m
@@ -1209,65 +1209,19 @@ pipeline:
         metricImportance: extended
         rds:
           # -- RDS DB instance identifiers to watch, as `DBInstanceIdentifier`.
+          # @raw
+          # Each is pulled for a fixed set: CPU, and the credit balance of a
+          # burstable `db.t*` class; freeable memory, free storage and
+          # connections; read and write latency and queue depth; the burst and
+          # EBS balances whose exhaustion slows every write while every
+          # in-database metric stays flat; and transaction-ID consumption.
+          # A metric CloudWatch does not publish for an instance is absent,
+          # never zero.
           instances: []
-          # -- Statistic period for the RDS metrics. RDS publishes at one-minute
-          # resolution, so a period equal to the scrape interval summarises the
-          # whole interval rather than sampling one minute of it.
-          period: 5m
-          # -- How far back each request reaches. Longer than `period`, so
-          # CloudWatch's publication delay does not leave a scrape empty.
-          length: 10m
-          # -- RDS metrics to pull, with the statistics to request for each.
-          # @raw
-          # Each statistic is a separate billed metric. The defaults are the set
-          # the external-dependency design argues for: CPU, memory, storage and
-          # connection headroom, I/O latency and queueing, the gp2/gp3 burst and
-          # EBS balances whose exhaustion slows every write while every in-database
-          # metric stays flat, and transaction-ID consumption.
-          #
-          # `CPUCreditBalance` applies only to burstable `db.t*` classes, and
-          # `BurstBalance` only to volumes that burst. Where CloudWatch has no
-          # datapoint the series is absent, never zero: a missing balance is not
-          # an exhausted one.
-          #
-          # Statistics are `Average`, `Minimum`, `Maximum`, `Sum`, `SampleCount`,
-          # or a percentile such as `p99`. Each entry needs at least one that is
-          # not a percentile.
-          metrics:
-            - name: CPUUtilization
-              statistics: [Average, Maximum]
-            - name: CPUCreditBalance
-              statistics: [Minimum]
-            - name: FreeableMemory
-              statistics: [Minimum]
-            - name: FreeStorageSpace
-              statistics: [Minimum]
-            - name: DatabaseConnections
-              statistics: [Maximum]
-            - name: ReadLatency
-              statistics: [Average]
-            - name: WriteLatency
-              statistics: [Average]
-            - name: DiskQueueDepth
-              statistics: [Average]
-            - name: BurstBalance
-              statistics: [Minimum]
-            - name: EBSIOBalance%
-              statistics: [Minimum]
-            - name: EBSByteBalance%
-              statistics: [Minimum]
-            - name: MaximumUsedTransactionIDs
-              statistics: [Maximum]
         s3:
-          # -- S3 bucket names to watch.
+          # -- S3 bucket names to watch, for their size in standard storage and
+          # their object count, which S3 publishes daily.
           buckets: []
-          # -- `StorageType` dimensions to report `BucketSizeBytes` for.
-          # @raw
-          # S3 reports size per storage class. `StandardStorage` covers a bucket
-          # that never transitions objects, which is every bucket the Terraform
-          # wrappers create. `NumberOfObjects` is always reported across all
-          # classes.
-          storageTypes: [StandardStorage]
       # Cloud Monitoring: Cloud SQL and GCS.
       gcp:
         # -- Pull Cloud Monitoring metrics for the resources listed below.
@@ -1290,35 +1244,22 @@ pipeline:
         cloudSql:
           # -- Cloud SQL instance names to watch — the instance name, not the
           # `project:region:instance` connection name.
-          instances: []
-          # -- Metric types to pull, relative to `cloudsql.googleapis.com/database/`.
           # @raw
-          # Each entry is a **prefix**, as the exporter matches them:
-          # `postgresql/num_backends` also pulls `num_backends_by_state` and
-          # `num_backends_by_application`, and `up` also pulls `uptime`.
-          metrics:
-            - cpu/utilization
-            - memory/utilization
-            - disk/utilization
-            - postgresql/num_backends
-            - postgresql/transaction_id_utilization
-            - up
+          # Each is pulled for a fixed set: CPU, memory and disk utilization,
+          # backends by database, state and application, transaction-ID
+          # utilization, and whether the instance is up.
+          instances: []
         gcs:
           # -- GCS bucket names to watch.
-          buckets: []
-          # -- Metric types to pull, relative to `storage.googleapis.com/`.
           # @raw
-          # The `v2` storage metrics split stored bytes and objects into live,
-          # noncurrent and soft-deleted, which is what shows reclaimable waste.
-          #
-          # `api/request_count` is deliberately absent. It is a per-minute DELTA,
-          # and the exporter adds only the newest point of each pull to its
-          # counter, so at a five-minute interval it reports roughly a fifth of
-          # the real request count. The Loki, Thanos and persist clients report
-          # the same requests exactly, with latency, which GCS does not publish.
-          metrics:
-            - storage/v2/total_bytes
-            - storage/v2/total_count
+          # Each is pulled for its stored bytes and object count, split into
+          # live, noncurrent and soft-deleted, which is what shows reclaimable
+          # waste. GCS request counts are deliberately not pulled: they are a
+          # per-minute DELTA, and the exporter counts only the newest point of
+          # each pull, so at a five-minute interval they read about a fifth of
+          # the truth. The Loki, Thanos and persist clients report the same
+          # requests exactly.
+          buckets: []
 
     gateway:
       # -- Denylist of metrics that are excluded from being exported

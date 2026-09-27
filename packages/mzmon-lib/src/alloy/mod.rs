@@ -18,6 +18,7 @@ pub(crate) mod test_support;
 
 pub mod components {
     pub mod capsule;
+    pub mod declare;
     pub mod discovery;
     pub mod loki;
     pub mod otelcol;

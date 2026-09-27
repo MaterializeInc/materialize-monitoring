@@ -1,0 +1,282 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway cloud provider pulls, as custom components.
+# These are processed by mz-monitoring-build gen-pipelines to produce a gateway-provider.alloy config.
+
+description: |
+  Custom components for the gateway's cloud provider pulls. This file deploys:
+  the chart includes it in every gateway config, where it is inert until
+  something instantiates it.
+
+  The shape lives here, validated and typed; the count lives in the chart. Each
+  `declare` below is one pull, with its metric set fixed, and the chart's
+  `mzmon.alloyGateway.pipeline.provider` renders one instance per resource
+  named in `pipeline.metrics.provider.*`. A `declare` body cannot repeat a
+  block, which is why CloudWatch takes one instance per resource and why the
+  metric sets are not values.
+
+  Every pull ends in `provider_scrape`: the `instance` pin and the clustered
+  scrape. Clustering is what makes the provider be called once per interval
+  however many gateway replicas there are. Both exporters call the provider on
+  scrape, and export an identical target on every replica, so exactly one
+  replica owns it.
+
+  `forward_to` is a single receiver, not a list: the chart passes
+  `otelcol.receiver.prometheus.inputBridge.receiver`.
+
+blocks:
+  # --- the shared tail ---------------------------------------------------------
+
+  - declare:
+      label: provider_scrape
+      blocks:
+        - argument:
+            label: targets
+            comment: The exporter's targets export.
+        - argument:
+            label: instance
+            comment: >-
+              The `instance` label for every series. The exporter sets it to a
+              hash of its own arguments, which changes whenever they do.
+        - argument:
+            label: forward_to
+            comment: One metrics receiver.
+        - argument:
+            label: scrape_interval
+        - argument:
+            label: scrape_timeout
+            comment: Must not exceed scrape_interval, or the gateway fails to start.
+
+        - discovery.relabel:
+            label: pin
+            targets: ["argument.targets.value"]
+            blocks:
+              - rule:
+                  target_label: instance
+                  replacement: {ref: argument.instance.value}
+
+        - prometheus.scrape:
+            label: provider
+            targets: ["discovery.relabel.pin.output"]
+            forward_to: ["argument.forward_to.value"]
+            scrape_interval: {ref: argument.scrape_interval.value}
+            scrape_timeout: {ref: argument.scrape_timeout.value}
+            blocks:
+              - clustering:
+                  enabled: true
+
+  # --- CloudWatch ----------------------------------------------------------------
+
+  # One RDS instance. Static jobs go through GetMetricStatistics, one call per
+  # metric per pull, and each statistic is its own series.
+  #
+  # nil_to_zero is false on every job because Alloy defaults it to true, which
+  # reports a value-less datapoint as zero. `period` and `length` sit on each
+  # metric because the exporter ignores them on the job; a five-minute period
+  # summarises the whole default interval rather than sampling one minute of
+  # it, and the ten-minute length covers CloudWatch's publication delay.
+  - declare:
+      label: provider_cloudwatch_rds
+      blocks:
+        - argument:
+            label: instance_id
+            comment: The DBInstanceIdentifier.
+        - argument: &region
+            label: region
+        - argument: &forward_to
+            label: forward_to
+        - argument: &scrape_interval
+            label: scrape_interval
+        - argument: &scrape_timeout
+            label: scrape_timeout
+
+        - prometheus.exporter.cloudwatch:
+            label: rds
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: rds
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/RDS
+                  nil_to_zero: false
+                  dimensions:
+                    DBInstanceIdentifier: {ref: argument.instance_id.value}
+                  blocks:
+                    # CPU, and the credit balance that throttles a burstable
+                    # db.t* class. Absent on other classes.
+                    - metric: {name: CPUUtilization, statistics: [Average, Maximum], period: 5m, length: 10m}
+                    - metric: {name: CPUCreditBalance, statistics: [Minimum], period: 5m, length: 10m}
+                    # Memory, storage and connection headroom.
+                    - metric: {name: FreeableMemory, statistics: [Minimum], period: 5m, length: 10m}
+                    - metric: {name: FreeStorageSpace, statistics: [Minimum], period: 5m, length: 10m}
+                    - metric: {name: DatabaseConnections, statistics: [Maximum], period: 5m, length: 10m}
+                    # I/O latency and queueing.
+                    - metric: {name: ReadLatency, statistics: [Average], period: 5m, length: 10m}
+                    - metric: {name: WriteLatency, statistics: [Average], period: 5m, length: 10m}
+                    - metric: {name: DiskQueueDepth, statistics: [Average], period: 5m, length: 10m}
+                    # The gp2/gp3 burst and EBS balances. Exhausting one slows
+                    # every write while every in-database metric stays flat.
+                    - metric: {name: BurstBalance, statistics: [Minimum], period: 5m, length: 10m}
+                    - metric: {name: EBSIOBalance%, statistics: [Minimum], period: 5m, length: 10m}
+                    - metric: {name: EBSByteBalance%, statistics: [Minimum], period: 5m, length: 10m}
+                    # Transaction-ID consumption, the wraparound signal.
+                    - metric: {name: MaximumUsedTransactionIDs, statistics: [Maximum], period: 5m, length: 10m}
+
+        - custom:
+            component: provider_scrape
+            label: rds
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.rds.targets}
+              instance: {ref: argument.instance_id.value}
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # One S3 bucket: size and object count, which S3 publishes once a day under
+  # different StorageType dimensions, so two jobs. The 48-hour length is what
+  # keeps the latest daily point in reach. Standard storage only: a bucket that
+  # never transitions objects, which is every bucket the Terraform wrappers
+  # create.
+  - declare:
+      label: provider_cloudwatch_s3
+      blocks:
+        - argument:
+            label: bucket
+            comment: The bucket name.
+        - argument: *region
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.cloudwatch:
+            label: s3
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: s3
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/S3
+                  nil_to_zero: false
+                  dimensions:
+                    BucketName: {ref: argument.bucket.value}
+                    StorageType: StandardStorage
+                  blocks:
+                    - metric: {name: BucketSizeBytes, statistics: [Average], period: 24h, length: 48h}
+              - static:
+                  label: s3
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/S3
+                  nil_to_zero: false
+                  dimensions:
+                    BucketName: {ref: argument.bucket.value}
+                    StorageType: AllStorageTypes
+                  blocks:
+                    - metric: {name: NumberOfObjects, statistics: [Average], period: 24h, length: 48h}
+
+        - custom:
+            component: provider_scrape
+            label: s3
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.s3.targets}
+              instance: {ref: argument.bucket.value}
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # --- Cloud Monitoring -----------------------------------------------------------
+
+  # Every listed Cloud SQL instance in one project. One instance per service
+  # rather than per resource: the filter names them all, and without it the
+  # prefixes would pull every instance in the project.
+  #
+  # Each entry is a prefix, as the exporter matches them: `num_backends` also
+  # pulls `num_backends_by_state`, and `up` also pulls `uptime`. The filter is
+  # split on its first colon, so a `project:instance` database_id survives.
+  - declare:
+      label: provider_gcp_cloudsql
+      blocks:
+        - argument: &project_id
+            label: project_id
+        - argument:
+            label: database_ids
+            comment: Cloud SQL database_ids, as project:instance.
+        - argument: &request_interval
+            label: request_interval
+            comment: How far back each pull reaches. Only the newest point per series is kept.
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.gcp:
+            label: cloudsql
+            project_ids: [{ref: argument.project_id.value}]
+            metrics_prefixes:
+              - cloudsql.googleapis.com/database/cpu/utilization
+              - cloudsql.googleapis.com/database/memory/utilization
+              - cloudsql.googleapis.com/database/disk/utilization
+              - cloudsql.googleapis.com/database/postgresql/num_backends
+              - cloudsql.googleapis.com/database/postgresql/transaction_id_utilization
+              - cloudsql.googleapis.com/database/up
+            extra_filters:
+              - function: string.format
+                arguments:
+                  - 'cloudsql.googleapis.com/database:resource.labels.database_id=one_of("%s")'
+                  - function: string.join
+                    arguments:
+                      - {ref: argument.database_ids.value}
+                      - '","'
+            request_interval: {ref: argument.request_interval.value}
+            ingest_delay: true
+
+        - custom:
+            component: provider_scrape
+            label: cloudsql
+            attributes:
+              targets: {ref: prometheus.exporter.gcp.cloudsql.targets}
+              instance: cloudsql
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # Every listed GCS bucket in one project. The v2 storage metrics split bytes
+  # and objects into live, noncurrent and soft-deleted, which shows reclaimable
+  # waste. `api/request_count` is deliberately absent: it is a per-minute
+  # DELTA, and the exporter counts only the newest point of each pull, so it
+  # would read about a fifth of the truth.
+  - declare:
+      label: provider_gcp_gcs
+      blocks:
+        - argument: *project_id
+        - argument:
+            label: buckets
+            comment: GCS bucket names.
+        - argument: *request_interval
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.gcp:
+            label: gcs
+            project_ids: [{ref: argument.project_id.value}]
+            metrics_prefixes:
+              - storage.googleapis.com/storage/v2/total_bytes
+              - storage.googleapis.com/storage/v2/total_count
+            extra_filters:
+              - function: string.format
+                arguments:
+                  - 'storage.googleapis.com:resource.labels.bucket_name=one_of("%s")'
+                  - function: string.join
+                    arguments:
+                      - {ref: argument.buckets.value}
+                      - '","'
+            request_interval: {ref: argument.request_interval.value}
+            ingest_delay: true
+
+        - custom:
+            component: provider_scrape
+            label: gcs
+            attributes:
+              targets: {ref: prometheus.exporter.gcp.gcs.targets}
+              instance: gcs
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}

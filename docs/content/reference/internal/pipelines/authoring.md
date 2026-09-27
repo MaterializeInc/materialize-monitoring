@@ -34,7 +34,8 @@ blocks:
 
 Each entry in `blocks` is a **single-key object** whose key is either:
 
-- a typed component name (`loki.process`, `loki.echo`, `discovery.kubernetes`, ...), validated by the per-component schema; or
+- a typed component name (`loki.process`, `loki.echo`, `discovery.kubernetes`, ...), validated by the per-component schema;
+- `declare` or `custom`, which define and instantiate a custom component (see [Custom components](#custom-components-declare)); or
 - the literal key `raw`, validated by `raw.schema.yaml` and used for anything the typed schemas don't cover.
 
 The same rule applies recursively to nested sub-blocks (e.g. stages inside `loki.process`, rules inside `discovery.relabel`).
@@ -198,6 +199,61 @@ Adding a whole new typed component (e.g. a `prometheus.*` family) is the same sh
 6. Tests colocated in `components/prometheus.rs`.
 
 Mirror the `loki.schema.yaml` / `components/loki.rs` structure as a template.
+
+## Custom components (`declare`)
+
+A custom component is how a pre-rendered pipeline holds the shape of something whose count is only known at install.
+The pipeline defines the component once with `declare`, and the chart renders one instance of it per resource named in values.
+The first user is the cloud provider pull in `packages/alloy-pipelines/gateway-provider.yaml`; [Metrics]({{< relref "metrics.md" >}}#cloud-provider-pulls) covers what it does.
+
+The alternative is Helm rendering the components themselves, as the destination still does.
+That output never passes through the schema, and a build-time stub standing in for it drifts from the template it imitates.
+A custom component moves the component bodies into the pipeline, where they are typed and validated, and leaves the chart with a flat block of arguments per instance.
+`alloy validate` checks those arguments against the `declare`: a misspelled or missing argument fails the pre-validate job with the line that names it.
+
+```yaml
+blocks:
+  - declare:
+      label: provider_cloudwatch_rds
+      blocks:
+        - argument: {label: instance_id}
+        - argument: {label: region}
+        - prometheus.exporter.cloudwatch:
+            label: rds
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: rds
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/RDS
+                  dimensions:
+                    DBInstanceIdentifier: {ref: argument.instance_id.value}
+                  blocks:
+                    - metric: {name: CPUUtilization, statistics: [Average], period: 5m, length: 10m}
+        - custom:
+            component: provider_scrape
+            label: rds
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.rds.targets}
+              instance: {ref: argument.instance_id.value}
+```
+
+| Node | Renders | Rules |
+|---|---|---|
+| `declare` | `declare "<label>" { ... }` | The label is an identifier with no dots. The body is ordinary blocks plus `argument` blocks, and may instantiate other custom components declared in the same file |
+| `argument` | `argument "<label>" { optional, default, comment }` | Only valid inside a `declare` body; the schema refuses it anywhere else. Read in the body as `{ref: argument.<label>.value}` |
+| `custom` | `<component> "<label>" { <attributes> }` | Instantiates a custom component. `component` has no dots, so this cannot emit an untyped built-in the way `raw:` can. Whether the component exists, and whether its arguments match, is left to `alloy validate` |
+
+What a custom component can and cannot vary:
+
+- **An argument is only ever a value.** A `declare` body cannot repeat, add or omit a block because of an argument. Anything that varies in block structure stays with the caller, which is why the provider pull takes one CloudWatch instance per resource and fixes its metric set in the body.
+- **Fields a body passes arguments into have to accept expressions.** Typed fields are widened as bodies need them: a scalar becomes `Expressable`, a list becomes `ExpressableList` (whose `Items` variant holds a literal list with expression members, `[{ref: argument.region.value}]`), and a map's values become `Expressable<String>`. Widen the schema in the same change, per the lockstep invariant.
+- **A receiver passes as a single value, not a list.** The body writes `forward_to: ["argument.forward_to.value"]`, which renders as a one-element list of the argument, and the caller passes one receiver. A caller passing a list would give the scrape a list of lists.
+- **Instances are top-level components, so their labels are identifiers and unique.** Whatever derives a label from a resource name maps other characters to `_` and prefixes a letter, and something has to refuse two names that collide: Alloy refuses a duplicate label at load, which `alloy validate` does not catch.
+- **`alloy validate` checks the body's shape, not its values.** Component validation runs only when Alloy builds the component, so a body can pass validation and still fail to load when an instance supplies, say, a scrape timeout longer than its interval. Whatever renders the instances validates those values itself.
+
+A deployed pipeline of custom components is inert until something instantiates it, so it can be included in every install unconditionally.
+The instances the chart renders need a build-time stand-in only for their argument names: a stub that instantiates each component once, validated joined with the module, as `gateway-provider-stub.yaml` does.
 
 ## Reference-valued attributes
 

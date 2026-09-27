@@ -1,148 +1,51 @@
-// BUILD-TIME stand-in for the gateway's cloud provider pulls. This is NOT what
+// BUILD-TIME stand-in for the chart's provider instances. This is NOT what
 // deploys.
 //
-// At install the provider pulls are rendered by the chart's
-// charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl, from
-// .Values.pipeline.metrics.provider.*, because CloudWatch needs one `static`
-// block per resource and a pre-rendered pipeline cannot repeat a block. That
-// output skips the JSONSchema; the pre-validate job's `alloy validate` is its
-// check at install.
+// gateway-provider.yaml holds the custom components and deploys as-is. What
+// the chart adds at install is only instances of them, one per resource, from
+// `mzmon.alloyGateway.pipeline.provider` in
+// charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl.
 //
-// This stub exists so the shape the helper renders is also checked at build
-// time, against the Alloy version CI pins: every argument name and block the
-// helper emits appears here, with one resource per service. `make pipelines`
-// renders it and validates it joined with gateway-metrics.alloy, whose
-// otelcol.receiver.prometheus.inputBridge the scrapes forward to. Keep the two
-// in step. The helper is the source of truth.
+// This file makes one instance of each, with the arguments the chart passes,
+// so `make pipelines` checks those argument names against the components at
+// the Alloy version CI pins — `alloy validate` rejects an argument a
+// `declare` does not have. Keep it in step with the helper's instances. The
+// helper is the source of truth.
 
-prometheus.exporter.cloudwatch "provider" {
-	sts_region = "us-east-1"
-
-	static "rds_example_db" {
-		regions = [
-			"us-east-1",
-		]
-		namespace = "AWS/RDS"
-		nil_to_zero = false
-		dimensions = {
-			DBInstanceIdentifier = "example-db",
-		}
-
-		role {
-			role_arn    = "arn:aws:iam::123456789012:role/example-reader"
-			external_id = "example"
-		}
-
-		metric {
-			name = "CPUUtilization"
-			statistics = [
-				"Average",
-				"Maximum",
-			]
-			period = "5m"
-			length = "10m"
-		}
-	}
-
-	static "s3_example_bucket" {
-		regions = [
-			"us-east-1",
-		]
-		namespace = "AWS/S3"
-		nil_to_zero = false
-		dimensions = {
-			BucketName  = "example-bucket",
-			StorageType = "StandardStorage",
-		}
-
-		metric {
-			name = "BucketSizeBytes"
-			statistics = [
-				"Average",
-			]
-			period = "24h"
-			length = "48h"
-		}
-	}
-
-	static "s3_example_bucket" {
-		regions = [
-			"us-east-1",
-		]
-		namespace = "AWS/S3"
-		nil_to_zero = false
-		dimensions = {
-			BucketName  = "example-bucket",
-			StorageType = "AllStorageTypes",
-		}
-
-		metric {
-			name = "NumberOfObjects"
-			statistics = [
-				"Average",
-			]
-			period = "24h"
-			length = "48h"
-		}
-	}
+provider_cloudwatch_rds "rds_example_db" {
+	instance_id     = "example-db"
+	region          = "us-east-1"
+	forward_to      = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout  = "2m"
 }
 
-prometheus.exporter.gcp "provider" {
-	project_ids = [
-		"example-project",
-	]
-	metrics_prefixes = [
-		"cloudsql.googleapis.com/database/cpu/utilization",
-		"storage.googleapis.com/storage/v2/total_bytes",
-	]
-	extra_filters = [
-		"cloudsql.googleapis.com/database:resource.labels.database_id=one_of(\"example-project:example-pg\")",
-		"storage.googleapis.com:resource.labels.bucket_name=one_of(\"example-bucket\")",
+provider_cloudwatch_s3 "s3_example_bucket" {
+	bucket          = "example-bucket"
+	region          = "us-east-1"
+	forward_to      = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout  = "2m"
+}
+
+provider_gcp_cloudsql "provider" {
+	project_id = "example-project"
+	database_ids = [
+		"example-project:example-pg",
 	]
 	request_interval = "10m"
-	ingest_delay = true
-}
-
-discovery.relabel "provider_cloudwatch" {
-	targets = prometheus.exporter.cloudwatch.provider.targets
-
-	rule {
-		target_label = "instance"
-		replacement  = "cloudwatch"
-	}
-}
-
-prometheus.scrape "provider_cloudwatch" {
-	targets = discovery.relabel.provider_cloudwatch.output
-	forward_to = [
-		otelcol.receiver.prometheus.inputBridge.receiver,
-	]
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
 	scrape_interval = "5m"
 	scrape_timeout = "2m"
-
-	clustering {
-		enabled = true
-	}
 }
 
-discovery.relabel "provider_gcp" {
-	targets = prometheus.exporter.gcp.provider.targets
-
-	rule {
-		target_label = "instance"
-		replacement  = "gcp"
-	}
-}
-
-prometheus.scrape "provider_gcp" {
-	targets = discovery.relabel.provider_gcp.output
-	forward_to = [
-		otelcol.receiver.prometheus.inputBridge.receiver,
+provider_gcp_gcs "provider" {
+	project_id = "example-project"
+	buckets = [
+		"example-bucket",
 	]
+	request_interval = "10m"
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
 	scrape_interval = "5m"
 	scrape_timeout = "2m"
-
-	clustering {
-		enabled = true
-	}
 }

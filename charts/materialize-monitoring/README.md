@@ -1906,7 +1906,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "externalId":"", "metricImportance":"extended", "rds":{"instances":[], "length":"10m", "metrics":[{"name":"CPUUtilization", "statistics":["Average", "Maximum"]}, {"name":"CPUCreditBalance", "statistics":["Minimum"]}, {"name":"FreeableMemory", "statistics":["Minimum"]}, {"name":"FreeStorageSpace", "statistics":["Minimum"]}, {"name":"DatabaseConnections", "statistics":["Maximum"]}, {"name":"ReadLatency", "statistics":["Average"]}, {"name":"WriteLatency", "statistics":["Average"]}, {"name":"DiskQueueDepth", "statistics":["Average"]}, {"name":"BurstBalance", "statistics":["Minimum"]}, {"name":"EBSIOBalance%", "statistics":["Minimum"]}, {"name":"EBSByteBalance%", "statistics":["Minimum"]}, {"name":"MaximumUsedTransactionIDs", "statistics":["Maximum"]}], "period":"5m"}, "region":"", "roleArn":"", "s3":{"buckets":[], "storageTypes":["StandardStorage"]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[], "metrics":["cpu/utilization", "memory/utilization", "disk/utilization", "postgresql/num_backends", "postgresql/transaction_id_utilization", "up"]}, "enabled":false, "gcs":{"buckets":[], "metrics":["storage/v2/total_bytes", "storage/v2/total_count"]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -1937,7 +1937,7 @@ pod's own cloud identity, bound through
 
 | Provider | Identity | Grant |
 | --- | --- | --- |
-| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning; `sts:AssumeRole` on `roleArn` when it is set |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
 
 **The data is minutes old when it arrives.** CloudWatch publishes RDS
@@ -1953,6 +1953,11 @@ dashboards are open. The interval is the main lever.
 **Every replica runs the exporter, and one scrapes it.** The scrape is
 clustered, so a provider's API is called once per interval however many
 gateway replicas there are.
+
+**The metric sets are fixed, and live in the pipeline, not here.** Each
+pull is a custom component in the chart's `gateway-provider` pipeline,
+instantiated once per resource listed below. Changing what is pulled is
+a change to that pipeline.
 </td>
     </tr>
     <tr>
@@ -1970,24 +1975,10 @@ gateway replicas there are.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.roleArn</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">IAM role to assume before calling CloudWatch. Empty uses the gateway's own identity, which is the usual setup under IRSA.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.externalId</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">External ID presented when assuming `roleArn`.
-</td>
-    </tr>
-    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.scrapeInterval</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">How often the gateway pulls. Every pull is one set of billed `GetMetricData` requests.
+      <td class="helm-value-desc">How often the gateway pulls. Every pull is one billed `GetMetricStatistics` call per metric per resource.
 </td>
     </tr>
     <tr>
@@ -2011,117 +2002,13 @@ gateway replicas there are.
 []</pre>
 </td>
       <td class="helm-value-desc">RDS DB instance identifiers to watch, as `DBInstanceIdentifier`.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.period</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">Statistic period for the RDS metrics. RDS publishes at one-minute resolution, so a period equal to the scrape interval summarises the whole interval rather than sampling one minute of it.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.length</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"10m"</code></td>
-      <td class="helm-value-desc">How far back each request reaches. Longer than `period`, so CloudWatch's publication delay does not leave a scrape empty.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.metrics</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  {
-    "name": "CPUUtilization",
-    "statistics": [
-      "Average",
-      "Maximum"
-    ]
-  },
-  {
-    "name": "CPUCreditBalance",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "FreeableMemory",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "FreeStorageSpace",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "DatabaseConnections",
-    "statistics": [
-      "Maximum"
-    ]
-  },
-  {
-    "name": "ReadLatency",
-    "statistics": [
-      "Average"
-    ]
-  },
-  {
-    "name": "WriteLatency",
-    "statistics": [
-      "Average"
-    ]
-  },
-  {
-    "name": "DiskQueueDepth",
-    "statistics": [
-      "Average"
-    ]
-  },
-  {
-    "name": "BurstBalance",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "EBSIOBalance%",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "EBSByteBalance%",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "MaximumUsedTransactionIDs",
-    "statistics": [
-      "Maximum"
-    ]
-  }
-]</pre>
-</td>
-      <td class="helm-value-desc">RDS metrics to pull, with the statistics to request for each.
-Each statistic is a separate billed metric. The defaults are the set
-the external-dependency design argues for: CPU, memory, storage and
-connection headroom, I/O latency and queueing, the gp2/gp3 burst and
-EBS balances whose exhaustion slows every write while every in-database
-metric stays flat, and transaction-ID consumption.
-
-`CPUCreditBalance` applies only to burstable `db.t*` classes, and
-`BurstBalance` only to volumes that burst. Where CloudWatch has no
-datapoint the series is absent, never zero: a missing balance is not
-an exhausted one.
-
-Statistics are `Average`, `Minimum`, `Maximum`, `Sum`, `SampleCount`,
-or a percentile such as `p99`. Each entry needs at least one that is
-not a percentile.
+Each is pulled for a fixed set: CPU, and the credit balance of a
+burstable `db.t*` class; freeable memory, free storage and
+connections; read and write latency and queue depth; the burst and
+EBS balances whose exhaustion slows every write while every
+in-database metric stays flat; and transaction-ID consumption.
+A metric CloudWatch does not publish for an instance is absent,
+never zero.
 </td>
     </tr>
     <tr>
@@ -2130,22 +2017,7 @@ not a percentile.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">S3 bucket names to watch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.s3<wbr>.storageTypes</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "StandardStorage"
-]</pre>
-</td>
-      <td class="helm-value-desc">`StorageType` dimensions to report `BucketSizeBytes` for.
-S3 reports size per storage class. `StandardStorage` covers a bucket
-that never transitions objects, which is every bucket the Terraform
-wrappers create. `NumberOfObjects` is always reported across all
-classes.
+      <td class="helm-value-desc">S3 bucket names to watch, for their size in standard storage and their object count, which S3 publishes daily.
 </td>
     </tr>
     <tr>
@@ -2197,25 +2069,9 @@ classes.
 []</pre>
 </td>
       <td class="helm-value-desc">Cloud SQL instance names to watch — the instance name, not the `project:region:instance` connection name.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.cloudSql<wbr>.metrics</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "cpu/utilization",
-  "memory/utilization",
-  "disk/utilization",
-  "postgresql/num_backends",
-  "postgresql/transaction_id_utilization",
-  "up"
-]</pre>
-</td>
-      <td class="helm-value-desc">Metric types to pull, relative to `cloudsql.googleapis.com/database/`.
-Each entry is a **prefix**, as the exporter matches them:
-`postgresql/num_backends` also pulls `num_backends_by_state` and
-`num_backends_by_application`, and `up` also pulls `uptime`.
+Each is pulled for a fixed set: CPU, memory and disk utilization,
+backends by database, state and application, transaction-ID
+utilization, and whether the instance is up.
 </td>
     </tr>
     <tr>
@@ -2225,26 +2081,13 @@ Each entry is a **prefix**, as the exporter matches them:
 []</pre>
 </td>
       <td class="helm-value-desc">GCS bucket names to watch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.gcs<wbr>.metrics</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "storage/v2/total_bytes",
-  "storage/v2/total_count"
-]</pre>
-</td>
-      <td class="helm-value-desc">Metric types to pull, relative to `storage.googleapis.com/`.
-The `v2` storage metrics split stored bytes and objects into live,
-noncurrent and soft-deleted, which is what shows reclaimable waste.
-
-`api/request_count` is deliberately absent. It is a per-minute DELTA,
-and the exporter adds only the newest point of each pull to its
-counter, so at a five-minute interval it reports roughly a fifth of
-the real request count. The Loki, Thanos and persist clients report
-the same requests exactly, with latency, which GCS does not publish.
+Each is pulled for its stored bytes and object count, split into
+live, noncurrent and soft-deleted, which is what shows reclaimable
+waste. GCS request counts are deliberately not pulled: they are a
+per-minute DELTA, and the exporter counts only the newest point of
+each pull, so at a five-minute interval they read about a fifth of
+the truth. The Loki, Thanos and persist clients report the same
+requests exactly.
 </td>
     </tr>
     <tr>
