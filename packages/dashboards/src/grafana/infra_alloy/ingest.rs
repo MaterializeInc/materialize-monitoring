@@ -124,7 +124,7 @@ fn log_push_requests(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Log Push Requests by Status")
         .query(
             q.get("infra.alloy.ingest.log_push.requests")
-                .legend("{{status_code}}"),
+                .legend("{{route}} {{status_code}}"),
         )
         .unit("reqps")
         .min(0.0)
@@ -149,7 +149,7 @@ fn remote_write_requests(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Remote-Write Requests by Status")
         .query(
             q.get("infra.alloy.ingest.remote_write.requests")
-                .legend("{{status_code}}"),
+                .legend("{{route}} {{status_code}}"),
         )
         .unit("reqps")
         .min(0.0)
@@ -226,8 +226,11 @@ fn tls_rejections(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("suffix:handshakes/min")
         .min(0.0)
+        // Read from the gateway's own log, which travels through the gateway,
+        // so an empty panel is only reassuring if that log is arriving.
         .no_value(NoValue::Custom(
-            "No listener has refused a TLS handshake in this range".to_string(),
+            "No refused handshakes. If the Logs tab is empty too, the gateway's log is not arriving."
+                .to_string(),
         ))
         .build(0)
 }

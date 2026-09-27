@@ -4708,7 +4708,7 @@ spec:
       - key: namespace
         operator: =~
         origin: dashboard
-        value: $mzNamespaceList
+        value: $lokiNamespace
       defaultKeys: []
       description: Adhoc filters to apply to all metrics queries
       enableGroupBy: false

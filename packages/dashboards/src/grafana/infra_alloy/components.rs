@@ -82,7 +82,7 @@ fn not_healthy(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("short")
         .min(0.0)
-        .no_value(NoValue::Custom("Every component is healthy".to_string()))
+        .no_value(not_collected())
         .build(0)
 }
 
@@ -194,9 +194,7 @@ fn slow(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("percentunit")
         .min(0.0)
-        .no_value(NoValue::Custom(
-            "No component has evaluated slowly in this range".to_string(),
-        ))
+        .no_value(not_collected())
         .build(0)
 }
 

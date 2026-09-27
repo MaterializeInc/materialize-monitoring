@@ -1110,6 +1110,16 @@ pub fn log_search() -> dashboardv2::VariableKind {
 /// Seeded with the namespace selector so an operator's ad-hoc filters compose
 /// with the environment scope rather than escaping it.
 pub fn metric_adhoc() -> dashboardv2::VariableKind {
+    metric_adhoc_on(variables::MZ_NAMESPACE_LIST)
+}
+
+/// [`metric_adhoc`], seeded with a namespace variable of the caller's choosing.
+///
+/// For a dashboard with no `$mzNamespaceList`. Grafana leaves an undefined
+/// variable as literal text, so a base filter naming one scopes the ad-hoc
+/// filter's key and value suggestions to a namespace called
+/// `$mzNamespaceList`, and it offers nothing.
+pub fn metric_adhoc_on(namespace_variable: &str) -> dashboardv2::VariableKind {
     dashboardv2::VariableKind::AdhocVariableKind(dashboardv2::AdhocVariableKind {
         kind: "AdhocVariable".to_string(),
         // The ad-hoc filter picks its own label keys from the datasource, so it
@@ -1129,7 +1139,7 @@ pub fn metric_adhoc() -> dashboardv2::VariableKind {
             base_filters: vec![dashboardv2::AdHocFilterWithLabels {
                 key: "namespace".to_string(),
                 operator: "=~".to_string(),
-                value: format!("${}", variables::MZ_NAMESPACE_LIST),
+                value: format!("${namespace_variable}"),
                 // `FilterOrigin` is a newtype over the string Grafana expects.
                 origin: Some(dashboardv2::FilterOrigin("dashboard".to_string())),
                 condition: None,
@@ -1355,7 +1365,7 @@ pub fn loki_scoped() -> Vec<dashboardv2::VariableKind> {
             variables::LOKI_NAMESPACE
         )),
         log_search(),
-        metric_adhoc(),
+        metric_adhoc_on(variables::LOKI_NAMESPACE),
         logs_adhoc(),
     ]
 }
@@ -1379,7 +1389,7 @@ pub fn alloy_scoped() -> Vec<dashboardv2::VariableKind> {
             variables::ALLOY_NAMESPACE
         )),
         log_search(),
-        metric_adhoc(),
+        metric_adhoc_on(variables::ALLOY_NAMESPACE),
         logs_adhoc(),
     ]
 }

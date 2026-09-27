@@ -89,9 +89,7 @@ fn memory_limiter(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit("suffix:points/s")
         .min(0.0)
-        .no_value(NoValue::Custom(
-            "The memory limiter has refused nothing".to_string(),
-        ))
+        .no_value(not_collected())
         .build(0)
 }
 
@@ -135,8 +133,11 @@ fn terminations(q: &Queries) -> dashboardv2::PanelKind {
             &["Time", "Value", "namespace"],
             &["pod", "reason"],
         )])
+        // A table of events that have not happened has no zero to draw, so
+        // the text names both readings rather than claiming the healthy one.
         .no_value(NoValue::Custom(
-            "No collector container has stopped since it started".to_string(),
+            "No recorded termination. If Memory Used Against Limit is empty too, nothing is being collected."
+                .to_string(),
         ))
         .build(0)
 }

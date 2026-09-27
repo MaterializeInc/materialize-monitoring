@@ -168,9 +168,7 @@ fn dropped(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit(LINES_PER_SECOND)
         .min(0.0)
-        .no_value(NoValue::Custom(
-            "Nothing was dropped at delivery".to_string(),
-        ))
+        .no_value(not_collected())
         .build(0)
 }
 
@@ -206,9 +204,7 @@ fn guard_drops(q: &Queries) -> dashboardv2::PanelKind {
         )
         .unit(LINES_PER_SECOND)
         .min(0.0)
-        .no_value(NoValue::Custom(
-            "No guard discarded anything in this range".to_string(),
-        ))
+        .no_value(not_collected())
         .build(0)
 }
 

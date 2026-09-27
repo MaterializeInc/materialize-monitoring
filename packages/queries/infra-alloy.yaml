@@ -215,21 +215,45 @@ queries:
         Remote-write failures are samples the destination rejected outright,
         which are not retried. Recoverable errors are retried instead, and
         appear under _Metric Pipeline -> Remote Write_ as retries.
+
+        Either kind of destination may be absent, since a deployment can run
+        without the bundled store or without any OpenTelemetry exporter. Each
+        contributes zero when absent, and the panel reads no data only when
+        neither is reporting.
     promQL: |
-      sum(
-        rate(
-          prometheus_remote_storage_samples_failed_total{
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace",
-            pod=~"$alloyPod"
-          }
-          %%{interval}
+      (
+        (
+          sum(
+            rate(
+              prometheus_remote_storage_samples_failed_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod"
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
+        )
+        + (
+          sum(
+            rate(
+              otelcol_exporter_send_failed_metric_points_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod"
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
         )
       )
-      + (
+      and on ()
+      (
         sum(
           rate(
-            otelcol_exporter_send_failed_metric_points_total{
+            prometheus_remote_storage_samples_total{
               app=~"$alloyRole",
               namespace=~"$alloyNamespace",
               pod=~"$alloyPod"
@@ -237,7 +261,17 @@ queries:
             %%{interval}
           )
         )
-        or vector(0)
+        or
+        sum(
+          rate(
+            otelcol_exporter_sent_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
       )
 
   - id: infra.alloy.health.pushes_refused
@@ -252,50 +286,68 @@ queries:
         and that data is lost unless the sender retries successfully. _Ingest_
         says which listener, which status, and which sender.
       notes: |
-        Counts requests that reached the gateway's HTTP layer. A sender whose
-        TLS handshake fails never gets that far, and _Ingest -> Connections_
+        Counts requests to the push routes that reached the gateway's HTTP
+        layer. Requests to any other path, such as a probe sending `GET` to the
+        push port and receiving `405`, are not refused pushes and are left out;
+        the per-listener panels on _Ingest_ still show them. A sender whose TLS
+        handshake fails never gets that far, and _Ingest -> Connections_
         carries that case. OTLP refusals are counted in points rather than
         requests, and appear under _Ingest -> OTLP_.
     promQL: |
-      sum(
-        rate(
-          loki_source_api_request_duration_seconds_count{
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace",
-            pod=~"$alloyPod",
-            status_code!~"2.."
-          }
-          %%{interval}
+      (
+        (
+          sum(
+            rate(
+              loki_source_api_request_duration_seconds_count{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                route!="other",
+                status_code!~"2.."
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
         )
-        or
-        rate(
-          prometheus_receive_http_request_duration_seconds_count{
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace",
-            pod=~"$alloyPod",
-            status_code!~"2.."
-          }
-          %%{interval}
+        + (
+          sum(
+            rate(
+              prometheus_receive_http_request_duration_seconds_count{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                route!="other",
+                status_code!~"2.."
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
         )
       )
-      or
-      0 * sum(
-        rate(
-          loki_source_api_request_duration_seconds_count{
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace",
-            pod=~"$alloyPod"
-          }
-          %%{interval}
+      and on ()
+      (
+        sum(
+          rate(
+            loki_source_api_request_duration_seconds_count{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
         )
         or
-        rate(
-          prometheus_receive_http_request_duration_seconds_count{
-            app=~"$alloyRole",
-            namespace=~"$alloyNamespace",
-            pod=~"$alloyPod"
-          }
-          %%{interval}
+        sum(
+          rate(
+            prometheus_receive_http_request_duration_seconds_count{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
         )
       )
 
@@ -662,9 +714,13 @@ queries:
         slower than collection for a while. `line_too_long` is a single line
         above the destination's size limit.
       notes: |
-        Only reasons with drops in the range are drawn. The same lines appear on
-        the Loki dashboard's discard panels, seen from the receiving end, when
-        Loki is the one refusing them.
+        Only reasons with drops are drawn, beside a zero line per role that is
+        delivering at all. The same lines appear on the Loki dashboard's
+        discard panels, seen from the receiving end, when Loki is the one
+        refusing them.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
     promQL: |
       sum by (app, reason) (
         rate(
@@ -676,6 +732,17 @@ queries:
           %%{interval}
         )
       ) > 0
+      or on (app)
+      0 * sum by (app) (
+        rate(
+          loki_write_sent_entries_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
 
   - id: infra.alloy.log_pipeline.request_latency
     stability: experimental
@@ -721,6 +788,9 @@ queries:
         Excludes the debug tap's sampling and its echo suppression, which drop
         copies that were never bound for a store. A reason not listed above is
         new, and counts as a loss until it is classified.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
     promQL: |
       sum by (app, reason) (
         rate(
@@ -733,6 +803,17 @@ queries:
           %%{interval}
         )
       ) > 0
+      or on (app)
+      0 * sum by (app) (
+        rate(
+          loki_process_dropped_lines_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
 
   - id: infra.alloy.log_pipeline.truncated
     stability: experimental
@@ -1475,7 +1556,7 @@ queries:
         fails never reaches this counter, and _Connections_ below carries that
         case.
     promQL: |
-      sum by (status_code) (
+      sum by (route, status_code) (
         rate(
           loki_source_api_request_duration_seconds_count{
             app=~"$alloyRole",
@@ -1587,7 +1668,7 @@ queries:
         Only requests that reached the HTTP layer. A failed TLS handshake is
         under _Connections_ below.
     promQL: |
-      sum by (status_code) (
+      sum by (route, status_code) (
         rate(
           prometheus_receive_http_request_duration_seconds_count{
             app=~"$alloyRole",
@@ -1776,7 +1857,7 @@ queries:
     description:
       summary: |
         Components per collector in any state other than healthy.
-      nominal: Empty.
+      nominal: A flat zero per collector.
       unhealthy: |
         `unhealthy` is a component that failed to evaluate or failed while
         running, and it has stopped passing data on. `exited` is a component
@@ -1785,6 +1866,9 @@ queries:
       notes: |
         Alloy publishes the count per state rather than per component. The
         collector's log under _Logs_ names the component.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
     promQL: |
       sum by (pod, health_type) (
         alloy_component_controller_running_components{
@@ -1792,6 +1876,14 @@ queries:
           namespace=~"$alloyNamespace",
           pod=~"$alloyPod",
           health_type!="healthy"
+        }
+      )
+      or on (pod)
+      0 * sum by (pod) (
+        alloy_component_controller_running_components{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
         }
       )
 
@@ -1936,17 +2028,32 @@ queries:
       summary: |
         Time per second spent in component evaluations that Alloy classed as
         slow, per component.
-      nominal: Empty.
+      nominal: A flat zero per role.
       degraded: |
         Any component listed. It is holding up every evaluation queued behind
         it, and its name says where to look.
       notes: |
         Alloy records this only for an evaluation over its slowness threshold,
-        so a healthy collector publishes no series here at all.
+        so a healthy collector publishes no series of its own. The zero line
+        comes from its ordinary evaluations instead.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
     promQL: |
       sum by (app, component_id) (
         rate(
           alloy_component_evaluation_slow_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+      or on (app)
+      0 * sum by (app) (
+        rate(
+          alloy_component_evaluation_seconds_count{
             app=~"$alloyRole",
             namespace=~"$alloyNamespace",
             pod=~"$alloyPod"
@@ -2263,18 +2370,32 @@ queries:
     description:
       summary: |
         Metric points per second the gateway's memory limiter refused.
-      nominal: Empty.
+      nominal: A flat zero per gateway.
       unhealthy: |
         Any. The gateway is over the memory threshold its limiter guards, and
         it is refusing data rather than risk being killed. The refused points
         are lost unless their sender retries.
       notes: |
         The limiter publishes a refusal series only once it has refused
-        something, so a healthy gateway shows nothing here.
+        something. The zero line comes from the points it accepted instead.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
     promQL: |
       sum by (pod) (
         rate(
           otelcol_processor_memory_limiter_refused_metric_points_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+      or
+      0 * sum by (pod) (
+        rate(
+          otelcol_processor_memory_limiter_accepted_metric_points_total{
             app=~"$alloyRole",
             namespace=~"$alloyNamespace",
             pod=~"$alloyPod"

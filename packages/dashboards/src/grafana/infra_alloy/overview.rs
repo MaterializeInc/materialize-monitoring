@@ -174,7 +174,8 @@ fn restarts(q: &Queries) -> dashboardv2::PanelKind {
         )])
         .unit("short")
         .no_value(NoValue::Custom(
-            "No collector has restarted in this range".to_string(),
+            "No restarts in this range. If Collector Scrape Health is empty too, nothing is being collected."
+                .to_string(),
         ))
         .build(0)
 }
@@ -205,7 +206,7 @@ pub(super) fn pushes_refused(q: &Queries) -> dashboardv2::PanelKind {
         .thresholds(threshold::errors(0.01, 10.0).build())
         .unit("reqps")
         .no_value(NoValue::Custom(
-            "Nothing is pushing to the gateway".to_string(),
+            "No push requests reached the gateway".to_string(),
         ))
         .build(0)
 }

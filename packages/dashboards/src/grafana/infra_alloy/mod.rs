@@ -332,6 +332,48 @@ mod tests {
     }
 
     #[test]
+    fn lazily_created_series_are_backed_by_a_population_zero() {
+        // Alloy creates these series only once something goes wrong, so the
+        // healthy reading is no series at all, which is also the reading when
+        // nothing is collected. Each carries a zero drawn from a series that
+        // always exists, so the two cases stay apart.
+        let resource = built();
+        let exprs = expressions(&resource);
+        for panel in [
+            "overview-samples-lost",
+            "overview-pushes-refused",
+            "overview-unhealthy-components",
+            "overview-config-failed",
+            "components-not-healthy",
+            "components-eval-slow",
+            "resources-memory-limiter",
+            "logs-delivery-dropped",
+            "logs-processing-guards",
+        ] {
+            let found: Vec<_> = exprs.iter().filter(|(n, _, _)| n == panel).collect();
+            assert!(!found.is_empty(), "{panel} is not on the dashboard");
+            for (_, _, expr) in found {
+                assert!(
+                    expr.contains("0 * sum")
+                        || expr.contains("0 * count")
+                        || expr.contains("and on ()"),
+                    "{panel} has no population-backed zero: {expr}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_ad_hoc_filter_is_seeded_with_this_dashboards_namespace() {
+        // Seeded with an undefined variable, the filter's key and value
+        // suggestions are scoped to a namespace that does not exist.
+        let resource = built();
+        let json = serde_json::to_string(&resource.spec.variables).expect("serialize");
+        assert!(!json.contains("$mzNamespaceList"), "{json}");
+        assert!(json.contains(r#""value":"$alloyNamespace""#), "{json}");
+    }
+
+    #[test]
     fn the_role_picker_is_the_anchor() {
         let resource = built();
         let role = resource

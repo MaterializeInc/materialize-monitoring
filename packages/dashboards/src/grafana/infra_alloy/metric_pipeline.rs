@@ -188,7 +188,12 @@ fn down_targets(q: &Queries) -> dashboardv2::PanelKind {
             &["Time", "Value"],
             &["job", "namespace", "pod", "instance"],
         )])
-        .no_value(NoValue::Custom("Every target is up".to_string()))
+        // Empty when every target is up, and also when nothing is scraped at
+        // all. The Targets Scraped stat above tells the two apart.
+        .no_value(NoValue::Custom(
+            "No target is down. If Targets Scraped is empty too, nothing is being collected."
+                .to_string(),
+        ))
         .build(0)
 }
 

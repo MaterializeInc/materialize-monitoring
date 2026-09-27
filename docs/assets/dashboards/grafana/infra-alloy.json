@@ -1544,10 +1544,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (app, component_id) (\n  rate(\n    alloy_component_evaluation_slow_seconds{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "sum by (app, component_id) (\n  rate(\n    alloy_component_evaluation_slow_seconds{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\nor on (app)\n0 * sum by (app) (\n  rate(\n    alloy_component_evaluation_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{app}} {{component_id}}",
                         "qryType": 1,
-                        "query": "sum by (app, component_id) (\n  rate(\n    alloy_component_evaluation_slow_seconds{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (app, component_id) (\n  rate(\n    alloy_component_evaluation_slow_seconds{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\nor on (app)\n0 * sum by (app) (\n  rate(\n    alloy_component_evaluation_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -1559,7 +1559,7 @@
               "transformations": []
             }
           },
-          "description": "**Time per second spent in component evaluations that Alloy classed as slow, per component.**\n\n**Nominal:** Empty.\n\n**Degraded:** Any component listed. It is holding up every evaluation queued behind it, and its name says where to look.\n\nAlloy records this only for an evaluation over its slowness threshold, so a healthy collector publishes no series here at all.",
+          "description": "**Time per second spent in component evaluations that Alloy classed as slow, per component.**\n\n**Nominal:** A flat zero per role.\n\n**Degraded:** Any component listed. It is holding up every evaluation queued behind it, and its name says where to look.\n\nAlloy records this only for an evaluation over its slowness threshold, so a healthy collector publishes no series of its own. The zero line comes from its ordinary evaluations instead.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1065,
           "links": [],
           "title": "Slow Components",
@@ -1570,7 +1570,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "No component has evaluated slowly in this range",
+                  "noValue": "No data from the collectors. Check that the gateway is running.",
                   "unit": "percentunit"
                 },
                 "overrides": []
@@ -1614,10 +1614,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (pod, health_type) (\n  alloy_component_controller_running_components{\n    app=~\"$alloyRole\",\n    namespace=~\"$alloyNamespace\",\n    pod=~\"$alloyPod\",\n    health_type!=\"healthy\"\n  }\n)\n",
+                        "expr": "sum by (pod, health_type) (\n  alloy_component_controller_running_components{\n    app=~\"$alloyRole\",\n    namespace=~\"$alloyNamespace\",\n    pod=~\"$alloyPod\",\n    health_type!=\"healthy\"\n  }\n)\nor on (pod)\n0 * sum by (pod) (\n  alloy_component_controller_running_components{\n    app=~\"$alloyRole\",\n    namespace=~\"$alloyNamespace\",\n    pod=~\"$alloyPod\"\n  }\n)\n",
                         "legendFormat": "{{pod}} {{health_type}}",
                         "qryType": 1,
-                        "query": "sum by (pod, health_type) (\n  alloy_component_controller_running_components{\n    app=~\"$alloyRole\",\n    namespace=~\"$alloyNamespace\",\n    pod=~\"$alloyPod\",\n    health_type!=\"healthy\"\n  }\n)\n"
+                        "query": "sum by (pod, health_type) (\n  alloy_component_controller_running_components{\n    app=~\"$alloyRole\",\n    namespace=~\"$alloyNamespace\",\n    pod=~\"$alloyPod\",\n    health_type!=\"healthy\"\n  }\n)\nor on (pod)\n0 * sum by (pod) (\n  alloy_component_controller_running_components{\n    app=~\"$alloyRole\",\n    namespace=~\"$alloyNamespace\",\n    pod=~\"$alloyPod\"\n  }\n)\n"
                       },
                       "version": "v0"
                     },
@@ -1629,7 +1629,7 @@
               "transformations": []
             }
           },
-          "description": "**Components per collector in any state other than healthy.**\n\n**Nominal:** Empty.\n\n**Unhealthy:** `unhealthy` is a component that failed to evaluate or failed while running, and it has stopped passing data on. `exited` is a component that stopped. `unknown` for more than a few seconds after startup is a component that never finished starting.\n\nAlloy publishes the count per state rather than per component. The collector's log under _Logs_ names the component.",
+          "description": "**Components per collector in any state other than healthy.**\n\n**Nominal:** A flat zero per collector.\n\n**Unhealthy:** `unhealthy` is a component that failed to evaluate or failed while running, and it has stopped passing data on. `exited` is a component that stopped. `unknown` for more than a few seconds after startup is a component that never finished starting.\n\nAlloy publishes the count per state rather than per component. The collector's log under _Logs_ names the component.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1059,
           "links": [],
           "title": "Components Not Healthy",
@@ -1640,7 +1640,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "Every component is healthy",
+                  "noValue": "No data from the collectors. Check that the gateway is running.",
                   "unit": "short"
                 },
                 "overrides": []
@@ -1826,10 +1826,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n)\nor\n0 * sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "(\n  (\n    sum(\n      rate(\n        loki_source_api_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        prometheus_receive_http_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      loki_source_api_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      prometheus_receive_http_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
                         "legendFormat": "refused/s",
                         "qryType": 1,
-                        "query": "sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n)\nor\n0 * sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "(\n  (\n    sum(\n      rate(\n        loki_source_api_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        prometheus_receive_http_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      loki_source_api_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      prometheus_receive_http_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -1841,7 +1841,7 @@
               "transformations": []
             }
           },
-          "description": "**Push requests per second the gateway answered with an error, across its log-push and remote-write listeners.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. Something is sending data the gateway will not take, and that data is lost unless the sender retries successfully. _Ingest_ says which listener, which status, and which sender.\n\nCounts requests that reached the gateway's HTTP layer. A sender whose TLS handshake fails never gets that far, and _Ingest -> Connections_ carries that case. OTLP refusals are counted in points rather than requests, and appear under _Ingest -> OTLP_.",
+          "description": "**Push requests per second the gateway answered with an error, across its log-push and remote-write listeners.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. Something is sending data the gateway will not take, and that data is lost unless the sender retries successfully. _Ingest_ says which listener, which status, and which sender.\n\nCounts requests to the push routes that reached the gateway's HTTP layer. Requests to any other path, such as a probe sending `GET` to the push port and receiving `405`, are not refused pushes and are left out; the per-listener panels on _Ingest_ still show them. A sender whose TLS handshake fails never gets that far, and _Ingest -> Connections_ carries that case. OTLP refusals are counted in points rather than requests, and appear under _Ingest -> OTLP_.",
           "id": 1049,
           "links": [],
           "title": "Push Requests Refused",
@@ -1852,7 +1852,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "Nothing is pushing to the gateway",
+                  "noValue": "No push requests reached the gateway",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -2065,10 +2065,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (status_code) (\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
-                        "legendFormat": "{{status_code}}",
+                        "expr": "sum by (route, status_code) (\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{route}} {{status_code}}",
                         "qryType": 1,
-                        "query": "sum by (status_code) (\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (route, status_code) (\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2387,10 +2387,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (status_code) (\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
-                        "legendFormat": "{{status_code}}",
+                        "expr": "sum by (route, status_code) (\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{route}} {{status_code}}",
                         "qryType": 1,
-                        "query": "sum by (status_code) (\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (route, status_code) (\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2684,7 +2684,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "No listener has refused a TLS handshake in this range",
+                  "noValue": "No refused handshakes. If the Logs tab is empty too, the gateway's log is not arriving.",
                   "unit": "suffix:handshakes/min"
                 },
                 "overrides": []
@@ -2938,10 +2938,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (app, reason) (\n  rate(\n    loki_write_dropped_entries_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n) > 0\n",
+                        "expr": "sum by (app, reason) (\n  rate(\n    loki_write_dropped_entries_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_write_sent_entries_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{app}} {{reason}}",
                         "qryType": 1,
-                        "query": "sum by (app, reason) (\n  rate(\n    loki_write_dropped_entries_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n) > 0\n"
+                        "query": "sum by (app, reason) (\n  rate(\n    loki_write_dropped_entries_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_write_sent_entries_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2953,7 +2953,7 @@
               "transformations": []
             }
           },
-          "description": "**Log lines per second a collector gave up delivering, split by collector role and reason.**\n\n**Nominal:** Zero on every reason.\n\n**Unhealthy:** `ingester_error` and `rate_limited` are the destination refusing the lines. `stream_limited` is Loki's per-stream limit. `queue_is_full` is the collector's own buffer overflowing, which means delivery has been slower than collection for a while. `line_too_long` is a single line above the destination's size limit.\n\nOnly reasons with drops in the range are drawn. The same lines appear on the Loki dashboard's discard panels, seen from the receiving end, when Loki is the one refusing them.",
+          "description": "**Log lines per second a collector gave up delivering, split by collector role and reason.**\n\n**Nominal:** Zero on every reason.\n\n**Unhealthy:** `ingester_error` and `rate_limited` are the destination refusing the lines. `stream_limited` is Loki's per-stream limit. `queue_is_full` is the collector's own buffer overflowing, which means delivery has been slower than collection for a while. `line_too_long` is a single line above the destination's size limit.\n\nOnly reasons with drops are drawn, beside a zero line per role that is delivering at all. The same lines appear on the Loki dashboard's discard panels, seen from the receiving end, when Loki is the one refusing them.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1019,
           "links": [],
           "title": "Lines Dropped at Delivery",
@@ -2964,7 +2964,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "Nothing was dropped at delivery",
+                  "noValue": "No data from the collectors. Check that the gateway is running.",
                   "unit": "suffix:lines/s"
                 },
                 "overrides": []
@@ -3531,10 +3531,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo\"\n    }\n    [$__rate_interval]\n  )\n) > 0\n",
+                        "expr": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{app}} {{reason}}",
                         "qryType": 1,
-                        "query": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo\"\n    }\n    [$__rate_interval]\n  )\n) > 0\n"
+                        "query": "sum by (app, reason) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      reason!~\"sampleDebug|skip self|skip loki|alloy loki.echo\"\n    }\n    [$__rate_interval]\n  )\n) > 0\nor on (app)\n0 * sum by (app) (\n  rate(\n    loki_process_dropped_lines_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3546,7 +3546,7 @@
               "transformations": []
             }
           },
-          "description": "**Log lines per second a pipeline guard discarded before delivery, split by reason.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. `too large` is a single line above the pipeline's size limit. Each of these lines is lost.\n\nExcludes the debug tap's sampling and its echo suppression, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.",
+          "description": "**Log lines per second a pipeline guard discarded before delivery, split by reason.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. `too large` is a single line above the pipeline's size limit. Each of these lines is lost.\n\nExcludes the debug tap's sampling and its echo suppression, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1022,
           "links": [],
           "title": "Lines Discarded by Guards",
@@ -3557,7 +3557,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "No guard discarded anything in this range",
+                  "noValue": "No data from the collectors. Check that the gateway is running.",
                   "unit": "suffix:lines/s"
                 },
                 "overrides": []
@@ -3743,10 +3743,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  rate(\n    prometheus_remote_storage_samples_failed_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n+ (\n  sum(\n    rate(\n      otelcol_exporter_send_failed_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or vector(0)\n)\n",
+                        "expr": "(\n  (\n    sum(\n      rate(\n        prometheus_remote_storage_samples_failed_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        otelcol_exporter_send_failed_metric_points_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      prometheus_remote_storage_samples_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      otelcol_exporter_sent_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
                         "legendFormat": "lost/s",
                         "qryType": 1,
-                        "query": "sum(\n  rate(\n    prometheus_remote_storage_samples_failed_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n+ (\n  sum(\n    rate(\n      otelcol_exporter_send_failed_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or vector(0)\n)\n"
+                        "query": "(\n  (\n    sum(\n      rate(\n        prometheus_remote_storage_samples_failed_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        otelcol_exporter_send_failed_metric_points_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      prometheus_remote_storage_samples_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      otelcol_exporter_sent_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3758,7 +3758,7 @@
               "transformations": []
             }
           },
-          "description": "**Metric samples per second the gateway failed to deliver and will not retry, across every metrics destination.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. A burst right after a gateway restart is usually the write-ahead log replaying samples the store already has, which it rejects as duplicates with `409 Conflict`. That burst is not a finding.\n\nRemote-write failures are samples the destination rejected outright, which are not retried. Recoverable errors are retried instead, and appear under _Metric Pipeline -> Remote Write_ as retries.",
+          "description": "**Metric samples per second the gateway failed to deliver and will not retry, across every metrics destination.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. A burst right after a gateway restart is usually the write-ahead log replaying samples the store already has, which it rejects as duplicates with `409 Conflict`. That burst is not a finding.\n\nRemote-write failures are samples the destination rejected outright, which are not retried. Recoverable errors are retried instead, and appear under _Metric Pipeline -> Remote Write_ as retries.\n\nEither kind of destination may be absent, since a deployment can run without the bundled store or without any OpenTelemetry exporter. Each contributes zero when absent, and the panel reads no data only when neither is reporting.",
           "id": 1027,
           "links": [],
           "title": "Samples Lost",
@@ -5063,7 +5063,7 @@
                     "filterable": true,
                     "inspect": false
                   },
-                  "noValue": "Every target is up"
+                  "noValue": "No target is down. If Targets Scraped is empty too, nothing is being collected."
                 },
                 "overrides": []
               },
@@ -6052,10 +6052,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n)\nor\n0 * sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "(\n  (\n    sum(\n      rate(\n        loki_source_api_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        prometheus_receive_http_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      loki_source_api_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      prometheus_receive_http_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
                         "legendFormat": "refused/s",
                         "qryType": 1,
-                        "query": "sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\",\n      status_code!~\"2..\"\n    }\n    [$__rate_interval]\n  )\n)\nor\n0 * sum(\n  rate(\n    loki_source_api_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n  or\n  rate(\n    prometheus_receive_http_request_duration_seconds_count{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "(\n  (\n    sum(\n      rate(\n        loki_source_api_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        prometheus_receive_http_request_duration_seconds_count{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\",\n          route!=\"other\",\n          status_code!~\"2..\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      loki_source_api_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      prometheus_receive_http_request_duration_seconds_count{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -6067,7 +6067,7 @@
               "transformations": []
             }
           },
-          "description": "**Push requests per second the gateway answered with an error, across its log-push and remote-write listeners.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. Something is sending data the gateway will not take, and that data is lost unless the sender retries successfully. _Ingest_ says which listener, which status, and which sender.\n\nCounts requests that reached the gateway's HTTP layer. A sender whose TLS handshake fails never gets that far, and _Ingest -> Connections_ carries that case. OTLP refusals are counted in points rather than requests, and appear under _Ingest -> OTLP_.",
+          "description": "**Push requests per second the gateway answered with an error, across its log-push and remote-write listeners.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. Something is sending data the gateway will not take, and that data is lost unless the sender retries successfully. _Ingest_ says which listener, which status, and which sender.\n\nCounts requests to the push routes that reached the gateway's HTTP layer. Requests to any other path, such as a probe sending `GET` to the push port and receiving `405`, are not refused pushes and are left out; the per-listener panels on _Ingest_ still show them. A sender whose TLS handshake fails never gets that far, and _Ingest -> Connections_ carries that case. OTLP refusals are counted in points rather than requests, and appear under _Ingest -> OTLP_.",
           "id": 1005,
           "links": [],
           "title": "Push Requests Refused",
@@ -6078,7 +6078,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "Nothing is pushing to the gateway",
+                  "noValue": "No push requests reached the gateway",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -6197,7 +6197,7 @@
                     "filterable": true,
                     "inspect": false
                   },
-                  "noValue": "No collector has restarted in this range",
+                  "noValue": "No restarts in this range. If Collector Scrape Health is empty too, nothing is being collected.",
                   "unit": "short"
                 },
                 "overrides": []
@@ -6327,10 +6327,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(\n  rate(\n    prometheus_remote_storage_samples_failed_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n+ (\n  sum(\n    rate(\n      otelcol_exporter_send_failed_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or vector(0)\n)\n",
+                        "expr": "(\n  (\n    sum(\n      rate(\n        prometheus_remote_storage_samples_failed_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        otelcol_exporter_send_failed_metric_points_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      prometheus_remote_storage_samples_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      otelcol_exporter_sent_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
                         "legendFormat": "lost/s",
                         "qryType": 1,
-                        "query": "sum(\n  rate(\n    prometheus_remote_storage_samples_failed_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n+ (\n  sum(\n    rate(\n      otelcol_exporter_send_failed_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or vector(0)\n)\n"
+                        "query": "(\n  (\n    sum(\n      rate(\n        prometheus_remote_storage_samples_failed_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n  + (\n    sum(\n      rate(\n        otelcol_exporter_send_failed_metric_points_total{\n          app=~\"$alloyRole\",\n          namespace=~\"$alloyNamespace\",\n          pod=~\"$alloyPod\"\n        }\n        [$__rate_interval]\n      )\n    )\n    or vector(0)\n  )\n)\nand on ()\n(\n  sum(\n    rate(\n      prometheus_remote_storage_samples_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  sum(\n    rate(\n      otelcol_exporter_sent_metric_points_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -6342,7 +6342,7 @@
               "transformations": []
             }
           },
-          "description": "**Metric samples per second the gateway failed to deliver and will not retry, across every metrics destination.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. A burst right after a gateway restart is usually the write-ahead log replaying samples the store already has, which it rejects as duplicates with `409 Conflict`. That burst is not a finding.\n\nRemote-write failures are samples the destination rejected outright, which are not retried. Recoverable errors are retried instead, and appear under _Metric Pipeline -> Remote Write_ as retries.",
+          "description": "**Metric samples per second the gateway failed to deliver and will not retry, across every metrics destination.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A sustained rate. A burst right after a gateway restart is usually the write-ahead log replaying samples the store already has, which it rejects as duplicates with `409 Conflict`. That burst is not a finding.\n\nRemote-write failures are samples the destination rejected outright, which are not retried. Recoverable errors are retried instead, and appear under _Metric Pipeline -> Remote Write_ as retries.\n\nEither kind of destination may be absent, since a deployment can run without the bundled store or without any OpenTelemetry exporter. Each contributes zero when absent, and the panel reads no data only when neither is reporting.",
           "id": 1004,
           "links": [],
           "title": "Samples Lost",
@@ -7053,10 +7053,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (pod) (\n  rate(\n    otelcol_processor_memory_limiter_refused_metric_points_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "sum by (pod) (\n  rate(\n    otelcol_processor_memory_limiter_refused_metric_points_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\nor\n0 * sum by (pod) (\n  rate(\n    otelcol_processor_memory_limiter_accepted_metric_points_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{pod}}",
                         "qryType": 1,
-                        "query": "sum by (pod) (\n  rate(\n    otelcol_processor_memory_limiter_refused_metric_points_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (pod) (\n  rate(\n    otelcol_processor_memory_limiter_refused_metric_points_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\nor\n0 * sum by (pod) (\n  rate(\n    otelcol_processor_memory_limiter_accepted_metric_points_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -7068,7 +7068,7 @@
               "transformations": []
             }
           },
-          "description": "**Metric points per second the gateway's memory limiter refused.**\n\n**Nominal:** Empty.\n\n**Unhealthy:** Any. The gateway is over the memory threshold its limiter guards, and it is refusing data rather than risk being killed. The refused points are lost unless their sender retries.\n\nThe limiter publishes a refusal series only once it has refused something, so a healthy gateway shows nothing here.",
+          "description": "**Metric points per second the gateway's memory limiter refused.**\n\n**Nominal:** A flat zero per gateway.\n\n**Unhealthy:** Any. The gateway is over the memory threshold its limiter guards, and it is refusing data rather than risk being killed. The refused points are lost unless their sender retries.\n\nThe limiter publishes a refusal series only once it has refused something. The zero line comes from the points it accepted instead.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1074,
           "links": [],
           "title": "Memory Limiter Refusals",
@@ -7079,7 +7079,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "The memory limiter has refused nothing",
+                  "noValue": "No data from the collectors. Check that the gateway is running.",
                   "unit": "suffix:points/s"
                 },
                 "overrides": []
@@ -7172,7 +7172,7 @@
                     "filterable": true,
                     "inspect": false
                   },
-                  "noValue": "No collector container has stopped since it started"
+                  "noValue": "No recorded termination. If Memory Used Against Limit is empty too, nothing is being collected."
                 },
                 "overrides": []
               },
@@ -9072,7 +9072,7 @@
               "key": "namespace",
               "operator": "=~",
               "origin": "dashboard",
-              "value": "$mzNamespaceList"
+              "value": "$alloyNamespace"
             }
           ],
           "defaultKeys": [],

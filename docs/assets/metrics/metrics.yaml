@@ -635,6 +635,7 @@
   name: loki_write_sent_entries_total
   usage:
   - infra.alloy.health.lines_delivered
+  - infra.alloy.log_pipeline.dropped
   - infra.alloy.log_pipeline.stored
 - importance: essential
   labels:
@@ -1028,6 +1029,7 @@
   name: prometheus_remote_storage_samples_total
   usage:
   - infra.alloy.health.samples_delivered
+  - infra.alloy.health.samples_lost
   - infra.alloy.ingest.remote_write.senders
   - infra.alloy.metric_pipeline.remote_write
   - infra.alloy.metric_pipeline.samples_sent
@@ -1092,6 +1094,7 @@
   name: alloy_component_evaluation_seconds_count
   usage:
   - infra.alloy.components.evaluation_rate
+  - infra.alloy.components.slow
 - importance: recommended
   labels:
   - app
@@ -1455,6 +1458,7 @@
   - app
   - namespace
   - pod
+  - route
   - status_code
   name: loki_source_api_request_duration_seconds_count
   usage:
@@ -2262,6 +2266,7 @@
   name: otelcol_exporter_sent_metric_points_total
   usage:
   - infra.alloy.health.samples_delivered
+  - infra.alloy.health.samples_lost
   - infra.alloy.metric_pipeline.otel_sent
 - importance: recommended
   labels:
@@ -2271,6 +2276,14 @@
   name: otelcol_processor_filter_datapoints_filtered_total
   usage:
   - infra.alloy.metric_pipeline.otel_filtered
+- importance: recommended
+  labels:
+  - app
+  - namespace
+  - pod
+  name: otelcol_processor_memory_limiter_accepted_metric_points_total
+  usage:
+  - infra.alloy.resources.memory_limiter
 - importance: recommended
   labels:
   - app
@@ -2335,6 +2348,7 @@
   - app
   - namespace
   - pod
+  - route
   - status_code
   name: prometheus_receive_http_request_duration_seconds_count
   usage:

@@ -322,6 +322,7 @@ recommended:
 - otelcol_exporter_sent_log_records_total
 - otelcol_exporter_sent_metric_points_total
 - otelcol_processor_filter_datapoints_filtered_total
+- otelcol_processor_memory_limiter_accepted_metric_points_total
 - otelcol_processor_memory_limiter_refused_metric_points_total
 - otelcol_receiver_accepted_log_records_total
 - otelcol_receiver_accepted_metric_points_total
