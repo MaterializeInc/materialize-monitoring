@@ -8728,8 +8728,20 @@ Both rulers reach each replica by pod IP or per-pod name, and the certificate ca
 Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare name.
 Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
 
-Composing `profiles/split-namespace.values.yaml` with the mTLS profiles needs one extra step, because both restate the two ruler addresses in full.
-Whichever profile comes last wins, and the render warns when a ruler address names the wrong namespace or the wrong scheme.
+Both rulers also remote-write rule results, including the `ALERTS` series, to the gateway's metrics listener on 9090, which the profile moves to TLS.
+The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` ConfigMap.
+The profile points the ruler at the TLS one.
+The ruler reads that file once at startup, so switching ConfigMaps, which changes its pod template, is what rolls it onto TLS.
+The names also carry a revision, which is bumped whenever the contents change, so a chart upgrade rolls the ruler onto new contents too.
+The Loki ruler's is in its subchart's values, so the profile restates its URL as https and adds a `tls_config`.
+Both present their own component's certificate from phase 1, so phase 3 can require one in any rollout order.
+A ruler left on the other scheme still evaluates and notifies, but it retries every write indefinitely.
+The gateway logs a TLS handshake error for each attempt, so the render refuses the combination.
+
+Composing `profiles/split-namespace.values.yaml` with the mTLS profiles needs one extra step.
+Both restate the rulers' Alertmanager addresses and the Loki ruler's remote-write URL in full.
+Whichever profile comes last wins.
+The render warns when one of those addresses names the wrong namespace, and fails when it names the wrong scheme.
 
 #### Through Terraform
 
@@ -8798,6 +8810,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
 | **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
 | **In-cluster TLS, rulers and Grafana → Alertmanager** | 🔨 Encrypted, and presented certificates verified, at phase 2, which is its ceiling. The kubelet and the config reloader dial the same port and cannot present a certificate |
+| **In-cluster TLS, rulers → gateway** | ✅ Shipped and **authenticated** at phase 3. Both rulers remote-write to `9090` over TLS and present their component's certificate from phase 1 |
 | **In-cluster TLS, agent → gateway** | ✅ Shipped and **authenticated** at phase 3. The listener renders from Helm and the agent's destination presents a certificate; moving `prometheus.receive_http` out of the pre-rendered pipeline was the last blocker |
 | **Mutual TLS between components** | ✅ At phase 3, five listeners require and verify a client certificate: Thanos Receive's remote-write port and the gateway's 3100, 4317, 4318 and 9090. Loki's HTTP port and Alertmanager's API port are the exceptions and stay at verify-if-given. Authentication, not authorization — none of these can express "this identity may write and that one may not", so the size of the trust domain is the security property |
 | **Authenticated scrapes of node-exporter** | Available and deliberately parked. `kubeRBACProxy` would authenticate via TokenReview/SubjectAccessReview over HTTPS, at the cost of a second container on every node to protect an endpoint that exposes no secrets |
@@ -14335,7 +14348,25 @@ Upstream reference:
           "min_shards": 1
         },
         "remote_timeout": "30s",
-        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write",
+        "write_relabel_configs": [
+          {
+            "regex": "",
+            "replacement": "loki-ruler",
+            "source_labels": [
+              "job"
+            ],
+            "target_label": "job"
+          },
+          {
+            "regex": "",
+            "replacement": "${POD_NAME}",
+            "source_labels": [
+              "instance"
+            ],
+            "target_label": "instance"
+          }
+        ]
       }
     },
     "enabled": true
@@ -14377,7 +14408,25 @@ side uses — and why `split-namespace` overrides both of them.
         "min_shards": 1
       },
       "remote_timeout": "30s",
-      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write",
+      "write_relabel_configs": [
+        {
+          "regex": "",
+          "replacement": "loki-ruler",
+          "source_labels": [
+            "job"
+          ],
+          "target_label": "job"
+        },
+        {
+          "regex": "",
+          "replacement": "${POD_NAME}",
+          "source_labels": [
+            "instance"
+          ],
+          "target_label": "instance"
+        }
+      ]
     }
   },
   "enabled": true
@@ -14893,10 +14942,18 @@ https://grafana.com/docs/loki/latest/get-started/components/
         "name": "ruler-env"
       }
     }
+  },
+  {
+    "name": "POD_NAME",
+    "valueFrom": {
+      "fieldRef": {
+        "fieldPath": "metadata.name"
+      }
+    }
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name, for `rulerConfig.alert_relabel_configs` to stamp on alerts. Read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`; Loki's `-config.expand-env` substitutes it.
+      <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
 </td>
     </tr>
     <tr>
@@ -15916,7 +15973,7 @@ validator warns when the two disagree.
   "extraVolumes": [
     {
       "configMap": {
-        "name": "thanos-ruler-remote-write"
+        "name": "thanos-ruler-remote-write-v2"
       },
       "name": "remote-write"
     },
@@ -16190,7 +16247,7 @@ an override of this list; the render warns when either goes missing.
 [
   {
     "configMap": {
-      "name": "thanos-ruler-remote-write"
+      "name": "thanos-ruler-remote-write-v2"
     },
     "name": "remote-write"
   },
@@ -16205,10 +16262,18 @@ an override of this list; the render warns when either goes missing.
 </td>
       <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
 
+`remote-write` is the plaintext variant of the Ruler's remote-write
+configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
+name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
+the render enforces. The Ruler reads the file once at startup, so the names
+carry the mode and a revision: switching ConfigMaps changes the pod
+template, which is what rolls it.
+
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
-`alerting.server.tls` is on, and trusts its `ca.crt`. Mounted unconditionally
-and optionally, so the same values work before issuance, during it and after.
+`alerting.server.tls` is on and to the gateway when its metrics listener
+serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
+so the same values work before issuance, during it and after.
 This is a list: restate both entries when adding one.
 </td>
     </tr>
@@ -17816,10 +17881,19 @@ They are authored the same way as log pipelines — see [Authoring]({{< relref "
 ## Gateway topology
 
 The gateway carries metrics alongside logs (`packages/alloy-pipelines/gateway.yaml`).
-Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write:
+Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write.
+
+The bridge refuses a sample without both `job` and `instance`, and fails the whole remote-write batch it arrived in with a 500.
+Scraped series always carry both, and pushed ones need not, so `prometheus.relabel "receiveIdentity"` fills them for pushed samples.
+It recognises the Thanos ruler by `ruler_replica` and gives its results `job="thanos-ruler"` and a constant `instance`.
+The constant keeps Thanos Query's deduplication on `ruler_replica` working.
+Anything else pushed without them gets `job="remote-write"` and `instance="unknown"`.
+The Loki ruler fills its own in `loki.loki.rulerConfig`.
+The Thanos ruler cannot, because a `replace` in its `write_relabel_configs` panics it at startup.
 
 ```
-prometheus.receive_http "gateway"             (pushed remote-write, :9090) ─┐
+prometheus.receive_http "gateway"             (pushed remote-write, :9090)
+  → prometheus.relabel "receiveIdentity"      (fill job/instance)          ─┐
 prometheus.operator.podmonitors "default"     (PodMonitor CRs)             ─┤
 prometheus.operator.servicemonitors "default" (ServiceMonitor CRs)         ─┴─→ otelcol.receiver.prometheus "inputBridge"  (Prometheus → OTLP) ─┐
 otelcol.receiver.otlp                          (OTLP metrics) ─────────────────────────────────────────────────────────────────────────────┤
@@ -22176,7 +22250,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ⬜ |
-| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below) |
+| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
@@ -24683,7 +24757,7 @@ Part of the deliverable is making the shipped default and the modeled capability
 | Grafana → Loki query frontend | LogQL, HTTP :3100 | Loki server | 2 |
 | `alloy-gateway` → scrape targets (kube-state-metrics, node-exporter) | scrape, HTTP | target | 3 |
 | Loki ruler / Thanos ruler → Alertmanager | HTTP | Alertmanager | 3 |
-| Loki ruler → `alloy-gateway` (recording-rule samples) | remote-write, HTTP :9090 | `prometheus.receive_http` | 3 |
+| Loki ruler / Thanos ruler → `alloy-gateway` (rule results, `ALERTS`) | remote-write, HTTP :9090 | `prometheus.receive_http` | 3 |
 | `alloy-gateway` → control-plane gateway (BYOC) | OTLP | control-plane LB | designed elsewhere |
 | Browser → Grafana | HTTPS | Ingress / LB | already modeled |
 | Intra-Loki, intra-Thanos, Alloy clustering | gRPC / HTTP | upstream | deferred |
@@ -25081,6 +25155,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
 | ~~Modeled `connections.datasources.*.tls` for Grafana → backends~~ **Shipped** and verified against a live Grafana: `tls.caPem` (inline; a CA is public material) or `tls.caSecret` (a `valuesFrom` reference). Neither is defaulted, because an https datasource with no CA fails as an empty dashboard — the render refuses it. **Cluster finding, now fixed:** grafana-operator's `valuesFrom` substitutes into a `${...}` placeholder that must already exist at the target path **and must be named for the `secretKeyRef` key** — `${ca.crt}`, not a token of the chart's choosing. The chart emitted `${tlsCACert}`, so nothing substituted and Grafana stored the literal, reporting `failed to parse TLS CA PEM certificate` at query time while the CR, the operator log and `secureJsonFields` all looked correct. The placeholder is now derived from the key, `caSecret.name` is `tpl`-rendered so a profile can name a release-dependent Secret, and `mtls.values.yaml` wires Grafana's own certificate Secret with no operator action. Verified on grafana-operator v5.24.0 at tier 2. Grafana → Thanos Query is not shipped: Query has no `--http.tls-*` flags, only an experimental `--http.config` that would also TLS its probe endpoints | — | 2 |
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
+| ~~Rulers' remote-write to the gateway over TLS~~ **Shipped** ([DEP-323](https://linear.app/materializeinc/issue/DEP-323)). The chart renders the Thanos ruler's remote-write configuration as a plaintext and a TLS ConfigMap, and `mtls.values.yaml` mounts the TLS one. The ruler reads the file once at startup and the subchart's pod annotations are static, so switching ConfigMaps is the only way to roll it; changed contents alone never reached a running ruler. `mtls.values.yaml` also restates the Loki ruler's client. Both present from phase 1. Until this, a Thanos ruler under the mTLS profiles failed every write with `certificate signed by unknown authority`, and the gateway logged a handshake error per attempt | profiles | 3 |
 | ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
