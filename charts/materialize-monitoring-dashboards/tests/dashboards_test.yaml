@@ -18,7 +18,7 @@ tests:
   - it: should ship every dashboard the default patterns select
     asserts:
       - hasDocuments:
-          count: 7
+          count: 8
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
@@ -44,6 +44,11 @@ tests:
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaManifest
           name: mzmon-dashboards-infra-loki-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-infra-alloy-dashboard
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
@@ -102,14 +107,20 @@ tests:
         documentSelector:
           path: metadata.name
           value: mzmon-dashboards-infra-nodes-dashboard
-      # The meta-monitoring dashboard is the only occupant of this folder, so
-      # nothing else would catch the key going missing from the defaults.
+      # The meta-monitoring dashboards are the only occupants of this folder,
+      # so nothing else would catch the key going missing from the defaults.
       - equal:
           path: spec.template.metadata.annotations["grafana.app/folder"]
           value: mzmon-meta-o11y
         documentSelector:
           path: metadata.name
           value: mzmon-dashboards-infra-loki-dashboard
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-infra-alloy-dashboard
 
   # The whole point of resolving in the chart rather than at render time: the UID
   # is a value, and the dashboards follow it without being re-rendered. This is

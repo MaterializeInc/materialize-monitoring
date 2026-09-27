@@ -88,9 +88,13 @@ Adding or changing a query has effects beyond the query itself:
 
   **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
   `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
-  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it;
-  `infra.loki.pipeline.*` in `infra-loki.yaml` is a set of six written for exactly that reason, and describes the
-  Alloy-side `loki_*` components rather than the log store.
+  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
+  `infra-loki.yaml` once carried six such queries for the Alloy-side `loki_*` components; they moved to
+  `infra-alloy.yaml` when a dashboard came to draw them.
+
+  The converse also holds, because tiers select by metric *name*. A query naming a generic family such as
+  `go_goroutines` admits every target's copy of it, not only the copy the query was written for, which is why
+  `infra-alloy.yaml` holds its Go runtime families at `extended`.
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}) from it.
   There is no generated intermediate to refresh.

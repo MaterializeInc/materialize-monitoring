@@ -50,8 +50,8 @@
 //! The Loki chart ships `loki-reads`, `loki-writes` and `loki-operational`, and
 //! they are good dashboards. They are also unusable here without new
 //! infrastructure: they read `cluster_job_route:loki_request_duration_seconds_*`
-//! recording rules, and this stack evaluates no PromQL rules at all — there is no
-//! Prometheus and no Thanos Ruler, and Loki's own ruler evaluates LogQL. They
+//! recording rules, and this stack records none of them — the Thanos Ruler runs,
+//! but no rule set it loads produces them, and Loki's own ruler evaluates LogQL. They
 //! further assume a `cluster` variable, where the `cluster` label on these
 //! metrics is Loki's own ring name (`default`) rather than a Kubernetes cluster,
 //! so the scoping would be silently wrong rather than absent.

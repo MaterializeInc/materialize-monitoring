@@ -1,0 +1,2740 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Meta-monitoring queries for the collectors themselves.
+
+description: |
+  Is telemetry collection healthy, and if not, which stage of it broke.
+
+  Alloy runs in two roles in this stack. The **agent** is a DaemonSet with one
+  pod per node. It reads container log files and the node journal, and pushes
+  both to the gateway. The **gateway** is a Deployment. It receives the agents'
+  logs, collects Kubernetes events, scrapes every metrics target in the
+  cluster, and delivers all of it to the stores the dashboards read.
+
+  Every signal in this file travels through the gateway before it can be read.
+  The gateway scrapes Alloy's own metrics, and Alloy's own logs reach Loki
+  through the gateway. An empty panel here can therefore mean the gateway is
+  down rather than that nothing happened. When every panel is empty at once,
+  the first check is whether any gateway pod is running.
+
+  ## Scoping
+
+  Three variables, written literally on the same precedent as `infra-loki.yaml`.
+
+  * **`$alloyNamespace`** selects where the collectors run.
+  * **`$alloyRole`** selects `alloy-agent`, `alloy-gateway`, or both, matched
+    against `app`. Metrics and logs both take `app` from the pod's
+    `app.kubernetes.io/name` label, so one picker serves both engines. Its
+    "All" value is the literal pair rather than `.+`, which makes it the anchor
+    that keeps every selector to this chart's collectors. `thanos-ruler`
+    publishes the same `prometheus_remote_storage_*` family, and an unanchored
+    selector would add its remote-write queue to the gateway's.
+  * **`$alloyPod`** selects one collector, most often the agent on one node.
+
+  kube-state-metrics and cAdvisor series carry no `app` label. Those queries
+  scope with `and on (namespace, pod) up{…}` against the collectors' own scrape
+  targets instead, which applies all three pickers without assuming anything
+  about pod names.
+
+  Queries over `up` and `scrape_*` for the *targets* the gateway scrapes carry
+  no Alloy scope. Those series describe the target, not the collector, and
+  nothing on them records which gateway replica produced them. The same holds
+  for the remote-write senders' own queues, which are found by their `url`.
+
+  Kubernetes events carry the involved object's `name` rather than an `app`
+  label. The event queries match `name` against the role pattern, as
+  `${alloyRole:regex}` since it is embedded in a longer pattern, and against the
+  pod picker. They also match the pre-install validation Jobs, whose names
+  follow the release rather than the role, as `.+-validate-(agent|gateway)`.
+
+  ## Zero only when something was collected
+
+  Several counts here take the form `sum(A) or 0 * sum(B)`, where `B` is the
+  population `A` is drawn from. Alloy creates an unhealthy-component series only
+  once a component is unhealthy, so `sum(A)` alone is empty on a healthy
+  install. The `or` arm turns that into a zero, and only when `B` exists. A
+  panel reading zero has heard from the collectors; a panel reading nothing
+  has not.
+
+  ## Deliberate drops
+
+  `loki_process_dropped_lines_total` counts two different things under one
+  name. The debug tap in both pipelines forks a copy of the stream, keeps about
+  1% of it, and drops the rest with reasons `sampleDebug`, `skip self` and
+  `skip loki`. The gateway also drops Alloy's own `loki.echo` output with reason
+  `alloy loki.echo`, which stops the tap re-collecting itself. None of those
+  lines were bound for a store. Every other reason is a guard on the main path,
+  and a line dropped there is lost. `infra.alloy.log_pipeline.guard_drops`
+  excludes the four deliberate reasons by name, so a reason added to a pipeline
+  later shows up as a loss until it is classified here.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- overview: are the collectors running and delivering --------------------
+  - id: infra.alloy.health.agents_missing
+    stability: experimental
+    description:
+      summary: |
+        Nodes the agent DaemonSet is scheduled onto whose agent is not reporting.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. Each missing agent is a node whose container logs
+        and journal are not being collected. Nothing downstream reports this,
+        because Loki cannot miss lines it was never sent.
+      notes: |
+        Desired pods come from kube-state-metrics, and reporting pods from the
+        gateway's scrape of each agent. A brief 1 during a DaemonSet rollout is
+        the rollout replacing one agent at a time.
+
+        Reads the DaemonSet named `alloy-agent`, which is the chart's fixed
+        `fullnameOverride`. The role and pod pickers do not apply, since the
+        count is about the whole DaemonSet.
+    promQL: |
+      clamp_min(
+        sum(
+          kube_daemonset_status_desired_number_scheduled{
+            namespace=~"$alloyNamespace",
+            daemonset="alloy-agent"
+          }
+        )
+        - (
+          sum(
+            up{
+              app="alloy-agent",
+              namespace=~"$alloyNamespace"
+            }
+          )
+          or vector(0)
+        ),
+        0
+      )
+
+  - id: infra.alloy.health.unhealthy_components
+    stability: experimental
+    description:
+      summary: |
+        Pipeline components that Alloy reports as anything other than healthy,
+        across the selected collectors.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. An unhealthy component is still part of the running
+        pipeline, and data routed through it is not flowing. _Components ->
+        Health_ says which collector, and the collector's own log says which
+        component and why.
+      notes: |
+        A few seconds of `unknown` while a collector starts is normal. Alloy
+        publishes the count per health state, not per component, so naming the
+        component takes the log.
+    promQL: |
+      sum(
+        alloy_component_controller_running_components{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod",
+          health_type!="healthy"
+        }
+      )
+      or
+      0 * sum(
+        alloy_component_controller_running_components{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.health.config_failed
+    stability: experimental
+    description:
+      summary: |
+        Collectors whose most recent attempt to load their configuration failed.
+      nominal: Zero.
+      unhealthy: |
+        Any. A collector that fails to load a new configuration keeps running
+        the last one that loaded, so nothing stops and nothing looks wrong. A
+        change that was rolled out is simply not in effect on that collector.
+      notes: |
+        The collector's log carries the parse or evaluation error. _Components
+        -> Configuration_ shows which configuration each collector is running.
+    promQL: |
+      count(
+        alloy_config_last_load_successful{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        } == 0
+      )
+      or
+      0 * count(
+        alloy_config_last_load_successful{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.health.log_lines_lost
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second the collectors gave up delivering, across every
+        hop and every reason.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. These lines were collected and will never be
+        stored. _Log Pipeline -> Delivery_ splits them by reason, which says
+        whether the receiver refused them or the collector ran out of room.
+      notes: |
+        Counts the agent-to-gateway hop and the gateway-to-Loki hop alike. A
+        rejection by Loki also appears on the Loki dashboard's discard panels,
+        seen from the receiving end.
+    promQL: |
+      sum(
+        rate(
+          loki_write_dropped_entries_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.health.samples_lost
+    stability: experimental
+    description:
+      summary: |
+        Metric samples per second the gateway failed to deliver and will not
+        retry, across every metrics destination.
+      nominal: Zero.
+      unhealthy: |
+        A sustained rate. A burst right after a gateway restart is usually the
+        write-ahead log replaying samples the store already has, which it
+        rejects as duplicates with `409 Conflict`. That burst is not a finding.
+      notes: |
+        Remote-write failures are samples the destination rejected outright,
+        which are not retried. Recoverable errors are retried instead, and
+        appear under _Metric Pipeline -> Remote Write_ as retries.
+
+        Either kind of destination may be absent, since a deployment can run
+        without the bundled store or without any OpenTelemetry exporter. Each
+        contributes zero when absent, and the panel reads no data only when
+        neither is reporting.
+    promQL: |
+      (
+        (
+          sum(
+            rate(
+              prometheus_remote_storage_samples_failed_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod"
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
+        )
+        + (
+          sum(
+            rate(
+              otelcol_exporter_send_failed_metric_points_total{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod"
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
+        )
+      )
+      and on ()
+      (
+        sum(
+          rate(
+            prometheus_remote_storage_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+        or
+        sum(
+          rate(
+            otelcol_exporter_sent_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.health.pushes_refused
+    stability: experimental
+    description:
+      summary: |
+        Push requests per second the gateway answered with an error, across its
+        log-push and remote-write listeners.
+      nominal: Zero.
+      unhealthy: |
+        A sustained rate. Something is sending data the gateway will not take,
+        and that data is lost unless the sender retries successfully. _Ingest_
+        says which listener, which status, and which sender.
+      notes: |
+        Counts requests to the push routes that reached the gateway's HTTP
+        layer. Requests to any other path, such as a probe sending `GET` to the
+        push port and receiving `405`, are not refused pushes and are left out;
+        the per-listener panels on _Ingest_ still show them. A sender whose TLS
+        handshake fails never gets that far, and _Ingest -> Connections_
+        carries that case. OTLP refusals are counted in points rather than
+        requests, and appear under _Ingest -> OTLP_.
+    promQL: |
+      (
+        (
+          sum(
+            rate(
+              loki_source_api_request_duration_seconds_count{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                route!="other",
+                status_code!~"2.."
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
+        )
+        + (
+          sum(
+            rate(
+              prometheus_receive_http_request_duration_seconds_count{
+                app=~"$alloyRole",
+                namespace=~"$alloyNamespace",
+                pod=~"$alloyPod",
+                route!="other",
+                status_code!~"2.."
+              }
+              %%{interval}
+            )
+          )
+          or vector(0)
+        )
+      )
+      and on ()
+      (
+        sum(
+          rate(
+            loki_source_api_request_duration_seconds_count{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+        or
+        sum(
+          rate(
+            prometheus_receive_http_request_duration_seconds_count{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.health.up
+    stability: experimental
+    description:
+      summary: |
+        Whether the gateway can scrape each collector's own metrics endpoint.
+      nominal: 1 for every collector.
+      unhealthy: |
+        0 for any of them. Every other panel about that collector is then empty,
+        and an empty panel is indistinguishable from a quiet one.
+      notes: |
+        A collector missing from the table entirely is not being discovered. If
+        every row is missing, the gateway is not writing metrics at all, and
+        the check is `kubectl get pods` for the gateway.
+    instant: true
+    promQL: |
+      max by (app, pod) (
+        up{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.health.restarts
+    stability: experimental
+    description:
+      summary: |
+        Container restarts per collector over the selected time range.
+      nominal: None.
+      unhealthy: |
+        Any restart on the gateway. Each one interrupts every scrape and every
+        delivery in flight, and replays the write-ahead log on the way back up.
+        _Resources -> Memory_ says whether memory was the cause.
+      notes: |
+        Only pods that were running at some point in the range appear.
+    instant: true
+    promQL: |
+      sum by (namespace, pod) (
+        increase(
+          kube_pod_container_status_restarts_total{
+            namespace=~"$alloyNamespace",
+            container="alloy"
+          }
+          %%{range}
+        )
+      ) > 0
+      and on (namespace, pod)
+      max_over_time(
+        up{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+        %%{range}
+      )
+
+  - id: infra.alloy.health.versions
+    stability: experimental
+    description:
+      summary: |
+        The Alloy version each role is running, and how many collectors run it.
+      nominal: One version per role.
+      degraded: |
+        Two versions for one role outside a rollout. Part of the fleet did not
+        restart onto the new image.
+    instant: true
+    promQL: |
+      count by (app, version) (
+        alloy_build_info{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.health.lines_delivered
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second each collector delivered, split by where it sent
+        them.
+      nominal: |
+        The agents' line into the gateway close to the gateway's line into
+        Loki. The gateway also forwards Kubernetes events and the agents' own
+        logs, so its line sits slightly higher.
+      unhealthy: |
+        A line falling to zero while collectors are running. Whatever that hop
+        has buffered is dropped once the buffer fills.
+    promQL: |
+      sum by (app, host) (
+        rate(
+          loki_write_sent_entries_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.health.samples_delivered
+    stability: experimental
+    description:
+      summary: |
+        Metric samples per second the gateway delivered, split by destination.
+      nominal: |
+        A steady line per destination, tracking the number of targets scraped.
+        An extra destination that filters what it sends carries less than the
+        bundled store.
+      unhealthy: |
+        A destination falling to zero. _Metric Pipeline -> Remote Write_ and
+        _Metric Pipeline -> OpenTelemetry Exporters_ say whether it is refusing
+        or unreachable.
+    promQL:
+      - |
+        sum by (component_id) (
+          rate(
+            prometheus_remote_storage_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            otelcol_exporter_sent_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  # --- log pipeline: node -> agent -> gateway -> Loki --------------------------
+  - id: infra.alloy.log_pipeline.read
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second the agents are reading, from container log files
+        and the node journal together.
+      nominal: |
+        A steady rate that tracks how much the cluster's workloads are writing.
+      unhealthy: |
+        Zero while workloads are running. The agents are up and collecting
+        nothing, which usually means pod discovery failed.
+    promQL: |
+      sum(
+        rate(
+          loki_source_file_read_lines_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+      + (
+        sum(
+          rate(
+            loki_source_journal_target_lines_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+        or vector(0)
+      )
+
+  - id: infra.alloy.log_pipeline.stored
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second the gateway delivered to its log destinations.
+      nominal: |
+        Close to what the agents read, plus Kubernetes events. The gateway also
+        drops the debug tap's echo and anything its guards discard, so a small
+        shortfall against the agents is expected.
+      unhealthy: |
+        A widening gap against _Lines Read_. Lines are being lost between
+        reading and storage, and _Delivery_ below says at which hop.
+      notes: |
+        Both this and _Lines Read_ are short-window rates, and the gateway sends
+        in batches, so at any instant the two can differ by half or more. Over
+        the range they agree to within a few percent: on a reference install,
+        17.7 lines per second read against 17.6 delivered over six hours.
+    promQL: |
+      sum(
+        rate(
+          loki_write_sent_entries_total{
+            app=~"$alloyRole",
+            app="alloy-gateway",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.propagation
+    stability: experimental
+    description:
+      summary: |
+        How long a log line took from being written to being accepted by the
+        next hop, at the 99th percentile, per collector role.
+      nominal: |
+        A few seconds. Each hop batches before it sends, so the floor is the
+        batch interval rather than zero.
+      unhealthy: |
+        Tens of seconds and climbing. Logs are arriving late, and an incident's
+        explanatory lines surface after the investigation has moved on.
+      notes: |
+        Measured from the line's own timestamp. The gateway's figure therefore
+        includes the agent hop, and approximates end-to-end delay into Loki.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, app) (
+          rate(
+            loki_write_entry_propagation_latency_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.files
+    stability: experimental
+    description:
+      summary: |
+        Container log files each agent currently has open.
+      nominal: |
+        A count per agent that tracks how many containers run on that node.
+      unhealthy: |
+        Zero on a node that is running workloads. That node's container logs
+        are not being collected, and nothing downstream can report it.
+    promQL: |
+      sum by (pod) (
+        loki_source_file_files_active_total{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.log_pipeline.file_lines
+    stability: experimental
+    description:
+      summary: |
+        Container log lines per second each agent is reading.
+      nominal: |
+        Uneven across agents. The rate follows whichever workloads a node runs.
+      unhealthy: |
+        One agent at zero while its node runs workloads, next to a non-zero
+        _Files Tailed_. The agent has the files open and is not reading them.
+    promQL: |
+      sum by (pod) (
+        rate(
+          loki_source_file_read_lines_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.journal_lines
+    stability: experimental
+    description:
+      summary: |
+        Node journal lines per second each agent is reading.
+      nominal: |
+        A low, steady rate per node from the kubelet, the container runtime and
+        the kernel.
+      unhealthy: |
+        One agent at zero while its peers read. The journal mount on that node
+        is missing or unreadable, which the agent's own log states at startup.
+    promQL: |
+      sum by (pod) (
+        rate(
+          loki_source_journal_target_lines_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.requests
+    stability: experimental
+    description:
+      summary: |
+        Log delivery requests per second, split by destination and the status
+        code the destination returned.
+      nominal: |
+        Every request a 2xx.
+      unhealthy: |
+        `429` is the destination rate-limiting the sender. Other 4xx codes are
+        the destination refusing the batch, which is not retried. 5xx codes and
+        `-1`, a request that never received a response, are retried until the
+        sender's buffer fills.
+      notes: |
+        Counts each request once. A panel built by summing the histogram's
+        `_bucket` series instead counts every request once per bucket.
+    promQL: |
+      sum by (host, status_code) (
+        rate(
+          loki_write_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.retries
+    stability: experimental
+    description:
+      summary: |
+        Log delivery batches per second a collector had to retry, per
+        destination.
+      nominal: Zero, or a background trickle.
+      unhealthy: |
+        A sustained rate. Retries precede drops. The collector is buffering
+        because the destination is refusing or slow, and it starts discarding
+        once the buffer fills.
+    promQL: |
+      sum by (app, host) (
+        rate(
+          loki_write_batch_retries_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.dropped
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second a collector gave up delivering, split by collector
+        role and reason.
+      nominal: Zero on every reason.
+      unhealthy: |
+        `ingester_error` and `rate_limited` are the destination refusing the
+        lines. `stream_limited` is Loki's per-stream limit. `queue_is_full` is
+        the collector's own buffer overflowing, which means delivery has been
+        slower than collection for a while. `line_too_long` is a single line
+        above the destination's size limit.
+      notes: |
+        Only reasons with drops are drawn, beside a zero line per role that is
+        delivering at all. The same lines appear on the Loki dashboard's
+        discard panels, seen from the receiving end, when Loki is the one
+        refusing them.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
+    promQL: |
+      sum by (app, reason) (
+        rate(
+          loki_write_dropped_entries_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      ) > 0
+      or on (app)
+      0 * sum by (app) (
+        rate(
+          loki_write_sent_entries_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.request_latency
+    stability: experimental
+    description:
+      summary: |
+        How long log delivery requests take to be acknowledged, at the 99th
+        percentile, per destination.
+      nominal: |
+        Well under a second for the agent-to-gateway hop, and under a second
+        into Loki.
+      unhealthy: |
+        A climb into seconds. The destination is saturated, and retries and
+        drops follow if it persists.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, host) (
+          rate(
+            loki_write_request_duration_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.guard_drops
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second a pipeline guard discarded before delivery, split
+        by reason.
+      nominal: Zero.
+      unhealthy: |
+        `ratelimit_drop_stage` is a namespace writing faster than the gateway's
+        per-namespace rate limit allows. `backlog > 2hr` and `processed time >
+        2hr old` are lines older than the store accepts, most often a backlog
+        draining after an outage. `too large` is a single line above the
+        pipeline's size limit. Each of these lines is lost.
+      notes: |
+        Excludes the debug tap's sampling and its echo suppression, which drop
+        copies that were never bound for a store. A reason not listed above is
+        new, and counts as a loss until it is classified.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
+    promQL: |
+      sum by (app, reason) (
+        rate(
+          loki_process_dropped_lines_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            reason!~"sampleDebug|skip self|skip loki|alloy loki.echo"
+          }
+          %%{interval}
+        )
+      ) > 0
+      or on (app)
+      0 * sum by (app) (
+        rate(
+          loki_process_dropped_lines_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.log_pipeline.truncated
+    stability: experimental
+    description:
+      summary: |
+        Container log lines per second the agents truncated while reassembling
+        lines the container runtime had split.
+      nominal: Zero.
+      degraded: |
+        A steady rate from one workload. It is writing lines longer than the
+        agent reassembles, and the tail of each is lost.
+    promQL: |
+      sum by (pod) (
+        rate(
+          loki_process_cri_lines_truncated_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  # --- metric pipeline: targets -> gateway -> stores ---------------------------
+  - id: infra.alloy.metric_pipeline.targets
+    stability: experimental
+    description:
+      summary: |
+        Metrics targets the gateways are scraping, summed across replicas.
+      nominal: |
+        A steady count that moves with the workloads running. Each target is
+        scraped by one gateway replica, so the sum is the cluster's total.
+      unhealthy: |
+        A sudden drop. A monitor stopped matching its targets, or a gateway
+        replica left the cluster and its share was not picked up.
+    promQL: |
+      sum(
+        prometheus_target_scrape_pool_targets{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.metric_pipeline.targets_down
+    stability: experimental
+    description:
+      summary: |
+        Metrics targets whose most recent scrape failed.
+      nominal: Zero.
+      unhealthy: |
+        Any. Each target down is a source whose metrics are missing from every
+        dashboard. _Scraping_ below lists them.
+      notes: |
+        Covers every target the gateway scrapes, so the collector pickers do
+        not narrow it.
+    promQL: |
+      count(up == 0)
+      or
+      0 * count(up)
+
+  - id: infra.alloy.metric_pipeline.samples_sent
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the gateway wrote to its remote-write destinations.
+      nominal: |
+        A steady rate that tracks the number of targets and how much each
+        exposes.
+      unhealthy: |
+        A sudden fall with no matching fall in targets. The gateway is
+        collecting and not delivering, and _Send Delay_ grows alongside.
+    promQL: |
+      sum(
+        rate(
+          prometheus_remote_storage_samples_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.metric_pipeline.send_delay
+    stability: experimental
+    description:
+      summary: |
+        How far behind collection each remote-write queue is sending, in
+        seconds.
+      nominal: |
+        Close to zero. The queue sends samples moments after they are
+        collected.
+      unhealthy: |
+        A delay that grows steadily. The destination cannot accept samples as
+        fast as the gateway collects them. The write-ahead log absorbs the
+        backlog until the delay passes what the destination accepts as recent,
+        and samples are lost from that point.
+      notes: |
+        The newest sample written to the write-ahead log, minus the newest
+        sample the queue has sent. Values above a year are the queue's
+        initial zero before its first send, and are left out.
+    promQL: |
+      clamp_min(
+        max by (pod, component_id) (
+          prometheus_remote_storage_highest_timestamp_in_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          - ignoring (url, remote_name) group_right (pod)
+          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        ),
+        0
+      ) < 31536000
+
+  - id: infra.alloy.metric_pipeline.send_delay.worst
+    stability: experimental
+    description:
+      summary: |
+        The furthest behind any remote-write queue is sending, in seconds.
+      nominal: Close to zero.
+      unhealthy: |
+        A delay that grows steadily. _Remote Write_ below says which queue and
+        whether the destination is slow or refusing.
+      notes: |
+        The maximum of `infra.alloy.metric_pipeline.send_delay` across every
+        queue and replica.
+    promQL: |
+      max(
+        clamp_min(
+          prometheus_remote_storage_highest_timestamp_in_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          - ignoring (url, remote_name) group_right (pod)
+          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          },
+          0
+        ) < 31536000
+      )
+
+  - id: infra.alloy.metric_pipeline.down_targets
+    stability: experimental
+    description:
+      summary: |
+        Every metrics target whose most recent scrape failed.
+      nominal: Empty.
+      unhealthy: |
+        Any row. The target is discovered and its scrape is failing. The usual
+        causes are a scheme mismatch, where the scrape speaks HTTPS to a
+        plaintext listener or the reverse, a NetworkPolicy blocking the
+        gateway, or the target itself not serving.
+    instant: true
+    promQL: |
+      max by (job, namespace, pod, instance) (
+        up == 0
+      )
+
+  - id: infra.alloy.metric_pipeline.targets_by_monitor
+    stability: experimental
+    description:
+      summary: |
+        Targets each ServiceMonitor, PodMonitor or scrape job currently
+        matches, summed across gateway replicas.
+      nominal: |
+        A non-zero count for every monitor whose workload is running.
+      degraded: |
+        Zero for a monitor whose workload is running. Its selector matches
+        nothing, and that workload's metrics are not collected.
+      notes: |
+        Zero is correct for the CNI monitors of vendors the cluster does not
+        run. Those ship everywhere and match only their own dataplane.
+    instant: true
+    promQL: |
+      sum by (scrape_job) (
+        prometheus_target_scrape_pool_targets{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.metric_pipeline.rejected_scrapes
+    stability: experimental
+    description:
+      summary: |
+        Whole scrapes per second the gateway discarded for breaking a
+        configured limit.
+      nominal: Zero on every series.
+      unhealthy: |
+        Any. A scrape over its sample or body-size limit is dropped entirely,
+        so the target's metrics go missing without the target reading as down.
+        A scrape pool over its target or label limit is dropped the same way.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_target_scrapes_exceeded_sample_limit_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_target_scrapes_exceeded_body_size_limit_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_target_scrape_pool_exceeded_target_limit_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_target_scrape_pool_exceeded_label_limits_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.metric_pipeline.rejected_samples
+    stability: experimental
+    description:
+      summary: |
+        Individual samples per second the gateway discarded from otherwise
+        successful scrapes.
+      nominal: Zero on every series.
+      degraded: |
+        Out-of-order and duplicate-timestamp samples come from a target
+        exposing the same series twice, or from two targets relabelled onto one
+        series. Out-of-bounds samples carry timestamps too far from now to
+        store.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_target_scrapes_sample_out_of_order_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_target_scrapes_sample_duplicate_timestamp_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_target_scrapes_sample_out_of_bounds_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.metric_pipeline.slowest_scrapes
+    stability: experimental
+    description:
+      summary: |
+        The ten scrape jobs taking longest to scrape, by their slowest target.
+      nominal: |
+        Well under the scrape interval. SQL-backed exporters and the kubelet's
+        cAdvisor endpoint are usually the slowest.
+      degraded: |
+        A job approaching its scrape timeout. When it passes it, that target
+        reads as down with no fault on the target's side.
+      notes: |
+        Covers every target the gateway scrapes, so the collector pickers do
+        not narrow it.
+    promQL: |
+      topk(
+        10,
+        max by (job) (
+          scrape_duration_seconds
+        )
+      )
+
+  - id: infra.alloy.metric_pipeline.largest_scrapes
+    stability: experimental
+    description:
+      summary: |
+        The ten scrape jobs contributing the most samples per scrape, after
+        relabelling.
+      nominal: |
+        cAdvisor and kube-state-metrics near the top, since both describe every
+        container in the cluster.
+      degraded: |
+        A job climbing steadily. Series count drives the gateway's memory, the
+        store's size, and the bill of any metered destination, and this is
+        where a cardinality problem first shows.
+      notes: |
+        Covers every target the gateway scrapes, so the collector pickers do
+        not narrow it.
+    promQL: |
+      topk(
+        10,
+        sum by (job) (
+          scrape_samples_post_metric_relabeling
+        )
+      )
+
+  - id: infra.alloy.metric_pipeline.samples_scraped
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the gateway scraped, split by the component that
+        scraped them.
+      nominal: |
+        The monitor-driven scrapes carry most of it, with the kubelet's cAdvisor
+        scrape next.
+      unhealthy: |
+        A component at zero that should not be. For a `prometheus.operator`
+        component, its monitors stopped matching anything, and _Targets by
+        Monitor_ above says which.
+      notes: |
+        Samples pushed into the gateway rather than scraped by it are on
+        _Ingest_.
+    promQL: |
+      sum by (component_id) (
+        rate(
+          prometheus_forwarded_samples_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"prometheus\\.(scrape|operator)\\..*"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.metric_pipeline.remote_write
+    stability: experimental
+    description:
+      summary: |
+        Samples per second each remote-write destination took, rejected, and
+        had retried.
+      nominal: |
+        Sent tracks collection. Failed and retried stay at zero.
+      unhealthy: |
+        Retried is the destination answering slowly or with a recoverable
+        error. The samples are resent, and _Send Delay_ grows while they are.
+        Failed is the destination rejecting samples outright, and those are
+        lost.
+      notes: |
+        A burst of failures right after a gateway restart is usually the
+        write-ahead log replaying samples the destination already has, which
+        it rejects as duplicates.
+    promQL:
+      - |
+        sum by (component_id) (
+          rate(
+            prometheus_remote_storage_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            prometheus_remote_storage_samples_failed_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            prometheus_remote_storage_samples_retried_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.metric_pipeline.shards
+    stability: experimental
+    description:
+      summary: |
+        Parallel senders each remote-write queue is running, against how many
+        it wants and how many it is allowed.
+      nominal: |
+        Desired well below running. One or two shards carry a small cluster.
+      unhealthy: |
+        Desired at or above the maximum. The queue cannot keep up with
+        collection however many senders it runs, so the destination is the
+        bottleneck. _Send Delay_ confirms it.
+    promQL:
+      - |
+        max by (component_id) (
+          prometheus_remote_storage_shards{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+      - |
+        max by (component_id) (
+          prometheus_remote_storage_shards_desired{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+      - |
+        max by (component_id) (
+          prometheus_remote_storage_shards_max{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+
+  - id: infra.alloy.metric_pipeline.send_latency
+    stability: experimental
+    description:
+      summary: |
+        How long remote-write batches take to be acknowledged, at the 99th
+        percentile, per destination.
+      nominal: Well under a second for the bundled store.
+      unhealthy: |
+        Seconds. The destination is saturated or far away. Shards rise to
+        compensate until they reach their maximum.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, component_id) (
+          rate(
+            prometheus_remote_storage_sent_batch_duration_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.metric_pipeline.active_series
+    stability: experimental
+    description:
+      summary: |
+        Series each gateway replica is holding in its write-ahead log.
+      nominal: |
+        Roughly even across replicas, since clustering splits targets between
+        them.
+      degraded: |
+        Steady growth with no new workloads. A target is producing new series
+        faster than old ones go stale, which is a cardinality problem.
+        _Heaviest Targets_ names the job.
+    promQL: |
+      sum by (pod) (
+        prometheus_remote_write_wal_storage_active_series{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.metric_pipeline.wal_size
+    stability: experimental
+    description:
+      summary: |
+        Bytes each gateway replica's write-ahead log occupies on disk.
+      nominal: |
+        A sawtooth. The log grows between checkpoints and shrinks at each one.
+      degraded: |
+        Growth with no sawtooth. The log is not being truncated, most often
+        because a remote-write queue is far behind and the log is holding
+        samples it has not sent.
+    promQL: |
+      sum by (pod) (
+        prometheus_tsdb_wal_storage_size_bytes{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.metric_pipeline.wal_errors
+    stability: experimental
+    description:
+      summary: |
+        Write-ahead log failures per second: corruptions, failed writes, and
+        failed checkpoints or truncations.
+      nominal: Zero on every series.
+      unhealthy: |
+        Any. The gateway's buffer against a slow destination is itself
+        failing, most often because the volume under it is full.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_remote_write_wal_corruptions_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_wal_writes_failed_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_remote_write_wal_checkpoint_creations_failed_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_wal_truncations_failed_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.metric_pipeline.otel_sent
+    stability: experimental
+    description:
+      summary: |
+        Metric points and log records per second each OpenTelemetry exporter
+        delivered.
+      nominal: |
+        Empty unless an OpenTelemetry destination is configured. When one is, a
+        steady line per exporter.
+      unhealthy: |
+        An exporter falling to zero. _Export Failures_ beside it says whether
+        the destination is refusing.
+    promQL:
+      - |
+        sum by (component_id) (
+          rate(
+            otelcol_exporter_sent_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            otelcol_exporter_sent_log_records_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.metric_pipeline.otel_failed
+    stability: experimental
+    description:
+      summary: |
+        Metric points and log records per second each OpenTelemetry exporter
+        failed to deliver.
+      nominal: Zero.
+      unhealthy: |
+        A sustained rate. The gateway's log names the exporter and quotes the
+        destination's error, which is usually an authentication, quota or
+        schema problem on the destination's side.
+    promQL:
+      - |
+        sum by (component_id) (
+          rate(
+            otelcol_exporter_send_failed_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (component_id) (
+          rate(
+            otelcol_exporter_send_failed_log_records_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.metric_pipeline.otel_queue
+    stability: experimental
+    description:
+      summary: |
+        How full each OpenTelemetry exporter's sending queue is, as a fraction
+        of its capacity.
+      nominal: Close to zero.
+      unhealthy: |
+        A queue approaching full. The destination is slower than the gateway's
+        output, and new data is refused once the queue is full.
+    promQL: |
+      max by (component_id, data_type) (
+        otelcol_exporter_queue_size{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+        / otelcol_exporter_queue_capacity{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.metric_pipeline.otel_filtered
+    stability: experimental
+    description:
+      summary: |
+        Metric points per second each OpenTelemetry filter removed.
+      nominal: |
+        Non-zero and deliberate. A destination's egress filter keeps only the
+        series that destination is meant to receive, so a steady rate is the
+        configuration working.
+      degraded: |
+        A step change nobody made. A filter started matching more than it was
+        written to match, and the points it removes never reach the
+        destination.
+    promQL: |
+      sum by (component_id) (
+        rate(
+          otelcol_processor_filter_datapoints_filtered_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  # --- ingest: what pushes into the gateway -----------------------------------
+  - id: infra.alloy.ingest.log_push.lines
+    stability: experimental
+    description:
+      summary: |
+        Log lines per second the gateway accepted on its log-push listener.
+      nominal: |
+        Close to what the agents send, plus anything else in the cluster
+        pushing logs to the gateway.
+      unhealthy: |
+        A fall to zero while the agents are running. They are failing to reach
+        the gateway, and _Log Pipeline -> Delivery_ shows their side of it.
+    promQL: |
+      sum(
+        rate(
+          loki_source_api_entries_written{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.log_push.requests
+    stability: experimental
+    description:
+      summary: |
+        Log push requests per second the gateway received, split by the status
+        it returned.
+      nominal: Every request a 2xx.
+      unhealthy: |
+        Non-2xx responses. The gateway is refusing its senders, most often
+        because its own delivery to Loki is backed up. _Log Pipeline ->
+        Delivery_ says whether it is.
+      notes: |
+        Only requests that reached the HTTP layer. A sender whose TLS handshake
+        fails never reaches this counter, and _Connections_ below carries that
+        case.
+    promQL: |
+      sum by (route, status_code) (
+        rate(
+          loki_source_api_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.log_push.latency
+    stability: experimental
+    description:
+      summary: |
+        How long the gateway takes to accept a log push, at the 99th percentile.
+      nominal: Milliseconds.
+      unhealthy: |
+        Seconds. The gateway is slow to take data, usually because its own
+        delivery to Loki is backed up, and every sender queues behind it.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le) (
+          rate(
+            loki_source_api_request_duration_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.received
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the gateway accepted over Prometheus remote write.
+      nominal: |
+        Empty unless something remote-writes to the gateway. The chart points
+        the Thanos ruler at it, so a default install carries the ruler's
+        recorded series here.
+      unhealthy: |
+        A fall to zero while a sender is configured. _Remote-Write Senders_
+        below says whether the sender is failing.
+    promQL: |
+      sum(
+        rate(
+          prometheus_forwarded_samples_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod",
+            component_id=~"prometheus\\.receive_http\\..*"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.samples
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the gateway accepted over remote write, beside the
+        samples it dropped for carrying invalid labels.
+      nominal: |
+        Accepted tracks the senders. Dropped stays at zero.
+      degraded: |
+        Dropped samples. A sender is writing label names or values the gateway
+        cannot store, and those samples are not kept.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_forwarded_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod",
+              component_id=~"prometheus\\.receive_http\\..*"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_api_remote_write_invalid_labels_samples_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.remote_write.requests
+    stability: experimental
+    description:
+      summary: |
+        Remote-write requests per second the gateway answered, split by status
+        code.
+      nominal: Every request a 2xx.
+      unhealthy: |
+        4xx is the gateway rejecting a batch as malformed, which the sender
+        does not retry. 5xx is the gateway failing to take a batch, usually
+        because it could not pass the samples on. The sender retries those,
+        and _Remote-Write Senders_ shows the retries accumulating.
+      notes: |
+        Only requests that reached the HTTP layer. A failed TLS handshake is
+        under _Connections_ below.
+    promQL: |
+      sum by (route, status_code) (
+        rate(
+          prometheus_receive_http_request_duration_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.latency
+    stability: experimental
+    description:
+      summary: |
+        How long the gateway takes to answer a remote-write request, at the
+        99th percentile.
+      nominal: Milliseconds.
+      unhealthy: |
+        Seconds. Senders run out of parallelism waiting on the gateway, and
+        their queues grow.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le) (
+          rate(
+            prometheus_receive_http_request_duration_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.ingest.remote_write.senders
+    stability: experimental
+    description:
+      summary: |
+        What each remote-write sender pointed at the gateway reports about its
+        own queue: samples sent, failed, and retried.
+      nominal: |
+        Sent steady. Failed and retried at zero.
+      unhealthy: |
+        Retried close to sent. Almost every attempt is a retry, so little or
+        nothing is arriving. This is the one view of remote-write ingest that
+        sees a sender which cannot connect at all, since such a sender reaches
+        no gateway counter.
+      notes: |
+        Found by the sender's own `url`, matched against `alloy-gateway`. Only
+        senders this stack scrapes appear, so an external sender, or one
+        addressing the gateway by IP, does not. The collector pickers do not
+        narrow it, because the series belong to the sender.
+    promQL:
+      - |
+        sum by (job) (
+          rate(
+            prometheus_remote_storage_samples_total{
+              url=~".*alloy-gateway.*"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (job) (
+          rate(
+            prometheus_remote_storage_samples_failed_total{
+              url=~".*alloy-gateway.*"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (job) (
+          rate(
+            prometheus_remote_storage_samples_retried_total{
+              url=~".*alloy-gateway.*"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.otlp.metrics
+    stability: experimental
+    description:
+      summary: |
+        Metric points per second the gateway accepted and refused over OTLP.
+      nominal: |
+        Empty unless something in the cluster sends metrics over OTLP. When
+        something does, nothing refused.
+      unhealthy: |
+        Refused points. The gateway could not take them, usually under memory
+        pressure, and the sender decides whether to retry.
+    promQL:
+      - |
+        sum(
+          rate(
+            otelcol_receiver_accepted_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            otelcol_receiver_refused_metric_points_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.otlp.logs
+    stability: experimental
+    description:
+      summary: |
+        Log records per second the gateway accepted and refused over OTLP.
+      nominal: |
+        Empty unless something in the cluster sends logs over OTLP. When
+        something does, nothing refused.
+      unhealthy: |
+        Refused records. The gateway could not take them, usually under memory
+        pressure, and the sender decides whether to retry.
+    promQL:
+      - |
+        sum(
+          rate(
+            otelcol_receiver_accepted_log_records_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            otelcol_receiver_refused_log_records_total{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.alloy.ingest.tls_rejections
+    stability: experimental
+    description:
+      summary: |
+        TLS handshakes per minute that a collector's listener refused, usually
+        because the client presented a certificate the listener does not trust.
+      nominal: Zero.
+      unhealthy: |
+        A sustained rate. A client whose handshake fails never reaches any
+        counter, so its data is missing from every other panel as well. The
+        line names the client's address. `kubectl get pods -o wide` maps that
+        address to a pod.
+      notes: |
+        Read from the collectors' own logs, since no metric records a failed
+        handshake. Covers every listener a collector serves: log push, OTLP,
+        and remote write into the gateway. Its most common cause is a client
+        rolled onto a new certificate before or after the gateway trusts it.
+    logQL: |
+      sum by (app) (
+        rate(
+          {
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace"
+          }
+            |= "TLS handshake error"
+            | pod=~"$alloyPod"
+          %%{interval}
+        )
+      ) * 60
+
+  # --- components: the controller, its configuration, and clustering ----------
+  - id: infra.alloy.components.not_healthy
+    stability: experimental
+    description:
+      summary: |
+        Components per collector in any state other than healthy.
+      nominal: A flat zero per collector.
+      unhealthy: |
+        `unhealthy` is a component that failed to evaluate or failed while
+        running, and it has stopped passing data on. `exited` is a component
+        that stopped. `unknown` for more than a few seconds after startup is a
+        component that never finished starting.
+      notes: |
+        Alloy publishes the count per state rather than per component. The
+        collector's log under _Logs_ names the component.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
+    promQL: |
+      sum by (pod, health_type) (
+        alloy_component_controller_running_components{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod",
+          health_type!="healthy"
+        }
+      )
+      or on (pod)
+      0 * sum by (pod) (
+        alloy_component_controller_running_components{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.components.running
+    stability: experimental
+    description:
+      summary: |
+        Components each collector is running.
+      nominal: |
+        The same count for every collector of a role, since they share one
+        configuration.
+      degraded: |
+        One collector running fewer than its peers. Part of its configuration
+        failed to load, or it is running a different configuration.
+    promQL: |
+      sum by (pod) (
+        alloy_component_controller_running_components{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.components.config_by_pod
+    stability: experimental
+    description:
+      summary: |
+        The configuration each collector is running, by content hash, whether
+        its last load succeeded, and how long the collector has been up.
+      nominal: |
+        One hash per role, every load successful, and uptimes that differ only
+        by when each pod last rolled.
+      unhealthy: |
+        A failed load. The collector is still running the hash shown, which is
+        the last configuration that loaded, rather than the one it was given.
+      degraded: |
+        One collector with a much shorter uptime than its peers. It restarted
+        on its own rather than in a rollout, and _Overview -> Collection Health_
+        counts the restarts.
+      notes: |
+        The chart restarts a collector to change its configuration, so a
+        collector's uptime is also how long it has run the hash shown. Two
+        hashes for one role is a rollout in progress. _Distinct Configurations_
+        beside this says whether it finished.
+    instant: true
+    promQL:
+      - |
+        max by (app, pod, sha256) (
+          alloy_config_hash{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          * on (namespace, pod) group_left ()
+          alloy_config_last_load_successful{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+      - |
+        max by (app, pod) (
+          time()
+          - alloy_resources_process_start_time_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+
+  - id: infra.alloy.components.distinct_configs
+    stability: experimental
+    description:
+      summary: |
+        Distinct configurations running per role.
+      nominal: One per role.
+      degraded: |
+        Two for longer than a rollout takes. Some collectors of that role did
+        not restart onto the new configuration, and the fleet is split.
+    promQL: |
+      count by (app) (
+        count by (app, sha256) (
+          alloy_config_hash{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+      )
+
+  - id: infra.alloy.components.evaluation_rate
+    stability: experimental
+    description:
+      summary: |
+        Component evaluations per second per role.
+      nominal: |
+        A steady rate. Components re-evaluate when their inputs change, so a
+        busier cluster evaluates more often.
+      degraded: |
+        A sustained step up with no change to the cluster. Some input is
+        changing continuously, such as a discovery result that flaps, and
+        every downstream component re-evaluates with it.
+    promQL: |
+      sum by (app) (
+        rate(
+          alloy_component_evaluation_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.components.evaluation_latency
+    stability: experimental
+    description:
+      summary: |
+        How long a component evaluation takes, at the 99th percentile, per role.
+      nominal: Milliseconds.
+      degraded: |
+        Seconds. Evaluations queue behind the slow one, and changes such as a
+        new scrape target take that much longer to take effect.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (le, app) (
+          rate(
+            alloy_component_evaluation_seconds_bucket{
+              app=~"$alloyRole",
+              namespace=~"$alloyNamespace",
+              pod=~"$alloyPod"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.alloy.components.slow
+    stability: experimental
+    description:
+      summary: |
+        Time per second spent in component evaluations that Alloy classed as
+        slow, per component.
+      nominal: A flat zero per role.
+      degraded: |
+        Any component listed. It is holding up every evaluation queued behind
+        it, and its name says where to look.
+      notes: |
+        Alloy records this only for an evaluation over its slowness threshold,
+        so a healthy collector publishes no series of its own. The zero line
+        comes from its ordinary evaluations instead.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
+    promQL: |
+      sum by (app, component_id) (
+        rate(
+          alloy_component_evaluation_slow_seconds{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+      or on (app)
+      0 * sum by (app) (
+        rate(
+          alloy_component_evaluation_seconds_count{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.components.queue
+    stability: experimental
+    description:
+      summary: |
+        Component evaluations waiting to run, per collector.
+      nominal: Zero or one.
+      degraded: |
+        A queue that stays above a handful. The controller is not keeping up
+        with changes to its inputs. _Evaluation Latency_ says whether one slow
+        evaluation is the cause.
+    promQL: |
+      max by (pod) (
+        alloy_component_evaluation_queue_size{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.cluster.peers
+    stability: experimental
+    description:
+      summary: |
+        How many cluster members each gateway replica can see, beside how many
+        replicas are running.
+      nominal: |
+        Every replica sees the same number, and it equals the number running.
+      unhealthy: |
+        A replica seeing fewer. It has lost gossip contact with its peers, and
+        both sides assign themselves the targets they think are unowned. The
+        result is targets scraped twice, and duplicate samples the store
+        rejects.
+      notes: |
+        Only the gateway runs clustered. The agent reads only its own node and
+        publishes no cluster metrics.
+    promQL:
+      - |
+        sum by (pod) (
+          cluster_node_peers{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+      - |
+        count(
+          cluster_node_info{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+
+  - id: infra.alloy.cluster.health_score
+    stability: experimental
+    description:
+      summary: |
+        Each gateway replica's gossip health score, where zero is healthy.
+      nominal: Zero.
+      degraded: |
+        Above zero. The replica is missing gossip messages, usually from CPU
+        starvation or network trouble between replicas. _Resources -> CPU_ says
+        whether it is being throttled.
+    promQL: |
+      max by (pod) (
+        cluster_node_gossip_health_score{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.cluster.targets
+    stability: experimental
+    description:
+      summary: |
+        Metrics targets each gateway replica is scraping.
+      nominal: |
+        Roughly even. Clustering splits targets across replicas by hashing
+        them, so the split is close but not exact.
+      degraded: |
+        One replica carrying all of them while others carry none. Those
+        replicas are not in the cluster, or clustering is not enabled for the
+        components that scrape.
+    promQL: |
+      sum by (pod) (
+        prometheus_target_scrape_pool_targets{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.cluster.transport_failures
+    stability: experimental
+    description:
+      summary: |
+        Gossip messages per second each gateway replica failed to send to its
+        peers.
+      nominal: Zero.
+      degraded: |
+        A sustained rate. Replicas cannot reach each other on the clustering
+        port, most often because a NetworkPolicy does not allow it.
+    promQL: |
+      sum by (pod) (
+        rate(
+          cluster_transport_tx_packets_failed_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+      + sum by (pod) (
+        rate(
+          cluster_transport_stream_tx_packets_failed_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.cluster.members
+    stability: experimental
+    description:
+      summary: |
+        Each gateway replica's own cluster state, and whether it considers the
+        cluster ready for traffic.
+      nominal: |
+        Every replica a `participant`, and every one ready.
+      degraded: |
+        A replica not ready. The cluster has fewer members than its configured
+        minimum, and the replica's clustered components wait rather than
+        scrape.
+      notes: |
+        `terminating` is a replica shutting down and handing its targets on. It
+        is expected during a rollout and should clear within a minute.
+    instant: true
+    promQL: |
+      min by (pod, state) (
+        cluster_ready_for_traffic{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+        * on (namespace, pod) group_left (state)
+        cluster_node_info{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  # --- resources: whether the collectors have room to work --------------------
+  - id: infra.alloy.resources.cpu
+    stability: experimental
+    description:
+      summary: |
+        CPU each collector is using, as a fraction of its CPU limit.
+      nominal: Well below 1.
+      degraded: |
+        Sustained near 1. The collector is throttled, and scrapes and
+        deliveries take longer. _CPU Throttling_ beside this shows how often.
+      notes: |
+        Empty for a collector with no CPU limit set.
+    promQL: |
+      max by (namespace, pod) (
+        rate(
+          container_cpu_usage_seconds_total{
+            namespace=~"$alloyNamespace",
+            container="alloy"
+          }
+          %%{interval}
+        )
+      )
+      / max by (namespace, pod) (
+        kube_pod_container_resource_limits{
+          namespace=~"$alloyNamespace",
+          container="alloy",
+          resource="cpu"
+        }
+      )
+      and on (namespace, pod)
+      up{
+        app=~"$alloyRole",
+        namespace=~"$alloyNamespace",
+        pod=~"$alloyPod"
+      }
+
+  - id: infra.alloy.resources.throttling
+    stability: experimental
+    description:
+      summary: |
+        The fraction of scheduling periods in which each collector was held
+        back by its CPU limit.
+      nominal: Close to zero.
+      degraded: |
+        A sustained few percent or more. Collection is bursty, since every
+        scrape interval starts a wave of work, so a collector can be throttled
+        while its average use looks low. The bursts are what the limit clips.
+    promQL: |
+      sum by (namespace, pod) (
+        rate(
+          container_cpu_cfs_throttled_periods_total{
+            namespace=~"$alloyNamespace",
+            container="alloy"
+          }
+          %%{interval}
+        )
+      )
+      / sum by (namespace, pod) (
+        rate(
+          container_cpu_cfs_periods_total{
+            namespace=~"$alloyNamespace",
+            container="alloy"
+          }
+          %%{interval}
+        )
+      )
+      and on (namespace, pod)
+      up{
+        app=~"$alloyRole",
+        namespace=~"$alloyNamespace",
+        pod=~"$alloyPod"
+      }
+
+  - id: infra.alloy.resources.memory
+    stability: experimental
+    description:
+      summary: |
+        Memory each collector is using, as a fraction of its memory limit.
+      nominal: Well below 1.
+      unhealthy: |
+        Approaching 1. The kernel kills the container at the limit, and every
+        scrape and delivery in flight is lost with it.
+      notes: |
+        Reads the container's working set, which is what the limit is enforced
+        against. The process's resident set is larger, because it counts file
+        pages the kernel can reclaim, and reads as closer to the limit than the
+        collector really is.
+    promQL: |
+      max by (namespace, pod) (
+        container_memory_working_set_bytes{
+          namespace=~"$alloyNamespace",
+          container="alloy"
+        }
+      )
+      / max by (namespace, pod) (
+        kube_pod_container_resource_limits{
+          namespace=~"$alloyNamespace",
+          container="alloy",
+          resource="memory"
+        }
+      )
+      and on (namespace, pod)
+      up{
+        app=~"$alloyRole",
+        namespace=~"$alloyNamespace",
+        pod=~"$alloyPod"
+      }
+
+  - id: infra.alloy.resources.gomemlimit
+    stability: experimental
+    description:
+      summary: |
+        Memory the Go runtime holds in each collector, as a fraction of the
+        soft limit `GOMEMLIMIT` sets for it.
+      nominal: Below about 0.8.
+      degraded: |
+        Sustained near 1. The garbage collector is running almost continuously
+        to stay under the limit, which spends CPU the pipeline needed and slows
+        everything down. The remedy is more memory for the collector, with
+        `GOMEMLIMIT` raised in step, or less for it to hold.
+      notes: |
+        The chart sets `GOMEMLIMIT` to about 80% of each collector's memory
+        limit, so the runtime slows down before the kernel kills it. Heap in use
+        alone understates this figure, because the limit also covers the
+        runtime's stacks and metadata. A collector with no `GOMEMLIMIT` reads
+        close to zero.
+    promQL: |
+      max by (pod) (
+        (
+          go_memstats_sys_bytes{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          - go_memstats_heap_released_bytes{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+        )
+        / go_gc_gomemlimit_bytes{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.resources.memory_limiter
+    stability: experimental
+    description:
+      summary: |
+        Metric points per second the gateway's memory limiter refused.
+      nominal: A flat zero per gateway.
+      unhealthy: |
+        Any. The gateway is over the memory threshold its limiter guards, and
+        it is refusing data rather than risk being killed. The refused points
+        are lost unless their sender retries.
+      notes: |
+        The limiter publishes a refusal series only once it has refused
+        something. The zero line comes from the points it accepted instead.
+
+        A flat zero means the collectors reported and there was nothing to
+        show. No data means nothing was collected at all.
+    promQL: |
+      sum by (pod) (
+        rate(
+          otelcol_processor_memory_limiter_refused_metric_points_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+      or
+      0 * sum by (pod) (
+        rate(
+          otelcol_processor_memory_limiter_accepted_metric_points_total{
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            pod=~"$alloyPod"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.resources.goroutines
+    stability: experimental
+    description:
+      summary: |
+        Concurrent goroutines in each collector.
+      nominal: |
+        Flat, at a level set by the collector's workload. The gateway runs
+        several times the agent's count.
+      degraded: |
+        Steady growth over hours. Something inside the collector is starting
+        work it never finishes, and memory grows with it.
+    promQL: |
+      max by (pod) (
+        go_goroutines{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.resources.file_descriptors
+    stability: experimental
+    description:
+      summary: |
+        Open file descriptors in each collector, as a fraction of its limit.
+      nominal: Well below 1.
+      unhealthy: |
+        Approaching 1. The agent holds a descriptor for every log file it tails,
+        and once none are left it stops opening new ones, so new containers on
+        that node go uncollected.
+    promQL: |
+      max by (pod) (
+        process_open_fds{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+        / process_max_fds{
+          app=~"$alloyRole",
+          namespace=~"$alloyNamespace",
+          pod=~"$alloyPod"
+        }
+      )
+
+  - id: infra.alloy.resources.terminations
+    stability: experimental
+    description:
+      summary: |
+        Why each collector's container last stopped, for those that have.
+      nominal: Empty.
+      unhealthy: |
+        `OOMKilled`. The collector reached its memory limit. _Go Memory Against
+        GOMEMLIMIT_ says whether the runtime saw it coming.
+    instant: true
+    promQL: |
+      max by (namespace, pod, reason) (
+        kube_pod_container_status_last_terminated_reason{
+          namespace=~"$alloyNamespace",
+          container="alloy"
+        }
+      ) == 1
+      and on (namespace, pod)
+      up{
+        app=~"$alloyRole",
+        namespace=~"$alloyNamespace",
+        pod=~"$alloyPod"
+      }
+
+  # --- events: what Kubernetes reported about the collectors -------------------
+  - id: infra.alloy.events.rate.by_reason
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes events about the collectors' pods, DaemonSet, Deployment and
+        autoscaler, and about the configuration-validation Jobs that run before
+        each install and upgrade, per reason.
+      nominal: |
+        Bursts during a rollout or a scale-up, such as `ScalingReplicaSet`,
+        `Scheduled` and `Killing`, and quiet in between. Each upgrade adds a
+        `SuccessfulCreate` and a `Completed` per validation Job.
+      unhealthy: |
+        A reason that repeats. `BackOff` is a collector that starts and dies,
+        `Unhealthy` one whose probe fails, `FailedMount` a volume or
+        certificate secret that did not attach, and `FailedScheduling` an agent
+        with no room on a new node. `BackoffLimitExceeded` on a validation Job
+        is a pipeline configuration that failed to validate, and the install or
+        upgrade that ran it stopped there.
+      notes: |
+        Counts events as Loki received them. Kubernetes folds a repeat into one
+        event with a rising `count`, so a tight loop reports fewer lines than
+        it has occurrences.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {
+            job="loki.source.kubernetes_events",
+            namespace=~"$alloyNamespace"
+          }
+            %%{mzLogSearchFilter}
+            | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+            | name=~"$alloyPod"
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.events.rate.by_kind
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes events about the collectors, per kind of object they
+        concern.
+      nominal: |
+        `Pod` and `ReplicaSet` during a gateway rollout, `Pod` alone during an
+        agent rollout, and `HorizontalPodAutoscaler` when the gateway scales.
+      degraded: |
+        A steady stream of `HorizontalPodAutoscaler` events. The gateway is
+        scaling up and down repeatedly, which restarts scrapes each time.
+    logQL: |
+      sum by (kind) (
+        count_over_time(
+          {
+            job="loki.source.kubernetes_events",
+            namespace=~"$alloyNamespace"
+          }
+            %%{mzLogSearchFilter}
+            | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+            | name=~"$alloyPod"
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.events.warnings
+    stability: experimental
+    description:
+      summary: |
+        Kubernetes warning events about the collectors, newest first.
+      nominal: Nothing.
+      unhealthy: |
+        Warnings that keep arriving. The reason and message name the cause.
+      notes: |
+        `Warning` is the reporting component's own judgement, not a threshold
+        of ours.
+    logQL: |
+      {
+        job="loki.source.kubernetes_events",
+        namespace=~"$alloyNamespace",
+        level="WARN"
+      }
+        %%{mzLogSearchFilter}
+        | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+        | name=~"$alloyPod"
+
+  - id: infra.alloy.events.stream
+    stability: experimental
+    description:
+      summary: |
+        Every Kubernetes event about the collectors, newest first.
+      notes: |
+        Matched on the involved object's name, since events carry no `app`
+        label. Choosing one collector narrows the feed to that pod's own
+        events, which leaves out its DaemonSet's or Deployment's.
+
+        The validation Jobs are named after the release, as
+        `<release>-validate-agent` and `<release>-validate-gateway`, rather
+        than after the role. Both run together on every install and upgrade, so
+        their events are shown whatever the role picker is set to.
+    logQL: |
+      {
+        job="loki.source.kubernetes_events",
+        namespace=~"$alloyNamespace"
+      }
+        %%{mzLogSearchFilter}
+        | name=~"(${alloyRole:regex}).*|.+-validate-(agent|gateway)(-.*)?"
+        | name=~"$alloyPod"
+
+  # --- logs: what the collectors themselves said ------------------------------
+  - id: infra.alloy.logs.stream
+    stability: experimental
+    description:
+      summary: |
+        The collectors' own log feed, newest first, for the selected roles and
+        levels.
+      notes: |
+        These lines reach Loki through the gateway. The agents' own lines are
+        read by the gateway over the Kubernetes API, and the gateway's lines are
+        read off disk by the agent on its node. A gateway that is down takes
+        both with it, and `kubectl logs` is then the tool.
+
+        An empty search matches every line rather than none.
+    logQL: |
+      {
+        app=~"$alloyRole",
+        namespace=~"$alloyNamespace",
+        %%{mzLogLevelFilter}
+      }
+        %%{mzLogSearchFilter}
+        | pod=~"$alloyPod"
+
+  - id: infra.alloy.logs.warnings.stream
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines from the collectors, newest first.
+      nominal: |
+        Quiet. Alloy logs component starts and stops at INFO and little above
+        it.
+      unhealthy: |
+        A steady stream from one component. The `component_id` on each line
+        names it.
+      notes: |
+        Independent of the level picker, like the other warning feeds in this
+        repository. Narrowing the selection to INFO would otherwise silently
+        empty it.
+    logQL: |
+      {
+        app=~"$alloyRole",
+        namespace=~"$alloyNamespace",
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+      }
+        %%{mzLogSearchFilter}
+        | pod=~"$alloyPod"
+
+  - id: infra.alloy.logs.rate.by_role
+    stability: experimental
+    description:
+      summary: |
+        The collectors' own log lines per second, split by role and level.
+      nominal: |
+        A low, steady baseline. The agents log each file they start or stop
+        tailing, so pod churn shows up here.
+      degraded: |
+        `UNKNOWN` climbing. Those are lines Alloy did not write in its own
+        format, most often the Go HTTP server reporting failed TLS handshakes
+        on a listener.
+    logQL: |
+      sum by (app, level) (
+        rate(
+          {
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            %%{mzLogLevelFilter}
+          }
+            %%{mzLogSearchFilter}
+            | pod=~"$alloyPod"
+          %%{interval}
+        )
+      )
+
+  - id: infra.alloy.logs.errors.by_component
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines per minute from the collectors, split by the
+        pipeline component that logged them.
+      nominal: Empty, or close to it.
+      unhealthy: |
+        One component dominating. Its name says which stage of the pipeline is
+        failing: `loki.write` and `prometheus.remote_write` are deliveries,
+        `otelcol.exporter` an extra destination, `discovery` and
+        `prometheus.operator` finding targets.
+      notes: |
+        Independent of the level picker, for the same reason as the warning
+        feed.
+    logQL: |
+      sum by (component_id) (
+        rate(
+          {
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+          }
+            %%{mzLogSearchFilter}
+            | pod=~"$alloyPod"
+            | logfmt component_id
+          %%{interval}
+        )
+      ) * 60
+
+  - id: infra.alloy.logs.warnings.rate
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines per minute from the selected collectors.
+      nominal: Zero, or close to it.
+      unhealthy: |
+        A sustained non-zero rate. _Error Rate by Component_ says which stage,
+        and the feed below says why.
+    logQL: |
+      sum(
+        rate(
+          {
+            app=~"$alloyRole",
+            namespace=~"$alloyNamespace",
+            level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+          }
+            %%{mzLogSearchFilter}
+            | pod=~"$alloyPod"
+          [1m]
+        )
+      ) * 60
+
+metricOverrides:
+  # The verdict row. A deployment trimmed to `essential` should still be able to
+  # say whether collection is working, and these are the families that answer
+  # it without any others to interpret them.
+  - metricPattern: "alloy_component_controller_running_components|alloy_config_last_load_successful|alloy_build_info"
+    importance: essential
+    priority: 10
+  - metricPattern: "loki_write_(dropped|sent)_entries_total"
+    importance: essential
+    priority: 10
+  - metricPattern: "prometheus_remote_storage_samples_(failed_)?total"
+    importance: essential
+    priority: 10
+  - metricPattern: "prometheus_remote_storage_(highest_timestamp_in_seconds|queue_highest_sent_timestamp_seconds)"
+    importance: essential
+    priority: 10
+
+  # The histograms carry a series per bucket per label set. Worth having for a
+  # diagnosis, not worth paying for on a metered destination by default.
+  - metricPattern: "loki_write_(entry_propagation_latency|request_duration)_seconds_(bucket|sum)"
+    importance: extended
+    priority: 5
+  - metricPattern: "(prometheus_remote_storage_sent_batch_duration|alloy_component_evaluation|loki_source_api_request_duration|prometheus_receive_http_request_duration)_seconds_(bucket|sum)"
+    importance: extended
+    priority: 5
+
+  # Generic runtime families. Tiers select by metric name, and every Go process
+  # the gateway scrapes publishes these, not only Alloy. They back the Resources
+  # tab, which is diagnostic, so a metered destination does not receive every
+  # target's copy by default.
+  - metricPattern: "go_(goroutines|gc_gomemlimit_bytes|memstats_(sys|heap_released)_bytes)|process_(open|max)_fds"
+    importance: extended
+    priority: 5

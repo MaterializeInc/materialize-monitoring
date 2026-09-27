@@ -130,6 +130,19 @@ pub mod variables {
     /// Matched against `container` on a metric and `component` on a log line,
     /// which are the same Kubernetes container name.
     pub const LOKI_COMPONENT: &str = "lokiComponent";
+
+    /// Namespaces the collectors run in, for the Alloy meta-monitoring dashboard.
+    ///
+    /// Written literally by `infra-alloy.yaml`, on the same precedent as
+    /// [`LOKI_NAMESPACE`].
+    pub const ALLOY_NAMESPACE: &str = "alloyNamespace";
+    /// Which collector role a meta-monitoring panel reads: agent, gateway, or both.
+    ///
+    /// Matched against `app` on a metric and on a log line alike, which both
+    /// carry the pod's `app.kubernetes.io/name`.
+    pub const ALLOY_ROLE: &str = "alloyRole";
+    /// Which collector pod a meta-monitoring panel reads.
+    pub const ALLOY_POD: &str = "alloyPod";
 }
 
 /// Drops pods sharing the node's network namespace from a cAdvisor rollup.
@@ -201,6 +214,18 @@ pub const INFRA_VARIABLES: &[&str] = &[variables::NAMESPACE_LIST];
 /// `container` and the log side against `component`, which are the same
 /// Kubernetes container name. One entry, therefore, rather than one per engine.
 pub const LOKI_VARIABLES: &[&str] = &[variables::LOKI_NAMESPACE, variables::LOKI_COMPONENT];
+
+/// Variables required only by the collector meta-monitoring dashboard.
+///
+/// Written literally by `infra-alloy.yaml`, for the reason [`LOKI_VARIABLES`]
+/// gives. All three reach both engines: `app`, `namespace` and `pod` hold the
+/// same values on a metric and on a log line, because both pipelines take them
+/// from the same pod metadata.
+pub const ALLOY_VARIABLES: &[&str] = &[
+    variables::ALLOY_NAMESPACE,
+    variables::ALLOY_ROLE,
+    variables::ALLOY_POD,
+];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
 /// [`DashboardScope::operator_variable`].
