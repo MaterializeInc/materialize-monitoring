@@ -46,6 +46,39 @@ like our bundled Thanos provider.
 
 
 <ul>
+    <li id="alloy_build_info">alloy_build_info
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.versions">infra.alloy.health.versions</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_component_controller_running_components">alloy_component_controller_running_components
+        <details>
+            Used labels: app, health_type, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.not_healthy">infra.alloy.components.not_healthy</a></li>
+                <li><a href="../common-queries#infra.alloy.components.running">infra.alloy.components.running</a></li>
+                <li><a href="../common-queries#infra.alloy.health.unhealthy_components">infra.alloy.health.unhealthy_components</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_config_last_load_successful">alloy_config_last_load_successful
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.config_by_pod">infra.alloy.components.config_by_pod</a></li>
+                <li><a href="../common-queries#infra.alloy.health.config_failed">infra.alloy.health.config_failed</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="certmanager_certificate_ready_status">certmanager_certificate_ready_status
         <details>
             Used labels: condition
@@ -80,20 +113,22 @@ like our bundled Thanos provider.
     </li>
     <li id="container_cpu_cfs_periods_total">container_cpu_cfs_periods_total
         <details>
-            Used labels: container
+            Used labels: container, namespace
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
                 <li><a href="../common-queries#materialize.environmentd.cpu_throttled">materialize.environmentd.cpu_throttled</a></li>
             </ul>
         </details>
     </li>
     <li id="container_cpu_cfs_throttled_periods_total">container_cpu_cfs_throttled_periods_total
         <details>
-            Used labels: container
+            Used labels: container, namespace
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
                 <li><a href="../common-queries#materialize.environmentd.cpu_throttled">materialize.environmentd.cpu_throttled</a></li>
             </ul>
         </details>
@@ -104,6 +139,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
                 <li><a href="../common-queries#infra.kubernetes.pods_high_cpu_ratio">infra.kubernetes.pods_high_cpu_ratio</a></li>
                 <li><a href="../common-queries#infra.kubernetes.vector_high_cpu_ratio">infra.kubernetes.vector_high_cpu_ratio</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_cpu">materialize.environmentd.high_cpu</a></li>
@@ -169,6 +205,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
                 <li><a href="../common-queries#infra.kubernetes.memory_elevated">infra.kubernetes.memory_elevated</a></li>
                 <li><a href="../common-queries#infra.kubernetes.memory_high">infra.kubernetes.memory_high</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_memory">materialize.environmentd.high_memory</a></li>
@@ -588,10 +625,12 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_container_resource_limits">kube_pod_container_resource_limits
         <details>
-            Used labels: namespace, node, pod, resource
+            Used labels: container, namespace, node, pod, resource
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
+                <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.budgets">infra.nodes.pods.budgets</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.cpu.usage.percent">materialize.kubernetes.cpu.usage.percent</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.cpu_usage">materialize.kubernetes.pods.cpu_usage</a></li>
@@ -633,6 +672,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.resources.terminations">infra.alloy.resources.terminations</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_core_systems">infra.kubernetes.oomkill_core_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_important_systems">infra.kubernetes.oomkill_important_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_nonessential_systems">infra.kubernetes.oomkill_nonessential_systems</a></li>
@@ -646,6 +686,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.health.restarts">infra.alloy.health.restarts</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_core_systems">infra.kubernetes.oomkill_core_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_important_systems">infra.kubernetes.oomkill_important_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_nonessential_systems">infra.kubernetes.oomkill_nonessential_systems</a></li>
@@ -787,6 +828,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.loki.health.canary.losses">infra.loki.health.canary.losses</a></li>
                 <li><a href="../common-queries#infra.loki.health.canary.missing">infra.loki.health.canary.missing</a></li>
             </ul>
         </details>
@@ -807,7 +849,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.loki.health.canary.spot_check">infra.loki.health.canary.spot_check</a></li>
+                <li><a href="../common-queries#infra.loki.health.canary.losses">infra.loki.health.canary.losses</a></li>
             </ul>
         </details>
     </li>
@@ -847,6 +889,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.loki.health.client_errors">infra.loki.health.client_errors</a></li>
                 <li><a href="../common-queries#infra.loki.health.request_errors">infra.loki.health.request_errors</a></li>
                 <li><a href="../common-queries#infra.loki.health.request_failures">infra.loki.health.request_failures</a></li>
                 <li><a href="../common-queries#infra.loki.push_err_high">infra.loki.push_err_high</a></li>
@@ -858,11 +901,25 @@ like our bundled Thanos provider.
     </li>
     <li id="loki_write_dropped_entries_total">loki_write_dropped_entries_total
         <details>
+            Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.health.log_lines_lost">infra.alloy.health.log_lines_lost</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.dropped">infra.alloy.log_pipeline.dropped</a></li>
                 <li><a href="../common-queries#infra.loki.alloy_log_drops">infra.loki.alloy_log_drops</a></li>
-                <li><a href="../common-queries#infra.loki.pipeline.dropped">infra.loki.pipeline.dropped</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_write_sent_entries_total">loki_write_sent_entries_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.lines_delivered">infra.alloy.health.lines_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.dropped">infra.alloy.log_pipeline.dropped</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.stored">infra.alloy.log_pipeline.stored</a></li>
             </ul>
         </details>
     </li>
@@ -1436,12 +1493,69 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="up">up
+    <li id="prometheus_remote_storage_highest_timestamp_in_seconds">prometheus_remote_storage_highest_timestamp_in_seconds
         <details>
-            Used labels: app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component
+            Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_queue_highest_sent_timestamp_seconds">prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_samples_failed_total">prometheus_remote_storage_samples_failed_total
+        <details>
+            Used labels: app, namespace, pod, url
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_samples_total">prometheus_remote_storage_samples_total
+        <details>
+            Used labels: app, namespace, pod, url
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.samples_delivered">infra.alloy.health.samples_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.samples_sent">infra.alloy.metric_pipeline.samples_sent</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="up">up
+        <details>
+            Used labels: app, app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.agents_missing">infra.alloy.health.agents_missing</a></li>
+                <li><a href="../common-queries#infra.alloy.health.restarts">infra.alloy.health.restarts</a></li>
+                <li><a href="../common-queries#infra.alloy.health.up">infra.alloy.health.up</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.down_targets">infra.alloy.metric_pipeline.down_targets</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.targets_down">infra.alloy.metric_pipeline.targets_down</a></li>
+                <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
+                <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
+                <li><a href="../common-queries#infra.alloy.resources.terminations">infra.alloy.resources.terminations</a></li>
+                <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
                 <li><a href="../common-queries#infra.loki.health.up">infra.loki.health.up</a></li>
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
@@ -1488,6 +1602,58 @@ like our bundled Thanos provider.
 
 
 <ul>
+    <li id="alloy_component_evaluation_queue_size">alloy_component_evaluation_queue_size
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.queue">infra.alloy.components.queue</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_component_evaluation_seconds_count">alloy_component_evaluation_seconds_count
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.evaluation_rate">infra.alloy.components.evaluation_rate</a></li>
+                <li><a href="../common-queries#infra.alloy.components.slow">infra.alloy.components.slow</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_component_evaluation_slow_seconds">alloy_component_evaluation_slow_seconds
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.slow">infra.alloy.components.slow</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_config_hash">alloy_config_hash
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.config_by_pod">infra.alloy.components.config_by_pod</a></li>
+                <li><a href="../common-queries#infra.alloy.components.distinct_configs">infra.alloy.components.distinct_configs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="alloy_resources_process_start_time_seconds">alloy_resources_process_start_time_seconds
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.components.config_by_pod">infra.alloy.components.config_by_pod</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="awscni_assigned_ip_addresses">awscni_assigned_ip_addresses
         <details>
             <br />
@@ -1607,6 +1773,67 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="cluster_node_gossip_health_score">cluster_node_gossip_health_score
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.health_score">infra.alloy.cluster.health_score</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cluster_node_info">cluster_node_info
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.members">infra.alloy.cluster.members</a></li>
+                <li><a href="../common-queries#infra.alloy.cluster.peers">infra.alloy.cluster.peers</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cluster_node_peers">cluster_node_peers
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.peers">infra.alloy.cluster.peers</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cluster_ready_for_traffic">cluster_ready_for_traffic
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.members">infra.alloy.cluster.members</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cluster_transport_stream_tx_packets_failed_total">cluster_transport_stream_tx_packets_failed_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.transport_failures">infra.alloy.cluster.transport_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="cluster_transport_tx_packets_failed_total">cluster_transport_tx_packets_failed_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.transport_failures">infra.alloy.cluster.transport_failures</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="environmentd_needs_update">environmentd_needs_update
         <details>
             Used labels: namespace
@@ -1623,6 +1850,16 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.net.cni.cilium.hubble_flows">infra.net.cni.cilium.hubble_flows</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_daemonset_status_desired_number_scheduled">kube_daemonset_status_desired_number_scheduled
+        <details>
+            Used labels: daemonset, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.agents_missing">infra.alloy.health.agents_missing</a></li>
             </ul>
         </details>
     </li>
@@ -1875,12 +2112,23 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="loki_process_dropped_lines_total">loki_process_dropped_lines_total
+    <li id="loki_process_cri_lines_truncated_total">loki_process_cri_lines_truncated_total
         <details>
+            Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.loki.pipeline.dropped_lines">infra.loki.pipeline.dropped_lines</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.truncated">infra.alloy.log_pipeline.truncated</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_process_dropped_lines_total">loki_process_dropped_lines_total
+        <details>
+            Used labels: app, namespace, pod, reason
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.guard_drops">infra.alloy.log_pipeline.guard_drops</a></li>
             </ul>
         </details>
     </li>
@@ -1894,21 +2142,56 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="loki_source_file_files_active_total">loki_source_file_files_active_total
+    <li id="loki_source_api_entries_written">loki_source_api_entries_written
         <details>
+            Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.loki.pipeline.source_files">infra.loki.pipeline.source_files</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.log_push.lines">infra.alloy.ingest.log_push.lines</a></li>
             </ul>
         </details>
     </li>
-    <li id="loki_source_file_read_bytes_total">loki_source_file_read_bytes_total
+    <li id="loki_source_api_request_duration_seconds_count">loki_source_api_request_duration_seconds_count
         <details>
+            Used labels: app, namespace, pod, route, status_code
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.loki.pipeline.source_files">infra.loki.pipeline.source_files</a></li>
+                <li><a href="../common-queries#infra.alloy.health.pushes_refused">infra.alloy.health.pushes_refused</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.log_push.requests">infra.alloy.ingest.log_push.requests</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_source_file_files_active_total">loki_source_file_files_active_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.files">infra.alloy.log_pipeline.files</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_source_file_read_lines_total">loki_source_file_read_lines_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.file_lines">infra.alloy.log_pipeline.file_lines</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.read">infra.alloy.log_pipeline.read</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_source_journal_target_lines_total">loki_source_journal_target_lines_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.journal_lines">infra.alloy.log_pipeline.journal_lines</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.read">infra.alloy.log_pipeline.read</a></li>
             </ul>
         </details>
     </li>
@@ -1934,19 +2217,21 @@ like our bundled Thanos provider.
     </li>
     <li id="loki_write_batch_retries_total">loki_write_batch_retries_total
         <details>
+            Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.loki.pipeline.retries">infra.loki.pipeline.retries</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.retries">infra.alloy.log_pipeline.retries</a></li>
             </ul>
         </details>
     </li>
-    <li id="loki_write_sent_entries_total">loki_write_sent_entries_total
+    <li id="loki_write_request_duration_seconds_count">loki_write_request_duration_seconds_count
         <details>
+            Used labels: app, namespace, pod
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#infra.loki.pipeline.sent">infra.loki.pipeline.sent</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.requests">infra.alloy.log_pipeline.requests</a></li>
             </ul>
         </details>
     </li>
@@ -2973,6 +3258,373 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#materialize.operator.reconciliation.failures.total">materialize.operator.reconciliation.failures.total</a></li>
                 <li><a href="../common-queries#materialize.operator.reconciliation.outcomes">materialize.operator.reconciliation.outcomes</a></li>
                 <li><a href="../common-queries#materialize.operator.reconciliation.rate">materialize.operator.reconciliation.rate</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_queue_capacity">otelcol_exporter_queue_capacity
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_queue">infra.alloy.metric_pipeline.otel_queue</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_queue_size">otelcol_exporter_queue_size
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_queue">infra.alloy.metric_pipeline.otel_queue</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_send_failed_log_records_total">otelcol_exporter_send_failed_log_records_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_failed">infra.alloy.metric_pipeline.otel_failed</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_send_failed_metric_points_total">otelcol_exporter_send_failed_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_failed">infra.alloy.metric_pipeline.otel_failed</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_sent_log_records_total">otelcol_exporter_sent_log_records_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_sent">infra.alloy.metric_pipeline.otel_sent</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_exporter_sent_metric_points_total">otelcol_exporter_sent_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.samples_delivered">infra.alloy.health.samples_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_sent">infra.alloy.metric_pipeline.otel_sent</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_processor_filter_datapoints_filtered_total">otelcol_processor_filter_datapoints_filtered_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_filtered">infra.alloy.metric_pipeline.otel_filtered</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_processor_memory_limiter_accepted_metric_points_total">otelcol_processor_memory_limiter_accepted_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.resources.memory_limiter">infra.alloy.resources.memory_limiter</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_processor_memory_limiter_refused_metric_points_total">otelcol_processor_memory_limiter_refused_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.resources.memory_limiter">infra.alloy.resources.memory_limiter</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_receiver_accepted_log_records_total">otelcol_receiver_accepted_log_records_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.logs">infra.alloy.ingest.otlp.logs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_receiver_accepted_metric_points_total">otelcol_receiver_accepted_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.metrics">infra.alloy.ingest.otlp.metrics</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_receiver_refused_log_records_total">otelcol_receiver_refused_log_records_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.logs">infra.alloy.ingest.otlp.logs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_receiver_refused_metric_points_total">otelcol_receiver_refused_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.otlp.metrics">infra.alloy.ingest.otlp.metrics</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_api_remote_write_invalid_labels_samples_total">prometheus_api_remote_write_invalid_labels_samples_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.samples">infra.alloy.ingest.remote_write.samples</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_forwarded_samples_total">prometheus_forwarded_samples_total
+        <details>
+            Used labels: app, component_id, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.received">infra.alloy.ingest.remote_write.received</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.samples">infra.alloy.ingest.remote_write.samples</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.samples_scraped">infra.alloy.metric_pipeline.samples_scraped</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_receive_http_request_duration_seconds_count">prometheus_receive_http_request_duration_seconds_count
+        <details>
+            Used labels: app, namespace, pod, route, status_code
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.pushes_refused">infra.alloy.health.pushes_refused</a></li>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.requests">infra.alloy.ingest.remote_write.requests</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_samples_retried_total">prometheus_remote_storage_samples_retried_total
+        <details>
+            Used labels: app, namespace, pod, url
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_shards">prometheus_remote_storage_shards
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.shards">infra.alloy.metric_pipeline.shards</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_shards_desired">prometheus_remote_storage_shards_desired
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.shards">infra.alloy.metric_pipeline.shards</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_storage_shards_max">prometheus_remote_storage_shards_max
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.shards">infra.alloy.metric_pipeline.shards</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_write_wal_checkpoint_creations_failed_total">prometheus_remote_write_wal_checkpoint_creations_failed_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.wal_errors">infra.alloy.metric_pipeline.wal_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_write_wal_corruptions_total">prometheus_remote_write_wal_corruptions_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.wal_errors">infra.alloy.metric_pipeline.wal_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_remote_write_wal_storage_active_series">prometheus_remote_write_wal_storage_active_series
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.active_series">infra.alloy.metric_pipeline.active_series</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrape_pool_exceeded_label_limits_total">prometheus_target_scrape_pool_exceeded_label_limits_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_scrapes">infra.alloy.metric_pipeline.rejected_scrapes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrape_pool_exceeded_target_limit_total">prometheus_target_scrape_pool_exceeded_target_limit_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_scrapes">infra.alloy.metric_pipeline.rejected_scrapes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrape_pool_targets">prometheus_target_scrape_pool_targets
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.cluster.targets">infra.alloy.cluster.targets</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.targets">infra.alloy.metric_pipeline.targets</a></li>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.targets_by_monitor">infra.alloy.metric_pipeline.targets_by_monitor</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrapes_exceeded_body_size_limit_total">prometheus_target_scrapes_exceeded_body_size_limit_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_scrapes">infra.alloy.metric_pipeline.rejected_scrapes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrapes_exceeded_sample_limit_total">prometheus_target_scrapes_exceeded_sample_limit_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_scrapes">infra.alloy.metric_pipeline.rejected_scrapes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrapes_sample_duplicate_timestamp_total">prometheus_target_scrapes_sample_duplicate_timestamp_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_samples">infra.alloy.metric_pipeline.rejected_samples</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrapes_sample_out_of_bounds_total">prometheus_target_scrapes_sample_out_of_bounds_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_samples">infra.alloy.metric_pipeline.rejected_samples</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_target_scrapes_sample_out_of_order_total">prometheus_target_scrapes_sample_out_of_order_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.rejected_samples">infra.alloy.metric_pipeline.rejected_samples</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_wal_storage_size_bytes">prometheus_tsdb_wal_storage_size_bytes
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.wal_size">infra.alloy.metric_pipeline.wal_size</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_wal_truncations_failed_total">prometheus_tsdb_wal_truncations_failed_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.wal_errors">infra.alloy.metric_pipeline.wal_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_wal_writes_failed_total">prometheus_tsdb_wal_writes_failed_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.wal_errors">infra.alloy.metric_pipeline.wal_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="scrape_duration_seconds">scrape_duration_seconds
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.slowest_scrapes">infra.alloy.metric_pipeline.slowest_scrapes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="scrape_samples_post_metric_relabeling">scrape_samples_post_metric_relabeling
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.metric_pipeline.largest_scrapes">infra.alloy.metric_pipeline.largest_scrapes</a></li>
             </ul>
         </details>
     </li>

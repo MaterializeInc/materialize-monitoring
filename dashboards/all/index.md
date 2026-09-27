@@ -5,7 +5,8 @@
 
 # Available Dashboards
 
-Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
+Eight dashboards ship today: three scoped to a Materialize environment (`env-*`), and five to the platform underneath it (`infra-*`).
+Two of the five watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
@@ -270,6 +271,100 @@ The Kubernetes side of a load balancer — that one was created, and the address
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+## Meta monitoring (`infra-*`)
+
+These two dashboards watch the monitoring stack rather than anything it collects.
+Their subject can take its own instrumentation down with it, so an empty panel on either can mean the component that would have reported a problem is the one that failed.
+Every panel on both states its own empty-state text for that reason.
+
+### Loki Meta Monitoring (`infra-loki`)
+
+Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
+The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+It needs both a metrics and a logs datasource.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/dashboards/grafana/infra-loki.json?xxhash=421483051414961b" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-loki</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>meta-o11y</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Alloy Meta Monitoring (`infra-alloy`)
+
+Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
+Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
+Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
+It needs both a metrics and a logs datasource.
+
+**Everything on this dashboard reaches Grafana through the gateway.**
+The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dashboard that is empty throughout most likely means the gateway is down.
+`kubectl get pods -l app.kubernetes.io/name=alloy-gateway` in the monitoring namespace is the check that does not depend on it.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/dashboards/grafana/infra-alloy.json?xxhash=6f085c5fcb62bb8e" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-alloy</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>meta-o11y</code><br />
           <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
           <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
           <strong>SQL metric prefix</strong>: <code>mz_</code><br />

@@ -4205,7 +4205,8 @@ url: https://materializeinc.github.io/materialize-monitoring/dashboards/all/inde
 
 # Available Dashboards
 
-Six dashboards ship today: three scoped to a Materialize environment (`env-*`), and three to the platform underneath it (`infra-*`).
+Eight dashboards ship today: three scoped to a Materialize environment (`env-*`), and five to the platform underneath it (`infra-*`).
+Two of the five watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -4289,6 +4290,34 @@ Cloud Networking is partly stubbed.
 The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#collection-gaps-these-depend-on).
 
 {{< download-dashboards name="infra-net" >}}
+
+## Meta monitoring (`infra-*`)
+
+These two dashboards watch the monitoring stack rather than anything it collects.
+Their subject can take its own instrumentation down with it, so an empty panel on either can mean the component that would have reported a problem is the one that failed.
+Every panel on both states its own empty-state text for that reason.
+
+### Loki Meta Monitoring (`infra-loki`)
+
+Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
+The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="infra-loki" >}}
+
+### Alloy Meta Monitoring (`infra-alloy`)
+
+Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
+Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
+Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
+It needs both a metrics and a logs datasource.
+
+**Everything on this dashboard reaches Grafana through the gateway.**
+The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dashboard that is empty throughout most likely means the gateway is down.
+`kubectl get pods -l app.kubernetes.io/name=alloy-gateway` in the monitoring namespace is the check that does not depend on it.
+
+{{< download-dashboards name="infra-alloy" >}}
 
 ## What the annotations mean
 
@@ -9520,9 +9549,13 @@ Adding or changing a query has effects beyond the query itself:
 
   **A query is the only way a metric reaches a tier.** The tiers are built by walking the registry's queries, so
   `metricOverrides` re-weights a metric some query already references and cannot introduce one — however many
-  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it;
-  `infra.loki.pipeline.*` in `infra-loki.yaml` is a set of six written for exactly that reason, and describes the
-  Alloy-side `loki_*` components rather than the log store.
+  patterns match it. A family worth keeping therefore has to be *named* by a query even when no dashboard draws it.
+  `infra-loki.yaml` once carried six such queries for the Alloy-side `loki_*` components; they moved to
+  `infra-alloy.yaml` when a dashboard came to draw them.
+
+  The converse also holds, because tiers select by metric *name*. A query naming a generic family such as
+  `go_goroutines` admits every target's copy of it, not only the copy the query was written for, which is why
+  `infra-alloy.yaml` holds its Go runtime families at `extended`.
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}) from it.
   There is no generated intermediate to refresh.
@@ -18593,7 +18626,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment, `infra-*.yaml` for the platform — including `infra-loki.yaml`, the log store watching itself — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment, `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
@@ -21449,6 +21482,16 @@ Where either condition fails, define two variables.
 The cost of the second picker is that a reader has to set both; the cost of wrongly sharing one is a panel that is
 empty and looks fine, which is the failure this whole guide keeps coming back to.
 
+`infra-alloy` shares all three of its pickers, and meets both conditions more simply.
+`app`, `namespace` and `pod` hold the same values on a metric and on a log line because the metrics pipeline and the
+log pipelines relabel them from the same pod metadata, and both collector roles are scraped and both log.
+One difference in *placement* remains: `pod` is a stream label on neither side's logs but structured metadata, so the
+log queries apply `$alloyPod` after a `|` rather than inside the selector.
+A test holds that, since in the selector it would match no stream at all.
+Kubernetes events are the exception to the shared origin: they carry the involved object's `name` and no `app`.
+The event queries match the role picker against `name` as a prefix, written `${alloyRole:regex}` because it sits inside a
+longer pattern, and the role picker's custom "All" value passes through that format unchanged.
+
 ## Node identifiers across three families
 
 The dashboard's one real trick. kube-state-metrics calls a node `node="<name>"`; node-exporter calls the same machine
@@ -21660,6 +21703,24 @@ promQL:
 ```
 
 Real example: `materialize.compute.hydration.currently_hydrating`.
+
+### `or 0 * sum(...)` to keep zero honest
+
+`or vector(0)` turns "no series" into `0` unconditionally, including when nothing was collected at all.
+On a meta-monitoring dashboard that is the wrong answer, because the collector that went quiet is often the subject.
+Draw the zero from the population instead:
+
+```promql
+sum(alloy_component_controller_running_components{health_type!="healthy"})
+or
+0 * sum(alloy_component_controller_running_components)
+```
+
+The left arm is empty on a healthy install, because Alloy creates a per-state series only once something is in that
+state.
+The right arm is `0` only when the population exists, so the panel reads `0` when the collectors reported and no data
+when they did not.
+Real examples: `infra.alloy.health.unhealthy_components`, `infra.alloy.health.config_failed`.
 
 ### Per-cluster aggregation that handles label breakdowns
 
@@ -21903,8 +21964,10 @@ so this buys a generation of dashboards rather than solving delivery.
 Shrinking the rendered output is the next lever, and the one that would stop the problem recurring is moving dashboards
 out of the release payload altogether.
 
-A dashboard's own size is worth knowing when adding one: `env-top` is 335 KB, `infra-nodes` 246 KB, `infra-loki`
-162 KB, `env-logs` 37 KB.
+A dashboard's own size is worth knowing when adding one: `infra-alloy` is 344 KB, `env-top` 335 KB, `infra-nodes`
+246 KB, `infra-loki` 167 KB, `env-logs` 37 KB.
+Adding `infra-alloy` took the dashboards release from 441,572 to 551,100 bytes, 53% of the ceiling, estimated the way
+Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzipped, then base64-encoded.
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
@@ -22551,7 +22614,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Logs & events** — the platform's own logs, the node journal, cluster-wide events | **Yes, shipped.** `infra-logs` (`mz-mon-infra-logs`) exists with **Logs**, **Nodes** and **Events** tabs. Adds the two axes `env-logs` structurally cannot offer: `component`, which splits `loki` into eight processes and `thanos` into three, and the **node journal**, whose lines carry no namespace and so are excluded from every `env-*` selector by construction. Shares its event queries and variable names with `env-logs`; differs in where the namespace picker opens and in carrying an **Exclude Materialize** switch, on by default — the Materialize namespaces are about half of a week's log volume and `materialize-environment` alone out-logs every other namespace, so left in they make the volume panels a picture of Materialize rather than of the platform underneath it. Verified against a live install | OO-M2 | ✅ |
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M2 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
-| **Meta-monitoring** — every component of this stack | **Loki shipped; the rest outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (no Prometheus, no Thanos Ruler, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Outstanding:** Grafana (523 families), Thanos (220), Alloy (35) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
+| **Meta-monitoring** — every component of this stack | **Loki and Alloy shipped; Grafana, Thanos and Alertmanager outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (the Thanos Ruler now runs, but no rule set records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Alloy** is `infra-alloy` (`mz-mon-infra-alloy`, "Alloy Meta Monitoring"), the folder's second occupant, with **Overview**, **Log Pipeline**, **Metric Pipeline**, **Ingest**, **Components**, **Resources**, **Events** and **Logs** tabs, 90 panels over 86 queries in `packages/queries/infra-alloy.yaml`. It absorbs the six panel-less `infra.loki.pipeline.*` placeholders, which now have panels behind them. Its inversion is stronger than Loki's: the gateway scrapes Alloy's metrics and forwards Alloy's logs, so a gateway outage empties the dashboard and nothing inside the stack can say so. Counts that should be zero are built as `sum(A) or 0 * sum(B)` so zero and absent read differently. **Ingest** reads the gateway's three push listeners (log push, remote write, OTLP) from three vantage points, because no one of them sees everything: the gateway's own request counters by status, the remote-write senders' own queues (found by the `url` they write to, which is the only view that sees a sender that cannot connect), and the gateway's log for refused TLS handshakes, which fail before any request exists. **Events** matches Kubernetes events on the involved object's name, which reaches the DaemonSet, Deployment, ReplicaSets, autoscaler and pods alike, and the pre-install `validate-agent` / `validate-gateway` Jobs, whose failure stops an upgrade. The existing internal Alloy dashboards, mostly the upstream mixin, were read panel by panel and not ported: they compute success rates by summing `_bucket` series, scope scraped targets' `up` by the collector's own `job`, and read memory as RSS, which on a reference install put an agent at 95% of its limit while its working set was at 29%. Resources measures Go memory against `GOMEMLIMIT` instead of heap alone, which read the reference gateways at 93% rather than 62–71%. In passing, `infra-loki`'s level picker discovered from a variable that dashboard never defined, and offered nothing but "All"; it now discovers from Loki's own streams. Verified against a live install: all 111 rendered queries execute, 101 return data, and the 10 that do not are healthy-empty tables and feeds or unconfigured cases (no OTLP senders, no warning events). Every panel whose series Alloy creates only on failure draws a zero from a population that always exists, and reads no data only when nothing is collected. The dashboards release grows from 441,572 to 551,100 bytes, 53% of the 1 MiB Secret ceiling. Building it also found that the Thanos datasource declares no scrape interval, which breaks every cAdvisor `rate()` panel into points ([DEP-326](https://linear.app/materializeinc/issue/DEP-326)). **Outstanding:** Grafana (523 families), Thanos (220) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M2 | ✅ |
 | **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents), and **nothing in the registry reads any of them**. **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics. Now designed rather than only scoped: see [External dependencies](#external-dependencies) | OO-M2 | 🔨 |
