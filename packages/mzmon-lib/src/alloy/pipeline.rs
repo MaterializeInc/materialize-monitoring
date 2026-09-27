@@ -8,7 +8,7 @@
 // by the Apache License, Version 2.0.
 
 use crate::alloy::ast::{Block, ToBlock, impl_to_block_dispatch};
-use crate::alloy::components::{discovery, loki, otelcol, prometheus, top};
+use crate::alloy::components::{declare, discovery, loki, otelcol, prometheus, top};
 use crate::alloy::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -89,6 +89,12 @@ pub enum ComponentBlock {
     // Boxed: fifteen mostly-optional cAdvisor knobs, several `ExpressableList`,
     // make this the widest variant otherwise (clippy::large_enum_variant).
     PrometheusExporterCadvisor(Box<prometheus::PrometheusExporterCadvisorBlock>),
+    #[serde(rename = "prometheus.exporter.cloudwatch")]
+    // Boxed for the same reason: an `Expressable` region plus the job list.
+    PrometheusExporterCloudwatch(Box<prometheus::PrometheusExporterCloudwatchBlock>),
+    #[serde(rename = "prometheus.exporter.gcp")]
+    // Boxed: three `ExpressableList` fields.
+    PrometheusExporterGcp(Box<prometheus::PrometheusExporterGcpBlock>),
     #[serde(rename = "otelcol.receiver.otlp")]
     OtelcolReceiverOtlp(otelcol::OtelcolReceiverOtlpBlock),
     #[serde(rename = "otelcol.receiver.prometheus")]
@@ -101,6 +107,13 @@ pub enum ComponentBlock {
     OtelcolExporterPrometheus(otelcol::OtelcolExporterPrometheusBlock),
     #[serde(rename = "otelcol.processor.transform")]
     OtelcolProcessorTransform(otelcol::OtelcolProcessorTransformBlock),
+    #[serde(rename = "declare")]
+    Declare(declare::DeclareBlock),
+    // Only valid inside a `declare` body; the schema enforces that.
+    #[serde(rename = "argument")]
+    Argument(declare::ArgumentBlock),
+    #[serde(rename = "custom")]
+    Custom(declare::CustomBlock),
 }
 impl_to_block_dispatch!(ComponentBlock {
     Raw,
@@ -129,11 +142,16 @@ impl_to_block_dispatch!(ComponentBlock {
     LokiSourceKubernetesEvents,
     LokiWrite,
     PrometheusExporterCadvisor,
+    PrometheusExporterCloudwatch,
+    PrometheusExporterGcp,
     OtelcolReceiverOtlp,
     OtelcolReceiverPrometheus,
     OtelcolExporterOtlp,
     OtelcolExporterLoki,
-    OtelcolExporterPrometheus
+    OtelcolExporterPrometheus,
+    Declare,
+    Argument,
+    Custom
 });
 
 impl Pipeline {

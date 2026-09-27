@@ -20,7 +20,7 @@
 
 use crate::alloy::ast::{
     AttributeValue, Block, Expressable, ExpressableList, GoDuration, Identifier, RawOnlySubBlock,
-    ToBlock, impl_to_block_dispatch, string_map,
+    ToBlock, expressable_string_map, impl_to_block_dispatch, string_map,
 };
 use crate::alloy::components::capsule::{
     MetricsReceiver, TargetEntry, metrics_receiver_list, target_list,
@@ -922,6 +922,325 @@ impl ToBlock for PrometheusExporterCadvisorBlock {
 }
 
 // ============================================================
+// prometheus.exporter.cloudwatch  (+ static / metric / role sub-blocks)
+// ============================================================
+
+/// A `prometheus.exporter.cloudwatch` block — pulls CloudWatch metrics through
+/// the embedded YACE exporter and exports them as a scrape target.
+///
+/// Three behaviours decide how this is used on a clustered gateway:
+///
+/// * The AWS calls happen **on scrape**, so a clustered `prometheus.scrape`
+///   that owns the target is the only replica that calls AWS. The
+///   `decoupled_scraping` block (reachable only through `raw:`) polls on a
+///   timer in **every** replica, owner or not.
+/// * The exported target's `instance` is a hash of these arguments. It is the
+///   same on every replica, which is what clustering needs, and it changes
+///   whenever an argument does.
+/// * `nil_to_zero` defaults to **true** in Alloy, which reports a value-less
+///   datapoint as zero.
+///
+/// `discovery`, `custom_namespace` and `decoupled_scraping` are deferred to the
+/// `raw:` escape.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrometheusExporterCloudwatchBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Region for STS, which role assumption and the `account_id` label use.
+    /// Required by the schema.
+    pub sts_region: Expressable<String>,
+    /// Defaults to true upstream, meaning FIPS endpoints are not used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fips_disabled: Option<bool>,
+    /// Snake-case the `dimension_*` label names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels_snake_case: Option<bool>,
+    /// `static` jobs, plus anything else via `raw:`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<CloudwatchSubBlock>,
+}
+
+impl ToBlock for PrometheusExporterCloudwatchBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("sts_region".into(), self.sts_region.to_attribute_value()?);
+        if let Some(v) = self.fips_disabled {
+            attributes.insert("fips_disabled".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.labels_snake_case {
+            attributes.insert("labels_snake_case".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "prometheus.exporter.cloudwatch".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// Sub-block under a `prometheus.exporter.cloudwatch` body. `Raw` is the
+/// escape hatch, and the way to reach `discovery`, `custom_namespace` and
+/// `decoupled_scraping`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CloudwatchSubBlock {
+    #[serde(rename = "static")]
+    // Boxed: expression-capable `regions` and `dimensions` make it far wider
+    // than `raw` (clippy::large_enum_variant).
+    Static(Box<CloudwatchStaticBlock>),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(CloudwatchSubBlock { Static, Raw });
+
+/// A `static "<name>"` job — one resource, addressed by its exact dimensions.
+///
+/// Static jobs go through `GetMetricStatistics`. The label becomes the series'
+/// `name` label and must be an identifier. `period` and `length` belong on each
+/// `metric`: the exporter ignores them on the job.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#static-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloudwatchStaticBlock {
+    /// The job name. Required, and written to every series as `name`.
+    pub label: Identifier,
+    /// Regions to query. Required by the schema. A list whose members may be
+    /// expressions, so a `declare` body can pass `[argument.region.value]`.
+    pub regions: ExpressableList,
+    /// CloudWatch namespace, such as `AWS/RDS`. Required by the schema.
+    pub namespace: String,
+    /// The exact dimension set of the resource. Required by the schema. Values
+    /// may be expressions, which is how a `declare` body names its resource.
+    pub dimensions: IndexMap<String, Expressable<String>>,
+    /// Extra labels, written as `custom_tag_<key>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_tags: Option<IndexMap<String, String>>,
+    /// Report a value-less datapoint as zero. Defaults to true in Alloy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nil_to_zero: Option<bool>,
+    /// `metric` and `role` blocks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<CloudwatchJobSubBlock>,
+}
+
+impl ToBlock for CloudwatchStaticBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("regions".into(), self.regions.to_attribute_value()?);
+        attributes.insert(
+            "namespace".into(),
+            AttributeValue::String(self.namespace.clone()),
+        );
+        if let Some(v) = self.nil_to_zero {
+            attributes.insert("nil_to_zero".into(), AttributeValue::Bool(v));
+        }
+        attributes.insert(
+            "dimensions".into(),
+            expressable_string_map(&self.dimensions)?,
+        );
+        if let Some(v) = &self.custom_tags {
+            attributes.insert("custom_tags".into(), string_map(v));
+        }
+        Ok(Block {
+            component: "static".into(),
+            label: Some(self.label.clone()),
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// Sub-block under a CloudWatch job. `Raw` is the escape hatch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CloudwatchJobSubBlock {
+    #[serde(rename = "metric")]
+    Metric(CloudwatchMetricBlock),
+    #[serde(rename = "role")]
+    Role(CloudwatchRoleBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(CloudwatchJobSubBlock { Metric, Role, Raw });
+
+/// A `metric` block — one CloudWatch metric and the statistics to request.
+///
+/// Each statistic is a separate billed series. On a `static` job the list needs
+/// at least one of `Average`, `Minimum`, `Maximum`, `Sum` or `SampleCount`
+/// beside any percentiles, because the exporter indexes that list
+/// unconditionally.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#metric-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloudwatchMetricBlock {
+    /// The CloudWatch metric name. Required by the schema.
+    pub name: String,
+    /// Statistics to request. Required by the schema.
+    pub statistics: Vec<String>,
+    /// Statistic period. Defaults to 300s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period: Option<GoDuration>,
+    /// How far back to request. Defaults to `period`, and must not be shorter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length: Option<GoDuration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nil_to_zero: Option<bool>,
+    /// Stamp samples with CloudWatch's own timestamp rather than the scrape's.
+    /// A daily metric stamped a day back is older than a remote-write receiver
+    /// will accept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add_cloudwatch_timestamp: Option<bool>,
+}
+
+impl ToBlock for CloudwatchMetricBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("name".into(), AttributeValue::String(self.name.clone()));
+        attributes.insert("statistics".into(), string_array(&self.statistics));
+        if let Some(v) = &self.period {
+            attributes.insert("period".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = &self.length {
+            attributes.insert("length".into(), AttributeValue::String(v.clone()));
+        }
+        if let Some(v) = self.nil_to_zero {
+            attributes.insert("nil_to_zero".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.add_cloudwatch_timestamp {
+            attributes.insert("add_cloudwatch_timestamp".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "metric".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+/// A `role` block — an IAM role to assume for the job. Without one the job
+/// uses the ambient AWS credential chain (IRSA, EKS Pod Identity, static keys).
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#role-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloudwatchRoleBlock {
+    /// Required by the schema.
+    pub role_arn: Expressable<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<Expressable<String>>,
+}
+
+impl ToBlock for CloudwatchRoleBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("role_arn".into(), self.role_arn.to_attribute_value()?);
+        if let Some(v) = &self.external_id {
+            attributes.insert("external_id".into(), v.to_attribute_value()?);
+        }
+        Ok(Block {
+            component: "role".into(),
+            label: None,
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+// ============================================================
+// prometheus.exporter.gcp
+// ============================================================
+
+/// A `prometheus.exporter.gcp` block — pulls Cloud Monitoring time series
+/// through the embedded `stackdriver_exporter` and exports them as a scrape
+/// target.
+///
+/// Four behaviours decide how this is used:
+///
+/// * Each entry in `metrics_prefixes` is a **prefix**, so
+///   `.../postgresql/num_backends` also pulls `num_backends_by_state`.
+/// * An `extra_filters` entry is `<prefix>:<filter>`, split on the first colon,
+///   and ANDed onto every metric type under that prefix. It must be a prefix of
+///   some `metrics_prefixes` entry, or the config is refused.
+/// * Samples carry Cloud Monitoring's own timestamps, which are minutes old.
+/// * DELTA metrics become counters built from the newest point of each pull
+///   only, so a DELTA sampled more often than the scrape under-counts.
+///
+/// Calls happen on scrape, like the CloudWatch exporter's.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.gcp/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrometheusExporterGcpBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Projects to read. Required by the schema.
+    pub project_ids: ExpressableList,
+    /// Metric-type prefixes to pull. Required by the schema.
+    pub metrics_prefixes: ExpressableList,
+    /// `<prefix>:<filter>` entries narrowing what each prefix pulls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_filters: Option<ExpressableList>,
+    /// How far back each pull reaches. Defaults to 5m. `Expressable`, so a
+    /// `declare` body can take it as an argument.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_interval: Option<Expressable<GoDuration>>,
+    /// Shift the window back by this much. Defaults to 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_offset: Option<GoDuration>,
+    /// Shift the window back by each metric type's published ingest delay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ingest_delay: Option<bool>,
+    /// Drop series from projects other than the one being read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drop_delegated_projects: Option<bool>,
+    /// HTTP timeout for the Cloud Monitoring client. Defaults to 15s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gcp_client_timeout: Option<GoDuration>,
+}
+
+impl ToBlock for PrometheusExporterGcpBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("project_ids".into(), self.project_ids.to_attribute_value()?);
+        attributes.insert(
+            "metrics_prefixes".into(),
+            self.metrics_prefixes.to_attribute_value()?,
+        );
+        if let Some(v) = &self.extra_filters {
+            attributes.insert("extra_filters".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = &self.request_interval {
+            attributes.insert("request_interval".into(), v.to_attribute_value()?);
+        }
+        for (name, value) in [
+            ("request_offset", &self.request_offset),
+            ("gcp_client_timeout", &self.gcp_client_timeout),
+        ] {
+            if let Some(v) = value {
+                attributes.insert(name.into(), AttributeValue::String(v.clone()));
+            }
+        }
+        if let Some(v) = self.ingest_delay {
+            attributes.insert("ingest_delay".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.drop_delegated_projects {
+            attributes.insert("drop_delegated_projects".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "prometheus.exporter.gcp".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+// ============================================================
 // tests
 // ============================================================
 
@@ -1319,6 +1638,245 @@ mod tests {
                 "\t]\n",
                 "}\n",
             ),
+        );
+    }
+
+    /// Paths of the schema violations in a rejected pipeline.
+    fn schema_violation_paths(err: Error) -> Vec<String> {
+        match err {
+            Error::Multiple(errs) => errs
+                .iter()
+                .filter_map(|e| match e {
+                    Error::Schema { path, .. } => Some(path.clone()),
+                    _ => None,
+                })
+                .collect(),
+            other => panic!("expected Multiple([Schema, ...]), got {other:?}"),
+        }
+    }
+
+    /// A static job carries the label, the attributes in their declared order,
+    /// and its `role` and `metric` blocks in YAML order.
+    #[test]
+    fn cloudwatch_static_job_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  label: provider
+                  sts_region: us-east-1
+                  blocks:
+                    - static:
+                        label: rds_example_db
+                        regions: [us-east-1]
+                        namespace: AWS/RDS
+                        nil_to_zero: false
+                        dimensions:
+                          DBInstanceIdentifier: example-db
+                        blocks:
+                          - role:
+                              role_arn: arn:aws:iam::123456789012:role/reader
+                          - metric:
+                              name: CPUUtilization
+                              statistics: [Average, p99]
+                              period: 5m
+                              length: 10m
+            "#,
+        )
+        .unwrap();
+        // Plain byte assert: alloy fmt aligns the scalars beside the multi-line
+        // `regions` and `dimensions`, which the renderer does not.
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "prometheus.exporter.cloudwatch \"provider\" {\n",
+                "\tsts_region = \"us-east-1\"\n",
+                "\n",
+                "\tstatic \"rds_example_db\" {\n",
+                "\t\tregions = [\n",
+                "\t\t\t\"us-east-1\",\n",
+                "\t\t]\n",
+                "\t\tnamespace = \"AWS/RDS\"\n",
+                "\t\tnil_to_zero = false\n",
+                "\t\tdimensions = {\n",
+                "\t\t\tDBInstanceIdentifier = \"example-db\",\n",
+                "\t\t}\n",
+                "\n",
+                "\t\trole {\n",
+                "\t\t\trole_arn = \"arn:aws:iam::123456789012:role/reader\"\n",
+                "\t\t}\n",
+                "\n",
+                "\t\tmetric {\n",
+                "\t\t\tname = \"CPUUtilization\"\n",
+                "\t\t\tstatistics = [\n",
+                "\t\t\t\t\"Average\",\n",
+                "\t\t\t\t\"p99\",\n",
+                "\t\t\t]\n",
+                "\t\t\tperiod = \"5m\"\n",
+                "\t\t\tlength = \"10m\"\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// `decoupled_scraping` and `discovery` are reachable through `raw:`, and
+    /// only through it.
+    #[test]
+    fn cloudwatch_untyped_blocks_use_the_raw_escape() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  sts_region: us-east-1
+                  blocks:
+                    - raw:
+                        component: decoupled_scraping
+                        attributes:
+                          enabled: false
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "prometheus.exporter.cloudwatch {\n",
+                "\tsts_region = \"us-east-1\"\n",
+                "\n",
+                "\tdecoupled_scraping {\n",
+                "\t\tenabled = false\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  sts_region: us-east-1
+                  blocks:
+                    - decoupled_scraping:
+                        enabled: true
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            schema_violation_paths(err)
+                .iter()
+                .any(|p| p.starts_with("/blocks/0")),
+        );
+    }
+
+    /// Alloy refuses a block label that is not an identifier, and resource
+    /// names are full of dashes. Catch it at the schema, not at load.
+    #[test]
+    fn cloudwatch_static_label_must_be_an_identifier() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  sts_region: us-east-1
+                  blocks:
+                    - static:
+                        label: example-db
+                        regions: [us-east-1]
+                        namespace: AWS/RDS
+                        dimensions:
+                          DBInstanceIdentifier: example-db
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            schema_violation_paths(err)
+                .iter()
+                .any(|p| p.starts_with("/blocks/0")),
+        );
+    }
+
+    /// `GetMetricStatistics` takes the five basic statistics and percentiles.
+    #[test]
+    fn cloudwatch_metric_rejects_an_unknown_statistic() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  sts_region: us-east-1
+                  blocks:
+                    - static:
+                        label: rds_example_db
+                        regions: [us-east-1]
+                        namespace: AWS/RDS
+                        dimensions:
+                          DBInstanceIdentifier: example-db
+                        blocks:
+                          - metric:
+                              name: CPUUtilization
+                              statistics: [Mean]
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            schema_violation_paths(err)
+                .iter()
+                .any(|p| p.starts_with("/blocks/0")),
+        );
+    }
+
+    /// The extra filter keeps its embedded quotes and the colon inside the
+    /// Cloud SQL `database_id`.
+    #[test]
+    fn gcp_exporter_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.gcp:
+                  label: provider
+                  project_ids: [example-project]
+                  metrics_prefixes:
+                    - cloudsql.googleapis.com/database/cpu/utilization
+                  extra_filters:
+                    - 'cloudsql.googleapis.com/database:resource.labels.database_id=one_of("example-project:example-pg")'
+                  request_interval: 10m
+                  ingest_delay: true
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "prometheus.exporter.gcp \"provider\" {\n",
+                "\tproject_ids = [\n",
+                "\t\t\"example-project\",\n",
+                "\t]\n",
+                "\tmetrics_prefixes = [\n",
+                "\t\t\"cloudsql.googleapis.com/database/cpu/utilization\",\n",
+                "\t]\n",
+                "\textra_filters = [\n",
+                "\t\t\"cloudsql.googleapis.com/database:resource.labels.database_id=one_of(\\\"example-project:example-pg\\\")\",\n",
+                "\t]\n",
+                "\trequest_interval = \"10m\"\n",
+                "\tingest_delay = true\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn gcp_exporter_requires_prefixes() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.gcp:
+                  project_ids: [example-project]
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            schema_violation_paths(err)
+                .iter()
+                .any(|p| p.starts_with("/blocks/0")),
         );
     }
 }

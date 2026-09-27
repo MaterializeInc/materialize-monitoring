@@ -1,0 +1,361 @@
+// Custom components for the gateway's cloud provider pulls. This file deploys:
+// the chart includes it in every gateway config, where it is inert until
+// something instantiates it.
+//
+// The shape lives here, validated and typed; the count lives in the chart. Each
+// `declare` below is one pull, with its metric set fixed, and the chart's
+// `mzmon.alloyGateway.pipeline.provider` renders one instance per resource
+// named in `pipeline.metrics.provider.*`. A `declare` body cannot repeat a
+// block, which is why CloudWatch takes one instance per resource and why the
+// metric sets are not values.
+//
+// Every pull ends in `provider_scrape`: the `instance` pin and the clustered
+// scrape. Clustering is what makes the provider be called once per interval
+// however many gateway replicas there are. Both exporters call the provider on
+// scrape, and export an identical target on every replica, so exactly one
+// replica owns it.
+//
+// `forward_to` is a single receiver, not a list: the chart passes
+// `otelcol.receiver.prometheus.inputBridge.receiver`.
+
+declare "provider_scrape" {
+	argument "targets" {
+		comment = "The exporter's targets export."
+	}
+
+	argument "instance" {
+		comment = "The `instance` label for every series. The exporter sets it to a hash of its own arguments, which changes whenever they do."
+	}
+
+	argument "forward_to" {
+		comment = "One metrics receiver."
+	}
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" {
+		comment = "Must not exceed scrape_interval, or the gateway fails to start."
+	}
+
+	discovery.relabel "pin" {
+		targets = argument.targets.value
+
+		rule {
+			target_label = "instance"
+			replacement  = argument.instance.value
+		}
+	}
+
+	prometheus.scrape "provider" {
+		targets = discovery.relabel.pin.output
+		forward_to = [
+			argument.forward_to.value,
+		]
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout = argument.scrape_timeout.value
+
+		clustering {
+			enabled = true
+		}
+	}
+}
+
+declare "provider_cloudwatch_rds" {
+	argument "instance_id" {
+		comment = "The DBInstanceIdentifier."
+	}
+
+	argument "region" { }
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.cloudwatch "rds" {
+		sts_region = argument.region.value
+
+		static "rds" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/RDS"
+			nil_to_zero = false
+			dimensions = {
+				DBInstanceIdentifier = argument.instance_id.value,
+			}
+
+			metric {
+				name = "CPUUtilization"
+				statistics = [
+					"Average",
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "CPUCreditBalance"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "FreeableMemory"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "FreeStorageSpace"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "DatabaseConnections"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "ReadLatency"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "WriteLatency"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "DiskQueueDepth"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "BurstBalance"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "EBSIOBalance%"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "EBSByteBalance%"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "MaximumUsedTransactionIDs"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+	}
+
+	provider_scrape "rds" {
+		targets         = prometheus.exporter.cloudwatch.rds.targets
+		instance        = argument.instance_id.value
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_cloudwatch_s3" {
+	argument "bucket" {
+		comment = "The bucket name."
+	}
+
+	argument "region" { }
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.cloudwatch "s3" {
+		sts_region = argument.region.value
+
+		static "s3" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/S3"
+			nil_to_zero = false
+			dimensions = {
+				BucketName  = argument.bucket.value,
+				StorageType = "StandardStorage",
+			}
+
+			metric {
+				name = "BucketSizeBytes"
+				statistics = [
+					"Average",
+				]
+				period = "24h"
+				length = "48h"
+			}
+		}
+
+		static "s3" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/S3"
+			nil_to_zero = false
+			dimensions = {
+				BucketName  = argument.bucket.value,
+				StorageType = "AllStorageTypes",
+			}
+
+			metric {
+				name = "NumberOfObjects"
+				statistics = [
+					"Average",
+				]
+				period = "24h"
+				length = "48h"
+			}
+		}
+	}
+
+	provider_scrape "s3" {
+		targets         = prometheus.exporter.cloudwatch.s3.targets
+		instance        = argument.bucket.value
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_gcp_cloudsql" {
+	argument "project_id" { }
+
+	argument "database_ids" {
+		comment = "Cloud SQL database_ids, as project:instance."
+	}
+
+	argument "request_interval" {
+		comment = "How far back each pull reaches. Only the newest point per series is kept."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.gcp "cloudsql" {
+		project_ids = [
+			argument.project_id.value,
+		]
+		metrics_prefixes = [
+			"cloudsql.googleapis.com/database/cpu/utilization",
+			"cloudsql.googleapis.com/database/memory/utilization",
+			"cloudsql.googleapis.com/database/disk/utilization",
+			"cloudsql.googleapis.com/database/postgresql/num_backends",
+			"cloudsql.googleapis.com/database/postgresql/transaction_id_utilization",
+			"cloudsql.googleapis.com/database/up",
+		]
+		extra_filters = [
+			string.format("cloudsql.googleapis.com/database:resource.labels.database_id=one_of(\"%s\")", string.join(argument.database_ids.value, "\",\"")),
+		]
+		request_interval = argument.request_interval.value
+		ingest_delay = true
+	}
+
+	provider_scrape "cloudsql" {
+		targets         = prometheus.exporter.gcp.cloudsql.targets
+		instance        = "cloudsql"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_gcp_gcs" {
+	argument "project_id" { }
+
+	argument "buckets" {
+		comment = "GCS bucket names."
+	}
+
+	argument "request_interval" {
+		comment = "How far back each pull reaches. Only the newest point per series is kept."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.gcp "gcs" {
+		project_ids = [
+			argument.project_id.value,
+		]
+		metrics_prefixes = [
+			"storage.googleapis.com/storage/v2/total_bytes",
+			"storage.googleapis.com/storage/v2/total_count",
+		]
+		extra_filters = [
+			string.format("storage.googleapis.com:resource.labels.bucket_name=one_of(\"%s\")", string.join(argument.buckets.value, "\",\"")),
+		]
+		request_interval = argument.request_interval.value
+		ingest_delay = true
+	}
+
+	provider_scrape "gcs" {
+		targets         = prometheus.exporter.gcp.gcs.targets
+		instance        = "gcs"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}

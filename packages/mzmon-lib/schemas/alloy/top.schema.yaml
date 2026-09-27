@@ -25,16 +25,7 @@ properties:
       The list of blocks that make up this pipeline.
     type: array
     items:
-      # Each block is a single-key object whose key is the discriminator
-      # (`raw`, `loki.echo`, ...). The branches are disjoint because each
-      # requires its own key and forbids the others, so `oneOf` matches exactly
-      # one.
-      oneOf:
-        - $ref: "./common/raw.schema.yaml"
-        - $ref: "./loki.schema.yaml"
-        - $ref: "./discovery.schema.yaml"
-        - $ref: "./prometheus.schema.yaml"
-        - $ref: "./otelcol.schema.yaml"
+      $ref: "#/$defs/componentBlock"
 # Reject unknown top-level keys (description/logging/livedebugging/blocks only).
 # unevaluatedProperties (2020-12) is used instead of additionalProperties so it
 # still works when this schema is composed via allOf in mzmon-alloy.schema.yaml.
@@ -76,3 +67,116 @@ $defs:
         description: |
           Whether to enable livedebugging in the UI.
     additionalProperties: false
+
+  componentBlock:
+    description: |
+      One component in a pipeline or in a `declare` body.
+    # Each block is a single-key object whose key is the discriminator
+    # (`raw`, `loki.echo`, ...). The branches are disjoint because each
+    # requires its own key and forbids the others, so `oneOf` matches exactly
+    # one.
+    oneOf:
+      - $ref: "./common/raw.schema.yaml"
+      - $ref: "./loki.schema.yaml"
+      - $ref: "./discovery.schema.yaml"
+      - $ref: "./prometheus.schema.yaml"
+      - $ref: "./otelcol.schema.yaml"
+      - type: object
+        properties:
+          declare:
+            $ref: "#/$defs/declare"
+        required: [declare]
+        additionalProperties: false
+      - type: object
+        properties:
+          custom:
+            $ref: "#/$defs/custom"
+        required: [custom]
+        additionalProperties: false
+
+  customName:
+    description: |
+      A custom component name: an identifier with no dots, which is what keeps
+      it apart from every built-in component name.
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+
+  declare:
+    description: |
+      Defines a custom component whose body is ordinary blocks, parameterised
+      by `argument` blocks and read as `argument.<name>.value`.
+
+      This is how a pre-rendered pipeline holds the *shape* of something whose
+      *count* is decided at install: the body is fixed and validated here, and
+      the chart only instantiates it, once per resource. A body cannot repeat
+      or omit a block based on an argument, so anything that varies in block
+      structure stays with the caller, and an argument is only ever a value.
+
+      See: https://grafana.com/docs/alloy/latest/reference/config-blocks/declare/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/customName"
+      blocks:
+        description: "`argument` blocks and ordinary components."
+        type: array
+        items:
+          oneOf:
+            - $ref: "#/$defs/componentBlock"
+            - type: object
+              properties:
+                argument:
+                  $ref: "#/$defs/argument"
+              required: [argument]
+              additionalProperties: false
+    required: [label]
+    additionalProperties: false
+
+  argument:
+    description: |
+      One input of a custom component, read in its body as
+      `argument.<name>.value`. Only valid inside a `declare` body.
+
+      See: https://grafana.com/docs/alloy/latest/reference/config-blocks/argument/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/customName"
+      optional:
+        description: Whether an instance may omit it. Defaults to false.
+        type: boolean
+      default:
+        description: The value used when an optional argument is omitted.
+        $ref: "./common/attribute.schema.yaml#/$defs/attributeValue"
+      comment:
+        description: What the argument is for, shown in Alloy's UI.
+        type: string
+    required: [label]
+    additionalProperties: false
+
+  custom:
+    description: |
+      An instance of a custom component: `<component> "<label>" { ... }`.
+
+      Unlike `raw:`, the component must be a custom one, so this cannot emit an
+      untyped built-in. Whether it names a `declare` that exists, and whether
+      the attributes match its arguments, is checked by `alloy validate`, which
+      resolves both.
+    type: object
+    properties:
+      component:
+        $ref: "#/$defs/customName"
+      label:
+        $ref: "#/$defs/label"
+      attributes:
+        description: Argument values, by argument name.
+        type: object
+        additionalProperties:
+          $ref: "./common/attribute.schema.yaml#/$defs/attributeValue"
+    required: [component, label]
+    additionalProperties: false
+
+  label:
+    description: User-defined identifier to distinguish multiple instances.
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*$"

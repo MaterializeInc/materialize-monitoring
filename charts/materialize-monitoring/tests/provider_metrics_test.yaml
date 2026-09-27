@@ -1,0 +1,380 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# Cloud provider metric pulls on the gateway (`pipeline.metrics.provider`).
+#
+# The pulls are custom components in the pre-rendered `gateway-provider`
+# pipeline, and the chart renders only instances of them. So the suite checks
+# two things: that the module the gateway actually loads keeps its contract,
+# and that the chart instantiates it once per resource with the right
+# arguments.
+#
+# Every property below regresses quietly rather than loudly. A pull that is not
+# clustered is billed once per gateway replica and looks identical in the data.
+# A Cloud SQL prefix without its resource filter pulls every instance in the
+# project. `nil_to_zero` left at Alloy's default reports a value-less
+# datapoint as zero. None of these fail a render or an `alloy validate`.
+suite: provider metrics
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+tests:
+  # --- default ---------------------------------------------------------------
+
+  - it: should instantiate nothing by default
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_[a-z0-9_]+ "'
+
+  # The module is inert until instantiated, and always present, so the file the
+  # pre-validate job checks is the one `make pipelines` validated.
+  - it: should always include the provider module
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_scrape"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_cloudwatch_rds"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_gcp_gcs"'
+
+  # --- the module's contract ---------------------------------------------------
+
+  - it: should cluster the shared scrape so the provider is called once per interval
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_scrape" \{[\s\S]*?prometheus\.scrape "provider" \{[\s\S]*?clustering \{\s+enabled = true'
+
+  # The exporter's own `instance` is a hash of its arguments; any config change
+  # would re-label every series.
+  - it: should pin instance from an argument
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_scrape" \{[\s\S]*?target_label = "instance"\s+replacement\s+= argument\.instance\.value'
+
+  - it: should never let a value-less CloudWatch datapoint read as zero
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'namespace = "AWS/RDS"\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'namespace = "AWS/S3"\s+nil_to_zero = false'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'nil_to_zero\s+= true'
+
+  # Decoupled scraping polls on a timer in every replica, owner or not.
+  - it: should never use decoupled scraping
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'decoupled_scraping'
+
+  # Per-minute DELTA; the exporter counts only the newest point per pull.
+  - it: should not pull GCS request counts
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'api/request_count'
+
+  # --- CloudWatch instances ------------------------------------------------------
+
+  - it: should instantiate one RDS pull per instance, labelled as an identifier
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &cloudwatch
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-db, grafana-db]
+      pipeline.metrics.provider.cloudwatch.s3.buckets: [mz-persist.a1b2]
+    asserts:
+      # Alloy rejects a label that is not an identifier, and RDS identifiers and
+      # bucket names contain dashes and dots.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_rds "rds_mz_db" \{\s+instance_id\s+= "mz-db"\s+region\s+= "us-east-1"\s+scrape_interval = "5m"\s+scrape_timeout\s+= "2m"\s+forward_to\s+= otelcol\.receiver\.prometheus\.inputBridge\.receiver\s+\}'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_rds "rds_grafana_db" \{\s+instance_id\s+= "grafana-db"'
+
+  - it: should instantiate one S3 pull per bucket
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: *cloudwatch
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_s3 "s3_mz_persist_a1b2" \{\s+bucket\s+= "mz-persist\.a1b2"'
+
+  - it: should pass a single receiver, not a list
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: *cloudwatch
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'forward_to\s+= \[otelcol\.receiver\.prometheus\.inputBridge\.receiver'
+
+  - it: should carry the interval through to every instance
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      <<: *cloudwatch
+      pipeline.metrics.provider.cloudwatch.scrapeInterval: 10m
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_s3 "s3_mz_persist_a1b2" \{[^}]*scrape_interval = "10m"'
+
+  # --- GCP instances -----------------------------------------------------------
+
+  - it: should instantiate one pull per GCP service, naming its resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &gcp
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.cloudSql.instances: [mz-pg, grafana-pg]
+      pipeline.metrics.provider.gcp.gcs.buckets: [mz-persist]
+    asserts:
+      # database_id is project:instance.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_cloudsql "provider" \{\s+project_id\s+= "my-project"\s+database_ids\s+= \["my-project:mz-pg","my-project:grafana-pg"\]\s+request_interval = "10m"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_gcs "provider" \{\s+project_id\s+= "my-project"\s+buckets\s+= \["mz-persist"\]'
+
+  # A prefix without its filter would pull every instance in the project, so a
+  # service with nothing listed is not instantiated at all.
+  - it: should not instantiate a service that lists no resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.gcs.buckets: [mz-persist]
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_gcp_cloudsql "'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_gcp_gcs "provider"'
+
+  # --- importance tiers --------------------------------------------------------
+
+  - it: should admit provider families to a destination at their tier
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      <<: [*cloudwatch, *gcp]
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
+        url: https://extended.example.com/api/v1/write
+        minMetricImportance: extended
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
+          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*$'
+
+  - it: should keep provider families out of a stricter destination
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      <<: *cloudwatch
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.strict:
+        url: https://strict.example.com/api/v1/write
+        minMetricImportance: recommended
+    asserts:
+      - notMatchRegex:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
+          pattern: 'aws_rds_|aws_s3_'
+
+  - it: should follow a raised importance into the stricter destination
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      <<: *cloudwatch
+      pipeline.metrics.provider.cloudwatch.metricImportance: recommended
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.strict:
+        url: https://strict.example.com/api/v1/write
+        minMetricImportance: recommended
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
+          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*$'
+
+  # A disabled provider must not widen any allowlist.
+  - it: should add nothing to the allowlist when no provider is enabled
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
+        url: https://extended.example.com/api/v1/write
+        minMetricImportance: diagnostic
+    asserts:
+      - notMatchRegex:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
+          pattern: 'aws_rds_|aws_s3_|stackdriver_'
+
+  # --- validation --------------------------------------------------------------
+
+  - it: should refuse CloudWatch without a region
+    set:
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-db]
+    asserts:
+      - failedTemplate:
+          errorPattern: "cloudwatch.enabled is true but region is empty"
+
+  - it: should refuse a provider with nothing to watch
+    set:
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+    asserts:
+      - failedTemplate:
+          errorPattern: "cloudwatch.enabled is true but lists no resources"
+      - failedTemplate:
+          errorPattern: "gcp.enabled is true but lists no resources"
+
+  - it: should refuse GCP without a project
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.gcs.buckets: [mz-persist]
+    asserts:
+      - failedTemplate:
+          errorPattern: "gcp.enabled is true but projectId is empty"
+
+  - it: should refuse a Cloud SQL connection name in place of an instance name
+    set:
+      <<: *gcp
+      pipeline.metrics.provider.gcp.cloudSql.instances: ["my-project:us-east1:mz-pg"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'entry "my-project:us-east1:mz-pg" contains a colon'
+
+  # Two components cannot share a label, and Alloy refuses the whole config at
+  # load when they do.
+  - it: should refuse two buckets that become the same component label
+    set:
+      <<: *cloudwatch
+      pipeline.metrics.provider.cloudwatch.s3.buckets: [mz-persist.a1b2, mz-persist-a1b2]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'both become the component label "s3_mz_persist_a1b2"'
+
+  # `alloy validate` passes this and `alloy run` exits on it, so the gateway
+  # would crashloop with every log and metric it carries.
+  - it: should refuse a scrape timeout longer than the interval
+    set:
+      <<: *cloudwatch
+      pipeline.metrics.provider.cloudwatch.scrapeInterval: 1m
+    asserts:
+      - failedTemplate:
+          errorPattern: 'scrapeTimeout \(2m\) is longer than scrapeInterval \(1m\)'
+
+  - it: should refuse a duration it cannot compare
+    set:
+      <<: *gcp
+      pipeline.metrics.provider.gcp.scrapeInterval: 5min
+    asserts:
+      - failedTemplate:
+          errorPattern: 'gcp.scrapeInterval is "5min"'
+
+  - it: should refuse a request interval that is not a duration
+    set:
+      <<: *gcp
+      pipeline.metrics.provider.gcp.requestInterval: ten minutes
+    asserts:
+      - failedTemplate:
+          errorPattern: 'gcp.requestInterval is "ten minutes"'
+
+  - it: should accept a compound duration
+    set:
+      <<: *gcp
+      pipeline.metrics.provider.gcp.scrapeInterval: 1h30m
+      pipeline.metrics.provider.gcp.scrapeTimeout: 90s
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'scrape_interval\s+= "1h30m"\s+scrape_timeout\s+= "90s"'
+
+  - it: should refuse an importance no destination understands
+    set:
+      <<: *cloudwatch
+      pipeline.metrics.provider.cloudwatch.metricImportance: high
+    asserts:
+      - failedTemplate:
+          errorPattern: 'cloudwatch.metricImportance is "high"'
+
+  - it: should refuse a pull with no gateway to run it
+    set:
+      <<: *cloudwatch
+      alloy-gateway.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "alloy-gateway is not enabled"
+
+  # --- identity warnings -------------------------------------------------------
+
+  - it: should warn when CloudWatch has no identity to run as
+    template: NOTES.txt
+    set: *cloudwatch
+    asserts:
+      - matchRegexRaw:
+          pattern: "no eks.amazonaws.com/role-arn annotation"
+
+  - it: should stay quiet when the gateway has an IRSA role
+    template: NOTES.txt
+    set:
+      <<: *cloudwatch
+      alloy-gateway.serviceAccount.annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/gateway
+    asserts:
+      - matchRegexRaw:
+          pattern: "eks.amazonaws.com/role-arn annotation"
+        not: true
+
+  # Off Google Cloud with no credential, the exporter fails to build and takes
+  # the gateway's initial load with it, so the warning has to say so.
+  - it: should warn when GCP has no Workload Identity binding
+    template: NOTES.txt
+    set: *gcp
+    asserts:
+      - matchRegexRaw:
+          pattern: "neither an iam.gke.io/gcp-service-account annotation"
+      - matchRegexRaw:
+          pattern: "the whole gateway fails to start"
+
+  - it: should stay quiet when the gateway has a Workload Identity binding
+    template: NOTES.txt
+    set:
+      <<: *gcp
+      alloy-gateway.serviceAccount.annotations:
+        iam.gke.io/gcp-service-account: gateway@my-project.iam.gserviceaccount.com
+    asserts:
+      - matchRegexRaw:
+          pattern: "iam.gke.io/gcp-service-account annotation"
+        not: true
+
+  - it: should stay quiet when a credential file is supplied through extraEnv
+    template: NOTES.txt
+    set:
+      <<: *gcp
+      alloy-gateway.alloy.extraEnv:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/gcp/credentials.json
+    asserts:
+      - matchRegexRaw:
+          pattern: "iam.gke.io/gcp-service-account annotation"
+        not: true

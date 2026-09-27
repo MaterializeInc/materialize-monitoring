@@ -197,10 +197,17 @@ impl<T: LiteralScalar> Expressable<T> {
 ///
 /// In use on `prometheus.exporter.cadvisor`'s collector allowlists, which are
 /// wired to environment variables via `encoding.from_json(...)`.
+///
+/// `Items` is a literal list whose elements may themselves be expressions —
+/// `[argument.region.value]` inside a `declare` body, where the list shape is
+/// fixed and only its members are parameters. It sits after `Literal`, so an
+/// all-string list keeps its plain form, and before `Expr`, which is an
+/// object and cannot match an array anyway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ExpressableList {
     Literal(Vec<String>),
+    Items(Vec<Expressable<String>>),
     Expr(Expression),
 }
 
@@ -212,6 +219,12 @@ impl ExpressableList {
                     .iter()
                     .map(|v| AttributeValue::String(v.clone()))
                     .collect(),
+            )),
+            ExpressableList::Items(items) => Ok(AttributeValue::Array(
+                items
+                    .iter()
+                    .map(Expressable::to_attribute_value)
+                    .collect::<Result<Vec<_>>>()?,
             )),
             ExpressableList::Expr(expr) => Ok(AttributeValue::Expression(expr.clone())),
         }

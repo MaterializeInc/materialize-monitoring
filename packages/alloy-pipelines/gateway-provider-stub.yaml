@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/alloy/mzmon-alloy.schema.yaml
+# Alloy gateway cloud provider instances stub.
+# These are processed by mz-monitoring-build gen-pipelines to produce a gateway-provider-stub.alloy config.
+
+description: |
+  BUILD-TIME stand-in for the chart's provider instances. This is NOT what
+  deploys.
+
+  gateway-provider.yaml holds the custom components and deploys as-is. What
+  the chart adds at install is only instances of them, one per resource, from
+  `mzmon.alloyGateway.pipeline.provider` in
+  charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl.
+
+  This file makes one instance of each, with the arguments the chart passes,
+  so `make pipelines` checks those argument names against the components at
+  the Alloy version CI pins — `alloy validate` rejects an argument a
+  `declare` does not have. Keep it in step with the helper's instances. The
+  helper is the source of truth.
+
+blocks:
+  - custom:
+      component: provider_cloudwatch_rds
+      label: rds_example_db
+      attributes:
+        instance_id: example-db
+        region: us-east-1
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_cloudwatch_s3
+      label: s3_example_bucket
+      attributes:
+        bucket: example-bucket
+        region: us-east-1
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_gcp_cloudsql
+      label: provider
+      attributes:
+        project_id: example-project
+        database_ids: ["example-project:example-pg"]
+        request_interval: 10m
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_gcp_gcs
+      label: provider
+      attributes:
+        project_id: example-project
+        buckets: ["example-bucket"]
+        request_interval: 10m
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
