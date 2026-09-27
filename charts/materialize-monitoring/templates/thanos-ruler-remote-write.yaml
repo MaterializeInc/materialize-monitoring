@@ -21,6 +21,32 @@ The target is the alloy-gateway's `prometheus.receive_http` listener, the same
 one the agent pushes to, so rule results take the path every other series in this
 stack takes.
 
+**Two ConfigMaps, one per TLS mode, and both names carry a revision**
+(`mzmon.thanos.ruler.remoteWriteConfigMapName`). The plaintext one writes over
+plaintext. The `-tls` one writes over TLS: the Ruler trusts the
+internal CA and presents the Thanos certificate, both from
+`thanos.ruler.extraVolumes`, from phase 1, which the listener ignores until
+phase 2, so phase 3 can require a certificate in any rollout order.
+
+The mode and the revision are in the name because the Ruler reads this file
+once, at startup, and nothing else would roll it. The subchart's pod annotations
+are static and the mount is a `subPath`, so a change to a ConfigMap's contents
+reaches no running Ruler. Pointing the `remote-write` volume at a different name
+changes the pod template instead, which rolls it. So switching modes rolls the
+Ruler, and so does upgrading to a chart whose contents changed, provided the
+revision was bumped with them. `profiles/mtls.values.yaml` does that, and
+`mzmon.thanos.validate.ruler` fails the render when the mounted ConfigMap and
+`pipeline.metrics.gateway.server.tls` disagree. Left on plaintext against a TLS
+listener, every write fails the handshake, and the gateway logs each failure.
+
+**No `write_relabel_configs`, deliberately.** The gateway converts every
+series to OTLP, which needs a `job` and an `instance` that rule results lack,
+and the obvious fix is a `replace` here. Thanos loads this file without a
+label-name validation scheme, so any `replace` panics the Ruler at startup
+("Invalid name validation scheme requested: unset"). The gateway fills both
+instead, before its OTLP bridge; see `prometheus.relabel.receiveIdentity` in
+`mzmon.alloyGateway.pipeline.sources`.
+
 **Rendered whenever the Ruler is enabled, including when the gateway is not.**
 `thanos.ruler.extraVolumes` mounts this unconditionally, so gating it on the
 gateway would leave every Ruler pod in `FailedMount` on a metrics-only install —
@@ -29,10 +55,12 @@ what the validator promises. With no gateway the samples go nowhere and the
 alerts still fire; `mzmon.thanos.validate.ruler` says so.
 */}}
 {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+{{- range $tls := list false true }}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: thanos-ruler-remote-write
+  name: {{ include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" $tls ) }}
   namespace: {{ include "mzmon.thanos.namespace" $ }}
   labels:
     {{- include "mzmon.labels" $ | nindent 4 }}
@@ -43,8 +71,14 @@ data:
   remote-write.yaml: |
     remote_write:
       - name: alloy-gateway
-        url: {{ include "mzmon.alloyGateway.remoteWriteUrl" $ | quote }}
+        url: {{ printf "%s://%s" ( ternary "https" "http" $tls ) ( include "mzmon.alloyGateway.remoteWriteAddress" $ ) | quote }}
         remote_timeout: 30s
+        {{- if $tls }}
+        tls_config:
+          ca_file: /etc/mzmon/tls/ca.crt
+          cert_file: /etc/mzmon/tls/tls.crt
+          key_file: /etc/mzmon/tls/tls.key
+        {{- end }}
         {{- /* The ruler writes ALERTS, ALERTS_FOR_STATE and every recording-rule
                result. That is a small, steady stream rather than a scrape-shaped
                burst, so the queue stays well under the Prometheus defaults. */}}
@@ -54,4 +88,5 @@ data:
           min_shards: 1
           max_samples_per_send: 500
           batch_send_deadline: 5s
+{{- end }}
 {{- end }}

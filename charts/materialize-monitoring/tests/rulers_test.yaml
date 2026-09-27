@@ -86,13 +86,16 @@ tests:
 
   - it: points the ruler's remote-write at the gateway's receive_http listener
     template: templates/thanos-ruler-remote-write.yaml
+    documentSelector:
+      path: metadata.name
+      value: thanos-ruler-remote-write-v2
     asserts:
       - matchRegex:
           path: data["remote-write.yaml"]
           pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"'
 
   # The ConfigMap is the ruler's, so it follows Thanos rather than the release.
-  - it: renders the remote-write ConfigMap into the Thanos namespace
+  - it: renders the remote-write ConfigMaps into the Thanos namespace
     set:
       thanos.namespaceOverride: thanos-ns
     template: templates/thanos-ruler-remote-write.yaml
@@ -113,7 +116,7 @@ tests:
   # the ConfigMap on the gateway would leave every Ruler pod in FailedMount on a
   # metrics-only install — losing alert evaluation, not just remote-write, which
   # is the opposite of what the validator promises for this shape.
-  - it: still renders the remote-write ConfigMap when the gateway is disabled
+  - it: still renders both remote-write ConfigMaps when the gateway is disabled
     set:
       tags.default: false
       tags.thanos: true
@@ -121,10 +124,15 @@ tests:
     template: templates/thanos-ruler-remote-write.yaml
     asserts:
       - hasDocuments:
-          count: 1
+          count: 2
       - equal:
           path: metadata.name
-          value: thanos-ruler-remote-write
+          value: thanos-ruler-remote-write-v2
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: thanos-ruler-remote-write-v2-tls
+        documentIndex: 1
 
   - it: leaves the ruler's mount satisfiable when the gateway is disabled
     set:
@@ -138,7 +146,7 @@ tests:
           content:
             name: remote-write
             configMap:
-              name: thanos-ruler-remote-write
+              name: thanos-ruler-remote-write-v2
 
   # --- evaluation target ----------------------------------------------------
 
@@ -530,14 +538,14 @@ tests:
           path: data["config.yaml"]
           pattern: "url: http://alloy-gateway\\.test-monitoring\\.svc\\.k8s\\.internal:9090/api/v1/metrics/write"
 
-  - it: follows global.clusterDomain in the Thanos remote-write ConfigMap
+  - it: follows global.clusterDomain in both Thanos remote-write ConfigMaps
     set:
       global.clusterDomain: k8s.internal
     template: templates/thanos-ruler-remote-write.yaml
     asserts:
       - matchRegex:
           path: data["remote-write.yaml"]
-          pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.k8s\.internal:9090/api/v1/metrics/write"'
+          pattern: 'url: "https?://alloy-gateway\.test-monitoring\.svc\.k8s\.internal:9090/api/v1/metrics/write"'
 
   # The upstream StatefulSet hardcodes --alert.label-drop and ranges extraArgs
   # after it, so setting extraArgs appends rather than replaces. Asserted because
@@ -604,3 +612,359 @@ tests:
             ports:
               - port: 9093
                 protocol: TCP
+
+  # --- remote-write over TLS ------------------------------------------------
+
+  # Both rulers write to the gateway's metrics listener, which the mTLS
+  # profiles move to TLS. A ruler left behind still evaluates and notifies, so
+  # nothing looks broken, but it retries every batch forever and the gateway
+  # logs a handshake error for each attempt.
+  - it: remote-writes from the Thanos ruler over plaintext by default
+    template: templates/thanos-ruler-remote-write.yaml
+    documentSelector:
+      path: metadata.name
+      value: thanos-ruler-remote-write-v2
+    asserts:
+      - matchRegex:
+          path: data["remote-write.yaml"]
+          pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"'
+      - notMatchRegex:
+          path: data["remote-write.yaml"]
+          pattern: "tls_config"
+
+  # Presented from phase 1, which the listener ignores until phase 2, so phase
+  # 3 can require a certificate in any rollout order.
+  - it: renders a TLS variant of the Thanos ruler's remote-write that presents its certificate
+    template: templates/thanos-ruler-remote-write.yaml
+    documentSelector:
+      path: metadata.name
+      value: thanos-ruler-remote-write-v2-tls
+    asserts:
+      - matchRegex:
+          path: data["remote-write.yaml"]
+          pattern: 'url: "https://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"\n\s+remote_timeout: 30s\n\s+tls_config:\n\s+ca_file: /etc/mzmon/tls/ca\.crt\n\s+cert_file: /etc/mzmon/tls/tls\.crt\n\s+key_file: /etc/mzmon/tls/tls\.key\n'
+
+  # The ruler reads the file once at startup, so the profile switches which
+  # ConfigMap it mounts: a changed volume rolls the pod, and changed contents
+  # would not.
+  - it: mounts the TLS remote-write variant in the Thanos ruler once the listener serves TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: remote-write
+            configMap:
+              name: thanos-ruler-remote-write-v2-tls
+
+  - it: refuses a Thanos ruler left on the plaintext variant when the listener serves TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      thanos.ruler.extraVolumes:
+        - name: remote-write
+          configMap:
+            name: thanos-ruler-remote-write-v2
+        - name: mzmon-tls
+          secret:
+            secretName: mzmon-thanos-tls
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.ruler.extraVolumes mounts ConfigMap thanos-ruler-remote-write-v2 as the Thanos ruler's remote-write configuration, but the gateway's metrics listener serves https"
+
+  - it: refuses a Thanos ruler on the TLS variant when the listener is plaintext
+    set:
+      thanos.ruler.extraVolumes:
+        - name: remote-write
+          configMap:
+            name: thanos-ruler-remote-write-v2-tls
+        - name: mzmon-tls
+          secret:
+            secretName: mzmon-thanos-tls
+            optional: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "mounts ConfigMap thanos-ruler-remote-write-v2-tls as the Thanos ruler's remote-write configuration, but the gateway's metrics listener serves http \\(pipeline.metrics.gateway.server.tls.enabled is false\\), which is thanos-ruler-remote-write-v2\\."
+
+  - it: remote-writes from the Loki ruler over TLS, presenting its certificate, once the listener serves TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "tls_config:\\n\\s+ca_file: /etc/mzmon/tls/ca\\.crt\\n\\s+cert_file: /etc/mzmon/tls/tls\\.crt\\n\\s+key_file: /etc/mzmon/tls/tls\\.key\\n\\s+url: https://alloy-gateway\\.test-monitoring\\.svc\\.cluster\\.local:9090/api/v1/metrics/write"
+
+  - it: raises nothing about ruler remote-write at phase 3
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "remote_write|remote-write"
+
+  - it: refuses a Loki ruler left on http when the listener serves TLS
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.rulerConfig.remote_write.clients.gateway.url: http://alloy-gateway.test-monitoring.svc.cluster.local:9090/api/v1/metrics/write
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "remote_write.clients.gateway.url is http://alloy-gateway.test-monitoring.svc.cluster.local:9090/api/v1/metrics/write, but the gateway's metrics listener serves https"
+
+  # The reverse: the profile's URL left behind after TLS is turned back off.
+  - it: refuses a Loki ruler left on https when the listener is plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      pipeline.metrics.gateway.server.tls.enabled: false
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "but the gateway's metrics listener serves http \\(pipeline.metrics.gateway.server.tls.enabled is false\\)"
+
+  - it: refuses a Loki ruler that trusts no CA
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.rulerConfig.remote_write.clients.gateway.tls_config.ca_file: null
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "remote_write.clients.gateway is https with no tls_config.ca_file"
+
+  - it: refuses a Loki ruler that presents nothing once the listener requires a certificate
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+      - ../profiles/mtls-phase3.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.rulerConfig.remote_write.clients.gateway.tls_config.cert_file: null
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "clientAuth is RequireAndVerifyClientCert but loki.loki.rulerConfig.remote_write.clients.gateway presents no client certificate"
+
+  - it: refuses Loki ruler certificate paths no volume mounts
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.loki.rulerConfig.remote_write.clients.gateway.tls_config.ca_file: /etc/elsewhere/ca.crt
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "tls_config.ca_file is /etc/elsewhere/ca.crt, which no entry in loki.defaults.extraVolumeMounts or loki.ruler.extraVolumeMounts mounts"
+
+  # `extraVolumeMounts` is a list, so adding one replaces the chart's entries.
+  - it: refuses a Thanos ruler whose certificate mount was dropped
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      thanos.ruler.extraVolumeMounts:
+        - name: remote-write
+          mountPath: /etc/thanos/remote-write.yaml
+          subPath: remote-write.yaml
+          readOnly: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "mounts the TLS variant of its remote-write configuration, so it remote-writes over TLS with its certificate from /etc/mzmon/tls, but no entry in thanos.ruler.extraVolumeMounts mounts that path"
+
+  - it: warns when the chart issues no certificate for the Thanos ruler to present
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.components.thanos.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "the chart issues no certificate for Thanos"
+
+  # The two profiles each restate the URL whole, so the one composed last wins.
+  - it: warns when mTLS composed after split-namespace moves the Loki ruler's remote-write back to the release namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "remote_write.clients.gateway.url is https://alloy-gateway.test-monitoring.svc.cluster.local:9090/api/v1/metrics/write, which does not name the gateway in its namespace"
+
+  - it: refuses a Loki ruler remote-write host that is not on the gateway's certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.components.alloy-gateway.services:
+        - alloy-gateway-cluster
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.loki.rulerConfig.remote_write.clients.gateway.url dials \"alloy-gateway.test-monitoring.svc.cluster.local\", which is not a SAN"
+
+  # --- job and instance on remote-written samples ---------------------------
+
+  # The gateway converts every series to OTLP, which refuses a sample without
+  # `job` and `instance` and fails the whole batch with a 500. Rule results
+  # carry neither, so both rulers fill them where a result does not.
+  # The Thanos ruler cannot fill them itself: a `replace` in its
+  # write_relabel_configs panics it at startup. So the gateway does, before its
+  # OTLP bridge, recognising the ruler by `ruler_replica`. `instance` is a
+  # constant, because Thanos Query deduplicates the replicas on `ruler_replica`
+  # alone: a per-pod `instance` would keep every rule result twice.
+  - it: fills job and instance on pushed samples before the gateway's OTLP bridge
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus.receive_http "gateway" \{\n\s+forward_to = \[\n\s+prometheus.relabel.receiveIdentity.receiver,'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus.relabel "receiveIdentity" \{\n\s+forward_to = \[\n\s+otelcol.receiver.prometheus.inputBridge.receiver,\n\s+\]\n\n\s+rule \{\n\s+source_labels = \["job", "ruler_replica"\]\n\s+regex\s+= ";\.\+"\n\s+target_label\s+= "job"\n\s+replacement\s+= "thanos-ruler"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'source_labels = \["instance", "ruler_replica"\]\n\s+regex\s+= ";\.\+"\n\s+target_label\s+= "instance"\n\s+replacement\s+= "thanos-ruler"'
+
+  - it: renders no write_relabel_configs for the Thanos ruler, which panics on them
+    template: templates/thanos-ruler-remote-write.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["remote-write.yaml"]
+          pattern: "write_relabel_configs"
+
+  - it: fills job and instance on the Loki ruler's remote-written samples, from the pod name
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "write_relabel_configs:\\n\\s+- regex: \"\"\\n\\s+replacement: loki-ruler\\n\\s+source_labels:\\n\\s+- job\\n\\s+target_label: job\\n\\s+- regex: \"\"\\n\\s+replacement: \\$\\{POD_NAME\\}\\n\\s+source_labels:\\n\\s+- instance\\n\\s+target_label: instance"
+
+  - it: gives the Loki ruler the pod name that instance is filled from
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+
+  - it: warns when a Loki ruler client to the gateway no longer fills job and instance
+    set:
+      loki.loki.rulerConfig.remote_write.clients.gateway.write_relabel_configs:
+        - source_labels: [__name__]
+          regex: "debug_.*"
+          action: drop
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "remote_write.clients.gateway.write_relabel_configs does not set job"
+      - matchRegexRaw:
+          pattern: "remote_write.clients.gateway.write_relabel_configs does not set instance"
+
+  # --- the ConfigMap's revision ---------------------------------------------
+
+  # The ruler reads its remote-write file once at startup, and nothing rolls it
+  # when a ConfigMap's contents change. A new name does, so the names carry a
+  # revision. **If this test fails because the contents changed, bump the
+  # revision in `mzmon.thanos.ruler.remoteWriteConfigMapName`, `values.yaml`
+  # and `profiles/mtls.values.yaml`, then update the expected names here.**
+  # Updating only the expected contents leaves every running ruler on the old
+  # file until something else restarts it.
+  - it: pins the plaintext remote-write contents to their revision
+    template: templates/thanos-ruler-remote-write.yaml
+    documentSelector:
+      path: metadata.name
+      value: thanos-ruler-remote-write-v2
+    asserts:
+      - equal:
+          path: data["remote-write.yaml"]
+          value: |
+            remote_write:
+              - name: alloy-gateway
+                url: "http://alloy-gateway.test-monitoring.svc.cluster.local:9090/api/v1/metrics/write"
+                remote_timeout: 30s
+                queue_config:
+                  capacity: 2500
+                  max_shards: 10
+                  min_shards: 1
+                  max_samples_per_send: 500
+                  batch_send_deadline: 5s
+
+  - it: pins the TLS remote-write contents to their revision
+    template: templates/thanos-ruler-remote-write.yaml
+    documentSelector:
+      path: metadata.name
+      value: thanos-ruler-remote-write-v2-tls
+    asserts:
+      - equal:
+          path: data["remote-write.yaml"]
+          value: |
+            remote_write:
+              - name: alloy-gateway
+                url: "https://alloy-gateway.test-monitoring.svc.cluster.local:9090/api/v1/metrics/write"
+                remote_timeout: 30s
+                tls_config:
+                  ca_file: /etc/mzmon/tls/ca.crt
+                  cert_file: /etc/mzmon/tls/tls.crt
+                  key_file: /etc/mzmon/tls/tls.key
+                queue_config:
+                  capacity: 2500
+                  max_shards: 10
+                  min_shards: 1
+                  max_samples_per_send: 500
+                  batch_send_deadline: 5s
+
+  # A deployment that restated `thanos.ruler.extraVolumes` with an earlier
+  # revision's name would mount a ConfigMap the chart no longer renders.
+  - it: refuses a Thanos ruler mounting an earlier revision's remote-write ConfigMap
+    set:
+      thanos.ruler.extraVolumes:
+        - name: remote-write
+          configMap:
+            name: thanos-ruler-remote-write
+        - name: mzmon-tls
+          secret:
+            secretName: mzmon-thanos-tls
+            optional: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "mounts ConfigMap thanos-ruler-remote-write as the Thanos ruler's remote-write configuration, which this chart does not render; the current one is thanos-ruler-remote-write-v2\\."

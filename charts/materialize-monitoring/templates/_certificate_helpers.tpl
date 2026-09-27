@@ -322,6 +322,30 @@ Usage:
         "url" $dest.resolvedUrl ) }}
   {{- end }}
 
+  {{- /* Both rulers remote-write to the gateway's metrics listener. The Thanos
+         ruler's URL comes from the chart's helper; the Loki ruler's is in its
+         subchart's values, and is checked when it addresses the gateway in the
+         gateway's namespace. One in the wrong namespace is a composition
+         mistake that `mzmon.loki.validate.ruler` names directly, and a SAN
+         error here would point at the certificate instead. */}}
+  {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
+    {{- $checks = append $checks ( dict
+        "component" "alloy-gateway"
+        "path" "the Thanos ruler's remote-write (thanos-ruler-remote-write)"
+        "url" ( include "mzmon.alloyGateway.remoteWriteUrl" $ ) ) }}
+  {{- end }}
+  {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
+    {{- range $name, $client := ( dig "loki" "rulerConfig" "remote_write" "clients" dict ( $.Values.loki | default dict ) ) }}
+      {{- $url := dig "url" "" ( $client | default dict ) | toString }}
+      {{- if contains ( printf "://alloy-gateway.%s.svc" ( include "mzmon.alloyGateway.namespace" $ ) ) ( tpl $url $ ) }}
+        {{- $checks = append $checks ( dict
+            "component" "alloy-gateway"
+            "path" ( printf "loki.loki.rulerConfig.remote_write.clients.%s.url" $name )
+            "url" $url ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
   {{- range $check := $checks }}
     {{- if ( include "mzmon.certificates.enabled" ( dict "context" $ "component" $check.component ) ) }}
       {{- $url := tpl ( $check.url | toString ) $ }}

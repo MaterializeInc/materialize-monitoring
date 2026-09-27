@@ -170,6 +170,92 @@ pub async fn samples_scraped(ctx: &Ctx) -> Result<()> {
     .await
 }
 
+/// Both rulers' remote-write to the gateway is keeping up.
+///
+/// A ruler that cannot write still evaluates and still notifies, so nothing
+/// else in the suite fails: its WAL fills, each batch is retried forever, and
+/// the gateway logs a TLS handshake error for every attempt. That is what a
+/// ruler left on the wrong scheme, or without a CA or client certificate, looks
+/// like once the mTLS profiles secure the gateway's metrics listener.
+///
+/// Measured as the newest sample queued minus the newest sample sent, per
+/// queue, which is the lag upstream Prometheus alerts on at two minutes. An idle
+/// queue reads zero, so a Loki ruler with no rules passes. `min by` keeps a
+/// replaced pod's last series, which lingers for the lookback window under a
+/// different `instance`, from failing a pod that has since caught up.
+pub async fn rulers_remote_write_current(ctx: &Ctx, thanos_ruler: bool) -> Result<()> {
+    const MAX_LAG_SECONDS: f64 = 120.0;
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+    let ns = ctx.cluster.namespace();
+    let queries = [
+        (
+            "Thanos ruler",
+            format!(
+                "min by (pod, remote_name) (prometheus_remote_storage_queue_highest_timestamp_seconds{{job=\"thanos-ruler\", namespace=\"{ns}\"}} \
+                 - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{{job=\"thanos-ruler\", namespace=\"{ns}\"}})"
+            ),
+        ),
+        (
+            "Loki ruler",
+            format!(
+                "min by (pod, remote_name, tenant) (loki_ruler_wal_prometheus_remote_storage_queue_highest_timestamp_seconds{{namespace=\"{ns}\"}} \
+                 - loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{{namespace=\"{ns}\"}})"
+            ),
+        ),
+    ];
+
+    retry_until(
+        "both rulers' remote-write to the gateway is keeping up",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let mut behind = Vec::new();
+            for (who, query) in &queries {
+                let series = instant_query(ctx, &target, query).await?;
+                if *who == "Thanos ruler" && thanos_ruler && series.is_empty() {
+                    bail!(
+                        "no remote-write queue metrics from the Thanos ruler in Thanos. It runs \
+                         stateless, so it always has a queue; either it is not scraped or it is \
+                         no longer remote-writing (check --remote-write.config-file in \
+                         thanos.ruler.extraArgs)"
+                    );
+                }
+                for s in &series {
+                    let lag = sample_value(s).unwrap_or(0.0);
+                    if lag > MAX_LAG_SECONDS {
+                        let pod = s
+                            .pointer("/metric/pod")
+                            .and_then(Value::as_str)
+                            .unwrap_or("<pod>");
+                        let queue = s
+                            .pointer("/metric/remote_name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("<queue>");
+                        // A queue that has never sent reads its newest
+                        // timestamp as the lag, which is decades rather than a
+                        // backlog, so say what it means.
+                        behind.push(if lag > 1.0e9 {
+                            format!("{who} {pod} ({queue}) has sent nothing since it started")
+                        } else {
+                            format!("{who} {pod} ({queue}) is {lag:.0}s behind")
+                        });
+                    }
+                }
+            }
+            if behind.is_empty() {
+                return Ok(());
+            }
+            bail!(
+                "{}. Rule results and the ALERTS series are not reaching the gateway. If \
+                 pipeline.metrics.gateway.server.tls is on, check each ruler's remote-write \
+                 scheme, CA and client certificate, and the gateway's log for TLS handshake errors",
+                behind.join("; ")
+            )
+        },
+    )
+    .await
+}
+
 /// Run an instant query and return its result vector.
 /// Run an instant query against a Prometheus-compatible endpoint.
 ///

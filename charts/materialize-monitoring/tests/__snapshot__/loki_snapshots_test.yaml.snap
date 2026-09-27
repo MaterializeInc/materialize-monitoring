@@ -145,6 +145,17 @@ loki config configmap:
                   min_shards: 1
                 remote_timeout: 30s
                 url: http://alloy-gateway.loki.svc.cluster.local:9090/api/v1/metrics/write
+                write_relabel_configs:
+                - regex: ""
+                  replacement: loki-ruler
+                  source_labels:
+                  - job
+                  target_label: job
+                - regex: ""
+                  replacement: ${POD_NAME}
+                  source_labels:
+                  - instance
+                  target_label: instance
             enabled: true
           rule_path: /var/loki/ruler-rules
           storage:
@@ -1013,7 +1024,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: compactor
           labels:
             app.kubernetes.io/component: compactor
@@ -1152,7 +1163,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: distributor
           labels:
             app.kubernetes.io/component: distributor
@@ -1286,7 +1297,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: index-gateway
           labels:
             app.kubernetes.io/component: index-gateway
@@ -1423,7 +1434,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: ingester
           labels:
             app.kubernetes.io/component: ingester
@@ -1661,7 +1672,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: querier
           labels:
             app.kubernetes.io/component: querier
@@ -1807,7 +1818,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: query-frontend
           labels:
             app.kubernetes.io/component: query-frontend
@@ -1945,7 +1956,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: query-scheduler
           labels:
             app.kubernetes.io/component: query-scheduler
@@ -2211,7 +2222,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 05a98d06e5d0db0b75f626084355907e60061eff92537895d61eedef13ed57bf
+            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
             kubectl.kubernetes.io/default-container: ruler
           labels:
             app.kubernetes.io/component: ruler
@@ -2243,6 +2254,10 @@ medium (base) workloads:
                     configMapKeyRef:
                       key: CLUSTER_NAME
                       name: ruler-env
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
                 - name: GOGC
                   value: "80"
                 - name: POD_IP

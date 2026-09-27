@@ -483,6 +483,43 @@ Usage:
 {{- end }}
 
 {{- /*
+The name of one of the Thanos ruler's remote-write ConfigMaps.
+
+The name carries a revision and the TLS mode, because the ruler reads the file
+once at startup and a changed name is the only thing that rolls it. See
+`templates/thanos-ruler-remote-write.yaml`. **Bump the revision whenever the
+rendered contents change**; `rulers_test.yaml` pins them to catch a change that
+forgot. The base values and `profiles/mtls.values.yaml` name these literally, and
+`mzmon.thanos.validate.ruler` fails the render when they are out of step.
+
+Usage:
+  {{ include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" true ) }}
+*/}}
+{{- define "mzmon.thanos.ruler.remoteWriteConfigMapName" -}}
+  thanos-ruler-remote-write-v2{{ if .tls }}-tls{{ end }}
+{{- end }}
+
+{{- /*
+The remote-write ConfigMap the Thanos ruler mounts, as named in
+`thanos.ruler.extraVolumes`: the volume called `remote-write`, or the first
+ConfigMap volume whose name starts `thanos-ruler-remote-write`. Empty when
+there is neither.
+
+Usage:
+  {{- $cm := include "mzmon.thanos.ruler.remoteWriteConfigMap" $ }}
+*/}}
+{{- define "mzmon.thanos.ruler.remoteWriteConfigMap" }}
+  {{- $found := "" }}
+  {{- range ( dig "ruler" "extraVolumes" list ( $.Values.thanos | default dict ) | default list ) }}
+    {{- $name := dig "configMap" "name" "" ( . | default dict ) | toString }}
+    {{- if and ( not $found ) $name ( or ( eq ( toString ( dig "name" "" ( . | default dict ) ) ) "remote-write" ) ( hasPrefix "thanos-ruler-remote-write" $name ) ) }}
+      {{- $found = $name }}
+    {{- end }}
+  {{- end }}
+  {{- $found }}
+{{- end }}
+
+{{- /*
 Get the Thanos Query base URL.
 
 **Deliberately Query rather than Query Frontend**, and that is the whole reason
@@ -553,13 +590,41 @@ Usage:
   {{- if $stateless }}
     {{- if not ( include "mzmon.alloyGateway.enabled" $ ) }}
       {{- $warnings = append $warnings "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled. Rule results are written to a Service that does not exist, so they accumulate in the WAL and are eventually dropped. Alerting itself still works — this costs the recording rules and the ALERTS series, not the notifications." }}
-    {{- else if ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) }}
-      {{- /* The `mtls` profile family turns this listener on, so the broken
-             composition is reachable rather than hypothetical. A warning rather
-             than an error because only the remote-write half breaks — the ruler
-             still evaluates and still notifies Alertmanager. The Loki ruler has
-             the same gap and warns separately. */}}
-      {{- $warnings = append $warnings "pipeline.metrics.gateway.server.tls is on, so the gateway's remote-write listener serves TLS, and the Thanos ruler's remote-write configuration (thanos-ruler-remote-write) names no CA. The remote-write URL follows the scheme, so every write fails the handshake: the ALERTS series and any recording-rule results fill the WAL and are dropped. Alert evaluation and notification are unaffected. Drop --remote-write.config-file from thanos.ruler.extraArgs, or leave the gateway's metrics listener plaintext, until the ruler's remote-write carries certificate material." }}
+    {{- else }}
+      {{- /* The listener's TLS and the ConfigMap the ruler mounts have to agree.
+             The ConfigMap's name carries the mode, because the ruler reads it
+             once at startup and switching names is what rolls the pod. */}}
+      {{- $gwTls := dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) }}
+      {{- $cm := include "mzmon.thanos.ruler.remoteWriteConfigMap" $ }}
+      {{- $want := include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" $gwTls ) }}
+      {{- $other := include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" ( not $gwTls ) ) }}
+      {{- if eq $cm $other }}
+        {{- $errors = append $errors ( printf "thanos.ruler.extraVolumes mounts ConfigMap %s as the Thanos ruler's remote-write configuration, but the gateway's metrics listener serves %s (pipeline.metrics.gateway.server.tls.enabled is %t), which is %s. Every write fails, the ruler retries each batch indefinitely, and the gateway logs a TLS handshake error per attempt. The ruler reads the file once at startup, so the mode is in the ConfigMap's name and switching it is what rolls the ruler. Mount %s; profiles/mtls.values.yaml does. The list replaces the chart's, so restate the mzmon-tls volume with it." $cm ( ternary "https" "http" $gwTls ) $gwTls $want $want ) }}
+      {{- else if and $cm ( ne $cm $want ) }}
+        {{- /* An earlier revision's name. The chart no longer renders it, so the
+               volume would not mount. */}}
+        {{- $errors = append $errors ( printf "thanos.ruler.extraVolumes mounts ConfigMap %s as the Thanos ruler's remote-write configuration, which this chart does not render; the current one is %s. The name carries a revision, because the ruler reads the file once at startup and a new name is what rolls it onto new contents. Mount %s, restating the mzmon-tls volume with it." $cm $want $want ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- /* The TLS ConfigMap names fixed paths under /etc/mzmon/tls. What the
+         chart cannot render is the mount, which is a list in the subchart's
+         values that an override replaces whole. Prometheus's remote-write
+         client reads the CA when it starts, so a missing file stops the ruler,
+         not only its writes. */}}
+  {{- if and $stateless ( eq ( include "mzmon.thanos.ruler.remoteWriteConfigMap" $ ) ( include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" true ) ) ) }}
+    {{- $mounted := false }}
+    {{- range ( dig "extraVolumeMounts" list $ruler | default list ) }}
+      {{- if and ( kindIs "map" . ) ( eq ( trimSuffix "/" ( toString .mountPath ) ) "/etc/mzmon/tls" ) }}
+        {{- $mounted = true }}
+      {{- end }}
+    {{- end }}
+    {{- if not $mounted }}
+      {{- $errors = append $errors "The Thanos ruler mounts the TLS variant of its remote-write configuration, so it remote-writes over TLS with its certificate from /etc/mzmon/tls, but no entry in thanos.ruler.extraVolumeMounts mounts that path. The ruler cannot load its CA and does not start. Restate the chart's mzmon-tls volume and mount alongside any you add; both are lists, and an override replaces the chart's entries." }}
+    {{- end }}
+    {{- if not ( include "mzmon.certificates.enabled" ( dict "context" $ "component" "thanos" ) ) }}
+      {{- $warnings = append $warnings "The Thanos ruler mounts the TLS variant of its remote-write configuration, so it remote-writes over TLS with the Thanos certificate, but the chart issues no certificate for Thanos (certificates.enabled, or certificates.components.thanos.enabled, is off). That is correct if you mount your own as mzmon-thanos-tls. Otherwise the ruler cannot load its CA and does not start." }}
     {{- end }}
   {{- end }}
 

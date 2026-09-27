@@ -326,6 +326,20 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         alertmanager && thanos_ruler,
         checks::alertmanager::thanos_ruler_reaches_every_replica,
     ));
+    // Read through Thanos, so it needs Thanos, and a ruler to have a queue.
+    let loki_ruler = logging
+        && ctx
+            .features
+            .get("loki.ruler.enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::rulers_remote_write_current",
+        thanos && (thanos_ruler || loki_ruler),
+        async move |ctx: &Ctx| checks::thanos::rulers_remote_write_current(ctx, thanos_ruler).await,
+    ));
     trials.push(trial(
         runtime,
         ctx,
