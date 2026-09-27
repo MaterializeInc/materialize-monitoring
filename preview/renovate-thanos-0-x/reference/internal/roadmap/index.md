@@ -391,7 +391,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ⬜ |
-| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below) |
+| Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |

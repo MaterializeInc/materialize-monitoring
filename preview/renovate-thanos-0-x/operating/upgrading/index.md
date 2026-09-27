@@ -78,7 +78,7 @@ Loki ships a `compactor`, a `query-frontend` and a `ruler` into the same namespa
 | Service | Endpoints included the Loki pods wherever a port name matched. Thanos Query dialled both Loki rulers' `grpc` port every five seconds and logged a failure each time. No Loki pod has an `http` port, so none was scraped as a Thanos target. |
 
 Services, budgets and policies take the new selectors in place.
-Deployment and StatefulSet selectors are immutable, so `helm upgrade` fails partway at the first Thanos workload, as described under [StatefulSet fields that cannot be patched](#statefulset-fields-that-cannot-be-patched).
+Deployment and StatefulSet selectors are immutable, so `helm upgrade` fails, naming every Thanos workload it could not patch, as described under [StatefulSet fields that cannot be patched](#statefulset-fields-that-cannot-be-patched).
 The workloads are deleted with `--cascade=orphan` before the upgrade.
 
 ```bash
@@ -92,11 +92,16 @@ helm upgrade mzmon ... # or terraform apply
 A Helm install substitutes its own.
 
 Orphaning is the right tool here, unlike for a volume change.
-The pods already carry every label in the new selectors, and their templates are unchanged, so the recreated workloads adopt the running pods without restarting them.
+The pods already carry every label in the new selectors, and the chart leaves their templates unchanged, so the recreated workloads adopt the running pods without restarting them.
 No PVC is touched.
 
+A workload whose pod template was changed outside Helm rolls once instead.
+`kubectl rollout restart` is the usual cause: it stamps a `kubectl.kubernetes.io/restartedAt` annotation that Helm preserves across upgrades, and a recreated workload starts from the chart's template without it.
+A StatefulSet rolls one pod at a time and waits for each to be ready.
+
 An upgrade that already failed on this recovers the same way: delete the workloads with `--cascade=orphan`, then run it again.
-The Terraform module installs with `atomic = false`, so the failed attempt was not rolled back.
+The failed attempt has already applied everything except the workloads, including the new Service, budget and policy selectors.
+The Terraform module installs with `atomic = false`, so nothing was rolled back.
 
 Resource names, pod labels and the `thanos-thanos` ServiceAccount that workload identity bindings name are all unchanged.
 
