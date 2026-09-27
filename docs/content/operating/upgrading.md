@@ -65,6 +65,46 @@ names to `alertmanager`, which were previously derived from the release name as 
 | Both rulers retarget `alertmanager-headless` | The Loki ruler's address lives in Loki's shared configuration, so every Loki pod rolls once. |
 | Both rulers stamp `cluster` on alerts | Read from a new `ruler-env` ConfigMap in each ruler's namespace; both rulers roll once. Set `clusterName` (Terraform: `cluster_name`) first if it is still `default`; it replaces setting `pipeline.env.CLUSTER_NAME` directly. |
 
+## Thanos: selectors name the chart
+
+The release that moves the Thanos subchart to 0.46.0 ([DEP-229](https://linear.app/materializeinc/issue/DEP-229)) adds `app.kubernetes.io/name: thanos` to every Thanos selector.
+Earlier releases selected on component and release name alone.
+Loki ships a `compactor`, a `query-frontend` and a `ruler` into the same namespace under the same release, so those three Thanos components also selected Loki's pods.
+
+| Thanos object | Effect on the matching Loki pods |
+|---|---|
+| PodDisruptionBudget | Each Loki ruler was covered by both `loki-ruler` and `thanos-ruler`. The eviction API refuses a pod with more than one budget, so a node drain, node-pool upgrade or autoscaler scale-down could not move it. The Loki query frontend had the same problem wherever `thanos.queryFrontend.enabled` was set. |
+| NetworkPolicy | Thanos's policies allow all egress, and ingress from anywhere on the ports they name. Policies are additive, so Loki's own policy did not restrict the Loki ruler or compactor. |
+| Service | Endpoints included the Loki pods wherever a port name matched. Thanos Query dialled both Loki rulers' `grpc` port every five seconds and logged a failure each time. No Loki pod has an `http` port, so none was scraped as a Thanos target. |
+
+Services, budgets and policies take the new selectors in place.
+Deployment and StatefulSet selectors are immutable, so `helm upgrade` fails, naming every Thanos workload it could not patch, as described under [StatefulSet fields that cannot be patched](#statefulset-fields-that-cannot-be-patched).
+The workloads are deleted with `--cascade=orphan` before the upgrade.
+
+```bash
+kubectl -n monitoring delete statefulset,deployment \
+  -l app.kubernetes.io/part-of=thanos,app.kubernetes.io/instance=mzmon \
+  --cascade=orphan
+helm upgrade mzmon ... # or terraform apply
+```
+
+`mzmon` is the release name the Terraform module installs under.
+A Helm install substitutes its own.
+
+Orphaning is the right tool here, unlike for a volume change.
+The pods already carry every label in the new selectors, and the chart leaves their templates unchanged, so the recreated workloads adopt the running pods without restarting them.
+No PVC is touched.
+
+A workload whose pod template was changed outside Helm rolls once instead.
+`kubectl rollout restart` is the usual cause: it stamps a `kubectl.kubernetes.io/restartedAt` annotation that Helm preserves across upgrades, and a recreated workload starts from the chart's template without it.
+A StatefulSet rolls one pod at a time and waits for each to be ready.
+
+An upgrade that already failed on this recovers the same way: delete the workloads with `--cascade=orphan`, then run it again.
+The failed attempt has already applied everything except the workloads, including the new Service, budget and policy selectors.
+The Terraform module installs with `atomic = false`, so nothing was rolled back.
+
+Resource names, pod labels and the `thanos-thanos` ServiceAccount that workload identity bindings name are all unchanged.
+
 ## Ingester rollouts: duration and deploy timeouts
 
 Any change to the ingester pod spec — image, resources, or scaling the replica count — rolls the ingester StatefulSet.

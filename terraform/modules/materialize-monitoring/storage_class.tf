@@ -1,9 +1,13 @@
 # StorageClass fan-out.
 #
-# Six keys, of which **four are live by default** — there is no lever covering
-# more than one (Thanos has a `global` for scheduling but not persistence).
+# Six keys, of which **four are live by default**.
 # Written out literally rather than generated: the nesting depths differ, and at
 # this size an explicit map is easier to check against the subcharts.
+#
+# Thanos does have a chart-wide `global.storageClass`, but it is only the
+# fallback: a component's own `persistence.storageClass` wins over it. Naming
+# each component keeps this variable the last word over any component-level
+# class set earlier in the values composition.
 #
 # Live: Alertmanager, the Loki ruler, and the Thanos Store Gateway and Compactor.
 #

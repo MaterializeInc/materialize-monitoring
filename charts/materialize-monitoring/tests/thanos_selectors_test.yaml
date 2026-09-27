@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Every Thanos selector must name the chart as well as the component.
+#
+# `app.kubernetes.io/component` is not unique across backends: Loki also ships a
+# `compactor`, a `query-frontend` and a `ruler`, into the same namespace and
+# under the same release name. Before thanos 0.36.0 the subchart selected on
+# component and instance alone, so each of those Thanos objects also reached
+# Loki's pods (DEP-229):
+#
+#   * The Services routed to them wherever a port name lined up. Loki's rulers
+#     have a `grpc` port, so Thanos Query dialled them through
+#     `thanos-ruler-headless` every five seconds. None has an `http` port, which
+#     is the only reason no Loki pod was scraped as a Thanos one.
+#   * The PodDisruptionBudgets covered them. A Loki ruler under both
+#     `loki-ruler` and `thanos-ruler` cannot be evicted at all — the eviction
+#     API refuses a pod with more than one budget — so node drains stalled.
+#   * The NetworkPolicies selected them, and those allow all egress. Policies
+#     are additive, so Loki's own egress rules stopped constraining those pods.
+#
+# Only the three colliding components are pinned here. The rest are Thanos-only
+# and would pass for the wrong reason.
+#
+# The ServiceMonitors already named the chart before the fix, and still do. They
+# are not pinned: a monitor selects Services, not pods, so it was only ever as
+# wrong as the Service behind it.
+suite: thanos selectors
+release:
+  name: t
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.thanos: true
+  thanos.global.objstore.createSecret: false
+  # Off by default; the Loki subchart deploys one, so it is a live collision
+  # for anyone who turns it on.
+  thanos.queryFrontend.enabled: true
+tests:
+  # No documentIndex: every Service in the file is asserted, which for the ruler
+  # includes the headless one Query discovers endpoints through.
+  - it: qualifies the Service selectors
+    templates:
+      - ../charts/thanos/templates/compactor/service.yaml
+      - ../charts/thanos/templates/query-frontend/service.yaml
+      - ../charts/thanos/templates/ruler/service.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: thanos
+
+  # Immutable once created, which is why upgrading across this needs the
+  # workloads recreated. See the upgrade notes.
+  - it: qualifies the workload selectors
+    templates:
+      - ../charts/thanos/templates/compactor/statefulset.yaml
+      - ../charts/thanos/templates/query-frontend/deployment.yaml
+      - ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: thanos
+
+  - it: qualifies the PodDisruptionBudget selectors
+    templates:
+      - ../charts/thanos/templates/compactor/pdb.yaml
+      - ../charts/thanos/templates/query-frontend/pdb.yaml
+      - ../charts/thanos/templates/ruler/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: thanos
+
+  - it: qualifies the NetworkPolicy pod selectors
+    templates:
+      - ../charts/thanos/templates/compactor/networkpolicy.yaml
+      - ../charts/thanos/templates/query-frontend/networkpolicy.yaml
+      - ../charts/thanos/templates/ruler/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/name"]
+          value: thanos
