@@ -4745,7 +4745,25 @@ Upstream reference:
           "min_shards": 1
         },
         "remote_timeout": "30s",
-        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+        "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write",
+        "write_relabel_configs": [
+          {
+            "regex": "",
+            "replacement": "loki-ruler",
+            "source_labels": [
+              "job"
+            ],
+            "target_label": "job"
+          },
+          {
+            "regex": "",
+            "replacement": "${POD_NAME}",
+            "source_labels": [
+              "instance"
+            ],
+            "target_label": "instance"
+          }
+        ]
       }
     },
     "enabled": true
@@ -4787,7 +4805,25 @@ side uses — and why `split-namespace` overrides both of them.
         "min_shards": 1
       },
       "remote_timeout": "30s",
-      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write"
+      "url": "http://alloy-gateway.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}:9090/api/v1/metrics/write",
+      "write_relabel_configs": [
+        {
+          "regex": "",
+          "replacement": "loki-ruler",
+          "source_labels": [
+            "job"
+          ],
+          "target_label": "job"
+        },
+        {
+          "regex": "",
+          "replacement": "${POD_NAME}",
+          "source_labels": [
+            "instance"
+          ],
+          "target_label": "instance"
+        }
+      ]
     }
   },
   "enabled": true
@@ -5303,10 +5339,18 @@ https://grafana.com/docs/loki/latest/get-started/components/
         "name": "ruler-env"
       }
     }
+  },
+  {
+    "name": "POD_NAME",
+    "valueFrom": {
+      "fieldRef": {
+        "fieldPath": "metadata.name"
+      }
+    }
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name, for `rulerConfig.alert_relabel_configs` to stamp on alerts. Read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`; Loki's `-config.expand-env` substitutes it.
+      <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
 </td>
     </tr>
     <tr>
@@ -6326,7 +6370,7 @@ validator warns when the two disagree.
   "extraVolumes": [
     {
       "configMap": {
-        "name": "thanos-ruler-remote-write"
+        "name": "thanos-ruler-remote-write-v2"
       },
       "name": "remote-write"
     },
@@ -6600,7 +6644,7 @@ an override of this list; the render warns when either goes missing.
 [
   {
     "configMap": {
-      "name": "thanos-ruler-remote-write"
+      "name": "thanos-ruler-remote-write-v2"
     },
     "name": "remote-write"
   },
@@ -6615,10 +6659,18 @@ an override of this list; the render warns when either goes missing.
 </td>
       <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
 
+`remote-write` is the plaintext variant of the Ruler's remote-write
+configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
+name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
+the render enforces. The Ruler reads the file once at startup, so the names
+carry the mode and a revision: switching ConfigMaps changes the pod
+template, which is what rolls it.
+
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
-`alerting.server.tls` is on, and trusts its `ca.crt`. Mounted unconditionally
-and optionally, so the same values work before issuance, during it and after.
+`alerting.server.tls` is on and to the gateway when its metrics listener
+serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
+so the same values work before issuance, during it and after.
 This is a list: restate both entries when adding one.
 </td>
     </tr>

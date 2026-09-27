@@ -13,10 +13,19 @@ They are authored the same way as log pipelines — see [Authoring](/materialize
 ## Gateway topology
 
 The gateway carries metrics alongside logs (`packages/alloy-pipelines/gateway.yaml`).
-Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write:
+Prometheus ingest is bridged into OTLP, processed in otelcol, then converted back to Prometheus for the write.
+
+The bridge refuses a sample without both `job` and `instance`, and fails the whole remote-write batch it arrived in with a 500.
+Scraped series always carry both, and pushed ones need not, so `prometheus.relabel "receiveIdentity"` fills them for pushed samples.
+It recognises the Thanos ruler by `ruler_replica` and gives its results `job="thanos-ruler"` and a constant `instance`.
+The constant keeps Thanos Query's deduplication on `ruler_replica` working.
+Anything else pushed without them gets `job="remote-write"` and `instance="unknown"`.
+The Loki ruler fills its own in `loki.loki.rulerConfig`.
+The Thanos ruler cannot, because a `replace` in its `write_relabel_configs` panics it at startup.
 
 ```
-prometheus.receive_http "gateway"             (pushed remote-write, :9090) ─┐
+prometheus.receive_http "gateway"             (pushed remote-write, :9090)
+  → prometheus.relabel "receiveIdentity"      (fill job/instance)          ─┐
 prometheus.operator.podmonitors "default"     (PodMonitor CRs)             ─┤
 prometheus.operator.servicemonitors "default" (ServiceMonitor CRs)         ─┴─→ otelcol.receiver.prometheus "inputBridge"  (Prometheus → OTLP) ─┐
 otelcol.receiver.otlp                          (OTLP metrics) ─────────────────────────────────────────────────────────────────────────────┤
@@ -117,6 +126,7 @@ Behaviours that decide the shape, all measured against Alloy v1.19.2 source and 
 | GCP samples carry Cloud Monitoring's timestamps; DELTA metrics count only the newest point per pull | `api/request_count` is left out; queries use `last_over_time` |
 | Remote write's WAL watcher forwards only samples with `T > startTimestamp` (Prometheus `tsdb/wlog/watcher.go`, vendored at v0.313.2 by Alloy v1.19.2) | A sample stamped before the gateway started is never sent, so each restart leaves a gap as long as the provider's lag: minutes for Cloud SQL, over ten for GCS. Measured on the first rollout |
 | A failed provider call still answers the scrape with HTTP 200 | `up` does not report pull health |
+| YACE's request counters are process-wide and only appear in exporter output | With one exporter per resource, every target a replica owns reports that replica's running total, so the series cannot be summed across `instance`, and no pod-labelled copy exists on Alloy's own `/metrics`. Cost comes from the configuration: 12 calls per RDS instance and 2 per bucket per interval |
 | The GCP exporter resolves Application Default Credentials when it is **built**; CloudWatch resolves on each pull | With no ADC source at all (no `GOOGLE_APPLICATION_CREDENTIALS`, no metadata server) the GCP exporter fails to build and the gateway fails its initial load. On GKE the metadata server always answers, so it only degrades there. The render warns, since it cannot tell a direct Workload Identity principal from an install outside Google Cloud |
 | `alloy validate` type-checks and never builds a component, so it passes an argument that `alloy run` then refuses (a `scrape_timeout` longer than the interval, two components with the same label) | The initial load fails and the gateway exits, taking every log and metric with it. The pre-validate job cannot see this, so `mzmon.alloy.validate.provider` checks both at render |
 
