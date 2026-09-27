@@ -15,8 +15,9 @@ The provider adds what no client can see: CPU, memory and storage headroom, the 
 The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
-Agent note: the pull is rendered by charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl,
-not pre-rendered, because CloudWatch needs one `static` block per resource. The numbers on this page
+Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
+charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
+sets on this page are that file's; change them there, not here first. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, with Alloy v1.20.0 locally and v1.19.2 in-cluster, and are the ones to
 re-measure if the exporters are bumped.
@@ -31,8 +32,9 @@ re-measure if the exporters are bumped.
 | `gcp` | Cloud SQL instance | `cpu/utilization`, `memory/utilization`, `disk/utilization`, `postgresql/num_backends`, `postgresql/transaction_id_utilization`, `up` | One minute |
 | `gcp` | GCS bucket | `storage/v2/total_bytes`, `storage/v2/total_count`, split into live, noncurrent and soft-deleted objects | Daily, repeated every five minutes |
 
-Both metric lists are values and can be changed.
-A GCP entry is a metric-type **prefix**, so `postgresql/num_backends` also pulls `num_backends_by_state` and `num_backends_by_application`.
+The metric sets are fixed, and values only name the resources.
+Each pull is a custom component in the gateway's `gateway-provider` pipeline, instantiated once per listed resource, so changing what is pulled is a change to that pipeline.
+The Cloud SQL entries are metric-type prefixes, so `postgresql/num_backends` also pulls `num_backends_by_state` and `num_backends_by_application`, and `up` also pulls `uptime`.
 
 Azure Monitor is not supported yet.
 
@@ -43,10 +45,11 @@ Azure Monitor is not supported yet.
 | `cloudwatch` | `aws_<service>_<metric>_<statistic>` | `aws_rds_free_storage_space_minimum` | `dimension_DBInstanceIdentifier`, `dimension_BucketName` |
 | `gcp` | `stackdriver_<resource type>_<metric type>` | `stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization` | `database_id` (`project:instance`), `bucket_name` |
 
-CloudWatch series also carry `region`, `account_id`, `account_alias`, and `name`, which is the job's identifier-safe form of the resource name.
-Join on the `dimension_*` label rather than on `name`.
+CloudWatch series also carry `region`, `account_id` and `account_alias`, and `name`, which is `rds` or `s3` on every series.
+Join on the `dimension_*` label.
 
-Every provider series carries `job="integrations/cloudwatch"` or `job="integrations/gcp"`, and `instance` set to the provider name.
+Every provider series carries `job="integrations/cloudwatch"` or `job="integrations/gcp"`.
+`instance` is the resource on CloudWatch series, since each resource has its own pull, and `cloudsql` or `gcs` on Cloud Monitoring series, since one pull covers every listed resource of a service.
 
 ## Configuring it
 
@@ -75,7 +78,7 @@ pipeline:
 
 A Cloud SQL entry is the instance name, not the `project:region:instance` connection name.
 
-The chart refuses, at render, the values that would otherwise stop the gateway starting: a scrape timeout longer than the interval, and an RDS metric whose `length` is shorter than its `period`.
+The chart refuses, at render, the values that would otherwise stop the gateway starting: a scrape timeout longer than the interval, and two buckets whose names differ only in `.` and `-`, which would become the same component label.
 Alloy accepts both in `alloy validate` and exits on them at load, which would stop logs and metrics along with the pull.
 
 The full set of keys is in the [values reference](../../../reference/helm/materialize-monitoring-values/), under `pipeline.metrics.provider`.
@@ -87,10 +90,8 @@ The pull runs as the gateway pod's own cloud identity, bound through `alloy-gate
 
 | Provider | Identity | Grant |
 |---|---|---|
-| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning. `sts:AssumeRole` on `roleArn`, when set |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
-
-`cloudwatch.roleArn` makes every job assume that role first, which is the shape for a read-only role in another account.
 
 On GCP, the service account the Terraform module creates for the Google Cloud Metrics exporter holds `roles/monitoring.metricWriter`, which writes metrics and cannot read them.
 Reading needs `roles/monitoring.viewer` added to the same account.
@@ -138,8 +139,8 @@ The provider bills each pull, and the bill depends on configuration, not on how 
 
 | Provider | Calls per pull | Measured |
 |---|---|---|
-| `cloudwatch` | One `GetMetricStatistics` per RDS metric per instance, one per bucket per storage type, and one per bucket for the object count | 28 calls for two instances and two buckets with the default lists, counted by `yace_cloudwatch_getmetricstatistics_requests_total` |
-| `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets with the default lists, counted by `stackdriver_monitoring_api_calls_total` |
+| `cloudwatch` | 12 `GetMetricStatistics` calls per RDS instance and 2 per bucket | 28 calls for two instances and two buckets, counted by `yace_cloudwatch_getmetricstatistics_requests_total` |
+| `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets, counted by `stackdriver_monitoring_api_calls_total` |
 
 `scrapeInterval` is the main lever, and defaults to five minutes.
 Rates change, so current provider pricing is the reference for what a call costs.

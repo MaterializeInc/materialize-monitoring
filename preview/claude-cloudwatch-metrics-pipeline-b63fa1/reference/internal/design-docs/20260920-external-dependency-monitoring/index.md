@@ -162,7 +162,7 @@ Four stakeholder classes consume this:
 | PostgreSQL alerts | ❌ **None** | Nothing in the registry names a `pg_*` family |
 | Object-store alerts | ❌ **None** | The composite `mz_persist_*` alert is the closest thing, and it names Materialize rather than the bucket |
 | A `postgres_exporter` deployment | ❌ **Absent** | Two `postgres_exporter_*` *config* families were observed on a live install, from something outside this chart. Nothing here deploys one |
-| Provider metric pull | ⚠️ CloudWatch and GCP built, Azure absent | `pipeline.metrics.provider.{cloudwatch,gcp}`, rendered into the gateway by `_alloy_provider_helpers.tpl`. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
+| Provider metric pull | ⚠️ CloudWatch and GCP built, Azure absent | `pipeline.metrics.provider.{cloudwatch,gcp}`, as custom components in `gateway-provider.yaml` that the chart instantiates per resource. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
 | Provider metric *push* | ✅ Shipped, opposite direction | `googleCloudExporter` and `datadogExporter` write metrics *out*. The GCP monitoring module already provisions a workload identity for it |
 | Recording rules | ❌ Declared, no producer | The registry models `rules:`, no file uses the branch, and `pre-rendered/rules/{prometheus,thanos,loki}/` are all empty |
 | Alerts as installable rules | 🔨 Designed, not built | `config.rules.prometheus.enabled` defaults true and no template emits a `PrometheusRule`, so an install gets no alerts at all. [Alerting in self-managed](../20260917-alerting-self-managed/) designs the path and finds that a `PrometheusRule` has exactly one consumer here — the Thanos ruler's `autoImportPrometheusRules` sidecar |

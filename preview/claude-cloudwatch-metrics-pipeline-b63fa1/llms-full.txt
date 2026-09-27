@@ -3277,8 +3277,9 @@ The provider adds what no client can see: CPU, memory and storage headroom, the 
 The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
-Agent note: the pull is rendered by charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl,
-not pre-rendered, because CloudWatch needs one `static` block per resource. The numbers on this page
+Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
+charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
+sets on this page are that file's; change them there, not here first. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, with Alloy v1.20.0 locally and v1.19.2 in-cluster, and are the ones to
 re-measure if the exporters are bumped.
@@ -3293,8 +3294,9 @@ re-measure if the exporters are bumped.
 | `gcp` | Cloud SQL instance | `cpu/utilization`, `memory/utilization`, `disk/utilization`, `postgresql/num_backends`, `postgresql/transaction_id_utilization`, `up` | One minute |
 | `gcp` | GCS bucket | `storage/v2/total_bytes`, `storage/v2/total_count`, split into live, noncurrent and soft-deleted objects | Daily, repeated every five minutes |
 
-Both metric lists are values and can be changed.
-A GCP entry is a metric-type **prefix**, so `postgresql/num_backends` also pulls `num_backends_by_state` and `num_backends_by_application`.
+The metric sets are fixed, and values only name the resources.
+Each pull is a custom component in the gateway's `gateway-provider` pipeline, instantiated once per listed resource, so changing what is pulled is a change to that pipeline.
+The Cloud SQL entries are metric-type prefixes, so `postgresql/num_backends` also pulls `num_backends_by_state` and `num_backends_by_application`, and `up` also pulls `uptime`.
 
 Azure Monitor is not supported yet.
 
@@ -3305,10 +3307,11 @@ Azure Monitor is not supported yet.
 | `cloudwatch` | `aws_<service>_<metric>_<statistic>` | `aws_rds_free_storage_space_minimum` | `dimension_DBInstanceIdentifier`, `dimension_BucketName` |
 | `gcp` | `stackdriver_<resource type>_<metric type>` | `stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization` | `database_id` (`project:instance`), `bucket_name` |
 
-CloudWatch series also carry `region`, `account_id`, `account_alias`, and `name`, which is the job's identifier-safe form of the resource name.
-Join on the `dimension_*` label rather than on `name`.
+CloudWatch series also carry `region`, `account_id` and `account_alias`, and `name`, which is `rds` or `s3` on every series.
+Join on the `dimension_*` label.
 
-Every provider series carries `job="integrations/cloudwatch"` or `job="integrations/gcp"`, and `instance` set to the provider name.
+Every provider series carries `job="integrations/cloudwatch"` or `job="integrations/gcp"`.
+`instance` is the resource on CloudWatch series, since each resource has its own pull, and `cloudsql` or `gcs` on Cloud Monitoring series, since one pull covers every listed resource of a service.
 
 ## Configuring it
 
@@ -3337,7 +3340,7 @@ pipeline:
 
 A Cloud SQL entry is the instance name, not the `project:region:instance` connection name.
 
-The chart refuses, at render, the values that would otherwise stop the gateway starting: a scrape timeout longer than the interval, and an RDS metric whose `length` is shorter than its `period`.
+The chart refuses, at render, the values that would otherwise stop the gateway starting: a scrape timeout longer than the interval, and two buckets whose names differ only in `.` and `-`, which would become the same component label.
 Alloy accepts both in `alloy validate` and exits on them at load, which would stop logs and metrics along with the pull.
 
 The full set of keys is in the [values reference](../../../reference/helm/materialize-monitoring-values/), under `pipeline.metrics.provider`.
@@ -3349,10 +3352,8 @@ The pull runs as the gateway pod's own cloud identity, bound through `alloy-gate
 
 | Provider | Identity | Grant |
 |---|---|---|
-| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning. `sts:AssumeRole` on `roleArn`, when set |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
-
-`cloudwatch.roleArn` makes every job assume that role first, which is the shape for a read-only role in another account.
 
 On GCP, the service account the Terraform module creates for the Google Cloud Metrics exporter holds `roles/monitoring.metricWriter`, which writes metrics and cannot read them.
 Reading needs `roles/monitoring.viewer` added to the same account.
@@ -3400,8 +3401,8 @@ The provider bills each pull, and the bill depends on configuration, not on how 
 
 | Provider | Calls per pull | Measured |
 |---|---|---|
-| `cloudwatch` | One `GetMetricStatistics` per RDS metric per instance, one per bucket per storage type, and one per bucket for the object count | 28 calls for two instances and two buckets with the default lists, counted by `yace_cloudwatch_getmetricstatistics_requests_total` |
-| `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets with the default lists, counted by `stackdriver_monitoring_api_calls_total` |
+| `cloudwatch` | 12 `GetMetricStatistics` calls per RDS instance and 2 per bucket | 28 calls for two instances and two buckets, counted by `yace_cloudwatch_getmetricstatistics_requests_total` |
+| `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets, counted by `stackdriver_monitoring_api_calls_total` |
 
 `scrapeInterval` is the main lever, and defaults to five minutes.
 Rates change, so current provider pricing is the reference for what a call costs.
@@ -9518,7 +9519,8 @@ blocks:
 
 Each entry in `blocks` is a **single-key object** whose key is either:
 
-- a typed component name (`loki.process`, `loki.echo`, `discovery.kubernetes`, ...), validated by the per-component schema; or
+- a typed component name (`loki.process`, `loki.echo`, `discovery.kubernetes`, ...), validated by the per-component schema;
+- `declare` or `custom`, which define and instantiate a custom component (see [Custom components](#custom-components-declare)); or
 - the literal key `raw`, validated by `raw.schema.yaml` and used for anything the typed schemas don't cover.
 
 The same rule applies recursively to nested sub-blocks (e.g. stages inside `loki.process`, rules inside `discovery.relabel`).
@@ -9682,6 +9684,61 @@ Adding a whole new typed component (e.g. a `prometheus.*` family) is the same sh
 6. Tests colocated in `components/prometheus.rs`.
 
 Mirror the `loki.schema.yaml` / `components/loki.rs` structure as a template.
+
+## Custom components (`declare`)
+
+A custom component is how a pre-rendered pipeline holds the shape of something whose count is only known at install.
+The pipeline defines the component once with `declare`, and the chart renders one instance of it per resource named in values.
+The first user is the cloud provider pull in `packages/alloy-pipelines/gateway-provider.yaml`; [Metrics]({{< relref "metrics.md" >}}#cloud-provider-pulls) covers what it does.
+
+The alternative is Helm rendering the components themselves, as the destination still does.
+That output never passes through the schema, and a build-time stub standing in for it drifts from the template it imitates.
+A custom component moves the component bodies into the pipeline, where they are typed and validated, and leaves the chart with a flat block of arguments per instance.
+`alloy validate` checks those arguments against the `declare`: a misspelled or missing argument fails the pre-validate job with the line that names it.
+
+```yaml
+blocks:
+  - declare:
+      label: provider_cloudwatch_rds
+      blocks:
+        - argument: {label: instance_id}
+        - argument: {label: region}
+        - prometheus.exporter.cloudwatch:
+            label: rds
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: rds
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/RDS
+                  dimensions:
+                    DBInstanceIdentifier: {ref: argument.instance_id.value}
+                  blocks:
+                    - metric: {name: CPUUtilization, statistics: [Average], period: 5m, length: 10m}
+        - custom:
+            component: provider_scrape
+            label: rds
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.rds.targets}
+              instance: {ref: argument.instance_id.value}
+```
+
+| Node | Renders | Rules |
+|---|---|---|
+| `declare` | `declare "<label>" { ... }` | The label is an identifier with no dots. The body is ordinary blocks plus `argument` blocks, and may instantiate other custom components declared in the same file |
+| `argument` | `argument "<label>" { optional, default, comment }` | Only valid inside a `declare` body; the schema refuses it anywhere else. Read in the body as `{ref: argument.<label>.value}` |
+| `custom` | `<component> "<label>" { <attributes> }` | Instantiates a custom component. `component` has no dots, so this cannot emit an untyped built-in the way `raw:` can. Whether the component exists, and whether its arguments match, is left to `alloy validate` |
+
+What a custom component can and cannot vary:
+
+- **An argument is only ever a value.** A `declare` body cannot repeat, add or omit a block because of an argument. Anything that varies in block structure stays with the caller, which is why the provider pull takes one CloudWatch instance per resource and fixes its metric set in the body.
+- **Fields a body passes arguments into have to accept expressions.** Typed fields are widened as bodies need them: a scalar becomes `Expressable`, a list becomes `ExpressableList` (whose `Items` variant holds a literal list with expression members, `[{ref: argument.region.value}]`), and a map's values become `Expressable<String>`. Widen the schema in the same change, per the lockstep invariant.
+- **A receiver passes as a single value, not a list.** The body writes `forward_to: ["argument.forward_to.value"]`, which renders as a one-element list of the argument, and the caller passes one receiver. A caller passing a list would give the scrape a list of lists.
+- **Instances are top-level components, so their labels are identifiers and unique.** Whatever derives a label from a resource name maps other characters to `_` and prefixes a letter, and something has to refuse two names that collide: Alloy refuses a duplicate label at load, which `alloy validate` does not catch.
+- **`alloy validate` checks the body's shape, not its values.** Component validation runs only when Alloy builds the component, so a body can pass validation and still fail to load when an instance supplies, say, a scrape timeout longer than its interval. Whatever renders the instances validates those values itself.
+
+A deployed pipeline of custom components is inert until something instantiates it, so it can be included in every install unconditionally.
+The instances the chart renders need a build-time stand-in only for their argument names: a stub that instantiates each component once, validated joined with the module, as `gateway-provider-stub.yaml` does.
 
 ## Reference-valued attributes
 
@@ -11869,7 +11926,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "externalId":"", "metricImportance":"extended", "rds":{"instances":[], "length":"10m", "metrics":[{"name":"CPUUtilization", "statistics":["Average", "Maximum"]}, {"name":"CPUCreditBalance", "statistics":["Minimum"]}, {"name":"FreeableMemory", "statistics":["Minimum"]}, {"name":"FreeStorageSpace", "statistics":["Minimum"]}, {"name":"DatabaseConnections", "statistics":["Maximum"]}, {"name":"ReadLatency", "statistics":["Average"]}, {"name":"WriteLatency", "statistics":["Average"]}, {"name":"DiskQueueDepth", "statistics":["Average"]}, {"name":"BurstBalance", "statistics":["Minimum"]}, {"name":"EBSIOBalance%", "statistics":["Minimum"]}, {"name":"EBSByteBalance%", "statistics":["Minimum"]}, {"name":"MaximumUsedTransactionIDs", "statistics":["Maximum"]}], "period":"5m"}, "region":"", "roleArn":"", "s3":{"buckets":[], "storageTypes":["StandardStorage"]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[], "metrics":["cpu/utilization", "memory/utilization", "disk/utilization", "postgresql/num_backends", "postgresql/transaction_id_utilization", "up"]}, "enabled":false, "gcs":{"buckets":[], "metrics":["storage/v2/total_bytes", "storage/v2/total_count"]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -11900,7 +11957,7 @@ pod's own cloud identity, bound through
 
 | Provider | Identity | Grant |
 | --- | --- | --- |
-| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning; `sts:AssumeRole` on `roleArn` when it is set |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
 
 **The data is minutes old when it arrives.** CloudWatch publishes RDS
@@ -11916,6 +11973,11 @@ dashboards are open. The interval is the main lever.
 **Every replica runs the exporter, and one scrapes it.** The scrape is
 clustered, so a provider's API is called once per interval however many
 gateway replicas there are.
+
+**The metric sets are fixed, and live in the pipeline, not here.** Each
+pull is a custom component in the chart's `gateway-provider` pipeline,
+instantiated once per resource listed below. Changing what is pulled is
+a change to that pipeline.
 </td>
     </tr>
     <tr>
@@ -11933,24 +11995,10 @@ gateway replicas there are.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.roleArn</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">IAM role to assume before calling CloudWatch. Empty uses the gateway's own identity, which is the usual setup under IRSA.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.externalId</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>""</code></td>
-      <td class="helm-value-desc">External ID presented when assuming `roleArn`.
-</td>
-    </tr>
-    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.scrapeInterval</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">How often the gateway pulls. Every pull is one set of billed `GetMetricData` requests.
+      <td class="helm-value-desc">How often the gateway pulls. Every pull is one billed `GetMetricStatistics` call per metric per resource.
 </td>
     </tr>
     <tr>
@@ -11974,117 +12022,13 @@ gateway replicas there are.
 []</pre>
 </td>
       <td class="helm-value-desc">RDS DB instance identifiers to watch, as `DBInstanceIdentifier`.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.period</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"5m"</code></td>
-      <td class="helm-value-desc">Statistic period for the RDS metrics. RDS publishes at one-minute resolution, so a period equal to the scrape interval summarises the whole interval rather than sampling one minute of it.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.length</td>
-      <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"10m"</code></td>
-      <td class="helm-value-desc">How far back each request reaches. Longer than `period`, so CloudWatch's publication delay does not leave a scrape empty.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.rds<wbr>.metrics</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  {
-    "name": "CPUUtilization",
-    "statistics": [
-      "Average",
-      "Maximum"
-    ]
-  },
-  {
-    "name": "CPUCreditBalance",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "FreeableMemory",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "FreeStorageSpace",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "DatabaseConnections",
-    "statistics": [
-      "Maximum"
-    ]
-  },
-  {
-    "name": "ReadLatency",
-    "statistics": [
-      "Average"
-    ]
-  },
-  {
-    "name": "WriteLatency",
-    "statistics": [
-      "Average"
-    ]
-  },
-  {
-    "name": "DiskQueueDepth",
-    "statistics": [
-      "Average"
-    ]
-  },
-  {
-    "name": "BurstBalance",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "EBSIOBalance%",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "EBSByteBalance%",
-    "statistics": [
-      "Minimum"
-    ]
-  },
-  {
-    "name": "MaximumUsedTransactionIDs",
-    "statistics": [
-      "Maximum"
-    ]
-  }
-]</pre>
-</td>
-      <td class="helm-value-desc">RDS metrics to pull, with the statistics to request for each.
-Each statistic is a separate billed metric. The defaults are the set
-the external-dependency design argues for: CPU, memory, storage and
-connection headroom, I/O latency and queueing, the gp2/gp3 burst and
-EBS balances whose exhaustion slows every write while every in-database
-metric stays flat, and transaction-ID consumption.
-
-`CPUCreditBalance` applies only to burstable `db.t*` classes, and
-`BurstBalance` only to volumes that burst. Where CloudWatch has no
-datapoint the series is absent, never zero: a missing balance is not
-an exhausted one.
-
-Statistics are `Average`, `Minimum`, `Maximum`, `Sum`, `SampleCount`,
-or a percentile such as `p99`. Each entry needs at least one that is
-not a percentile.
+Each is pulled for a fixed set: CPU, and the credit balance of a
+burstable `db.t*` class; freeable memory, free storage and
+connections; read and write latency and queue depth; the burst and
+EBS balances whose exhaustion slows every write while every
+in-database metric stays flat; and transaction-ID consumption.
+A metric CloudWatch does not publish for an instance is absent,
+never zero.
 </td>
     </tr>
     <tr>
@@ -12093,22 +12037,7 @@ not a percentile.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">S3 bucket names to watch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.s3<wbr>.storageTypes</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "StandardStorage"
-]</pre>
-</td>
-      <td class="helm-value-desc">`StorageType` dimensions to report `BucketSizeBytes` for.
-S3 reports size per storage class. `StandardStorage` covers a bucket
-that never transitions objects, which is every bucket the Terraform
-wrappers create. `NumberOfObjects` is always reported across all
-classes.
+      <td class="helm-value-desc">S3 bucket names to watch, for their size in standard storage and their object count, which S3 publishes daily.
 </td>
     </tr>
     <tr>
@@ -12160,25 +12089,9 @@ classes.
 []</pre>
 </td>
       <td class="helm-value-desc">Cloud SQL instance names to watch — the instance name, not the `project:region:instance` connection name.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.cloudSql<wbr>.metrics</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "cpu/utilization",
-  "memory/utilization",
-  "disk/utilization",
-  "postgresql/num_backends",
-  "postgresql/transaction_id_utilization",
-  "up"
-]</pre>
-</td>
-      <td class="helm-value-desc">Metric types to pull, relative to `cloudsql.googleapis.com/database/`.
-Each entry is a **prefix**, as the exporter matches them:
-`postgresql/num_backends` also pulls `num_backends_by_state` and
-`num_backends_by_application`, and `up` also pulls `uptime`.
+Each is pulled for a fixed set: CPU, memory and disk utilization,
+backends by database, state and application, transaction-ID
+utilization, and whether the instance is up.
 </td>
     </tr>
     <tr>
@@ -12188,26 +12101,13 @@ Each entry is a **prefix**, as the exporter matches them:
 []</pre>
 </td>
       <td class="helm-value-desc">GCS bucket names to watch.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.gcs<wbr>.metrics</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  "storage/v2/total_bytes",
-  "storage/v2/total_count"
-]</pre>
-</td>
-      <td class="helm-value-desc">Metric types to pull, relative to `storage.googleapis.com/`.
-The `v2` storage metrics split stored bytes and objects into live,
-noncurrent and soft-deleted, which is what shows reclaimable waste.
-
-`api/request_count` is deliberately absent. It is a per-minute DELTA,
-and the exporter adds only the newest point of each pull to its
-counter, so at a five-minute interval it reports roughly a fifth of
-the real request count. The Loki, Thanos and persist clients report
-the same requests exactly, with latency, which GCS does not publish.
+Each is pulled for its stored bytes and object count, split into
+live, noncurrent and soft-deleted, which is what shows reclaimable
+waste. GCS request counts are deliberately not pulled: they are a
+per-minute DELTA, and the exporter counts only the newest point of
+each pull, so at a five-minute interval they read about a fifth of
+the truth. The Loki, Thanos and persist clients report the same
+requests exactly.
 </td>
     </tr>
     <tr>
@@ -18387,7 +18287,7 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
          prometheus.remote_write "<name>"   prometheus.remote_write "<name>"
 ```
 
-Cloud provider pulls join the same bridge when enabled: `prometheus.exporter.{cloudwatch,gcp} "provider"` → `discovery.relabel "provider_<name>"` → `prometheus.scrape "provider_<name>"` (clustered) → `inputBridge`.
+Cloud provider pulls join the same bridge when enabled: each is an instance of a custom component whose body ends in the shared `provider_scrape` (an `instance` pin and a clustered `prometheus.scrape`) → `inputBridge`.
 They are covered under [Cloud provider pulls](#cloud-provider-pulls) below.
 
 The operator components enable `clustering` (target load spread across the alloy cluster) and read their scrape defaults from the environment (`GATEWAY_SCRAPE_INTERVAL` / `GATEWAY_SCRAPE_TIMEOUT`, via `coalesce`).
@@ -18426,14 +18326,24 @@ See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 
 ## Cloud provider pulls
 
-`pipeline.metrics.provider.{cloudwatch,gcp}` render a provider exporter and a clustered scrape of it into the gateway config, feeding `otelcol.receiver.prometheus "inputBridge"`.
+`pipeline.metrics.provider.{cloudwatch,gcp}` pull provider metrics into the gateway, feeding `otelcol.receiver.prometheus "inputBridge"`.
 The operator-facing page is [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/).
 
-**They are Helm-rendered, like the destination**, by `charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl`.
-CloudWatch needs one `static` block per resource, and a pre-rendered pipeline cannot repeat a block.
-The output skips the JSONSchema; the pre-validate job's `alloy validate` checks it at install.
-`gateway-provider-stub.yaml` is the build-time stand-in: it exercises every argument and block the helper emits, through the typed components, and `make pipelines` validates it joined with `gateway-metrics.alloy`.
-Keep the two in step. The helper is the source of truth.
+**The pulls are custom components, and the first use of the pattern** described in [Authoring]({{< relref "authoring.md" >}}#custom-components-declare).
+`packages/alloy-pipelines/gateway-provider.yaml` declares them, and it deploys: the chart includes the rendered `gateway-provider.alloy` in every gateway config, where it is inert until instantiated.
+The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, one per resource named in values, each a flat block of arguments.
+
+| Component | Instances | Pulls |
+|---|---|---|
+| `provider_scrape` | Inside the others | The `instance` pin and the clustered scrape every pull ends in |
+| `provider_cloudwatch_rds` | One per RDS instance | 12 metrics, 13 series, from one `GetMetricStatistics` call each |
+| `provider_cloudwatch_s3` | One per bucket | `BucketSizeBytes` in standard storage and `NumberOfObjects`, daily |
+| `provider_gcp_cloudsql` | One per project | CPU, memory, disk, backends, transaction-ID use and `up`, for every listed instance through one filter |
+| `provider_gcp_gcs` | One per project | `storage/v2/total_bytes` and `total_count`, for every listed bucket through one filter |
+
+A `declare` body cannot repeat a block, so the metric sets are fixed in the module rather than values, and CloudWatch takes one instance, and one exporter, per resource.
+Cloud Monitoring takes one per service, because a single filter names every resource.
+`gateway-provider-stub.yaml` instantiates each component once so `make pipelines` checks the argument names the chart passes; keep it in step with the helper's instances.
 
 Behaviours that decide the shape, all measured against Alloy v1.19.2 source and a v1.20.0 run:
 
@@ -18444,13 +18354,13 @@ Behaviours that decide the shape, all measured against Alloy v1.19.2 source and 
 | CloudWatch `decoupled_scraping` polls on a timer in **every** replica | Never rendered |
 | CloudWatch `nil_to_zero` defaults to **true** in Alloy | Set false on every job. A resource with no published datapoints produces no series either way; the setting matters for value-less datapoints |
 | CloudWatch static jobs use `GetMetricStatistics` and ignore job-level `period`/`length` | Both are set per `metric` |
-| A CloudWatch `static` label must be an identifier and becomes the `name` label | Labels are `rds_<id>` / `s3_<bucket>` with other characters mapped to `_`; join on `dimension_*` instead |
+| A CloudWatch `static` label must be an identifier and becomes the `name` label | Every job is labelled `rds` or `s3`, and the resource is in `dimension_*` and `instance`. Instance labels are `rds_<id>` / `s3_<bucket>` with other characters mapped to `_`, and the render refuses two resources that collide |
 | GCP `metrics_prefixes` are prefixes; `extra_filters` split on the **first** colon | One `one_of(...)` filter per service, rendered only beside that service's prefixes. `database_id` keeps its `project:instance` colon |
 | GCP samples carry Cloud Monitoring's timestamps; DELTA metrics count only the newest point per pull | `api/request_count` is left out; queries use `last_over_time` |
 | Remote write's WAL watcher forwards only samples with `T > startTimestamp` (Prometheus `tsdb/wlog/watcher.go`, vendored at v0.313.2 by Alloy v1.19.2) | A sample stamped before the gateway started is never sent, so each restart leaves a gap as long as the provider's lag: minutes for Cloud SQL, over ten for GCS. Measured on the first rollout |
 | A failed provider call still answers the scrape with HTTP 200 | `up` does not report pull health |
 | The GCP exporter resolves Application Default Credentials when it is **built**; CloudWatch resolves on each pull | With no ADC source at all (no `GOOGLE_APPLICATION_CREDENTIALS`, no metadata server) the GCP exporter fails to build and the gateway fails its initial load. On GKE the metadata server always answers, so it only degrades there. The render warns, since it cannot tell a direct Workload Identity principal from an install outside Google Cloud |
-| `alloy validate` type-checks and never builds a component, so it passes an exporter argument that `alloy run` then refuses (a CloudWatch `length` shorter than its `period`, a `scrape_timeout` longer than the interval) | The initial load fails and the gateway exits, taking every log and metric with it. The pre-validate job cannot see this, so `mzmon.alloy.validate.provider` checks both at render |
+| `alloy validate` type-checks and never builds a component, so it passes an argument that `alloy run` then refuses (a `scrape_timeout` longer than the interval, two components with the same label) | The initial load fails and the gateway exits, taking every log and metric with it. The pre-validate job cannot see this, so `mzmon.alloy.validate.provider` checks both at render |
 
 Provider families have no registry query, so `mzmon.alloyGateway.metricFilter` appends their name patterns (`aws_rds_.*`, `stackdriver_gcs_bucket_.*`, and so on) at the tier each provider's `metricImportance` assigns.
 
@@ -18493,6 +18403,7 @@ Typed and validated (schema: `packages/mzmon-lib/schemas/alloy/prometheus.schema
 | `prometheus.exporter.cadvisor` | Runs cAdvisor in-process. |
 | `prometheus.exporter.cloudwatch` | Pulls CloudWatch through YACE; typed `static` jobs with `metric` and `role` sub-blocks. `discovery`, `custom_namespace` and `decoupled_scraping` via `raw:`. |
 | `prometheus.exporter.gcp` | Pulls Cloud Monitoring through `stackdriver_exporter`; attributes only. |
+| `declare` / `custom` | Define and instantiate a custom component; see [Authoring]({{< relref "authoring.md" >}}#custom-components-declare). |
 
 The operator `scrape` block's `default_scrape_interval` / `default_scrape_timeout` accept an expression (`{env: …}`), not just a literal duration.
 Metrics receivers (`forward_to`, and the `receiver` exported by echo/relabel/remote_write/receive_http) are the `MetricsReceiver` capsule — the metrics analog of the logs-side `LogsReceiver`.
@@ -22603,7 +22514,7 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters ([DEP-298](https://linear.app/materializeinc/issue/DEP-298)) | OO-M2 | ⬜ |
 | On-premise object-store adapter (MinIO / Garage / Ceph) ([DEP-299](https://linear.app/materializeinc/issue/DEP-299)) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter ([DEP-300](https://linear.app/materializeinc/issue/DEP-300)) | OO-M2 | ⬜ |
-| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | 🔨 (**CloudWatch and GCP built; Azure outstanding.** `pipeline.metrics.provider.{cloudwatch,gcp}` pull RDS and S3, and Cloud SQL and GCS, for resources named in values, never discovered. Rendered by Helm rather than pre-rendered, because CloudWatch needs one `static` block per resource; the typed components exist for a build-time stub that `make pipelines` validates. Clustering is on the scrape, not the exporter: both exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The Terraform identities for both are DEP-302) |
+| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | 🔨 (**CloudWatch and GCP built; Azure outstanding.** `pipeline.metrics.provider.{cloudwatch,gcp}` pull RDS and S3, and Cloud SQL and GCS, for resources named in values, never discovered. Each pull is a custom component (`declare`) in a pre-rendered, schema-validated module that deploys as-is, the repository's first; the chart renders only a flat instance per resource, which `alloy validate` checks against the declared arguments, and the metric sets are fixed in the module rather than values. Clustering is on the scrape, not the exporter: both exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The Terraform identities for both are DEP-302) |
 | Terraform: read-only provider roles on the per-cloud monitoring modules ([DEP-302](https://linear.app/materializeinc/issue/DEP-302)) | OO-M2 | ⬜ |
 | The `externalDependencies:` values block and a `dependency-monitoring` profile ([DEP-303](https://linear.app/materializeinc/issue/DEP-303)) | OO-M2 | ⬜ |
 | Persist bucket `AbortIncompleteMultipartUpload` lifecycle rule, in `materialize-terraform-self-managed` ([DEP-304](https://linear.app/materializeinc/issue/DEP-304)) | OO-M2 | ⬜ |
@@ -28382,7 +28293,7 @@ Four stakeholder classes consume this:
 | PostgreSQL alerts | ❌ **None** | Nothing in the registry names a `pg_*` family |
 | Object-store alerts | ❌ **None** | The composite `mz_persist_*` alert is the closest thing, and it names Materialize rather than the bucket |
 | A `postgres_exporter` deployment | ❌ **Absent** | Two `postgres_exporter_*` *config* families were observed on a live install, from something outside this chart. Nothing here deploys one |
-| Provider metric pull | ⚠️ CloudWatch and GCP built, Azure absent | `pipeline.metrics.provider.{cloudwatch,gcp}`, rendered into the gateway by `_alloy_provider_helpers.tpl`. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
+| Provider metric pull | ⚠️ CloudWatch and GCP built, Azure absent | `pipeline.metrics.provider.{cloudwatch,gcp}`, as custom components in `gateway-provider.yaml` that the chart instantiates per resource. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
 | Provider metric *push* | ✅ Shipped, opposite direction | `googleCloudExporter` and `datadogExporter` write metrics *out*. The GCP monitoring module already provisions a workload identity for it |
 | Recording rules | ❌ Declared, no producer | The registry models `rules:`, no file uses the branch, and `pre-rendered/rules/{prometheus,thanos,loki}/` are all empty |
 | Alerts as installable rules | 🔨 Designed, not built | `config.rules.prometheus.enabled` defaults true and no template emits a `PrometheusRule`, so an install gets no alerts at all. [Alerting in self-managed](../20260917-alerting-self-managed/) designs the path and finds that a `PrometheusRule` has exactly one consumer here — the Thanos ruler's `autoImportPrometheusRules` sidecar |
