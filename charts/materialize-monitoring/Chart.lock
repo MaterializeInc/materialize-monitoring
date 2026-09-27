@@ -10,7 +10,7 @@ dependencies:
   version: 18.11.0
 - name: thanos
   repository: oci://ghcr.io/thanos-community/helm-charts
-  version: 0.30.0
+  version: 0.46.0
 - name: grafana
   repository: oci://ghcr.io/grafana-community/helm-charts
   version: 12.11.1
@@ -29,5 +29,5 @@ dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
-digest: sha256:75e6a03faa7fb9ebfe3a970394afcbff9201b753b4b1de44a15d4fa0adf8d726
-generated: "2026-08-30T13:37:38.958336452Z"
+digest: sha256:267214d562b9588c1f41c72b221ed0184b868ba31d567020fc8dda7914380bfd
+generated: "2026-09-27T16:03:04.373071502Z"
