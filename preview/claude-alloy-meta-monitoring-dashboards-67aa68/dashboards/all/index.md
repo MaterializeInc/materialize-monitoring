@@ -313,7 +313,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-alloy-meta-monitoring-dashboards-67aa68/dashboards/grafana/infra-loki.json?xxhash=ff69f1274f8a38f3" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-alloy-meta-monitoring-dashboards-67aa68/dashboards/grafana/infra-loki.json?xxhash=421483051414961b" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
         <br /><small>UID <code>mz-mon-infra-loki</code></small>
       </td>
       <td>
@@ -360,7 +360,7 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-alloy-meta-monitoring-dashboards-67aa68/dashboards/grafana/infra-alloy.json?xxhash=6ea8cb729f20e154" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-alloy-meta-monitoring-dashboards-67aa68/dashboards/grafana/infra-alloy.json?xxhash=6f085c5fcb62bb8e" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
       </td>
       <td>

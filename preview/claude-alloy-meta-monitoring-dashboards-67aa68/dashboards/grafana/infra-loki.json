@@ -4609,7 +4609,7 @@
               "key": "namespace",
               "operator": "=~",
               "origin": "dashboard",
-              "value": "$mzNamespaceList"
+              "value": "$lokiNamespace"
             }
           ],
           "defaultKeys": [],

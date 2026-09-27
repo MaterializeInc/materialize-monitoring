@@ -918,6 +918,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.lines_delivered">infra.alloy.health.lines_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.dropped">infra.alloy.log_pipeline.dropped</a></li>
                 <li><a href="../common-queries#infra.alloy.log_pipeline.stored">infra.alloy.log_pipeline.stored</a></li>
             </ul>
         </details>
@@ -1533,6 +1534,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.samples_delivered">infra.alloy.health.samples_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
                 <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.samples_sent">infra.alloy.metric_pipeline.samples_sent</a></li>
@@ -1617,6 +1619,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.components.evaluation_rate">infra.alloy.components.evaluation_rate</a></li>
+                <li><a href="../common-queries#infra.alloy.components.slow">infra.alloy.components.slow</a></li>
             </ul>
         </details>
     </li>
@@ -2151,7 +2154,7 @@ like our bundled Thanos provider.
     </li>
     <li id="loki_source_api_request_duration_seconds_count">loki_source_api_request_duration_seconds_count
         <details>
-            Used labels: app, namespace, pod, status_code
+            Used labels: app, namespace, pod, route, status_code
             <br />
             Example queries:
             <ul>
@@ -3316,6 +3319,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.samples_delivered">infra.alloy.health.samples_delivered</a></li>
+                <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_sent">infra.alloy.metric_pipeline.otel_sent</a></li>
             </ul>
         </details>
@@ -3327,6 +3331,16 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.otel_filtered">infra.alloy.metric_pipeline.otel_filtered</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="otelcol_processor_memory_limiter_accepted_metric_points_total">otelcol_processor_memory_limiter_accepted_metric_points_total
+        <details>
+            Used labels: app, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.resources.memory_limiter">infra.alloy.resources.memory_limiter</a></li>
             </ul>
         </details>
     </li>
@@ -3404,7 +3418,7 @@ like our bundled Thanos provider.
     </li>
     <li id="prometheus_receive_http_request_duration_seconds_count">prometheus_receive_http_request_duration_seconds_count
         <details>
-            Used labels: app, namespace, pod, status_code
+            Used labels: app, namespace, pod, route, status_code
             <br />
             Example queries:
             <ul>

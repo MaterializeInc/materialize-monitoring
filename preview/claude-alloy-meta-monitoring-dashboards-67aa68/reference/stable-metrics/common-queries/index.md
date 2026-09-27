@@ -200,20 +200,39 @@ retry, across every metrics destination.
   <label for="infra.alloy.health.samples_lost-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    prometheus_remote_storage_samples_failed_total{
-</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
-</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
-</span></span><span style="display:flex;"><span>    }
-</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_remote_storage_samples_failed_total{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        otelcol_exporter_send_failed_metric_points_total{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>      otelcol_exporter_send_failed_metric_points_total{
+</span></span><span style="display:flex;"><span>      prometheus_remote_storage_samples_total{
 </span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
 </span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
 </span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
@@ -221,7 +240,17 @@ retry, across every metrics destination.
 </span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      otelcol_exporter_sent_metric_points_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -236,45 +265,60 @@ log-push and remote-write listeners.
   <label for="infra.alloy.health.pushes_refused-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    loki_source_api_request_duration_seconds_count{
-</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
-</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
-</span></span><span style="display:flex;"><span>      status_code<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..</span>&#34;
-</span></span><span style="display:flex;"><span>    }
-</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        loki_source_api_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>          route<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">other</span>&#34;,
+</span></span><span style="display:flex;"><span>          status_code<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    prometheus_receive_http_request_duration_seconds_count{
-</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
-</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
-</span></span><span style="display:flex;"><span>      status_code<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..</span>&#34;
-</span></span><span style="display:flex;"><span>    }
-</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_receive_http_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;,
+</span></span><span style="display:flex;"><span>          route<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">other</span>&#34;,
+</span></span><span style="display:flex;"><span>          status_code<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
-</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    loki_source_api_request_duration_seconds_count{
-</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
-</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
-</span></span><span style="display:flex;"><span>    }
-</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_source_api_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    prometheus_receive_http_request_duration_seconds_count{
-</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
-</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
-</span></span><span style="display:flex;"><span>    }
-</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      prometheus_receive_http_request_duration_seconds_count{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
@@ -619,6 +663,17 @@ role and reason.
 </span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>app<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_write_sent_entries_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
@@ -669,6 +724,17 @@ by reason.
 </span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>app<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    loki_process_dropped_lines_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
@@ -1367,7 +1433,7 @@ it returned.
   <label for="infra.alloy.ingest.log_push.requests-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>status_code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>route, status_code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    loki_source_api_request_duration_seconds_count{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
@@ -1474,7 +1540,7 @@ code.
   <label for="infra.alloy.ingest.remote_write.requests-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>status_code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>route, status_code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    prometheus_receive_http_request_duration_seconds_count{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
@@ -1652,6 +1718,14 @@ Components per collector in any state other than healthy.
 </span></span><span style="display:flex;"><span>    health_type<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">healthy</span>&#34;
 </span></span><span style="display:flex;"><span>  }
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  alloy_component_controller_running_components{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
@@ -1791,6 +1865,17 @@ slow, per component.
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>app, component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    alloy_component_evaluation_slow_seconds{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>app<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    alloy_component_evaluation_seconds_count{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
 </span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
 </span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
@@ -2092,6 +2177,17 @@ Metric points per second the gateway&rsquo;s memory limiter refused.
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    otelcol_processor_memory_limiter_refused_metric_points_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    otelcol_processor_memory_limiter_accepted_metric_points_total{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
 </span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
 </span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;

@@ -148,9 +148,9 @@ so this buys a generation of dashboards rather than solving delivery.
 Shrinking the rendered output is the next lever, and the one that would stop the problem recurring is moving dashboards
 out of the release payload altogether.
 
-A dashboard's own size is worth knowing when adding one: `env-top` is 335 KB, `infra-alloy` 330 KB, `infra-nodes`
+A dashboard's own size is worth knowing when adding one: `infra-alloy` is 344 KB, `env-top` 335 KB, `infra-nodes`
 246 KB, `infra-loki` 167 KB, `env-logs` 37 KB.
-Adding `infra-alloy` took the dashboards release from 441,572 to 545,276 bytes, 52% of the ceiling, estimated the way
+Adding `infra-alloy` took the dashboards release from 441,572 to 551,100 bytes, 53% of the ceiling, estimated the way
 Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzipped, then base64-encoded.
 `selected` is what an operator narrows to hold one back.
 
