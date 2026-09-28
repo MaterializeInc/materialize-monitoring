@@ -10,6 +10,9 @@
 # one part of the Cloud platform uses, and it does not exist on self-managed.
 # Other names are literal.
 essential:
+- (?:v2_)?mz_can_connect
+- (?:v2_)?mz_envd_up
+- (?:v2_)?mz_views_query_successful
 - alloy_build_info
 - alloy_component_controller_running_components
 - alloy_config_last_load_successful
@@ -148,9 +151,6 @@ essential:
 - prometheus_remote_storage_samples_failed_total
 - prometheus_remote_storage_samples_total
 - up
-- v2_mz_can_connect
-- v2_mz_envd_up
-- v2_mz_views_query_successful
 recommended:
 - (?:v2_)?mz_arrangement_record_count
 - (?:v2_)?mz_compute_cluster_status

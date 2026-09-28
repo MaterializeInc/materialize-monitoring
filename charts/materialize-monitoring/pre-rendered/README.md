@@ -11,9 +11,14 @@ sources under `packages/`:
 | `pipelines/`                  | `packages/alloy-pipelines/`                            | `mz-monitoring-build gen-pipelines`     |
 | `scrapers/`                   | `packages/prometheus-scrapers/`                        | `mz-monitoring-build gen-scrape-configs`|
 | `metrics/`                    | `packages/queries/`                                    | `mz-monitoring-build gen-metric-tiers`  |
+| `rules/prometheus/`           | `packages/queries/` (the `alerts:` entries)            | `mz-monitoring-build gen-rules`         |
 
-Empty placeholders, kept so the chart's `.Files.Get` globs resolve: `dashboards/datadog/`, `rules/prometheus/`,
-`rules/loki/`, `rules/thanos/`. Nothing generates into them yet.
+`rules/prometheus/` holds one rule file per registry file plus `_index.yaml`, which records each rule's capabilities
+and whether it is in the default set. Tokens of the form `__mzmon_*__` in the rule files are replaced by the chart at
+install time (`templates/alerts/prometheusrules.yaml`).
+
+Empty placeholders, kept so the chart's `.Files.Get` globs resolve: `dashboards/datadog/`, `rules/loki/`,
+`rules/thanos/`. Nothing generates into them yet.
 
 The chart's templates load these files via `{{ .Files.Get }}` because
 Helm restricts that directive to the chart directory itself.
@@ -28,3 +33,5 @@ To regenerate locally:
 ```bash
 make charts/materialize-monitoring
 ```
+
+The rules alone regenerate with `make rules`.

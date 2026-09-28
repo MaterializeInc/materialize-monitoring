@@ -796,6 +796,24 @@ mod tests {
         crate::scrape::test_support::assert_promtool_rules_ok("test-alerts", &file);
     }
 
+    /// The real registry renders without a single error, and every file it
+    /// produces is one promtool accepts.
+    #[test]
+    fn the_registry_renders_and_promtool_accepts_it() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../queries");
+        let registry = QueryRegistry::from_directory(&dir).expect("registry loads");
+        let set = render_rules(&registry).unwrap_or_else(|errors| {
+            let listed: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+            panic!("the registry has rule errors:\n{}", listed.join("\n"))
+        });
+        assert!(set.rules.len() > 50, "expected the whole alert set");
+        assert!(set.rules.iter().any(|r| r.enabled_by_default));
+        for source in set.sources() {
+            let file = set.rule_file_yaml(source).unwrap();
+            crate::scrape::test_support::assert_promtool_rules_ok(source, &file);
+        }
+    }
+
     #[test]
     fn output_is_deterministic() {
         let yaml = format!(

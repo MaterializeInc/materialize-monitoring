@@ -1,0 +1,122 @@
+# promtool unit tests for the rules rendered from infra-alerts.yaml.
+#
+# Run by `make rules-check`; see materialize-alerts.test.yaml for how the rule
+# files beside this one are produced and which placeholder values they carry.
+rule_files:
+  - infra-alerts.yaml
+evaluation_interval: 1m
+tests:
+  # --- infra-memory-high: a missing limit is not 100% ------------------------
+  #
+  # A container with no memory limit reports a limit of 0, and dividing by it
+  # gave +Inf, which is above every threshold: on a reference install this kept
+  # a dozen series firing permanently.
+  - name: infra-memory-high fires near a real limit and ignores no limit
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="kube-system", pod="coredns-a", container="coredns"}'
+        values: "100x30"
+      - series: 'container_spec_memory_limit_bytes{namespace="kube-system", pod="coredns-a", container="coredns"}'
+        values: "0x30"
+      - series: 'container_memory_working_set_bytes{namespace="kube-system", pod="coredns-b", container="coredns"}'
+        values: "90x30"
+      - series: 'container_spec_memory_limit_bytes{namespace="kube-system", pod="coredns-b", container="coredns"}'
+        values: "100x30"
+    promql_expr_test:
+      - expr: count by (pod) (ALERTS{alertname="infra-memory-high", alertstate="firing"})
+        eval_time: 15m
+        exp_samples:
+          - labels: '{pod="coredns-b"}'
+            value: 1
+
+  # --- pods-stuck-in-waiting: the join that never matched ---------------------
+  #
+  # The waiting series is per container and the start-time series per pod, so
+  # without `on (namespace, pod)` the two never shared a label set and the rule
+  # could not fire at all.
+  - name: pods-stuck-in-waiting fires for a pod waiting past its first 10 minutes
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting{namespace="monitoring", pod="old", container="app"}'
+        values: "1x20"
+      - series: 'kube_pod_start_time{namespace="monitoring", pod="old", container="kube-state-metrics"}'
+        values: "0x20"
+      # Started at 10m, so only 5m old at the evaluation.
+      - series: 'kube_pod_container_status_waiting{namespace="monitoring", pod="young", container="app"}'
+        values: "1x20"
+      - series: 'kube_pod_start_time{namespace="monitoring", pod="young", container="kube-state-metrics"}'
+        values: "600x20"
+    promql_expr_test:
+      - expr: count by (pod) (ALERTS{alertname="pods-stuck-in-waiting", alertstate="firing"})
+        eval_time: 15m
+        exp_samples:
+          - labels: '{pod="old"}'
+            value: 1
+
+  # --- logging-collection-down: zero and absent both mean down ---------------
+  #
+  # `sum()` over no series is empty rather than zero, so a distributor that had
+  # stopped reporting at all could never fire the rule.
+  - name: logging-collection-down fires when the distributor reports nothing
+    interval: 1m
+    input_series:
+      - series: 'up{job="loki/loki-distributor"}'
+        values: "0x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="logging-collection-down", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  - name: logging-collection-down stays quiet while logs arrive
+    interval: 1m
+    input_series:
+      - series: 'loki_distributor_bytes_received_total{job="loki/loki-distributor", pod="loki-distributor-0"}'
+        values: "0+1000x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="logging-collection-down"})
+        eval_time: 20m
+        exp_samples: []
+
+  # --- k8s-container-disk-usage: per node ------------------------------------
+  #
+  # Grouped by a node label the gateway does not keep, every node collapsed into
+  # one series; `node` is the label cAdvisor series carry here.
+  - name: k8s-container-disk-usage reports the full node, not the whole cluster
+    interval: 1m
+    input_series:
+      - series: 'container_fs_usage_bytes{node="node-a", container="app"}'
+        values: "80x20"
+      - series: 'container_fs_limit_bytes{node="node-a", container="app"}'
+        values: "100x20"
+      - series: 'container_fs_usage_bytes{node="node-b", container="app"}'
+        values: "10x20"
+      - series: 'container_fs_limit_bytes{node="node-b", container="app"}'
+        values: "100x20"
+    promql_expr_test:
+      - expr: count by (node) (ALERTS{alertname="k8s-container-disk-usage", alertstate="firing"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{node="node-a"}'
+            value: 1
+
+  # --- k8s-infra-pod-pending-too-long: everything but Materialize -----------
+  #
+  # Written against Cloud's `environment-*` namespaces, it treated Materialize's
+  # own pods as infrastructure on self-managed.
+  - name: k8s-infra-pod-pending-too-long leaves the Materialize deployment to its own rules
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{namespace="materialize-environment", pod="mz-environmentd-gen-2-0", phase="Pending"}'
+        values: "1x30"
+      - series: 'kube_pod_status_phase{namespace="materialize", pod="operator-0", phase="Pending"}'
+        values: "1x30"
+      - series: 'kube_pod_status_phase{namespace="monitoring", pod="loki-ingester-0", phase="Pending"}'
+        values: "1x30"
+    promql_expr_test:
+      - expr: count by (namespace) (ALERTS{alertname="k8s-infra-pod-pending-too-long", alertstate="firing"})
+        eval_time: 25m
+        exp_samples:
+          - labels: '{namespace="monitoring"}'
+            value: 1

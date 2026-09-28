@@ -8,11 +8,15 @@ description: |
 
   Each alert carries its firing expression as an inline query, is graded by a
   `severity` label (critical > warning > notice), and is tagged with a
-  `component` label. Per-environment alerts group abstractly and attach the
-  environment name via the `mzEnvironmentName` template function; the optional
-  `%%{excludeEnvironmentFilter}` fragment lets a deployment exclude environments
-  (e.g. internal test environments). Alerts that only apply to Materialize Cloud
-  carry `deploymentMode: cloud-only`.
+  `component` label. Per-environment alerts group by namespace and attach the
+  environment name via the `mzEnvironmentName` template function; the
+  `%%{excludeEnvironmentFilter}` fragment lets a deployment exclude namespaces
+  from alerting (`rules.namespaces.exclude`).
+
+  Alerts that depend on something a deployment may not contain are gated by
+  capabilities, inferred from the metrics they read or declared with
+  `requires`, rather than by who operates the deployment. See Authoring Alerts
+  in the internal docs for how these render into rules.
 
 metricImportanceHint: essential
 
@@ -39,7 +43,7 @@ alerts:
       promQL:
         template: |
           avg by (namespace, pod) (
-            v2_mz_can_connect{%%{excludeEnvironmentFilter}}
+            %%{mzSqlPrefix}can_connect{%%{excludeEnvironmentFilter}}
           ) <= 0.1
           and on (namespace, pod) (
             time() - kube_pod_start_time > 5 * 60
@@ -50,7 +54,7 @@ alerts:
       # The `time() - kube_pod_start_time` grace period has no Datadog
       # equivalent; use the monitor's own new-data delay instead.
       datadogQuery: |
-        avg(last_5m):avg:v2_mz_can_connect{%%{excludeEnvironmentFilter}} by {namespace,pod} <= 0.1
+        avg(last_5m):avg:%%{mzSqlPrefix}can_connect{%%{excludeEnvironmentFilter}} by {namespace,pod} <= 0.1
   - alert: env-uptime-slo
     group: environmentd
     stability: best-effort
@@ -71,7 +75,7 @@ alerts:
       promQL:
         template: |
           avg by (namespace, pod) (
-            v2_mz_can_connect{%%{excludeEnvironmentFilter}}
+            %%{mzSqlPrefix}can_connect{%%{excludeEnvironmentFilter}}
           ) <= 0.1
           and on (namespace, pod) (
             time() - kube_pod_start_time > 5 * 60
@@ -81,7 +85,7 @@ alerts:
             args: ["namespace"]
       # As above: the pod-start grace period is dropped.
       datadogQuery: |
-        avg(last_3m):avg:v2_mz_can_connect{%%{excludeEnvironmentFilter}} by {namespace,pod} <= 0.1
+        avg(last_3m):avg:%%{mzSqlPrefix}can_connect{%%{excludeEnvironmentFilter}} by {namespace,pod} <= 0.1
   - alert: envd-simplest-query
     group: environmentd
     stability: best-effort
@@ -102,13 +106,13 @@ alerts:
       promQL:
         template: |
           avg by (namespace) (
-            v2_mz_envd_up{%%{excludeEnvironmentFilter}}
+            %%{mzSqlPrefix}envd_up{%%{excludeEnvironmentFilter}}
           ) <= 0.1
         functions:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        avg(last_15m):avg:v2_mz_envd_up{%%{excludeEnvironmentFilter}} by {namespace} <= 0.1
+        avg(last_15m):avg:%%{mzSqlPrefix}envd_up{%%{excludeEnvironmentFilter}} by {namespace} <= 0.1
   - alert: env-query-views-critical
     group: environmentd
     stability: best-effort
@@ -130,13 +134,13 @@ alerts:
       promQL:
         template: |
           avg by (namespace) (
-            v2_mz_views_query_successful{%%{excludeEnvironmentFilter}}
+            %%{mzSqlPrefix}views_query_successful{%%{excludeEnvironmentFilter}}
           ) <= 0.1
         functions:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        avg(last_15m):avg:v2_mz_views_query_successful{%%{excludeEnvironmentFilter}} by {namespace} <= 0.1
+        avg(last_15m):avg:%%{mzSqlPrefix}views_query_successful{%%{excludeEnvironmentFilter}} by {namespace} <= 0.1
   - alert: env-query-views-warning
     group: environmentd
     stability: best-effort
@@ -157,16 +161,17 @@ alerts:
       promQL:
         template: |
           avg by (namespace) (
-            v2_mz_views_query_successful{%%{excludeEnvironmentFilter}}
+            %%{mzSqlPrefix}views_query_successful{%%{excludeEnvironmentFilter}}
           ) <= 0.1
         functions:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        avg(last_5m):avg:v2_mz_views_query_successful{%%{excludeEnvironmentFilter}} by {namespace} <= 0.1
+        avg(last_5m):avg:%%{mzSqlPrefix}views_query_successful{%%{excludeEnvironmentFilter}} by {namespace} <= 0.1
   - alert: clusterd-not-receiving-commands
     group: environmentd
     stability: best-effort
+    enabledByDefault: true
     for: 2m
     labels:
       severity: warning
@@ -182,12 +187,20 @@ alerts:
       description:
         summary: Compute replicas whose last-command-received rate is zero past the pod-start grace period.
       promQL:
+        # Three corrections Cloud made after the port: the join is on
+        # (namespace, pod), since replica pod names repeat across environments;
+        # system clusters other than the catalog server are excluded; and a
+        # replica that restarted in the last 6h is left to the restart alerts
+        # rather than reported as disconnected.
         template: |
-          max by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
-            rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", %%{excludeEnvironmentFilter}}[5m:1m])
+          max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+            rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", %%{excludeEnvironmentFilter}}[5m:1m])
           ) == 0
-          and on (pod) (
+          and on (namespace, pod) (
             time() - kube_pod_start_time > 5 * 60
+          )
+          and on (namespace, pod) (
+            max by (namespace, pod) (increase(kube_pod_container_status_restarts_total{container="clusterd"}[6h:1m])) == 0
           )
         functions:
           - name: mzEnvironmentName
@@ -200,12 +213,12 @@ alerts:
   - alert: storage-collection-finalization-stuck
     group: environmentd
     stability: best-effort
-    for: 60m
+    for: 8h
     labels:
       severity: notice
       component: storage
     description:
-      summary: Storage shards have been stuck finalizing for 60m.
+      summary: Storage shards have been stuck finalizing for 8h.
       degraded: |
         Shard finalization is a background cleanup step; a sustained outstanding
         count suggests it is not making progress. Check storage controller logs.
@@ -216,8 +229,8 @@ alerts:
         summary: Outstanding shard finalizations per environment.
       promQL:
         template: |
-          max by (namespace) (
-            mz_shard_finalization_outstanding
+          max by (namespace, materialize_cloud_organization_name) (
+            mz_shard_finalization_outstanding{%%{excludeEnvironmentFilter}}
           ) > 0
         functions:
           - name: mzEnvironmentName
@@ -338,30 +351,30 @@ alerts:
       summary: Failures in Persist that should be rare are happening frequently.
       degraded: |
         Persist retries most transient errors, so a sustained failure rate points
-        at object storage or consensus (CockroachDB) trouble. The `metric` label
-        names the specific failure counter.
+        at object storage or metadata-database (consensus) trouble. The `metric`
+        label names the specific failure counter.
     query:
       id: materialize.persist.failures
       stability: best-effort
       description:
         summary: Rate of any of several Persist failure counters exceeding its threshold, by metric.
       promQL: |
-        sum by (metric) (rate(label_replace(mz_persist_blob_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_consensus_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_lease_timeout_read, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
-        or sum by (metric) (rate(label_replace(mz_persist_compaction_noop, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
-        or sum by (metric) (rate(label_replace(mz_persist_compaction_failed, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_external_blob_delete_noop_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_external_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_cmd_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_compaction_dropped, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_pushdown_parts_mismatched_stats_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_columnar_validation_count{result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_txn_placeholder_schema_apply, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_columnar_op_count{op="validation", result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_schema_cache_fetch_state_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (metric) (rate(label_replace(mz_persist_shard_unconsolidated_snapshot, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        sum by (namespace, metric) (rate(label_replace(mz_persist_blob_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_consensus_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_lease_timeout_read, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_noop, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_failed, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_external_blob_delete_noop_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_external_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_cmd_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_dropped, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_pushdown_parts_mismatched_stats_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_columnar_validation_count{result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_txn_placeholder_schema_apply, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_columnar_op_count{op="validation", result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_schema_cache_fetch_state_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        or sum by (namespace, metric) (rate(label_replace(mz_persist_shard_unconsolidated_snapshot, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       # PromQL folds sixteen counters into one alert via label_replace and
       # `or`; Datadog needs one monitor per counter, so three representative
       # ones are here.
@@ -379,6 +392,7 @@ alerts:
   - alert: envd-terminated
     group: environmentd
     stability: best-effort
+    enabledByDefault: true
     for: 1m
     labels:
       severity: warning
@@ -396,8 +410,13 @@ alerts:
       description:
         summary: environmentd containers whose last termination exit code was not the graceful sentinel.
       promQL:
+        # `last_terminated_exitcode` persists for the life of the pod, so on its
+        # own this fires until the pod is deleted. Pairing it with a restart in
+        # the last 10m is the fix Cloud made after the port.
         template: |
           kube_pod_container_status_last_terminated_exitcode{container="environmentd"} != 166
+          and on (namespace, pod)
+          max by (namespace, pod) (increase(kube_pod_container_status_restarts_total{container="environmentd"}[10m:1m])) > 0
         functions:
           - name: mzEnvironmentName
             args: ["namespace"]
@@ -441,6 +460,7 @@ alerts:
   - alert: environmentd-high-memory
     group: environmentd
     stability: best-effort
+    enabledByDefault: true
     for: 30m
     labels:
       severity: warning
@@ -523,7 +543,7 @@ alerts:
               container_memory_working_set_bytes{container!="POD", container!="", container=~"environmentd"}
             )
             / sum by (namespace, pod, container) (
-              container_spec_memory_limit_bytes{container!="POD", container!="", container=~"environmentd"}
+              container_spec_memory_limit_bytes{container!="POD", container!="", container=~"environmentd"} != 0
             )
           ) > 80
         functions:
@@ -537,6 +557,7 @@ alerts:
   - alert: clusterd-error-kill
     group: environment_health
     stability: best-effort
+    enabledByDefault: true
     for: 1m
     labels:
       severity: warning
@@ -554,7 +575,7 @@ alerts:
       promQL:
         template: |
           max by (namespace, pod) (
-            increase(kube_pod_container_status_restarts_total{namespace=~"environment.+", container="clusterd"}[1h])
+            increase(kube_pod_container_status_restarts_total{%%{mzEnvironmentNamespaceFilter}, container="clusterd"}[1h])
           ) > 0
           and max by (namespace, pod) (kube_pod_container_status_last_terminated_exitcode) != 137
           and max by (namespace, pod) (kube_pod_container_status_last_terminated_exitcode) != 135
@@ -572,6 +593,7 @@ alerts:
   - alert: system-cluster-terminated
     group: environment_health
     stability: best-effort
+    enabledByDefault: true
     for: 1m
     labels:
       severity: warning
@@ -584,8 +606,12 @@ alerts:
       description:
         summary: System-cluster pods whose last termination exit code was not the graceful sentinel.
       promQL:
+        # Latches like envd-terminated did; paired with a recent restart for the
+        # same reason.
         template: |
           kube_pod_container_status_last_terminated_exitcode{pod=~".*cluster-s.*"} != 166
+          and on (namespace, pod)
+          max by (namespace, pod) (increase(kube_pod_container_status_restarts_total{pod=~".*cluster-s.*"}[10m:1m])) > 0
         functions:
           - name: mzEnvironmentName
             args: ["namespace"]
@@ -627,6 +653,7 @@ alerts:
   - alert: clusterd-expiration-7d
     group: environment_health
     stability: best-effort
+    enabledByDefault: true
     for: 10m
     labels:
       severity: warning
@@ -655,6 +682,9 @@ alerts:
     group: environment_health
     stability: best-effort
     for: 1m
+    # `materialize_cloud_swap` comes from a node label, which the metric names
+    # cannot show.
+    requires: [swap-nodes]
     labels:
       severity: notice
       component: clusterd
@@ -672,7 +702,7 @@ alerts:
         increase(
           (
             max by (namespace, pod) (
-              kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace=~"environment.*"}
+              kube_pod_container_status_last_terminated_reason{reason="OOMKilled", %%{mzEnvironmentNamespaceFilter}}
             )
             or on (namespace, pod) count by (namespace, pod) (
               container_last_seen{materialize_cloud_swap="true", %%{excludeEnvironmentFilter}}
@@ -702,6 +732,7 @@ alerts:
   - alert: environment-pod-pending-critical
     group: environment_health
     stability: best-effort
+    enabledByDefault: true
     for: 15m
     labels:
       severity: critical
@@ -720,7 +751,7 @@ alerts:
         template: |
           min by (namespace, pod_base) (
             label_replace(
-              kube_pod_status_phase{namespace=~"environment.*", phase="Pending", %%{excludeEnvironmentFilter}},
+              kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter}, phase="Pending", %%{excludeEnvironmentFilter}},
               "pod_base", "$1", "pod", "(.*?)(?:-gen-[0-9]+-[0-9]+|([0-9]+)-[0-9]+)?"
             )
           ) > 0
@@ -748,7 +779,7 @@ alerts:
       promQL:
         template: |
           max by (namespace, pod) (
-            kube_pod_status_phase{namespace=~"environment.*", phase="Pending", %%{excludeEnvironmentFilter}}
+            kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter}, phase="Pending", %%{excludeEnvironmentFilter}}
           ) > 0
         functions:
           - name: mzEnvironmentName
@@ -857,10 +888,11 @@ alerts:
         max(last_1m):max:kube_pod_container_status_restarts_total{container:clusterd}
           by {namespace,pod} > 0
 
-  # --- Materialize Cloud only ----------------------------------------------
-  # These watch cloud-platform components (the external uptime checker, the
-  # LaunchDarkly parameter sync) that self-managed deployments do not run, so
-  # they carry deploymentMode: cloud-only and are excluded there.
+  # --- External checkers and services ----------------------------------------
+  # These watch components outside Materialize itself: an external uptime
+  # checker and a feature-flag sync. Their capabilities (`external-uptime`,
+  # `feature-flags`) are inferred from the metrics they read, so they install only
+  # where a deployment says it runs those components.
   - alert: external-env-uptime
     group: external_uptime
     stability: best-effort
@@ -868,7 +900,6 @@ alerts:
     labels:
       severity: critical
       component: external-uptime
-      deploymentMode: cloud-only
     description:
       summary: environmentd is unreachable from outside the network by the external uptime checker.
       unhealthy: |
@@ -896,7 +927,6 @@ alerts:
     labels:
       severity: warning
       component: external-uptime
-      deploymentMode: cloud-only
     description:
       summary: New external connections to environmentd are failing, per the external uptime checker.
     query:
@@ -922,7 +952,6 @@ alerts:
     labels:
       severity: warning
       component: external-uptime
-      deploymentMode: cloud-only
     description:
       summary: The external uptime checker has stopped making calls — the checker itself may be down.
     query:
@@ -944,7 +973,6 @@ alerts:
     labels:
       severity: warning
       component: launchdarkly
-      deploymentMode: cloud-only
     description:
       summary: The last LaunchDarkly server-side event is more than 40 minutes old — flag updates may not be reaching environmentd.
     query:
@@ -973,7 +1001,6 @@ alerts:
     labels:
       severity: notice
       component: launchdarkly
-      deploymentMode: cloud-only
     description:
       summary: The last LaunchDarkly client-side event is more than 40 minutes old — client analytics may be stale.
     query:

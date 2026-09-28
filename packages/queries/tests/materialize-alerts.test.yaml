@@ -1,0 +1,220 @@
+# promtool unit tests for the rules rendered from materialize-alerts.yaml.
+#
+# Run by `make rules-check`, which renders the chart with every rule selected
+# (charts/materialize-monitoring/tests/rules/all.values.yaml), extracts each
+# PrometheusRule's groups into <registry-file>.yaml beside this file, and runs
+# `promtool test rules`. The install-time placeholders are therefore filled with
+# the chart defaults: environments in `materialize-environment`, the operator in
+# `materialize`, nothing excluded, and the self-managed `mz_` SQL prefix.
+#
+# Each test proves one behaviour a rule is easy to get wrong: that it fires on
+# the failure it exists for, and stays quiet on the case that used to misfire.
+# Assertions read the ALERTS series rather than listing expected annotations,
+# which would restate every description.
+rule_files:
+  - materialize-alerts.yaml
+evaluation_interval: 1m
+tests:
+  # --- envd-terminated: fires on a crash, and stops once it is over ---------
+  #
+  # `last_terminated_exitcode` persists for the life of the pod, so on its own
+  # the rule fired from the first crash until the pod was deleted. It now needs a
+  # restart in the last 10m as well.
+  - name: envd-terminated fires on a recent crash and does not latch
+    interval: 1m
+    input_series:
+      - series: 'up{job="monitoring/mzmon-materialize-environmentd", namespace="materialize-environment", pod="mz-environmentd-0", materialize_cloud_organization_name="main"}'
+        values: "1x90"
+      # Latched from a crash long before the window.
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "1x90"
+      # Restarts once, at 30m.
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "0x30 1x60"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="envd-terminated", alertstate="firing"})
+        eval_time: 20m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="envd-terminated", alertstate="firing", materialize_cloud_organization_name="main"})
+        eval_time: 34m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="envd-terminated", alertstate="firing"})
+        eval_time: 60m
+        exp_samples: []
+
+  - name: envd-terminated ignores the graceful shutdown sentinel
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "166x60"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "0x30 1x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="envd-terminated"})
+        eval_time: 34m
+        exp_samples: []
+
+  # --- the environment-name join --------------------------------------------
+  #
+  # `mzEnvironmentName` attaches the organization label from the environmentd
+  # scrape target. Two environments sharing a namespace would make that join
+  # many-to-many and fail the whole evaluation, which reads as silence; instead
+  # the alert fires without the label. With no scrape target at all it fires
+  # without the label too.
+  - name: the environment join leaves an ambiguous namespace unlabelled rather than failing
+    interval: 1m
+    input_series:
+      - series: 'up{job="monitoring/mzmon-materialize-environmentd", namespace="materialize-environment", pod="a-environmentd-0", materialize_cloud_organization_name="alpha"}'
+        values: "1x60"
+      - series: 'up{job="monitoring/mzmon-materialize-environmentd", namespace="materialize-environment", pod="b-environmentd-0", materialize_cloud_organization_name="beta"}'
+        values: "1x60"
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="a-environmentd-0", container="environmentd"}'
+        values: "1x60"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="a-environmentd-0", container="environmentd"}'
+        values: "0x30 1x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="envd-terminated", alertstate="firing"})
+        eval_time: 34m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="envd-terminated", materialize_cloud_organization_name!=""})
+        eval_time: 34m
+        exp_samples: []
+
+  - name: the environment join keeps a series with no scrape target
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "1x60"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "0x30 1x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="envd-terminated", alertstate="firing"})
+        eval_time: 34m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  # --- system-cluster-terminated: the same latch -----------------------------
+  - name: system-cluster-terminated fires on a recent crash and does not latch
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-cluster-s1-replica-s1-gen-1-0", container="clusterd"}'
+        values: "2x90"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-s1-replica-s1-gen-1-0", container="clusterd"}'
+        values: "0x30 1x60"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="system-cluster-terminated", alertstate="firing"})
+        eval_time: 20m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="system-cluster-terminated", alertstate="firing"})
+        eval_time: 34m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="system-cluster-terminated", alertstate="firing"})
+        eval_time: 60m
+        exp_samples: []
+
+  # --- clusterd-error-kill: scoped to the environment namespaces -------------
+  #
+  # Written for Cloud's `environment-*` namespaces, it matched nothing on
+  # self-managed and missed a real crash loop. Expected exit codes (OOM, the
+  # graceful sentinels) stay excluded.
+  - name: clusterd-error-kill fires on an unexpected exit in an environment namespace
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-9-0", container="clusterd"}'
+        values: "0x5 1x30"
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-9-0", container="clusterd"}'
+        values: "134x35"
+      # OOMKilled: expected, and left to the OOM alerts.
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-9-0", container="clusterd"}'
+        values: "0x5 1x30"
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-9-0", container="clusterd"}'
+        values: "137x35"
+      # Not a Materialize environment.
+      - series: 'kube_pod_container_status_restarts_total{namespace="someone-else", pod="clusterd-0", container="clusterd"}'
+        values: "0x5 1x30"
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="someone-else", pod="clusterd-0", container="clusterd"}'
+        values: "134x35"
+    promql_expr_test:
+      - expr: count by (pod) (ALERTS{alertname="clusterd-error-kill", alertstate="firing"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{pod="mz-cluster-u1-replica-u1-gen-9-0"}'
+            value: 1
+
+  # --- clusterd-not-receiving-commands ---------------------------------------
+  #
+  # Cloud's three later corrections: join on (namespace, pod), skip system
+  # clusters other than the catalog server, and skip a replica that restarted in
+  # the last 6h.
+  - name: clusterd-not-receiving-commands fires for a stalled user replica only
+    interval: 1m
+    input_series:
+      # A stalled user replica: the last-command timestamp stops moving.
+      - series: 'mz_cluster_server_last_command_received{server_name="compute", namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u1", cluster_environmentd_materialize_cloud_replica_id="u1", materialize_cloud_organization_name="main"}'
+        values: "1000x30"
+      - series: 'kube_pod_start_time{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0"}'
+        values: "0x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd"}'
+        values: "0x30"
+      # A system cluster, equally quiet: excluded.
+      - series: 'mz_cluster_server_last_command_received{server_name="compute", namespace="materialize-environment", pod="mz-cluster-s1-replica-s1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="s1", cluster_environmentd_materialize_cloud_replica_id="s1", materialize_cloud_organization_name="main"}'
+        values: "1000x30"
+      - series: 'kube_pod_start_time{namespace="materialize-environment", pod="mz-cluster-s1-replica-s1-gen-1-0"}'
+        values: "0x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-s1-replica-s1-gen-1-0", container="clusterd"}'
+        values: "0x30"
+      # A healthy replica: commands keep arriving.
+      - series: 'mz_cluster_server_last_command_received{server_name="compute", namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u2", cluster_environmentd_materialize_cloud_replica_id="u2", materialize_cloud_organization_name="main"}'
+        values: "1000+60x30"
+      - series: 'kube_pod_start_time{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0"}'
+        values: "0x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd"}'
+        values: "0x30"
+      # A quiet replica that restarted recently: left to the restart alerts.
+      - series: 'mz_cluster_server_last_command_received{server_name="compute", namespace="materialize-environment", pod="mz-cluster-u3-replica-u3-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u3", cluster_environmentd_materialize_cloud_replica_id="u3", materialize_cloud_organization_name="main"}'
+        values: "1000x30"
+      - series: 'kube_pod_start_time{namespace="materialize-environment", pod="mz-cluster-u3-replica-u3-gen-1-0"}'
+        values: "0x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u3-replica-u3-gen-1-0", container="clusterd"}'
+        values: "0x10 1x20"
+    promql_expr_test:
+      - expr: count by (cluster_environmentd_materialize_cloud_cluster_id) (ALERTS{alertname="clusterd-not-receiving-commands", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{cluster_environmentd_materialize_cloud_cluster_id="u1"}'
+            value: 1
+
+  # --- environment-pod-pending-critical --------------------------------------
+  - name: environment-pod-pending-critical fires only for environment namespaces
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_status_phase{namespace="materialize-environment", pod="mz-environmentd-gen-2-0", phase="Pending"}'
+        values: "1x30"
+      - series: 'kube_pod_status_phase{namespace="someone-else", pod="web-0", phase="Pending"}'
+        values: "1x30"
+    promql_expr_test:
+      - expr: count by (namespace) (ALERTS{alertname="environment-pod-pending-critical", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{namespace="materialize-environment"}'
+            value: 1
+
+  # --- environmentd-memory-elevated: a missing limit is not 100% -------------
+  - name: environmentd-memory-elevated ignores a container with no memory limit
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "100x60"
+      - series: 'container_spec_memory_limit_bytes{namespace="materialize-environment", pod="mz-environmentd-0", container="environmentd"}'
+        values: "0x60"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="environmentd-memory-elevated"})
+        eval_time: 45m
+        exp_samples: []
