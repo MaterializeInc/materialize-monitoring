@@ -20,6 +20,7 @@ use std::fmt;
 use indexmap::IndexMap;
 
 use crate::query::importance::Importance;
+use crate::query::rules::capability::Capability;
 use crate::query::stability::Stability;
 
 /// A stable identifier for a query, e.g. `materialize.compute.peek_latency.p99`.
@@ -194,4 +195,12 @@ pub struct Alert {
     pub keep_firing_for: Option<String>,
     pub labels: IndexMap<String, String>,
     pub annotations: IndexMap<String, String>,
+    /// Capabilities declared beyond those the rule's metrics imply.
+    pub requires: Vec<Capability>,
+    /// Whether the rule installs wherever it applies without being selected.
+    pub enabled_by_default: bool,
+    /// The stem of the registry file the alert was loaded from
+    /// (`materialize-alerts`), when it was loaded from one. Rules are rendered
+    /// one output file per source file.
+    pub source: Option<String>,
 }

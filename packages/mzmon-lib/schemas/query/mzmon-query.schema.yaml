@@ -131,6 +131,10 @@ $defs:
       - "mzLogContainerFilter"
       - "mzLogUnitFilter"
       - "mzLogSearchFilter"
+      # A namespace exclusion for log selectors. Never empty: LogQL rejects a
+      # trailing comma, so "exclude nothing" renders as a matcher that matches no
+      # namespace rather than as nothing at all.
+      - "mzLogExcludeNamespaceFilter"
       # Environment (org) scope filter fragment, e.g.
       # materialize_cloud_organization_name=~"$environmentIdList".
       - "mzEnvironmentFilter"
@@ -154,6 +158,11 @@ $defs:
       # Kubernetes namespace selector value (regex) for kube-state-metrics /
       # cAdvisor panels, e.g. namespace=~"%%{mzNamespaceList}".
       - "mzNamespaceList"
+      # The complement of mzDeploymentNamespaceFilter, as one matcher:
+      # namespace!~"a|b". For queries about everything *except* Materialize --
+      # the platform underneath it -- which is what a hardcoded
+      # namespace!~"environment.*" meant in the rules ported from Cloud.
+      - "excludeMzDeploymentNamespaceFilter"
       # A whole `unless` clause rather than a matcher, dropping pods that share
       # the node's network namespace. cAdvisor reports every interface on the
       # machine for a host-network pod -- 31 of them on a reference node against
@@ -262,7 +271,9 @@ $defs:
                       items:
                         $ref: "#/$defs/templateString"
                       description: A list of arguments to pass to the function.
-                    additionalProperties: false
+                  required:
+                    - name
+                  additionalProperties: false
                   examples:
                     - name: "exceedsThreshold"
                       args:
@@ -446,11 +457,74 @@ $defs:
   labelMap:
     description: |
       A map of labels to attach to the resulting metric.
+      Values are plain strings: they are copied onto the rule verbatim, and the
+      loader rejects anything else.
     type: object
     additionalProperties:
-      $ref: "#/$defs/templateString"
+      type: string
     examples:
       - environment: production
+
+  capability:
+    description: |
+      Something a deployment contains that a rule needs in order to mean anything.
+
+      A rule is installed only where every capability it requires is present.
+      Capabilities name what a deployment *contains* -- a metadata database
+      flavor, a CNI, an exporter -- rather than who operates it, which is why
+      there is no `cloud-only`.
+
+      Most of a rule's capabilities are inferred at build time from the metrics
+      it reads, so `requires` lists only what metric names cannot show. The
+      metric-to-capability table lives beside this list, in
+      `packages/mzmon-lib/src/query/rules/capability.rs`, and a test keeps the
+      two in agreement.
+
+      The chart derives the first group from what it deploys; an operator sets
+      the rest in `rules.capabilities`.
+    oneOf:
+      # Derived by the chart from what it deploys.
+      - const: materialize
+        description: Materialize's own metrics, from the environmentd and clusterd PodMonitors.
+      - const: materialize-sql
+        description: The SQL-backed endpoints on environmentd (`%%{mzSqlPrefix}` families), from the environmentd-sql PodMonitor.
+      - const: materialize-operator
+        description: The Materialize operator (orchestratord), from its PodMonitor.
+      - const: kube-state-metrics
+        description: kube-state-metrics (`kube_*`).
+      - const: cadvisor
+        description: The kubelet's cAdvisor endpoint (`container_*`, `machine_*`).
+      - const: node-exporter
+        description: node-exporter (`node_*`).
+      - const: loki
+        description: The bundled Loki's own metrics.
+      - const: alloy
+        description: The bundled Alloy collectors' own metrics.
+      # Set explicitly by an operator.
+      - const: synthetic-uptime
+        description: A per-environment probe exporter writing connection and `SELECT 1` results (`can_connect`, `envd_up`, `views_query_successful`). Materialize Cloud runs one; the chart does not.
+      - const: external-uptime
+        description: An external uptime checker probing environments from outside the network (`mz_external_*`).
+      - const: feature-flags
+        description: A feature-flag service synchronizing system parameters into environmentd (`mz_parameter_frontend_*`).
+      - const: frontegg-auth
+        description: environmentd authenticating through Frontegg (`mz_auth_request_count`).
+      - const: memory-limiter
+        description: clusterd's memory limiter is active (`mz_memory_limiter_*`).
+      - const: crdb-dedicated
+        description: The metadata database is a dedicated CockroachDB cluster exporting under `crdb_dedicated_*`.
+      - const: cilium
+        description: The cluster CNI is Cilium, with its metrics scraped (`cilium_*`).
+      - const: coredns
+        description: CoreDNS is scraped (`coredns_*`).
+      - const: cert-manager
+        description: cert-manager is scraped (`certmanager_*`).
+      - const: kubelet-metrics
+        description: The kubelet's own `/metrics` endpoint is scraped (`kubelet_*`); the chart scrapes only `/metrics/cadvisor`.
+      - const: swap-nodes
+        description: Materialize runs on swap-enabled nodes whose `materialize.cloud/swap` label reaches cAdvisor series.
+      - const: egress-gateway
+        description: A dedicated egress-gateway node pool, identified by a `workload` label.
 
   recordingRule:
     description: |
@@ -528,8 +602,32 @@ $defs:
         $ref: "#/$defs/labelMap"
       annotations:
         $ref: "#/$defs/labelMap"
+      requires:
+        type: array
+        description: |
+          Capabilities this rule needs that its metrics do not show.
+
+          Most requirements are inferred from the metric names a rule reads (a
+          `cilium_*` metric requires `cilium`), so this lists only the rest: a
+          rule that reads nothing but `up`, or one that depends on a label a
+          particular deployment adds. The effective set is recorded per rule in
+          `pre-rendered/rules/prometheus/_index.yaml`.
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/capability"
+      enabledByDefault:
+        type: boolean
+        default: false
+        description: |
+          Install this rule wherever it applies, without an operator selecting it.
+
+          This is the vetted set: a rule marked here has been evaluated against a
+          live self-managed install and does not fire falsely. It is still
+          installed only where its capabilities are present, so a vetted
+          CockroachDB rule arrives with `crdb-dedicated` and not before.
     allOf:
       - $ref: "#/$defs/requiredDependency"
+    unevaluatedProperties: false
     required:
       - alert
       - for

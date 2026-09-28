@@ -179,6 +179,12 @@ impl QueryRegistry {
     /// Load every query/rule/alert/override from a parsed registry document.
     /// Each metric query is stamped with the file's `metricImportanceHint`.
     pub fn load(&mut self, doc: RegistryDoc) -> Result<()> {
+        self.load_from(doc, None)
+    }
+
+    /// [`load`](Self::load), recording `source` (a registry file stem) on every
+    /// alert the document defines.
+    pub fn load_from(&mut self, doc: RegistryDoc, source: Option<&str>) -> Result<()> {
         let hint = doc.metric_importance_hint;
         for query in doc.queries {
             self.register_query(query, hint)?;
@@ -187,7 +193,7 @@ impl QueryRegistry {
             self.register_rule(rule, hint)?;
         }
         for alert in doc.alerts {
-            self.register_alert(alert, hint)?;
+            self.register_alert(alert, hint, source)?;
         }
         for override_def in doc.metric_overrides {
             self.metric_overrides
@@ -217,7 +223,8 @@ impl QueryRegistry {
                     other => other,
                 }
             })?;
-            registry.load(doc)?;
+            let stem = path.file_stem().and_then(|s| s.to_str());
+            registry.load_from(doc, stem)?;
         }
         Ok(registry)
     }
@@ -291,7 +298,12 @@ impl QueryRegistry {
 
     /// Register an alert, promoting an inline `query` (which inherits the file
     /// `importance` hint) if present.
-    pub fn register_alert(&mut self, def: AlertDef, importance: Importance) -> Result<()> {
+    pub fn register_alert(
+        &mut self,
+        def: AlertDef,
+        importance: Importance,
+        source: Option<&str>,
+    ) -> Result<()> {
         if self.alerts.contains_key(&def.alert) {
             return Err(Error::DuplicateAlert(def.alert));
         }
@@ -307,6 +319,9 @@ impl QueryRegistry {
             keep_firing_for: def.keep_firing_for,
             labels: def.labels,
             annotations: def.annotations,
+            requires: def.requires,
+            enabled_by_default: def.enabled_by_default,
+            source: source.map(str::to_string),
         };
         self.alerts.insert(alert.alert.clone(), alert);
         Ok(())

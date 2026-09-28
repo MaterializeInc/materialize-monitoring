@@ -44,6 +44,7 @@ pub mod importance;
 pub mod model;
 pub mod registry;
 pub mod render;
+pub mod rules;
 pub mod stability;
 pub mod tiers;
 pub mod validate;

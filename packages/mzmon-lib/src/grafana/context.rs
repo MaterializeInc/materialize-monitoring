@@ -484,6 +484,16 @@ pub fn dashboard_context<'a>(
                 variables::MZ_NAMESPACE_LIST
             ),
         ),
+        // The complement of the above, for queries about the platform *under*
+        // Materialize. The same `:regex` reasoning applies.
+        (
+            "excludeMzDeploymentNamespaceFilter",
+            format!(
+                r#"namespace!~"{}|${{{}:regex}}""#,
+                regex_form(&scope.operator_namespace),
+                variables::MZ_NAMESPACE_LIST
+            ),
+        ),
         ("mzClusterList", format!("${}", variables::MZ_CLUSTER_LIST)),
         ("mzReplicaList", format!("${}", variables::MZ_REPLICA_LIST)),
         // Regex-escaped forms, for a variable interpolated as a *fragment* of a
@@ -668,43 +678,31 @@ mod tests {
 
     #[test]
     fn parameters_cover_every_known_parameter() {
-        // The schema's `knownParameter` enum is the authoritative list; a missing
-        // one is a render error the moment a query starts using it.
-        const KNOWN: &[&str] = &[
-            "interval",
-            "range",
-            "mzSqlPrefix",
-            "cAdvisorFilter",
-            "excludeHostNetworkPods",
-            "mzOperatorNamespaceFilter",
-            "mzEnvironmentNamespaceFilter",
-            "mzSystemNamespaceFilter",
-            "mzDeploymentNamespaceFilter",
-            "mzGenerationFilter",
-            "mzGenerationEventFilter",
-            "mzGenerationPattern",
-            "mzLogNamespaceFilter",
-            "mzLogAppFilter",
-            "mzLogLevelFilter",
-            "mzLogJobFilter",
-            "mzLogComponentFilter",
-            "mzLogContainerFilter",
-            "mzLogExcludeNamespaceFilter",
-            "mzLogUnitFilter",
-            "mzLogSearchFilter",
-            "mzEnvironmentFilter",
-            "excludeEnvironmentFilter",
-            "mzClusterList",
-            "mzReplicaList",
-            "mzNamespaceList",
-        ];
+        // The schema's `knownParameter` enum is the authoritative list, read from
+        // the schema itself so the two cannot drift; a missing one is a render
+        // error the moment a query starts using it. Both directions: a parameter
+        // supplied here but not in the schema is one no query may use.
+        let known = crate::query::validate::known_parameters();
         let registry = QueryRegistry::new();
-        let ctx = dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default());
-        let missing: Vec<_> = KNOWN
-            .iter()
-            .filter(|k| !ctx.parameters.contains_key(**k))
-            .collect();
-        assert!(missing.is_empty(), "unsupplied parameters: {missing:?}");
+        for ctx in [
+            dashboard_context(&registry, QueryEngine::PromQl, &DashboardScope::default()),
+            doc_context(&registry, QueryEngine::PromQl, "mz_"),
+        ] {
+            let missing: Vec<_> = known
+                .iter()
+                .filter(|k| !ctx.parameters.contains_key(k.as_str()))
+                .collect();
+            assert!(missing.is_empty(), "unsupplied parameters: {missing:?}");
+            let unknown: Vec<_> = ctx
+                .parameters
+                .keys()
+                .filter(|k| !known.contains(*k))
+                .collect();
+            assert!(
+                unknown.is_empty(),
+                "supplied but not in the schema: {unknown:?}"
+            );
+        }
     }
 
     #[test]

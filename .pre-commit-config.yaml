@@ -125,7 +125,9 @@ repos:
         name: check-queries (query schema validation)
         language: system
         entry: bin/mz-monitoring-check check-queries
-        files: ^packages/queries/.+\.yaml$
+        # Registry files only: packages/queries/tests/ holds promtool unit tests,
+        # which are not registry documents.
+        files: ^packages/queries/[^/]+\.yaml$
 
   # ── Rust ───────────────────────────────────────────────────────────────
   # cargo fmt runs on every commit (fast, fixer).
