@@ -735,7 +735,7 @@ materialize:
       targetLabels: []
       # -- Override for default metric endpoints
       metricEndpoints: []
-  # -- Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.
+  # -- Where Materialize runs: `self-managed` or `cloud`. Decides the prefix the alerting rules expect on SQL-backed metrics (`mz_`, or Cloud's `v2_mz_`).
   deploymentMode: self-managed
 
 materialize-system:
@@ -1754,28 +1754,6 @@ dashboards:
 
 
 config:
-  # -- (h4) Configuration for rules
-  # @notationType -- (sectionstart) Rule configuration
-  rules:
-    prometheus:
-      # -- Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.
-      enabled: true
-    loki:
-      # -- Install the bundled Loki rules.
-      enabled: false
-    thanos:
-      # -- Install the bundled Thanos rules.
-      enabled: false
-
-  # -- (h4) Configuration for alerts
-  # @notationType -- (sectionstart) Alert configuration
-  alerts:
-    # -- Read by no template. Alertmanager routing is configured under `alerting`.
-    # Kept rather than removed so that a values file setting it still renders;
-    # removing it is tracked with the other `config.rules.*` keys in the
-    # alerting design doc.
-    enabled: true
-
   # -- (h4) Configuration for scrapers
   # @notationType -- (sectionstart) Scraper configuration
   scrapers:
@@ -2156,6 +2134,81 @@ connections:
       # `GrafanaDatasource`.
       # @default -- `[]`
       valuesFrom: []
+
+# -- (h4) Which alerting rules install: the bundled rule set, gated by what this deployment contains.
+# @notationType -- (sectionstart) Alerting rules
+# @raw
+#
+# The bundled rules are rendered at build time from the query registry
+# (`packages/queries/`) and installed as `PrometheusRule` resources, which the
+# Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
+# below.
+#
+# A rule installs when **every capability it requires is present**, and it is
+# either in the **default set** or named in `selected`, and it is not named in
+# `disabled`. Capabilities name what a deployment contains, never who operates
+# it: a CockroachDB rule is for a deployment running CockroachDB. Most are
+# derived from what this chart deploys (`materialize`, `kube-state-metrics`,
+# `loki`, …); the rest are listed in `capabilities`. The generated
+# `pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+# capabilities it requires.
+rules:
+  # -- Install the bundled alerting rules.
+  enabled: true
+
+  # -- Capabilities this deployment has beyond those the chart derives.
+  # @raw
+  #
+  # | Capability | Means |
+  # |---|---|
+  # | `synthetic-uptime` | A per-environment probe exporter writes connection and `SELECT 1` results |
+  # | `external-uptime` | An external uptime checker probes environments from outside the network |
+  # | `feature-flags` | A feature-flag service synchronizes system parameters into environmentd |
+  # | `frontegg-auth` | environmentd authenticates through Frontegg |
+  # | `memory-limiter` | clusterd's memory limiter is active |
+  # | `crdb-dedicated` | The metadata database is a dedicated CockroachDB cluster exporting `crdb_dedicated_*` |
+  # | `cilium` | The CNI is Cilium and its metrics are scraped |
+  # | `coredns` | CoreDNS is scraped |
+  # | `cert-manager` | cert-manager is scraped |
+  # | `kubelet-metrics` | The kubelet's own `/metrics` is scraped (this chart scrapes only `/metrics/cadvisor`) |
+  # | `swap-nodes` | Materialize runs on swap-enabled nodes whose `materialize.cloud/swap` label reaches cAdvisor series |
+  # | `egress-gateway` | A dedicated egress-gateway node pool, identified by a `workload` label |
+  #
+  # The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
+  # `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
+  # present when this chart runs the component and collects its metrics. List
+  # one here as well when something outside the chart provides it — your own
+  # kube-state-metrics, say. An unknown name fails the render.
+  # @default -- `[]`
+  capabilities: []
+
+  # -- Bundled rules to install beyond the default set: alert names, rule-group names, or `*` for every rule that applies.
+  # @raw
+  #
+  # Selecting a rule does not bypass its capabilities: a selected rule whose
+  # capabilities are missing is still not installed, and the render warns.
+  # @default -- `[]`
+  selected: []
+
+  # -- Alert names never to install, even when they apply and are in the default set.
+  # @default -- `[]`
+  disabled: []
+
+  namespaces:
+    # -- Namespaces holding Materialize environments.
+    # @raw
+    #
+    # Rules about an environment's pods (pending, restarting, OOMKilled) scope
+    # to these. Empty uses `materialize.namespaces`, and if that is empty too,
+    # `materialize-system.namespace`.
+    # @default -- `[]`
+    environment: []
+    # -- Namespaces holding the Materialize operator. Empty uses `materialize-operator.namespace`.
+    # @default -- `[]`
+    operator: []
+    # -- Namespaces excluded from alerting, such as a scratch environment nobody should be paged for.
+    # @default -- `[]`
+    exclude: []
 
 # -- (h4) Where alerts go: receivers, severity presets, and extra routes.
 # @notationType -- (sectionstart) Alert routing

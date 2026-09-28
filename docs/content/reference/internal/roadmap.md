@@ -389,28 +389,28 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Item | Milestone | Status |
 |---|---|---|
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
-| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the alert **definitions** live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and render to the docsite as [Common Alerts](../../stable-metrics/common-alerts/). They are **not shipped as rules**: `config.rules.prometheus.enabled` defaults true but `pre-rendered/rules/prometheus/` is empty and no template emits a `PrometheusRule`, so an install gets no alerts. Previously marked ✅ on the strength of the documentation) |
-| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ⬜ |
+| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and now **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. **Eighteen are in the default set**, each evaluated against both self-managed test installs without firing falsely, and one of them, `clusterd-error-kill`, replayed against a real crash loop it had missed while it matched only Cloud's namespaces. The other 71 install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
+| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL only. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
-| Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ⬜ |
-| Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | ⬜ |
-| Alert and recording-rule names added to the committed surface | OO-M2 | ⬜ |
-| Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | ⬜ |
+| Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ✅ (twenty capabilities, **mostly inferred** from the metrics a rule reads through an ordered table, with `requires` for what names cannot show. Eight are derived from what the chart deploys; twelve are listed in `rules.capabilities`. A rule installs only where all of its capabilities are present, and a metric the table does not claim fails the build — the design doc's applicability check, with something to check against) |
+| Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | 🔨 (every rule carries `runbook_url`, pointing at its anchored entry on Common Alerts; the runbooks themselves are not written) |
+| Alert and recording-rule names added to the committed surface | OO-M2 | ✅ (`pre-rendered/rules/prometheus/_index.yaml` joins the committed-surface table and CODEOWNERS, and the `code-review` skill treats a default-set name as committed) |
+| Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | 🔨 (`rules.selected`, `rules.disabled` and `rules.capabilities` exist, as do extra receivers and routes under `alerting`; `rules.extra` and `rules.overrides` do not) |
 | Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | 🔨 (the scrape is on; the switch and the meta-alerts are rules, and wait for the rule set) |
 | Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ✅ (two gossiping replicas by default, PDB of one, hard zone and soft host spread, read-only root filesystem, no ServiceAccount token, requests and a memory limit, health-endpoint probes, `cluster.label`. Both rulers now address the headless Service by DNS discovery, because gossip replicates silences and the notification log but **not alerts**, and a replica a ruler never reached cannot notify when its peer is lost. The storage question the ticket deferred is settled: the 4Gi volume stays, because gossip covers losing one replica and only the volume covers losing both, and `volumeClaimTemplates` are immutable so removing it would fail every upgrade. Verified on a live GKE install, including the upgrade landing the replicas in separate zones. Resource names are pinned to `alertmanager`, so that upgrade replaces the StatefulSet rather than scaling it. See [Alert Architecture](../../../alerting/architecture/)) |
 
-Alertmanager is bundled, highly available, and routes whatever reaches it; what is missing is the rules.
-Until they land the alerting story is "we route alerts you write", which is half a feature.
+Alertmanager is bundled, highly available, and routes whatever reaches it, and a default set of bundled rules now reaches it.
+What remains is breadth: most of the ported rules await triage, and the conditions incident history argues for most — freshness, source and sink health, the metadata database, correctness logs — have no rule yet.
 
 **The evaluators are now connected.**
 A default install runs the Thanos ruler stateless against Thanos Query, runs the Loki ruler against Loki, and points both at the bundled Alertmanager.
 Both remote-write their results to the alloy-gateway, which is what puts `ALERTS` in front of the destination fan-out that [call-home](../design-docs/20260917-call-home-self-managed/) needs.
-What is still missing is the rules themselves: `pre-rendered/rules/` is empty and `gen-rules` does not exist.
+`gen-rules` renders the rules into `pre-rendered/rules/prometheus/`, and the chart installs the ones that apply.
 The Alertmanager the rulers notify now routes by severity and preset to whatever receivers an operator configures,
 and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
@@ -439,7 +439,7 @@ A template emitting `PrometheusRule` resources would then render, apply, pass CI
 That switch is on as of the ruler wiring, so a `PrometheusRule` applied to the cluster is evaluated.
 The sidecar imports with no label selector, which is the upstream default and is kept: a customer's own `PrometheusRule` works with no chart configuration, at the cost that a co-resident rule owner's alerts also reach this Alertmanager.
 
-**The rule set is Cloud's rule set, and 28 of its 85 rules cannot fire in a stock self-managed install.**
+**The rule set is Cloud's rule set, and 28 of its 89 rules cannot fire in a stock self-managed install.**
 CockroachDB, the egress gateway, LaunchDarkly, the external uptime checkers, and Cilium account for most of them, and only five carry the `deploymentMode: cloud-only` label that exists to say so.
 **`cloud-only` is also the wrong axis.**
 A CockroachDB rule is for a deployment running CockroachDB, and a Cilium rule is for a cluster whose CNI is Cilium — both of which a self-managed customer may be.
@@ -603,9 +603,9 @@ The design is therefore a bounded, monotone, locally-visible ladder — `off`, `
 
 Two findings from drafting it belong on this page rather than only in the design doc.
 
-**The cheapest useful level is alerts, and no alerting rules are installed today.**
+**The cheapest useful level is alerts, and until recently no alerting rules were installed.**
 That is the same gap the [Rules & alerts](#rules--alerts) row records, reached from the other direction: a call-home channel forwarding alert state from a stack that evaluates no rules forwards an empty set, which reads as good news.
-Both evaluators are now on; the rules they would evaluate are what remains.
+A default set of rules now installs, so the level has something to forward, though a narrow one until the rest of the rule set is triaged.
 Alert *state* (the `ALERTS` series, over the existing metric fan-out) and alert *notification* (an Alertmanager webhook, after grouping and silences) are different signals, and the state series is the one that ships first because it reuses the channel.
 
 **A TLS-intercepting corporate forward proxy defeats mTLS outright**, and that network shape is common in exactly this segment.

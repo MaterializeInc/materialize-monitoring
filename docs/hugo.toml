@@ -33,6 +33,13 @@ baseURL = 'https://materializeinc.github.io/materialize-monitoring/'
     disableWatch = true
     source = "../packages/queries"
     target = "assets/queries/"
+  # The generated rule index: each alert's effective capabilities and whether it
+  # is in the default set, which the registry files alone cannot say.
+  [[module.mounts]]
+    disableWatch = true
+    source = "../charts/materialize-monitoring/pre-rendered/rules/prometheus"
+    files = ["_index.yaml"]
+    target = "assets/rules/"
 
 [params]
   BookTheme = 'auto'

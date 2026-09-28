@@ -1,0 +1,3 @@
+# Materialize Cloud's metric naming: SQL-backed families carry `v2_mz_`.
+materialize:
+  deploymentMode: cloud

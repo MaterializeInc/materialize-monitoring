@@ -12,3 +12,4 @@
 /terraform/modules/materialize-monitoring/outputs.tf     @alphadelta14
 /charts/materialize-monitoring-dashboards/pre-rendered/dashboards/   @alphadelta14
 /charts/materialize-monitoring/pre-rendered/metrics/       @alphadelta14
+/charts/materialize-monitoring/pre-rendered/rules/         @alphadelta14

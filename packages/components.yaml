@@ -40,8 +40,7 @@ components:
       - tools/chartlib/
     content_exclude:
       # Generated outputs; attributed to their source components (dashboards,
-      # pipelines). pre-rendered/rules and pre-rendered/README are exempt until
-      # they have a source component.
+      # pipelines, which also owns the rules). pre-rendered/README is exempt.
       - charts/materialize-monitoring/pre-rendered/
     dependencies:
       # Main content ones need to go first (to avoid ties in dependencies)
@@ -133,12 +132,15 @@ components:
     content_paths:
       - packages/alloy-pipelines/
       - packages/queries/
-      # Generated pipeline output bundled into the chart.
+      # Generated pipeline output bundled into the chart. The alerting rules
+      # are rendered from the same query registry as the metric tiers.
       - charts/materialize-monitoring/pre-rendered/pipelines/
       - charts/materialize-monitoring/pre-rendered/metrics/
+      - charts/materialize-monitoring/pre-rendered/rules/
     artifacts:
       - charts/materialize-monitoring/pre-rendered/metrics/**/*.yaml
       - charts/materialize-monitoring/pre-rendered/pipelines/**/*.alloy
+      - charts/materialize-monitoring/pre-rendered/rules/**/*.yaml
     dependencies:
       - mzmon-lib
       - repo-common
