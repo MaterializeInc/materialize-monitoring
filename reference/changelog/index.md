@@ -15,9 +15,71 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.25.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.26.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.25.0
+
+* DEP-229 Update thanos to v0.46.0 so its selectors stop matching Loki
+    * [materialize-monitoring#402](https://github.com/MaterializeInc/materialize-monitoring/pull/402)
+    * **Fixed: Thanos no longer selects Loki's pods.** Thanos's compactor, query-frontend and ruler selected on component and release name alone, which Loki's pods of the same names also carry.
+        * **Node drains could not evict a Loki ruler.** Each was covered by both the `loki-ruler` and `thanos-ruler` PodDisruptionBudgets, and the eviction API refuses a pod with two. The Loki query frontend had the same problem wherever `thanos.queryFrontend.enabled` was set.
+        * Thanos's NetworkPolicies, which allow all egress, also applied to the Loki ruler and compactor, so Loki's own egress rules did not restrict them.
+        * Thanos Query no longer dials the Loki rulers' gRPC port, which logged a warning every five seconds per ruler.
+    * **Upgrading needs one manual step.** Deployment and StatefulSet selectors are immutable, so the upgrade fails at the first Thanos workload unless those workloads are first deleted with `--cascade=orphan`. The pods keep running and are re-adopted without a restart, except in a workload whose template was changed outside Helm (usually by `kubectl rollout restart`), which rolls once. See [Upgrading](https://materializeinc.github.io/materialize-monitoring/operating/upgrading/#thanos-selectors-name-the-chart).
+        * `kubectl -n monitoring delete statefulset,deployment -l app.kubernetes.io/part-of=thanos,app.kubernetes.io/instance=mzmon --cascade=orphan`
+        * An upgrade that already failed on this recovers the same way, then runs again.
+    * Resource names, pod labels, the Thanos image and the `thanos-thanos` ServiceAccount that workload identity bindings name are unchanged.
+    * [`v0.46.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.46.0)
+    * [`v0.45.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.45.0)
+    * [`v0.44.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.44.0)
+    * [`v0.43.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.43.0)
+    * [`v0.42.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.42.0)
+    * [`v0.41.1`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.41.1)
+    * [`v0.41.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.41.0)
+    * [`v0.40.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.40.0)
+    * [`v0.39.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.39.0)
+    * [`v0.38.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.38.0)
+    * [`v0.37.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.37.0)
+    * [`v0.36.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.36.0)
+    * [`v0.35.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.35.0)
+    * [`v0.34.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.34.0)
+    * [`v0.33.1`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.33.1)
+    * [`v0.33.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.33.0)
+    * [`v0.32.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.32.0)
+    * [`v0.31.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.31.0)
+* DEP-301 Pull CloudWatch and Cloud Monitoring metrics into the gateway
+    * [materialize-monitoring#396](https://github.com/MaterializeInc/materialize-monitoring/pull/396)
+    * **New `pipeline.metrics.provider.cloudwatch` and `pipeline.metrics.provider.gcp`**, both off by default.
+        * They pull a fixed, minimal set of RDS and S3 metrics from CloudWatch, and of Cloud SQL and GCS metrics from Cloud Monitoring, for the resources listed under each. Nothing is discovered.
+        * On CloudWatch series `instance` is the resource; join on `dimension_DBInstanceIdentifier` or `dimension_BucketName`.
+        * See [Cloud Provider Metrics](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/cloud-provider-metrics/).
+    * **Credentials come from the gateway pod's identity, never from values.**
+        * CloudWatch needs `cloudwatch:GetMetricStatistics`, and `iam:ListAccountAliases` for the `account_alias` label, through IRSA, EKS Pod Identity, or static keys in the `mzmon-alloy-gateway-env` Secret.
+        * GCP needs `roles/monitoring.viewer` through Workload Identity.
+    * **Outside Google Cloud, a GCP pull needs `GOOGLE_APPLICATION_CREDENTIALS`.** With no credential at all, the exporter cannot start and the gateway fails to load.
+    * **Provider families default to the `extended` tier.** They reach the bundled Thanos, and not a destination that filters at `recommended` or `essential`, unless `metricImportance` is raised.
+    * **Provider data is minutes old.** Query it with `last_over_time(...[15m])` or wider. Each gateway restart leaves a gap in Cloud Monitoring series as long as that lag.
+* Make both rulers' remote-write to the gateway work under the mTLS profiles
+    * [materialize-monitoring#403](https://github.com/MaterializeInc/materialize-monitoring/pull/403)
+    * Both rulers' remote-write to the gateway now works under `profiles/mtls.values.yaml` (Terraform: `internal_tls`), and the gateway now accepts rule results it had been rejecting for lacking `job` and `instance`. `ALERTS` and recording-rule results reach every metrics destination.
+    * The Thanos ruler's remote-write ConfigMaps are renamed `thanos-ruler-remote-write-v2` and `thanos-ruler-remote-write-v2-tls`. A deployment that restates `thanos.ruler.extraVolumes` must use the new name; the render says which.
+    * Installing with Helm directly: restart the Alloy gateway after upgrading, as for any pipeline change.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+    * Add an Alloy meta-monitoring dashboard, and fix infra-loki's level picker
+        * [materialize-monitoring#397](https://github.com/MaterializeInc/materialize-monitoring/pull/397)
+        * **New dashboard: Alloy Meta Monitoring** (`mz-mon-infra-alloy`), in the Meta Observability folder. Collector health, both pipelines hop by hop, ingest over log push, remote write and OTLP, component and configuration state with uptime, gateway clustering, resource limits including `GOMEMLIMIT`, Kubernetes events including the pre-install validation Jobs, and Alloy's own logs.
+        * Fixed the Level picker on Loki Meta Monitoring, which offered only "All".
+        * Metric tiers now include the Alloy families the new dashboard reads. `loki_source_file_read_bytes_total` leaves the tiers, and the generic Go runtime families it adds are `extended`, so a metered destination on the default tier does not receive every target's copy.
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate thiserror to v2.0.21
+        * [materialize-monitoring#399](https://github.com/MaterializeInc/materialize-monitoring/pull/399)
+        * [`v2.0.21`](https://redirect.github.com/dtolnay/thiserror/releases/tag/2.0.21)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.24.0
 
