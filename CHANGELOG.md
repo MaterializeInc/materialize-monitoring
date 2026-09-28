@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards (Helm chart) v0.18.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.26.0 (Unreleased)
 
 _Changes Pending_
@@ -125,9 +129,54 @@ _Changes Pending_
         * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
         * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
 
-## Dashboards (Helm chart) v0.17.0 (Unreleased)
+## Dashboards (Helm chart) v0.17.0
 
-_Changes Pending_
+* Add an Alloy meta-monitoring dashboard, and fix infra-loki's level picker
+    * [materialize-monitoring#397](https://github.com/MaterializeInc/materialize-monitoring/pull/397)
+    * **New dashboard: Alloy Meta Monitoring** (`mz-mon-infra-alloy`), in the Meta Observability folder. Collector health, both pipelines hop by hop, ingest over log push, remote write and OTLP, component and configuration state with uptime, gateway clustering, resource limits including `GOMEMLIMIT`, Kubernetes events including the pre-install validation Jobs, and Alloy's own logs.
+    * Fixed the Level picker on Loki Meta Monitoring, which offered only "All".
+    * Metric tiers now include the Alloy families the new dashboard reads. `loki_source_file_read_bytes_total` leaves the tiers, and the generic Go runtime families it adds are `extended`, so a metered destination on the default tier does not receive every target's copy.
+* Add a Loki meta-monitoring dashboard, and split dashboards into their own chart
+    * [materialize-monitoring#383](https://github.com/MaterializeInc/materialize-monitoring/pull/383)
+    * **Dashboards now install from a separate chart.** `materialize-monitoring-dashboards` is a release of its own, installed beside `materialize-monitoring` in the same namespace. The umbrella chart no longer creates dashboards; a release that upgrades without installing the new chart will have its dashboards removed. Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
+        * Terraform installs it automatically — set `enable_dashboards = false` to opt out.
+        * `dashboards.selected` → the new chart's `selected`.
+        * `dashboards.config.grafana.manifest.apiTarget` → the new chart's `grafana.apiTarget`.
+        * `dashboards.config.datadog` is removed; it drove nothing.
+        * The new chart cannot read the umbrella release's values, so `grafana.instanceSelector` and `grafana.folderUids` must match it. The umbrella chart's install notes print the folder UIDs.
+        * Dashboard UIDs are unchanged, so saved links, playlists and alerts keep working.
+    * **New dashboard: Loki Meta Monitoring** (`mz-mon-infra-loki`), in the Meta Observability folder. Ingest, queries, object storage, retention, and Loki's own logs.
+    * **Fixed: the Loki canary and both memcached exporters were never scraped under `profiles/mtls`.** The subchart's single ServiceMonitor applied one `scheme` to every target, including three that only serve plaintext. They are now collected by a separate monitor, and carry `prometheus.io/service-monitor: "false"` plus `monitoring.materialize.cloud/scrape-scheme: plaintext` on their Services. Installs using mTLS gain `loki_canary_*` and `memcached_*` series that were previously absent.
+    * New Terraform inputs: `enable_dashboards`, `dashboards_chart_version`, `dashboards_selected`, `dashboards_instance_selector`, `dashboards_allow_cross_namespace_import`.
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * DEP-301 Pull CloudWatch and Cloud Monitoring metrics into the gateway
+        * [materialize-monitoring#396](https://github.com/MaterializeInc/materialize-monitoring/pull/396)
+        * **New `pipeline.metrics.provider.cloudwatch` and `pipeline.metrics.provider.gcp`**, both off by default.
+            * They pull a fixed, minimal set of RDS and S3 metrics from CloudWatch, and of Cloud SQL and GCS metrics from Cloud Monitoring, for the resources listed under each. Nothing is discovered.
+            * On CloudWatch series `instance` is the resource; join on `dimension_DBInstanceIdentifier` or `dimension_BucketName`.
+            * See [Cloud Provider Metrics](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/cloud-provider-metrics/).
+        * **Credentials come from the gateway pod's identity, never from values.**
+            * CloudWatch needs `cloudwatch:GetMetricStatistics`, and `iam:ListAccountAliases` for the `account_alias` label, through IRSA, EKS Pod Identity, or static keys in the `mzmon-alloy-gateway-env` Secret.
+            * GCP needs `roles/monitoring.viewer` through Workload Identity.
+        * **Outside Google Cloud, a GCP pull needs `GOOGLE_APPLICATION_CREDENTIALS`.** With no credential at all, the exporter cannot start and the gateway fails to load.
+        * **Provider families default to the `extended` tier.** They reach the bundled Thanos, and not a destination that filters at `recommended` or `essential`, unless `metricImportance` is raised.
+        * **Provider data is minutes old.** Query it with `last_over_time(...[15m])` or wider. Each gateway restart leaves a gap in Cloud Monitoring series as long as that lag.
+    * Update Rust crate thiserror to v2.0.21
+        * [materialize-monitoring#399](https://github.com/MaterializeInc/materialize-monitoring/pull/399)
+        * [`v2.0.21`](https://redirect.github.com/dtolnay/thiserror/releases/tag/2.0.21)
+    * Update Rust crate jsonschema to 0.57.0
+        * [materialize-monitoring#390](https://github.com/MaterializeInc/materialize-monitoring/pull/390)
+        * [`v0.57.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0570---2026-09-22)
+    * Fall back to CLUSTER_NAME for the gateway's log cluster label
+        * [materialize-monitoring#385](https://github.com/MaterializeInc/materialize-monitoring/pull/385)
+    * Reassemble and classify Rust panics, and parse tracing's plain text format
+        * [materialize-monitoring#376](https://github.com/MaterializeInc/materialize-monitoring/pull/376)
+        * Rust panics from Materialize services now arrive as a **single log entry** rather than one entry per line of the backtrace, carrying `level=CRITICAL` and `panic_thread` / `panic_location` as structured metadata. The `msg` names the source location and the panic message.
+        * `balancerd` and `materialize-operator` logs now carry a parsed `level` and `target`. Both previously landed as `level="UNKNOWN"` for every line.
+        * **React to this if you filter or size on log level.** Those services' `WARN` and `ERROR` lines are no longer swept into the `UNKNOWN` rate-limit bucket, which drops, so they now reach Loki reliably and ingested volume from the operator namespace rises. A saved query or alert matching `level="UNKNOWN"` on these services will stop matching.
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.23.0
 
