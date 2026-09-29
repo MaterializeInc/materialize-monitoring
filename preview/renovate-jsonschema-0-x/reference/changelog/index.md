@@ -15,13 +15,19 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.26.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards (Helm chart) v0.18.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.26.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.25.1
 
-_Changes Pending_
+* Update Helm release alloy to v1.13.0; bump to v0.25.1
+    * [materialize-monitoring#409](https://github.com/MaterializeInc/materialize-monitoring/pull/409)
+    * [`v1.13.0`](https://redirect.github.com/grafana/helm-charts/releases/tag/tempo-1.13.0)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.25.0
 

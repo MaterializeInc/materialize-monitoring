@@ -521,7 +521,6 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_horizontalpodautoscaler_spec_max_replicas">kube_horizontalpodautoscaler_spec_max_replicas
         <details>
-            Used labels: namespace
             <br />
             Example queries:
             <ul>
@@ -532,7 +531,6 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_horizontalpodautoscaler_status_current_replicas">kube_horizontalpodautoscaler_status_current_replicas
         <details>
-            Used labels: namespace
             <br />
             Example queries:
             <ul>
@@ -696,7 +694,10 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.nodes.pods.restarts">infra.nodes.pods.restarts</a></li>
                 <li><a href="../common-queries#materialize.clusterd.error_kill">materialize.clusterd.error_kill</a></li>
                 <li><a href="../common-queries#materialize.clusterd.new_restarts_during_release">materialize.clusterd.new_restarts_during_release</a></li>
+                <li><a href="../common-queries#materialize.clusterd.not_receiving_commands">materialize.clusterd.not_receiving_commands</a></li>
                 <li><a href="../common-queries#materialize.clusterd.swap_cluster_oom">materialize.clusterd.swap_cluster_oom</a></li>
+                <li><a href="../common-queries#materialize.clusterd.system_cluster_terminated">materialize.clusterd.system_cluster_terminated</a></li>
+                <li><a href="../common-queries#materialize.environmentd.terminated">materialize.environmentd.terminated</a></li>
             </ul>
         </details>
     </li>
@@ -946,9 +947,19 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="mz_can_connect">mz_can_connect
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environmentd.uptime_sla">materialize.environmentd.uptime_sla</a></li>
+                <li><a href="../common-queries#materialize.environmentd.uptime_slo">materialize.environmentd.uptime_slo</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="mz_cluster_server_last_command_received">mz_cluster_server_last_command_received
         <details>
-            Used labels: pod, server_name
+            Used labels: cluster_environmentd_materialize_cloud_cluster_id, pod, server_name
             <br />
             Example queries:
             <ul>
@@ -963,6 +974,15 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.clusterd.expiration_7d">materialize.clusterd.expiration_7d</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_envd_up">mz_envd_up
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environmentd.simplest_query">materialize.environmentd.simplest_query</a></li>
             </ul>
         </details>
     </li>
@@ -1186,6 +1206,16 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_views_query_successful">mz_views_query_successful
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.environmentd.query_views_critical">materialize.environmentd.query_views_critical</a></li>
+                <li><a href="../common-queries#materialize.environmentd.query_views_warning">materialize.environmentd.query_views_warning</a></li>
             </ul>
         </details>
     </li>
@@ -1563,35 +1593,6 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#materialize.scraper.mzmon.clusterd">materialize.scraper.mzmon.clusterd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.environmentd">materialize.scraper.mzmon.environmentd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.orchestratord">materialize.scraper.mzmon.orchestratord</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="v2_mz_can_connect">v2_mz_can_connect
-        <details>
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.environmentd.uptime_sla">materialize.environmentd.uptime_sla</a></li>
-                <li><a href="../common-queries#materialize.environmentd.uptime_slo">materialize.environmentd.uptime_slo</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="v2_mz_envd_up">v2_mz_envd_up
-        <details>
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.environmentd.simplest_query">materialize.environmentd.simplest_query</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="v2_mz_views_query_successful">v2_mz_views_query_successful
-        <details>
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.environmentd.query_views_critical">materialize.environmentd.query_views_critical</a></li>
-                <li><a href="../common-queries#materialize.environmentd.query_views_warning">materialize.environmentd.query_views_warning</a></li>
             </ul>
         </details>
     </li>

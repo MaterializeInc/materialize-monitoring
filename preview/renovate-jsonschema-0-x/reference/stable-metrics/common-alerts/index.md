@@ -5,9 +5,13 @@
 
 # Common Alerts
 
+These are the alerting rules the chart bundles, generated from the query registry.
+Each is installed only where the deployment has the capabilities it requires, and only the default set installs without
+being selected; see [Configuring Alerting](/materialize-monitoring/preview/renovate-jsonschema-0-x/alerting/configuring/#the-bundled-rules).
+
 > [!WARNING]
-> Many of these alerts are not suited for all deployments.
-> Do not use the entire set as is!
+> Rules outside the default set have not all been checked against a self-managed install.
+> Evaluate one against the deployment before relying on it.
 
 
 
@@ -17,6 +21,10 @@
 <p>Each alert carries its firing expression as an inline query, is graded by a
 <code>severity</code> label (critical &gt; warning &gt; notice), and is tagged with a <code>component</code>
 label naming the subsystem it watches.</p>
+<p>Most of these watch something a deployment may or may not contain &ndash; a
+CockroachDB metadata store, a Cilium CNI, an egress-gateway pool &ndash; and install
+only where it does. That is inferred from the metrics each alert reads, or
+declared with <code>requires</code> where the metric names cannot show it.</p>
 
 <h4 id="crdb-disk-usage-critical">crdb-disk-usage-critical
   <a class="anchor" href="#crdb-disk-usage-critical">#</a>
@@ -27,6 +35,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_capacity_used <span style="color:#f92672">/</span> crdb_dedicated_capacity
@@ -41,6 +52,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_capacity_used <span style="color:#f92672">/</span> crdb_dedicated_capacity
@@ -55,6 +69,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_capacity_used <span style="color:#f92672">/</span> crdb_dedicated_capacity
@@ -69,6 +86,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>crdb_dedicated_sys_cpu_combined_percent_normalized[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
@@ -83,6 +103,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>crdb_dedicated_sys_cpu_combined_percent_normalized[<span style="color:#e6db74">2h</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
@@ -97,6 +120,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.95</span>,
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -113,6 +139,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_rocksdb_read_amplification<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">150</span>
 </span></span></code></pre></div>
@@ -125,6 +154,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_rocksdb_read_amplification<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">50</span>
 </span></span></code></pre></div>
@@ -137,6 +169,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_ranges_unavailable<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
@@ -149,6 +184,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_ranges_underreplicated<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
@@ -161,6 +199,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">deriv</span><span style="color:#f92672">(</span>crdb_dedicated_sql_mem_distsql_current[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
@@ -175,6 +216,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_sql_mem_distsql_current
@@ -193,6 +237,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_intentcount<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span>
 </span></span></code></pre></div>
@@ -205,6 +252,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_intentcount<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span>
 </span></span></code></pre></div>
@@ -217,6 +267,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max_over_time</span><span style="color:#f92672">(</span>crdb_dedicated_schedules_backup_last_completed_time[<span style="color:#e6db74">60m</span>]<span style="color:#f92672">))</span>
@@ -231,6 +284,9 @@ Labels:
         <li><strong>component:</strong> cilium</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cilium</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>map_name, instance<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  cilium_bpf_map_pressure
@@ -245,6 +301,9 @@ Labels:
         <li><strong>component:</strong> cilium</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cilium</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>direction, reason, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_drop_count_total[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
@@ -259,6 +318,9 @@ Labels:
         <li><strong>component:</strong> coredns</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>coredns</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -275,6 +337,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_node_spec_taint{key<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">node.kubernetes.io/unreachable</span>&#34;}
 </span></span></code></pre></div>
@@ -287,10 +352,13 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_current_replicas{namespace<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">alloy|loki</span>&#34;}
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> kube_horizontalpodautoscaler_spec_max_replicas{namespace<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">alloy|loki</span>&#34;}
+</span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_current_replicas
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> kube_horizontalpodautoscaler_spec_max_replicas
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.9</span>
 </span></span></code></pre></div>
 <h4 id="k8s-horizontalpodautoscaler-replicas-high">k8s-horizontalpodautoscaler-replicas-high
@@ -302,6 +370,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_current_replicas
@@ -317,10 +388,13 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>kubernetes_io_hostname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_fs_usage_bytes<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>kubernetes_io_hostname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_fs_limit_bytes<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_fs_usage_bytes<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_fs_limit_bytes<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">70</span>
 </span></span></code></pre></div>
 <h4 id="k8s-node-disk-pressure">k8s-node-disk-pressure
@@ -332,6 +406,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_node_status_condition{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">DiskPressure</span>&#34;, status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">true</span>&#34;}
@@ -346,6 +423,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kubelet-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, persistentvolumeclaim<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -365,6 +445,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>alloy</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_write_dropped_entries_total[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -379,12 +462,15 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app_kubernetes_io_component<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_count{status_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">4.*|5.*</span>&#34;, route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*push.*</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app_kubernetes_io_component<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_count{route<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*push.*</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span>
@@ -398,8 +484,11 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, app_kubernetes_io_component<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>loki_panic_total[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
@@ -412,9 +501,12 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.95</span>,
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, app_kubernetes_io_component<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_bucket{route<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
@@ -428,12 +520,15 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app_kubernetes_io_component, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_count{status_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">5.*</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app_kubernetes_io_component, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_count[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span>
@@ -447,12 +542,15 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app_kubernetes_io_component, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_count{status_code<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">error</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app_kubernetes_io_component, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_request_duration_seconds_count[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span>
@@ -466,9 +564,12 @@ Labels:
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">materialize</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">s5</span>&#34;}
+</span></span><span style="display:flex;"><span>  up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*/.*materialize-(environmentd|clusterd)</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">s5</span>&#34;}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="critical-metrics-missing">critical-metrics-missing
@@ -480,13 +581,16 @@ Labels:
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>    up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller</span>&#34;}
+</span></span><span style="display:flex;"><span>    up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway</span>&#34;}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">30</span>
 </span></span></code></pre></div>
@@ -499,8 +603,11 @@ Labels:
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_distributor_bytes_received_total{namespace<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_distributor_bytes_received_total[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">))</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="k8s-deployment-unavailable-critical">k8s-deployment-unavailable-critical
   <a class="anchor" href="#k8s-deployment-unavailable-critical">#</a>
@@ -511,9 +618,12 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>deployment, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 <h4 id="k8s-deployment-unavailable-warning">k8s-deployment-unavailable-warning
@@ -525,9 +635,12 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>deployment, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 <h4 id="k8s-deployment-unavailable-notice">k8s-deployment-unavailable-notice
@@ -539,9 +652,12 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>deployment, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">backend|egress-check.*|egress-noop.*|exporter|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 <h4 id="k8s-daemonset-saturating-cpu">k8s-daemonset-saturating-cpu
@@ -553,11 +669,14 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1.77</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>      kube_pod_container_resource_requests{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector</span>&#34;, unit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">core</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}
+</span></span><span style="display:flex;"><span>      kube_pod_container_resource_requests{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraDaemonsetWorkloadList}</span>&#34;, unit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">core</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.01</span>
@@ -571,11 +690,14 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">10730942464</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>      kube_pod_container_resource_requests{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector</span>&#34;, unit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">byte</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}
+</span></span><span style="display:flex;"><span>      kube_pod_container_resource_requests{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraDaemonsetWorkloadList}</span>&#34;, unit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">byte</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">5243000</span>
@@ -589,11 +711,14 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1.77</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>      kube_pod_container_resource_requests{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector</span>&#34;, unit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">core</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}
+</span></span><span style="display:flex;"><span>      kube_pod_container_resource_requests{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraDaemonsetWorkloadList}</span>&#34;, unit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">core</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.1</span>
@@ -607,10 +732,13 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_file_descriptors{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_file_descriptors{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    container_ulimits_soft{ulimit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">max_open_files</span>&#34;}
@@ -626,10 +754,13 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_file_descriptors{container<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_file_descriptors{container<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    container_ulimits_soft{ulimit<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">max_open_files</span>&#34;}
@@ -645,6 +776,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_file_descriptors<span style="color:#f92672">)</span>
@@ -662,6 +796,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -681,13 +818,16 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{namespace<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;, pod<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">parca-agent-.*|vector-.*|cilium-egress-.*</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{<span style="color:#960050;background-color:#1e0010">${excludeMzDeploymentNamespaceFilter</span>}, container<span style="color:#f92672">!=</span>&#34;&#34;, pod<span style="color:#960050;background-color:#1e0010">!~</span>&#34;<span style="color:#e6db74">parca-agent-.*|vector-.*|cilium-egress-.*</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    kube_pod_container_resource_requests{namespace<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;, pod<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">parca-agent-.*|vector-.*|cilium-egress-.*</span>&#34;}
+</span></span><span style="display:flex;"><span>    kube_pod_container_resource_requests{<span style="color:#960050;background-color:#1e0010">${excludeMzDeploymentNamespaceFilter</span>}, resource<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;, pod<span style="color:#960050;background-color:#1e0010">!~</span>&#34;<span style="color:#e6db74">parca-agent-.*|vector-.*|cilium-egress-.*</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span></code></pre></div>
@@ -700,13 +840,16 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_memory_working_set_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_memory_working_set_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_spec_memory_limit_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_spec_memory_limit_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">80</span>
 </span></span></code></pre></div>
@@ -719,13 +862,16 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_memory_working_set_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_memory_working_set_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_spec_memory_limit_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_spec_memory_limit_bytes{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">80</span>
 </span></span></code></pre></div>
@@ -738,12 +884,15 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;}
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">3h</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">3h</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">ignoring</span><span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller</span>&#34;}
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="infra-oomkill-important-systems">infra-oomkill-important-systems
@@ -755,12 +904,15 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy</span>&#34;}
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">3h</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">3h</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">ignoring</span><span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy</span>&#34;}
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="infra-oomkill-nonessential-systems">infra-oomkill-nonessential-systems
@@ -772,26 +924,32 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector</span>&#34;}
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">3h</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">3h</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">ignoring</span><span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector</span>&#34;}
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;}
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="k8s-infra-pod-pending-too-long">k8s-infra-pod-pending-too-long
   <a class="anchor" href="#k8s-infra-pod-pending-too-long">#</a>
 </h4>
-An infra pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
+An infra pod has been Pending for 20m — the cluster may be unhealthy or out of capacity.
 Labels:
 <ul>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_pod_status_phase{namespace<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;, phase<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;}
+</span></span><span style="display:flex;"><span>  kube_pod_status_phase{<span style="color:#960050;background-color:#1e0010">${excludeMzDeploymentNamespaceFilter</span>}, phase<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="pod-restart-rate-high">pod-restart-rate-high
@@ -803,9 +961,12 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{namespace<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;, container<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector</span>&#34;}[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{<span style="color:#960050;background-color:#1e0010">${excludeMzDeploymentNamespaceFilter</span>}, container<span style="color:#960050;background-color:#1e0010">!~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="pod-restart-rate-high-nonessential">pod-restart-rate-high-nonessential
@@ -817,9 +978,12 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector</span>&#34;}[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;}[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="pods-stuck-in-waiting">pods-stuck-in-waiting
@@ -831,10 +995,13 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_container_status_waiting <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="egress-traffic-missing-metrics">egress-traffic-missing-metrics
@@ -846,6 +1013,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">absent</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -865,6 +1035,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>node_network_receive_bytes_total{device<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">eth0</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -883,6 +1056,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>node_network_receive_bytes_total{device<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">eth0</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -901,6 +1077,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>node_network_receive_bytes_total{device<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">eth0</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -919,6 +1098,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>node-exporter</code>, <code>kubelet-metrics</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -934,11 +1116,14 @@ Labels:
 <p>Alerting rules for Materialize.</p>
 <p>Each alert carries its firing expression as an inline query, is graded by a
 <code>severity</code> label (critical &gt; warning &gt; notice), and is tagged with a
-<code>component</code> label. Per-environment alerts group abstractly and attach the
-environment name via the <code>mzEnvironmentName</code> template function; the optional
-<code>%%{excludeEnvironmentFilter}</code> fragment lets a deployment exclude environments
-(e.g. internal test environments). Alerts that only apply to Materialize Cloud
-carry <code>deploymentMode: cloud-only</code>.</p>
+<code>component</code> label. Per-environment alerts group by namespace and attach the
+environment name via the <code>mzEnvironmentName</code> template function; the
+<code>%%{excludeEnvironmentFilter}</code> fragment lets a deployment exclude namespaces
+from alerting (<code>rules.namespaces.exclude</code>).</p>
+<p>Alerts that depend on something a deployment may not contain are gated by
+capabilities, inferred from the metrics they read or declared with
+<code>requires</code>, rather than by who operates the deployment. See Authoring Alerts
+in the internal docs for how these render into rules.</p>
 
 <h4 id="env-uptime-sla">env-uptime-sla
   <a class="anchor" href="#env-uptime-sla">#</a>
@@ -949,9 +1134,12 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  v2_mz_can_connect{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}can_connect{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0.1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">5</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
@@ -966,9 +1154,12 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  v2_mz_can_connect{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}can_connect{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0.1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">5</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
@@ -983,9 +1174,12 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  v2_mz_envd_up{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}envd_up{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0.1</span>
 </span></span></code></pre></div>
 <h4 id="env-query-views-critical">env-query-views-critical
@@ -997,9 +1191,12 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  v2_mz_views_query_successful{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}views_query_successful{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0.1</span>
 </span></span></code></pre></div>
 <h4 id="env-query-views-warning">env-query-views-warning
@@ -1011,9 +1208,12 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  v2_mz_views_query_successful{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}views_query_successful{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0.1</span>
 </span></span></code></pre></div>
 <h4 id="clusterd-not-receiving-commands">clusterd-not-receiving-commands
@@ -1025,26 +1225,35 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>, <code>kube-state-metrics</code>.
+</p>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">s.*[1345]</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">5</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;}[<span style="color:#e6db74">6h</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 <h4 id="storage-collection-finalization-stuck">storage-collection-finalization-stuck
   <a class="anchor" href="#storage-collection-finalization-stuck">#</a>
 </h4>
-Storage shards have been stuck finalizing for 60m.
+Storage shards have been stuck finalizing for 8h.
 Labels:
 <ul>
         <li><strong>component:</strong> storage</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  mz_shard_finalization_outstanding
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  mz_shard_finalization_outstanding{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="auth-errors">auth-errors
@@ -1056,6 +1265,9 @@ Labels:
         <li><strong>component:</strong> auth</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>frontegg-auth</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, status<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_auth_request_count{status<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(2|401).*</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
@@ -1070,6 +1282,9 @@ Labels:
         <li><strong>component:</strong> auth</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>frontegg-auth</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_auth_request_count{status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">401.*</span>&#34;, path<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">refresh_token</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
@@ -1084,6 +1299,9 @@ Labels:
         <li><strong>component:</strong> console</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>application_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1114,23 +1332,26 @@ Labels:
         <li><strong>component:</strong> persist</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_blob_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_consensus_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_state_update_state_slow_path, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_lease_timeout_read, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">3</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_noop, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">3</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_failed, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_external_blob_delete_noop_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_external_failed_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_cmd_failed_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_dropped, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_pushdown_parts_mismatched_stats_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_columnar_validation_count{result<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">invalid</span>&#34;}, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_txn_placeholder_schema_apply, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_columnar_op_count{op<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">validation</span>&#34;, result<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">invalid</span>&#34;}, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_schema_cache_fetch_state_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_shard_unconsolidated_snapshot, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_blob_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_consensus_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_state_update_state_slow_path, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_lease_timeout_read, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">3</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_noop, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">3</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_failed, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_external_blob_delete_noop_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_external_failed_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_cmd_failed_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_dropped, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_pushdown_parts_mismatched_stats_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_columnar_validation_count{result<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">invalid</span>&#34;}, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_txn_placeholder_schema_apply, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_columnar_op_count{op<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">validation</span>&#34;, result<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">invalid</span>&#34;}, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_schema_cache_fetch_state_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_shard_unconsolidated_snapshot, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span></code></pre></div>
 <h4 id="envd-terminated">envd-terminated
   <a class="anchor" href="#envd-terminated">#</a>
@@ -1141,8 +1362,13 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_pod_container_status_last_terminated_exitcode{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">166</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;}[<span style="color:#e6db74">10m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="environmentd-high-cpu">environmentd-high-cpu
   <a class="anchor" href="#environmentd-high-cpu">#</a>
@@ -1153,6 +1379,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*environmentd.+</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
@@ -1171,6 +1400,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1190,6 +1422,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, container, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_cfs_throttled_periods_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
@@ -1205,13 +1440,16 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    container_memory_working_set_bytes{container<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">POD</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;}
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    container_spec_memory_limit_bytes{container<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">POD</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;}
+</span></span><span style="display:flex;"><span>    container_spec_memory_limit_bytes{container<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">POD</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;, container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">80</span>
 </span></span></code></pre></div>
@@ -1224,9 +1462,12 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environment.+</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_status_last_terminated_exitcode<span style="color:#f92672">)</span> <span style="color:#f92672">!=</span> <span style="color:#ae81ff">137</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_status_last_terminated_exitcode<span style="color:#f92672">)</span> <span style="color:#f92672">!=</span> <span style="color:#ae81ff">135</span>
@@ -1242,8 +1483,13 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_pod_container_status_last_terminated_exitcode{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*cluster-s.*</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">166</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*cluster-s.*</span>&#34;}[<span style="color:#e6db74">10m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="system-cluster-high-memory">system-cluster-high-memory
   <a class="anchor" href="#system-cluster-high-memory">#</a>
@@ -1254,6 +1500,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>memory-limiter</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1273,6 +1522,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>mz_dataflow_replica_expiration_remaining_seconds{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*cluster.+</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">24</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">7</span>
@@ -1286,11 +1538,14 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>, <code>swap-nodes</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>      kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;}
+</span></span><span style="display:flex;"><span>      kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, <span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>      container_last_seen{materialize_cloud_swap<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">true</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -1320,10 +1575,13 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod_base<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    kube_pod_status_phase{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;, phase<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>,
+</span></span><span style="display:flex;"><span>    kube_pod_status_phase{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, phase<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>,
 </span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">pod_base</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">pod</span>&#34;, &#34;<span style="color:#e6db74">(.*?)(?:-gen-[0-9]+-[0-9]+|([0-9]+)-[0-9]+)?</span>&#34;
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
@@ -1337,9 +1595,12 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  kube_pod_status_phase{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environment.*</span>&#34;, phase<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  kube_pod_status_phase{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, phase<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 <h4 id="certificate-not-ready">certificate-not-ready
@@ -1351,6 +1612,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cert-manager</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name, namespace, condition<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  certmanager_certificate_ready_status{condition<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">True</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
@@ -1365,6 +1629,9 @@ Labels:
         <li><strong>component:</strong> console</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.95</span>,
@@ -1383,6 +1650,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
@@ -1406,9 +1676,11 @@ environmentd is unreachable from outside the network by the external uptime chec
 Labels:
 <ul>
         <li><strong>component:</strong> external-uptime</li>
-        <li><strong>deploymentMode:</strong> cloud-only</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>external-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  mz_external_envd_up
@@ -1421,9 +1693,11 @@ New external connections to environmentd are failing, per the external uptime ch
 Labels:
 <ul>
         <li><strong>component:</strong> external-uptime</li>
-        <li><strong>deploymentMode:</strong> cloud-only</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>external-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>connection_type, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_external_calls_count{status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">failed</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -1436,9 +1710,11 @@ The external uptime checker has stopped making calls — the checker itself may 
 Labels:
 <ul>
         <li><strong>component:</strong> external-uptime</li>
-        <li><strong>deploymentMode:</strong> cloud-only</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>external-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>connection_type, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>mz_external_calls_count{status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">attempted</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -1451,9 +1727,11 @@ The last LaunchDarkly server-side event is more than 40 minutes old — flag upd
 Labels:
 <ul>
         <li><strong>component:</strong> launchdarkly</li>
-        <li><strong>deploymentMode:</strong> cloud-only</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>feature-flags</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">timestamp</span><span style="color:#f92672">(</span>mz_parameter_frontend_last_sse_time_seconds{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
@@ -1467,9 +1745,11 @@ The last LaunchDarkly client-side event is more than 40 minutes old — client a
 Labels:
 <ul>
         <li><strong>component:</strong> launchdarkly</li>
-        <li><strong>deploymentMode:</strong> cloud-only</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>feature-flags</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">timestamp</span><span style="color:#f92672">(</span>mz_parameter_frontend_last_cse_time_seconds{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
