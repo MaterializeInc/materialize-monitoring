@@ -460,10 +460,10 @@ groups:
     expr: |-
       (
         count by (job, app) (
-          up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway|.*/.*materialize-.*"} == 0
+          up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway"} == 0
         )
         / count by (job, app) (
-          up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway|.*/.*materialize-.*"}
+          up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway"}
         )
       ) * 100 > 30
     for: 30m

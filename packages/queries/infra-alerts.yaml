@@ -779,6 +779,8 @@ alerts:
     # Reads only `up`. `cadvisor` is derived from this chart's gateway scraping
     # at all, which is the precondition for its targets being down to mean
     # anything.
+    # Monitoring infrastructure only: Materialize's own targets are
+    # `clusterd-metrics-missing`'s.
     requires: [cadvisor]
     labels:
       severity: warning
@@ -793,10 +795,10 @@ alerts:
       promQL: |
         (
           count by (job, app) (
-            up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway|.*/.*materialize-.*"} == 0
+            up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway"} == 0
           )
           / count by (job, app) (
-            up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway|.*/.*materialize-.*"}
+            up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway"}
           )
         ) * 100 > 30
       # `up` is a 0/1 gauge, so 1 minus its mean is the fraction of targets
