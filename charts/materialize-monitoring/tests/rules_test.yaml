@@ -438,7 +438,7 @@ tests:
       - failedTemplate:
           errorPattern: 'rules.overrides names "cluster-hydraton-stuck", which is not an alert'
 
-  - it: rejects an override for that is not a duration
+  - it: rejects an override whose for is not a duration
     template: templates/validate.yaml
     set:
       rules.overrides:
@@ -447,6 +447,27 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'rules.overrides.cluster-hydration-stuck.for is "six hours", which is not a Prometheus duration'
+
+  # `with` would read `0` as absent and drop it without a word.
+  - it: rejects an override whose for is falsy rather than ignoring it
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-hydration-stuck:
+          for: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-hydration-stuck.for is 0, which is not a Prometheus duration'
+
+  - it: rejects override labels that are not a map
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-hydration-stuck:
+          labels: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-hydration-stuck.labels is ""; it must be a map'
 
   - it: rejects an override that would change the expression
     template: templates/validate.yaml

@@ -259,12 +259,17 @@ Validation for the rules surface.
           {{- $errors = append $errors ( printf "rules.overrides.%s.%s is not something an override can change; it takes `for` and `labels`." $name $key ) }}
         {{- end }}
       {{- end }}
-      {{- with $override.for }}
-        {{- if not ( regexMatch "^([0-9]+(ms|s|m|h|d|w|y))+$" ( toString . ) ) }}
-          {{- $errors = append $errors ( printf "rules.overrides.%s.for is %q, which is not a Prometheus duration such as `30m` or `2h`." $name ( toString . ) ) }}
+      {{- /* Presence, not truthiness: `for: 0` or `labels: ""` must fail, not vanish. */}}
+      {{- if hasKey $override "for" }}
+        {{- $for := get $override "for" }}
+        {{- if not ( and ( kindIs "string" $for ) ( regexMatch "^([0-9]+(ms|s|m|h|d|w|y))+$" ( toString $for ) ) ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.for is %s, which is not a Prometheus duration such as `30m`, `2h` or `0s`. Remove the key to keep the rule's own." $name ( toJson $for ) ) }}
         {{- end }}
       {{- end }}
-      {{- range $label, $value := ( $override.labels | default dict ) }}
+      {{- if and ( hasKey $override "labels" ) ( not ( kindIs "map" ( get $override "labels" ) ) ) }}
+        {{- $errors = append $errors ( printf "rules.overrides.%s.labels is %s; it must be a map of label names to string values." $name ( toJson ( get $override "labels" ) ) ) }}
+      {{- end }}
+      {{- range $label, $value := ( ternary ( get $override "labels" ) dict ( kindIs "map" ( get $override "labels" ) ) ) }}
         {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $label ) }}
           {{- $errors = append $errors ( printf "rules.overrides.%s.labels.%s is not a valid label name." $name $label ) }}
         {{- else if not ( kindIs "string" $value ) }}
