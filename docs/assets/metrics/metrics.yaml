@@ -3215,6 +3215,13 @@
   usage:
   - infra.cloud.blob.latency
 - importance: diagnostic
+  labels:
+  - statusCode
+  name: azurerm_api_request_count
+  usage:
+  - infra.cloud.collection.azure_calls
+  - infra.cloud.collection.azure_failures
+- importance: diagnostic
   labels: []
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization
   usage:

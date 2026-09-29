@@ -18,21 +18,28 @@
 //!
 //! The Pulls row is not rendered on the provider variable: with nothing pulled,
 //! its panels say so in their own empty state, and the other two tabs carry the
-//! fallback. The Cloud Monitoring row is, since nothing else publishes its two
-//! signals.
+//! fallback. The Cloud Monitoring and Azure Monitor rows are, since each reads
+//! a family only its own exporter publishes. CloudWatch has no row: its call
+//! counter is reported once per gateway replica under every target that replica
+//! owns, so it cannot be summed, and it counts calls rather than failures.
+//!
+//! The two provider rows answer the same two questions from different sources.
+//! GCP's exporter reports whether its last pull failed; Azure's reports nothing
+//! of the kind, but the Azure SDK beneath it counts every API call by HTTP
+//! status on the gateway's own `/metrics`, which says the same thing and why.
 
 use mzmon_lib::grafana::generated::{dashboardv2, stat::BigValueTextMode};
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
-use super::{GCP, PROVIDERS, not_pulled, theme};
+use super::{AZURE, GCP, PROVIDERS, not_pulled, theme};
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
 const SHADE: &str = theme::COLLECTION.shade;
 
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![pulls(q), gcp(q), about()]
+    vec![pulls(q), gcp(q), azure(q), about()]
 }
 
 fn pulls(q: &Queries) -> Row {
@@ -44,7 +51,6 @@ fn pulls(q: &Queries) -> Row {
     )
 }
 
-/// GCP only: CloudWatch and Azure Monitor publish no equivalent of either.
 fn gcp(q: &Queries) -> Row {
     Row::new("Cloud Monitoring")
         .only_when_variable(PROVIDERS, GCP)
@@ -53,6 +59,17 @@ fn gcp(q: &Queries) -> Row {
                 .column_width(ColumnWidth::Wide)
                 .panel("collection-gcp-errors", gcp_errors(q))
                 .panel("collection-gcp-calls", gcp_calls(q)),
+        )
+}
+
+fn azure(q: &Queries) -> Row {
+    Row::new("Azure Monitor")
+        .only_when_variable(PROVIDERS, AZURE)
+        .grid(
+            AutoGrid::new(2)
+                .column_width(ColumnWidth::Wide)
+                .panel("collection-azure-failures", azure_failures(q))
+                .panel("collection-azure-calls", azure_calls(q)),
         )
 }
 
@@ -135,6 +152,36 @@ fn gcp_calls(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
+fn azure_failures(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("Failed API Calls")
+        .query(
+            q.get("infra.cloud.collection.azure_failures")
+                .legend("HTTP {{statusCode}}"),
+        )
+        .unit("suffix:calls/min")
+        .min(0.0)
+        // The SDK creates a series per status code on first use, so a pull
+        // that has never failed has none to draw.
+        .no_value(NoValue::Custom(
+            "No Azure Monitor call has failed in this window.".to_string(),
+        ))
+        .build(0)
+}
+
+fn azure_calls(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("API Calls")
+        .query(
+            q.get("infra.cloud.collection.azure_calls")
+                .legend("{{resourceProvider}}"),
+        )
+        .unit("suffix:calls/min")
+        .min(0.0)
+        .no_value(NoValue::Custom(
+            "Not pulling from Azure Monitor.".to_string(),
+        ))
+        .build(0)
+}
+
 /// Why the data on this dashboard is old, and what not to conclude from it.
 const ABOUT: &str = "**Everything on this dashboard is minutes old, and some of it a day old.**\n\n\
      | Source | Age on arrival |\n\
@@ -150,6 +197,7 @@ const ABOUT: &str = "**Everything on this dashboard is minutes old, and some of 
        their delay, because samples stamped before the restart are never sent. CloudWatch and \
        Azure samples are stamped when they are pulled and have no gap.\n\
      - **A pull that answers is not a pull that worked.** _Provider Pulls_ reads 1 for an \
-       exporter whose call to the provider failed; _Resources Returning Data_ is the check.\n\
+       exporter whose call to the provider failed; _Resources Returning Data_ is the check, and \
+       the Cloud Monitoring and Azure Monitor rows say why a pull failed.\n\
      - **Each pull is billed by the provider**, at a cost set by how many resources are \
        listed and how often they are pulled, not by how often this dashboard is viewed.";

@@ -648,7 +648,9 @@ queries:
         One row per pull, all `1`: one per RDS instance and S3 bucket, one per
         service on GCP and Azure.
       degraded: |
-        `0` is the exporter itself failing to answer. **`1` does not mean the
+        `0` is the exporter itself failing to answer — and on Azure, also a
+        Resource Graph lookup that failed, which is usually a missing identity
+        or one with no access to the subscription. **`1` does not mean the
         provider returned data** — an exporter whose provider call failed
         still answers its scrape, with nothing in it. _Resources Returning
         Data_ is the check for that.
@@ -694,9 +696,9 @@ queries:
         often the gateway's service account lacking `roles/monitoring.viewer`
         on the project.
       notes: |
-        GCP only. CloudWatch and Azure Monitor publish no equivalent, so a
-        failed pull there shows only as missing data and as errors in the
-        gateway's logs.
+        GCP only. Azure's equivalent is _Collection -> Azure Monitor_.
+        CloudWatch publishes none, so a failed CloudWatch pull shows only as
+        missing data and as errors in the gateway's logs.
     promQL: |
       max by (instance) (
         last_over_time(stackdriver_monitoring_last_scrape_error[15m])
@@ -722,3 +724,51 @@ queries:
       sum by (instance) (
         rate(stackdriver_monitoring_api_calls_total[30m])
       ) * 60
+
+  - id: infra.cloud.collection.azure_failures
+    stability: experimental
+    description:
+      summary: |
+        Azure Monitor API calls that failed, per minute, by HTTP status.
+      nominal: Empty — every call succeeded.
+      degraded: |
+        `401` or `403` on the Resource Graph lookup is the gateway having no
+        Azure identity, or one with no access to the subscription; that pull
+        also reads `0` in _Provider Pulls_. `429` is Azure throttling the
+        subscription's API budget, which a shorter pull interval or more
+        listed resources can cause.
+      notes: |
+        A resource the identity cannot read is never found by the lookup, so
+        it is never called and fails nothing here — it is simply missing from
+        _Resources Returning Data_. Counted by the gateway itself rather than
+        by the pull, so these series carry `job="alloy-gateway"`, not
+        `integrations/azure`.
+    promQL: |
+      sum by (statusCode) (
+        rate(azurerm_api_request_count{statusCode!~"2.."}[30m])
+      ) * 60
+
+  - id: infra.cloud.collection.azure_calls
+    stability: experimental
+    description:
+      summary: |
+        Azure API calls per minute, by what they were for — the calls that
+        count against the subscription's API limits.
+      nominal: |
+        Constant: each pull runs one Resource Graph query per service to find
+        the listed resources, then one metrics call per resource.
+      degraded: |
+        A rise without a configuration change is a Resource Graph filter now
+        matching more resources than it did.
+    # POSTs are the Resource Graph lookups and carry no resourceProvider;
+    # the rest are named by the provider they read.
+    promQL: |
+      label_replace(
+        label_replace(
+          sum by (resourceProvider, method) (
+            rate(azurerm_api_request_count[30m])
+          ) * 60,
+          "resourceProvider", "resource graph", "method", "post"
+        ),
+        "resourceProvider", "other", "resourceProvider", ""
+      )

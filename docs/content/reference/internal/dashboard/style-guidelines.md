@@ -878,6 +878,14 @@ the conventions below are the ones a query against those families has to follow.
 | Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
 | Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
 
+Whether a pull *failed* is published differently by each provider, and by one of them not at all.
+
+| Provider | Failed-pull signal |
+|---|---|
+| Cloud Monitoring | `stackdriver_monitoring_last_scrape_error`, per pull |
+| Azure Monitor | `azurerm_api_request_count` by `statusCode`, which the Azure SDK counts on the gateway's own `/metrics` — so its `job` is `alloy-gateway`, not `integrations/azure`. POSTs are Resource Graph lookups and carry no `resourceProvider` |
+| CloudWatch | None. `yace_cloudwatch_getmetricstatistics_requests_total` counts calls, once per replica under every target it owns, and cannot be summed |
+
 Azure metric names come from the exporter's `azure_{type}_{metric}_{aggregation}_{unit}` template, lowercased, where
 `{type}` is the metric namespace when one is set.
 The blob families are therefore `azure_microsoft_storage_storageaccounts_blobservices_*`, not

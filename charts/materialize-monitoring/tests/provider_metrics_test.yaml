@@ -228,7 +228,7 @@ tests:
     asserts:
       - notMatchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: 'aws_rds_\.\*|aws_s3_\.\*|stackdriver_[a-z_]+\.\*'
+          pattern: 'aws_rds_\.\*|aws_s3_\.\*|stackdriver_[a-z_]+\.\*|azure_[a-z_]+\.\*'
 
   # --- validation --------------------------------------------------------------
 

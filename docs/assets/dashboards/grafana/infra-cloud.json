@@ -865,7 +865,7 @@
             }
           },
           "description": "How old provider data is, and what that means for reading it.",
-          "id": 1033,
+          "id": 1035,
           "links": [],
           "title": "About Provider Data",
           "vizConfig": {
@@ -882,8 +882,148 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "**Everything on this dashboard is minutes old, and some of it a day old.**\n\n| Source | Age on arrival |\n|---|---|\n| RDS, Azure Flexible Server, Azure Blob requests | A few minutes |\n| Cloud SQL | About three minutes |\n| GCS | Over ten minutes |\n| S3 size and object count, Azure Blob capacity | Up to a day |\n\nRead it beside Materialize's own view — Materialize Consensus and Materialize Persist — which is current to the scrape. When the two disagree during an incident, the difference is usually the provider's delay rather than a contradiction.\n\n- **A restart of the gateway leaves a gap** in the Cloud SQL and GCS series as long as their delay, because samples stamped before the restart are never sent. CloudWatch and Azure samples are stamped when they are pulled and have no gap.\n- **A pull that answers is not a pull that worked.** _Provider Pulls_ reads 1 for an exporter whose call to the provider failed; _Resources Returning Data_ is the check.\n- **Each pull is billed by the provider**, at a cost set by how many resources are listed and how often they are pulled, not by how often this dashboard is viewed.",
+                "content": "**Everything on this dashboard is minutes old, and some of it a day old.**\n\n| Source | Age on arrival |\n|---|---|\n| RDS, Azure Flexible Server, Azure Blob requests | A few minutes |\n| Cloud SQL | About three minutes |\n| GCS | Over ten minutes |\n| S3 size and object count, Azure Blob capacity | Up to a day |\n\nRead it beside Materialize's own view — Materialize Consensus and Materialize Persist — which is current to the scrape. When the two disagree during an incident, the difference is usually the provider's delay rather than a contradiction.\n\n- **A restart of the gateway leaves a gap** in the Cloud SQL and GCS series as long as their delay, because samples stamped before the restart are never sent. CloudWatch and Azure samples are stamped when they are pulled and have no gap.\n- **A pull that answers is not a pull that worked.** _Provider Pulls_ reads 1 for an exporter whose call to the provider failed; _Resources Returning Data_ is the check, and the Cloud Monitoring and Azure Monitor rows say why a pull failed.\n- **Each pull is billed by the provider**, at a cost set by how many resources are listed and how often they are pulled, not by how often this dashboard is viewed.",
                 "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "collection-azure-calls": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "label_replace(\n  label_replace(\n    sum by (resourceProvider, method) (\n      rate(azurerm_api_request_count[30m])\n    ) * 60,\n    \"resourceProvider\", \"resource graph\", \"method\", \"post\"\n  ),\n  \"resourceProvider\", \"other\", \"resourceProvider\", \"\"\n)\n",
+                        "legendFormat": "{{resourceProvider}}",
+                        "qryType": 1,
+                        "query": "label_replace(\n  label_replace(\n    sum by (resourceProvider, method) (\n      rate(azurerm_api_request_count[30m])\n    ) * 60,\n    \"resourceProvider\", \"resource graph\", \"method\", \"post\"\n  ),\n  \"resourceProvider\", \"other\", \"resourceProvider\", \"\"\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Azure API calls per minute, by what they were for — the calls that count against the subscription's API limits.**\n\n**Nominal:** Constant: each pull runs one Resource Graph query per service to find the listed resources, then one metrics call per resource.\n\n**Degraded:** A rise without a configuration change is a Resource Graph filter now matching more resources than it did.",
+          "id": 1034,
+          "links": [],
+          "title": "API Calls",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Not pulling from Azure Monitor.",
+                  "unit": "suffix:calls/min"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "collection-azure-failures": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (statusCode) (\n  rate(azurerm_api_request_count{statusCode!~\"2..\"}[30m])\n) * 60\n",
+                        "legendFormat": "HTTP {{statusCode}}",
+                        "qryType": 1,
+                        "query": "sum by (statusCode) (\n  rate(azurerm_api_request_count{statusCode!~\"2..\"}[30m])\n) * 60\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Azure Monitor API calls that failed, per minute, by HTTP status.**\n\n**Nominal:** Empty — every call succeeded.\n\n**Degraded:** `401` or `403` on the Resource Graph lookup is the gateway having no Azure identity, or one with no access to the subscription; that pull also reads `0` in _Provider Pulls_. `429` is Azure throttling the subscription's API budget, which a shorter pull interval or more listed resources can cause.\n\nA resource the identity cannot read is never found by the lookup, so it is never called and fails nothing here — it is simply missing from _Resources Returning Data_. Counted by the gateway itself rather than by the pull, so these series carry `job=\"alloy-gateway\"`, not `integrations/azure`.",
+          "id": 1033,
+          "links": [],
+          "title": "Failed API Calls",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No Azure Monitor call has failed in this window.",
+                  "unit": "suffix:calls/min"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
               }
             },
             "version": ""
@@ -993,7 +1133,7 @@
               "transformations": []
             }
           },
-          "description": "**Whether the last Cloud Monitoring pull for each service failed.**\n\n**Nominal:** `0`.\n\n**Degraded:** `1` is a pull that reached Cloud Monitoring and was refused — most often the gateway's service account lacking `roles/monitoring.viewer` on the project.\n\nGCP only. CloudWatch and Azure Monitor publish no equivalent, so a failed pull there shows only as missing data and as errors in the gateway's logs.",
+          "description": "**Whether the last Cloud Monitoring pull for each service failed.**\n\n**Nominal:** `0`.\n\n**Degraded:** `1` is a pull that reached Cloud Monitoring and was refused — most often the gateway's service account lacking `roles/monitoring.viewer` on the project.\n\nGCP only. Azure's equivalent is _Collection -> Azure Monitor_. CloudWatch publishes none, so a failed CloudWatch pull shows only as missing data and as errors in the gateway's logs.",
           "id": 1031,
           "links": [],
           "title": "Failed Pulls",
@@ -1088,7 +1228,7 @@
               ]
             }
           },
-          "description": "**Every provider pull the gateway is running, and whether its last scrape answered.**\n\n**Nominal:** One row per pull, all `1`: one per RDS instance and S3 bucket, one per service on GCP and Azure.\n\n**Degraded:** `0` is the exporter itself failing to answer. **`1` does not mean the provider returned data** — an exporter whose provider call failed still answers its scrape, with nothing in it. _Resources Returning Data_ is the check for that.",
+          "description": "**Every provider pull the gateway is running, and whether its last scrape answered.**\n\n**Nominal:** One row per pull, all `1`: one per RDS instance and S3 bucket, one per service on GCP and Azure.\n\n**Degraded:** `0` is the exporter itself failing to answer — and on Azure, also a Resource Graph lookup that failed, which is usually a missing identity or one with no access to the subscription. **`1` does not mean the provider returned data** — an exporter whose provider call failed still answers its scrape, with nothing in it. _Resources Returning Data_ is the check for that.",
           "id": 1029,
           "links": [],
           "title": "Provider Pulls",
@@ -3745,6 +3885,60 @@
                           }
                         },
                         "title": "Cloud Monitoring"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "azure",
+                                  "variable": "cloudProviderList"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "collection-azure-failures"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "collection-azure-calls"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Azure Monitor"
                       }
                     },
                     {
