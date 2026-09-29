@@ -49,6 +49,17 @@ A `datadogQuery` is laid out like the `promQL` beside it, so the two read side b
 - **The threshold follows the closing parenthesis**: `) > 80`.
 - **A line past 100 characters wraps before `by {…}`**, indented two more spaces.
 
+## The monitor window
+
+A monitor's window usually stands for the alert's `for:`, so its time aggregator has to demand the condition for the whole window.
+
+| The condition | Aggregator | Why |
+|---|---|---|
+| Must stay above a threshold (`>`, `>=`) | `min(last_…)` | `max` would fire on one sample and stay true after recovery |
+| Must stay below a threshold (`<`, `<=`) | `max(last_…)` | The mirror case |
+| Is an event in a window, such as a restart in the last 10m | `max` or `sum` | The window is the event's, not a duration the condition holds for |
+| Reads the PromQL's own range, such as `avg_over_time(…[15m])` | That range's aggregator | The window is the range, and `for:` is left to the monitor's evaluation delay |
+
 ## How metrics reach Datadog
 
 The gateway scrapes Prometheus, bridges to OTLP through `otelcol.receiver.prometheus`, and exports through the Datadog exporter.
