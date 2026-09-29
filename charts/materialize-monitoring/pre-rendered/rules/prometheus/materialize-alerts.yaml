@@ -45,6 +45,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not accepting basic connections and may be unreachable.
       description: |-
@@ -91,6 +92,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not accepting basic connections and may be unreachable.
       description: |-
@@ -130,6 +132,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not responding to a SELECT 1 and may be unhealthy.
       description: |-
@@ -169,6 +172,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not answering a simple query that reads from object storage.
       description: |-
@@ -209,6 +213,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not answering a simple query that reads from object storage.
       description: |-
@@ -260,6 +265,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A clusterd has not received commands from environmentd for 5m — the replica may be stalled or disconnected.
       description: |-
@@ -299,6 +305,7 @@ groups:
     labels:
       severity: notice
       component: storage
+      audience: platform
     annotations:
       summary: Storage shards have been stuck finalizing for 8h.
       description: |-
@@ -338,6 +345,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd was unexpectedly terminated — this should not happen.
       description: |-
@@ -387,6 +395,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd has been above 80% CPU usage for 90m.
       description: |-
@@ -436,6 +445,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd has been above 80% memory usage for 30m.
       description: |-
@@ -478,6 +488,7 @@ groups:
     labels:
       severity: notice
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd container is being CPU throttled more than 50% of the time.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-cpu-throttled
@@ -524,6 +535,7 @@ groups:
     labels:
       severity: notice
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd is above 80% memory usage (lower-severity companion to environmentd-high-memory).
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-memory-elevated
@@ -562,6 +574,7 @@ groups:
     labels:
       severity: warning
       component: auth
+      audience: platform
     annotations:
       summary: An elevated rate of unexpected authentication errors.
       description: |-
@@ -578,6 +591,7 @@ groups:
     labels:
       severity: warning
       component: auth
+      audience: platform
     annotations:
       summary: An elevated rate of failed auth-token refreshes.
       description: |-
@@ -611,6 +625,7 @@ groups:
     labels:
       severity: warning
       component: console
+      audience: platform
     annotations:
       summary: The web console has returned an error for 2% or more of commands for 30m, across more than one environment.
       description: |-
@@ -642,6 +657,7 @@ groups:
     labels:
       severity: notice
       component: persist
+      audience: platform
     annotations:
       summary: Failures in Persist that should be rare are happening frequently.
       description: |-
@@ -692,6 +708,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A clusterd was terminated with an unexpected exit code — this should not happen.
       description: |-
@@ -731,6 +748,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A system cluster was unexpectedly terminated — this should not happen.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-terminated
@@ -777,6 +795,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A system cluster is above 80% memory usage — this should not happen for system clusters.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-high-memory
@@ -811,6 +830,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A cluster replica will expire in less than a week.
       description: |-
@@ -846,6 +866,7 @@ groups:
     labels:
       severity: notice
       component: clusterd
+      audience: platform
     annotations:
       summary: A swap-enabled cluster was OOMKilled while below 80% swap usage.
       description: |-
@@ -891,6 +912,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
       description: |-
@@ -930,6 +952,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environment-pod-pending
@@ -966,6 +989,7 @@ groups:
     labels:
       severity: notice
       component: environmentd
+      audience: platform
     annotations:
       summary: A certificate has not become ready in 20m, which can prevent an environment from coming up.
       description: |-
@@ -1013,6 +1037,7 @@ groups:
     labels:
       severity: warning
       component: console
+      audience: platform
     annotations:
       summary: Web-console query p95 latency has exceeded 10s for 15m.
       description: |-
@@ -1041,6 +1066,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A previously healthy clusterd is restarting during a release.
       description: |-
@@ -1083,6 +1109,7 @@ groups:
     labels:
       severity: critical
       component: external-uptime
+      audience: platform
     annotations:
       summary: environmentd is unreachable from outside the network by the external uptime checker.
       description: |-
@@ -1122,6 +1149,7 @@ groups:
     labels:
       severity: warning
       component: external-uptime
+      audience: platform
     annotations:
       summary: New external connections to environmentd are failing, per the external uptime checker.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-env-uptime-failed
@@ -1134,6 +1162,7 @@ groups:
     labels:
       severity: warning
       component: external-uptime
+      audience: platform
     annotations:
       summary: The external uptime checker has stopped making calls — the checker itself may be down.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-uptime-checker-not-calling
@@ -1174,6 +1203,7 @@ groups:
     labels:
       severity: warning
       component: launchdarkly
+      audience: platform
     annotations:
       summary: The last LaunchDarkly server-side event is more than 40 minutes old — flag updates may not be reaching environmentd.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#launchdarkly-stale-sse
@@ -1212,6 +1242,7 @@ groups:
     labels:
       severity: notice
       component: launchdarkly
+      audience: platform
     annotations:
       summary: The last LaunchDarkly client-side event is more than 40 minutes old — client analytics may be stale.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#launchdarkly-stale-cse

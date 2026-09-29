@@ -58,6 +58,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: critical
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -66,6 +67,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -74,6 +76,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: notice
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -82,6 +85,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -90,6 +94,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -98,6 +103,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -106,6 +112,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -114,6 +121,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: notice
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -122,6 +130,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -130,6 +139,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -138,6 +148,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -146,6 +157,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: notice
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -154,6 +166,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: warning
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -162,6 +175,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: notice
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -170,6 +184,7 @@ rules:
     file: infra-alerts.yaml
     group: crdb
     severity: notice
+    audience: platform
     requires:
     - crdb-dedicated
     enabledByDefault: false
@@ -178,6 +193,7 @@ rules:
     file: infra-alerts.yaml
     group: cilium
     severity: warning
+    audience: platform
     requires:
     - cilium
     enabledByDefault: false
@@ -186,6 +202,7 @@ rules:
     file: infra-alerts.yaml
     group: cilium
     severity: notice
+    audience: platform
     requires:
     - cilium
     enabledByDefault: false
@@ -194,6 +211,7 @@ rules:
     file: infra-alerts.yaml
     group: coredns
     severity: notice
+    audience: platform
     requires:
     - coredns
     enabledByDefault: false
@@ -202,6 +220,7 @@ rules:
     file: infra-alerts.yaml
     group: node_unreachable
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -210,6 +229,7 @@ rules:
     file: infra-alerts.yaml
     group: hpa
     severity: critical
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -218,6 +238,7 @@ rules:
     file: infra-alerts.yaml
     group: hpa
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -226,6 +247,7 @@ rules:
     file: infra-alerts.yaml
     group: k8s_disk
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: true
@@ -234,6 +256,7 @@ rules:
     file: infra-alerts.yaml
     group: k8s_disk
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -242,6 +265,7 @@ rules:
     file: infra-alerts.yaml
     group: k8s_disk
     severity: warning
+    audience: platform
     requires:
     - kubelet-metrics
     enabledByDefault: false
@@ -250,6 +274,7 @@ rules:
     file: infra-alerts.yaml
     group: loki
     severity: warning
+    audience: platform
     requires:
     - alloy
     enabledByDefault: true
@@ -258,6 +283,7 @@ rules:
     file: infra-alerts.yaml
     group: loki
     severity: warning
+    audience: platform
     requires:
     - loki
     enabledByDefault: true
@@ -266,6 +292,7 @@ rules:
     file: infra-alerts.yaml
     group: loki
     severity: notice
+    audience: platform
     requires:
     - loki
     enabledByDefault: true
@@ -274,6 +301,7 @@ rules:
     file: infra-alerts.yaml
     group: loki
     severity: notice
+    audience: platform
     requires:
     - loki
     enabledByDefault: false
@@ -282,6 +310,7 @@ rules:
     file: infra-alerts.yaml
     group: loki
     severity: notice
+    audience: platform
     requires:
     - loki
     enabledByDefault: true
@@ -290,6 +319,7 @@ rules:
     file: infra-alerts.yaml
     group: loki
     severity: notice
+    audience: platform
     requires:
     - loki
     enabledByDefault: false
@@ -298,6 +328,7 @@ rules:
     file: infra-alerts.yaml
     group: metric_collection
     severity: warning
+    audience: platform
     requires:
     - materialize
     enabledByDefault: true
@@ -306,6 +337,7 @@ rules:
     file: infra-alerts.yaml
     group: metric_collection
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -314,6 +346,7 @@ rules:
     file: infra-alerts.yaml
     group: metric_collection
     severity: warning
+    audience: platform
     requires:
     - loki
     enabledByDefault: true
@@ -322,6 +355,7 @@ rules:
     file: infra-alerts.yaml
     group: deployment
     severity: critical
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -330,6 +364,7 @@ rules:
     file: infra-alerts.yaml
     group: deployment
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -338,6 +373,7 @@ rules:
     file: infra-alerts.yaml
     group: deployment
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -346,6 +382,7 @@ rules:
     file: infra-alerts.yaml
     group: daemonset
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -354,6 +391,7 @@ rules:
     file: infra-alerts.yaml
     group: daemonset
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -362,6 +400,7 @@ rules:
     file: infra-alerts.yaml
     group: daemonset
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -370,6 +409,7 @@ rules:
     file: infra-alerts.yaml
     group: file_descriptors
     severity: critical
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -378,6 +418,7 @@ rules:
     file: infra-alerts.yaml
     group: file_descriptors
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -386,6 +427,7 @@ rules:
     file: infra-alerts.yaml
     group: file_descriptors
     severity: notice
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -394,6 +436,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_cpu
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     - cadvisor
@@ -403,6 +446,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_cpu
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     - cadvisor
@@ -412,6 +456,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_memory
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -420,6 +465,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_memory
     severity: notice
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -428,6 +474,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_memory
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -436,6 +483,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_memory
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -444,6 +492,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_memory
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -452,6 +501,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_pod_health
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -460,6 +510,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_pod_health
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -468,6 +519,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_pod_health
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -476,6 +528,7 @@ rules:
     file: infra-alerts.yaml
     group: infra_pod_health
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -484,6 +537,7 @@ rules:
     file: infra-alerts.yaml
     group: egress_gateway
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     - node-exporter
@@ -494,6 +548,7 @@ rules:
     file: infra-alerts.yaml
     group: egress_gateway
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     - node-exporter
@@ -504,6 +559,7 @@ rules:
     file: infra-alerts.yaml
     group: egress_gateway
     severity: notice
+    audience: platform
     requires:
     - cadvisor
     - node-exporter
@@ -514,6 +570,7 @@ rules:
     file: infra-alerts.yaml
     group: egress_gateway
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     - node-exporter
@@ -524,6 +581,7 @@ rules:
     file: infra-alerts.yaml
     group: egress_gateway
     severity: warning
+    audience: platform
     requires:
     - node-exporter
     - kubelet-metrics
@@ -534,6 +592,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: critical
+    audience: platform
     requires:
     - kube-state-metrics
     - synthetic-uptime
@@ -543,6 +602,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     - synthetic-uptime
@@ -552,6 +612,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: critical
+    audience: platform
     requires:
     - synthetic-uptime
     enabledByDefault: false
@@ -560,6 +621,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: critical
+    audience: platform
     requires:
     - synthetic-uptime
     enabledByDefault: false
@@ -568,6 +630,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: warning
+    audience: platform
     requires:
     - synthetic-uptime
     enabledByDefault: false
@@ -576,6 +639,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: warning
+    audience: platform
     requires:
     - materialize
     - kube-state-metrics
@@ -585,6 +649,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: notice
+    audience: platform
     requires:
     - materialize
     enabledByDefault: false
@@ -593,6 +658,7 @@ rules:
     file: materialize-alerts.yaml
     group: auth
     severity: warning
+    audience: platform
     requires:
     - frontegg-auth
     enabledByDefault: false
@@ -601,6 +667,7 @@ rules:
     file: materialize-alerts.yaml
     group: auth
     severity: warning
+    audience: platform
     requires:
     - frontegg-auth
     enabledByDefault: false
@@ -609,6 +676,7 @@ rules:
     file: materialize-alerts.yaml
     group: console
     severity: warning
+    audience: platform
     requires:
     - materialize
     enabledByDefault: false
@@ -617,6 +685,7 @@ rules:
     file: materialize-alerts.yaml
     group: persist
     severity: notice
+    audience: platform
     requires:
     - materialize
     enabledByDefault: false
@@ -625,6 +694,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -633,6 +703,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -641,6 +712,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: warning
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: true
@@ -649,6 +721,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: notice
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -657,6 +730,7 @@ rules:
     file: materialize-alerts.yaml
     group: environmentd
     severity: notice
+    audience: platform
     requires:
     - cadvisor
     enabledByDefault: false
@@ -665,6 +739,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -673,6 +748,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -681,6 +757,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: warning
+    audience: platform
     requires:
     - memory-limiter
     enabledByDefault: false
@@ -689,6 +766,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: warning
+    audience: platform
     requires:
     - materialize
     enabledByDefault: true
@@ -697,6 +775,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: notice
+    audience: platform
     requires:
     - kube-state-metrics
     - cadvisor
@@ -707,6 +786,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: critical
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: true
@@ -715,6 +795,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -723,6 +804,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: notice
+    audience: platform
     requires:
     - cert-manager
     enabledByDefault: false
@@ -731,6 +813,7 @@ rules:
     file: materialize-alerts.yaml
     group: environment_health
     severity: warning
+    audience: platform
     requires:
     - materialize
     enabledByDefault: false
@@ -739,6 +822,7 @@ rules:
     file: materialize-alerts.yaml
     group: release_health
     severity: warning
+    audience: platform
     requires:
     - kube-state-metrics
     enabledByDefault: false
@@ -747,6 +831,7 @@ rules:
     file: materialize-alerts.yaml
     group: external_uptime
     severity: critical
+    audience: platform
     requires:
     - external-uptime
     enabledByDefault: false
@@ -755,6 +840,7 @@ rules:
     file: materialize-alerts.yaml
     group: external_uptime
     severity: warning
+    audience: platform
     requires:
     - external-uptime
     enabledByDefault: false
@@ -763,6 +849,7 @@ rules:
     file: materialize-alerts.yaml
     group: external_uptime
     severity: warning
+    audience: platform
     requires:
     - external-uptime
     enabledByDefault: false
@@ -771,6 +858,7 @@ rules:
     file: materialize-alerts.yaml
     group: launchdarkly
     severity: warning
+    audience: platform
     requires:
     - feature-flags
     enabledByDefault: false
@@ -779,6 +867,7 @@ rules:
     file: materialize-alerts.yaml
     group: launchdarkly
     severity: notice
+    audience: platform
     requires:
     - feature-flags
     enabledByDefault: false

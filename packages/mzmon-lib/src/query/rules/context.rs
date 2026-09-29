@@ -113,9 +113,11 @@ pub const ENVIRONMENT_INFO_JOBS: &str = ".*/.*materialize-(environmentd|clusterd
 /// Build the alerting [`TemplateContext`].
 ///
 /// `identity_functions` renders every enrichment function as the identity. The
-/// renderer uses that form to infer a rule's capabilities, so the join
-/// [`mzEnvironmentName`](enrich::with_environment_name) adds — which reads `up`
-/// on its own account — is not mistaken for something the rule itself needs.
+/// renderer uses that form to infer a rule's capabilities, so the joins
+/// [`mzEnvironmentName`](enrich::with_environment_name) and
+/// [`mzClusterName`](enrich::with_cluster_name_in_namespace) add — which read
+/// `up` and `mz_cluster_info` on their own account — are not mistaken for
+/// something the rule itself needs.
 pub fn alerting_context(
     registry: &QueryRegistry,
     engine: QueryEngine,
@@ -199,10 +201,12 @@ pub fn alerting_context(
     let mut functions: HashMap<String, TemplateFn> = HashMap::new();
     functions.insert("orZero".to_string(), Box::new(promql_or_zero));
     if identity_functions {
-        functions.insert(
-            "mzEnvironmentName".to_string(),
-            Box::new(|base: &str, _args: &[String]| base.to_string()),
-        );
+        for name in ["mzEnvironmentName", "mzClusterName"] {
+            functions.insert(
+                name.to_string(),
+                Box::new(|base: &str, _args: &[String]| base.to_string()),
+            );
+        }
     } else {
         functions.insert(
             "mzEnvironmentName".to_string(),
@@ -211,12 +215,20 @@ pub fn alerting_context(
                 enrich::with_environment_name(base, key, ENVIRONMENT_INFO_JOBS)
             }),
         );
+        // Keyed on the namespace as well as the cluster id, which is unique only
+        // within one environment; see `with_cluster_name_in_namespace`.
+        functions.insert(
+            "mzClusterName".to_string(),
+            Box::new(|base: &str, args: &[String]| {
+                let id_label = args.first().map(String::as_str).unwrap_or("instance_id");
+                enrich::with_cluster_name_in_namespace(base, id_label)
+            }),
+        );
     }
-    // `mzClusterName` / `mzObjectName` are deliberately absent. Their joins key on
-    // a catalog id, which is unique only within one environment, and a rule has
-    // no environment picker to scope them with — several environments would make
-    // the join many-to-many and stop the rule evaluating. A rule using one fails
-    // to render instead.
+    // `mzObjectName` is deliberately absent. Its join keys on a catalog id, which
+    // is unique only within one environment, and nothing yet scopes it by
+    // namespace the way `mzClusterName` is scoped here. A rule using it fails to
+    // render instead.
 
     TemplateContext {
         engine,

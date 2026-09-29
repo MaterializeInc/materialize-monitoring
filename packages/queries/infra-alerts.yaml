@@ -17,6 +17,9 @@ description: |
 
 metricImportanceHint: essential
 
+alertLabels:
+  audience: platform
+
 alerts:
   # --- CockroachDB ---------------------------------------------------------
   # Materialize stores its catalog and timestamp state in CockroachDB; CRDB

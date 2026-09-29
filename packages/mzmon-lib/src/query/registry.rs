@@ -183,7 +183,8 @@ impl QueryRegistry {
     }
 
     /// [`load`](Self::load), recording `source` (a registry file stem) on every
-    /// alert the document defines.
+    /// alert the document defines. The file's `alertLabels` fill in any label an
+    /// alert does not set itself.
     pub fn load_from(&mut self, doc: RegistryDoc, source: Option<&str>) -> Result<()> {
         let hint = doc.metric_importance_hint;
         for query in doc.queries {
@@ -192,7 +193,13 @@ impl QueryRegistry {
         for rule in doc.rules {
             self.register_rule(rule, hint)?;
         }
-        for alert in doc.alerts {
+        for mut alert in doc.alerts {
+            for (key, value) in &doc.alert_labels {
+                alert
+                    .labels
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
             self.register_alert(alert, hint, source)?;
         }
         for override_def in doc.metric_overrides {

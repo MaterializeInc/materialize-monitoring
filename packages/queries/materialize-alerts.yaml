@@ -20,6 +20,9 @@ description: |
 
 metricImportanceHint: essential
 
+alertLabels:
+  audience: platform
+
 alerts:
   # --- environmentd availability -------------------------------------------
   - alert: env-uptime-sla
