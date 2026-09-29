@@ -19,6 +19,7 @@ syntax for the ruler to expand, and `tpl` would try to expand it here.
 {{- $index := include "mzmon.rules.index" $ | fromYaml }}
 {{- $installed := include "mzmon.rules.installed" $ | fromYamlArray }}
 {{- $substitutions := include "mzmon.rules.substitutions" $ | fromYaml }}
+{{- $overrides := $.Values.rules.overrides | default dict }}
 {{- range $path, $_ := $.Files.Glob "pre-rendered/rules/prometheus/*.yaml" }}
   {{- $file := base $path }}
   {{- if ne $file "_index.yaml" }}
@@ -40,6 +41,16 @@ syntax for the ruler to expand, and `tpl` would try to expand it here.
       {{- $rules := list }}
       {{- range $rule := $group.rules }}
         {{- if has $rule.alert $installed }}
+          {{- /* `rules.overrides` changes one rule's `for` and labels, never its expression. */}}
+          {{- with get $overrides $rule.alert }}
+            {{- $rule = deepCopy $rule }}
+            {{- with .for }}
+              {{- $_ := set $rule "for" . }}
+            {{- end }}
+            {{- with .labels }}
+              {{- $_ := set $rule "labels" ( mergeOverwrite ( deepCopy $rule.labels ) . ) }}
+            {{- end }}
+          {{- end }}
           {{- $rules = append $rules $rule }}
         {{- end }}
       {{- end }}

@@ -248,6 +248,36 @@ Validation for the rules surface.
       {{- end }}
     {{- end }}
   {{- end }}
+  {{- range $name, $override := ( $values.overrides | default dict ) }}
+    {{- if not ( has $name $names ) }}
+      {{- $errors = append $errors ( printf "rules.overrides names %q, which is not an alert. A misspelt name would otherwise change nothing without saying so." $name ) }}
+    {{- else if not ( kindIs "map" $override ) }}
+      {{- $errors = append $errors ( printf "rules.overrides.%s must be a map with `for` and/or `labels`." $name ) }}
+    {{- else }}
+      {{- range $key, $_ := $override }}
+        {{- if not ( has $key ( list "for" "labels" ) ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.%s is not something an override can change; it takes `for` and `labels`." $name $key ) }}
+        {{- end }}
+      {{- end }}
+      {{- with $override.for }}
+        {{- if not ( regexMatch "^([0-9]+(ms|s|m|h|d|w|y))+$" ( toString . ) ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.for is %q, which is not a Prometheus duration such as `30m` or `2h`." $name ( toString . ) ) }}
+        {{- end }}
+      {{- end }}
+      {{- range $label, $value := ( $override.labels | default dict ) }}
+        {{- if not ( regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $label ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.labels.%s is not a valid label name." $name $label ) }}
+        {{- else if not ( kindIs "string" $value ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.labels.%s must be a string." $name $label ) }}
+        {{- else if and ( eq $label "severity" ) ( not ( has $value ( list "critical" "warning" "notice" ) ) ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.labels.severity is %q; the routing presets route critical, warning and notice." $name $value ) }}
+        {{- else if and ( eq $label "audience" ) ( not ( has $value ( list "platform" "workload" ) ) ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.labels.audience is %q; it is platform or workload." $name $value ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
   {{- /* Entries land inside a PromQL string literal in a YAML block scalar. */}}
   {{- $workloads := $values.infraWorkloads | default dict }}
   {{- range $tier, $list := $workloads }}
@@ -271,6 +301,12 @@ Validation for the rules surface.
     {{- end }}
 
     {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
+    {{- $installedNames := include "mzmon.rules.installed" $ | fromYamlArray }}
+    {{- range $name, $_ := ( $values.overrides | default dict ) }}
+      {{- if and ( has $name $names ) ( not ( has $name $installedNames ) ) }}
+        {{- $warnings = append $warnings ( printf "rules.overrides names %q, which is not installed, so the override has no effect. Select it in rules.selected if it should install." $name ) }}
+      {{- end }}
+    {{- end }}
     {{- range $name := ( $values.selected | default list ) }}
       {{- with ( get $index.rules $name ) }}
         {{- $missing := list }}
