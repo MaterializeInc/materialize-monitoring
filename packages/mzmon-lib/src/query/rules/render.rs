@@ -774,7 +774,7 @@ mod tests {
             args: ["namespace"]
 "#;
         let yaml = format!(
-            "{}{}{joined}",
+            "{}{}{}{joined}",
             alert(
                 "cluster-offline",
                 LABELS,
@@ -785,6 +785,12 @@ mod tests {
                 "infra-pod-pending",
                 LABELS,
                 r#"kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase="Pending"} > 0"#,
+                ""
+            ),
+            alert(
+                "infra-oomkill",
+                LABELS,
+                r#"kube_pod_container_status_restarts_total{container=~"%%{infraCoreWorkloadList}|%%{infraImportantWorkloadList}|%%{infraDaemonsetWorkloadList}", container!~"%%{infraNonessentialWorkloadList}"} > 0"#,
                 ""
             ),
         );

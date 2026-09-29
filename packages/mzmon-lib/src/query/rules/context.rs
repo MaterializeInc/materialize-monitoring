@@ -16,8 +16,9 @@
 //!
 //! **Deployment-specific values are placeholders.** Rules are rendered once, at
 //! build time, into `pre-rendered/rules/`, but which namespaces hold a
-//! Materialize environment, and whether SQL-backed metrics carry Cloud's `v2_`
-//! prefix, are facts about one install. So those parameters render to a
+//! Materialize environment, which workloads the cluster counts as core
+//! infrastructure, and whether SQL-backed metrics carry Cloud's `v2_` prefix,
+//! are facts about one install. So those parameters render to a
 //! [`Placeholder`] token that the chart replaces from values at install time.
 //! Every token is a valid PromQL identifier or string in the position it
 //! occupies, which keeps the pre-rendered files checkable by `promtool` as they
@@ -49,6 +50,14 @@ pub enum Placeholder {
     OperatorNamespaces,
     /// A regex alternation of the namespaces a deployment excludes from alerting.
     ExcludedNamespaces,
+    /// A regex alternation of the workloads the cluster cannot run without.
+    CoreWorkloads,
+    /// A regex alternation of the workloads whose loss degrades the cluster.
+    ImportantWorkloads,
+    /// A regex alternation of the workloads worth a notice, not a page.
+    NonessentialWorkloads,
+    /// A regex alternation of the workloads every node runs.
+    DaemonsetWorkloads,
 }
 
 impl Placeholder {
@@ -56,8 +65,12 @@ impl Placeholder {
     /// them in, so no token is ever a prefix of one replaced before it.
     pub const ALL: &'static [Placeholder] = &[
         Placeholder::EnvironmentNamespaces,
+        Placeholder::NonessentialWorkloads,
+        Placeholder::DaemonsetWorkloads,
+        Placeholder::ImportantWorkloads,
         Placeholder::ExcludedNamespaces,
         Placeholder::OperatorNamespaces,
+        Placeholder::CoreWorkloads,
         Placeholder::SqlPrefix,
     ];
 
@@ -73,6 +86,10 @@ impl Placeholder {
             Placeholder::EnvironmentNamespaces => "__mzmon_environment_namespaces__",
             Placeholder::OperatorNamespaces => "__mzmon_operator_namespaces__",
             Placeholder::ExcludedNamespaces => "__mzmon_excluded_namespaces__",
+            Placeholder::CoreWorkloads => "__mzmon_core_workloads__",
+            Placeholder::ImportantWorkloads => "__mzmon_important_workloads__",
+            Placeholder::NonessentialWorkloads => "__mzmon_nonessential_workloads__",
+            Placeholder::DaemonsetWorkloads => "__mzmon_daemonset_workloads__",
         }
     }
 
@@ -149,6 +166,26 @@ pub fn alerting_context(
         ("mzReplicaList", ".+".to_string()),
         ("mzClusterListRegex", ".+".to_string()),
         ("mzReplicaListRegex", ".+".to_string()),
+        // Workload tiers, as bare values: queries write
+        // `container=~"%%{infraCoreWorkloadList}"`. Which workloads a cluster
+        // treats as core is a fact about that cluster, so the chart fills these
+        // from `rules.infraWorkloads`.
+        (
+            "infraCoreWorkloadList",
+            Placeholder::CoreWorkloads.token().to_string(),
+        ),
+        (
+            "infraImportantWorkloadList",
+            Placeholder::ImportantWorkloads.token().to_string(),
+        ),
+        (
+            "infraNonessentialWorkloadList",
+            Placeholder::NonessentialWorkloads.token().to_string(),
+        ),
+        (
+            "infraDaemonsetWorkloadList",
+            Placeholder::DaemonsetWorkloads.token().to_string(),
+        ),
         (
             "excludeHostNetworkPods",
             r#"unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})"#

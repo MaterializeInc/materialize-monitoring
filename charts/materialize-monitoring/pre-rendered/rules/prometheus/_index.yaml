@@ -5,8 +5,12 @@
 # the default set, and the vocabularies the chart validates values against.
 placeholders:
 - __mzmon_environment_namespaces__
+- __mzmon_nonessential_workloads__
+- __mzmon_daemonset_workloads__
+- __mzmon_important_workloads__
 - __mzmon_excluded_namespaces__
 - __mzmon_operator_namespaces__
+- __mzmon_core_workloads__
 - __mzmon_sql_prefix__
 capabilities:
   materialize:

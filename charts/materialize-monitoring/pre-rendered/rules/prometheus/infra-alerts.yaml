@@ -487,7 +487,7 @@ groups:
   - alert: k8s-deployment-unavailable-critical
     expr: |-
       group by (deployment, namespace) (
-        kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller", namespace!~"__mzmon_excluded_namespaces__"} == 0
+        kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"__mzmon_core_workloads__", namespace!~"__mzmon_excluded_namespaces__"} == 0
       )
     for: 10m
     labels:
@@ -502,7 +502,7 @@ groups:
   - alert: k8s-deployment-unavailable-warning
     expr: |-
       group by (deployment, namespace) (
-        kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy", namespace!~"__mzmon_excluded_namespaces__"} == 0
+        kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"__mzmon_important_workloads__", namespace!~"__mzmon_excluded_namespaces__"} == 0
       )
     for: 10m
     labels:
@@ -514,7 +514,7 @@ groups:
   - alert: k8s-deployment-unavailable-notice
     expr: |-
       group by (deployment, namespace) (
-        kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"backend|egress-check.*|egress-noop.*|exporter|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector", namespace!~"__mzmon_excluded_namespaces__"} == 0
+        kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"__mzmon_nonessential_workloads__", namespace!~"__mzmon_excluded_namespaces__"} == 0
       )
     for: 10m
     labels:
@@ -530,7 +530,7 @@ groups:
       (
         1.77 - sum(
           max by (container) (
-            kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="core", resource="cpu"}
+            kube_pod_container_resource_requests{container=~"__mzmon_daemonset_workloads__", unit="core", resource="cpu"}
           )
         )
       ) < 0.01
@@ -546,7 +546,7 @@ groups:
       (
         10730942464 - sum(
           max by (container) (
-            kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="byte", resource="memory"}
+            kube_pod_container_resource_requests{container=~"__mzmon_daemonset_workloads__", unit="byte", resource="memory"}
           )
         )
       ) < 5243000
@@ -562,7 +562,7 @@ groups:
       (
         1.77 - sum(
           max by (container) (
-            kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="core", resource="cpu"}
+            kube_pod_container_resource_requests{container=~"__mzmon_daemonset_workloads__", unit="core", resource="cpu"}
           )
         )
       ) < 0.1
@@ -579,7 +579,7 @@ groups:
     expr: |-
       100 * (
         sum by (pod, namespace, container) (
-          container_file_descriptors{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          container_file_descriptors{container=~"__mzmon_core_workloads__"}
         )
         / min by (pod, namespace, container) (
           container_ulimits_soft{ulimit="max_open_files"}
@@ -596,7 +596,7 @@ groups:
     expr: |-
       100 * (
         sum by (pod, namespace, container) (
-          container_file_descriptors{container!~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          container_file_descriptors{container!~"__mzmon_core_workloads__"}
         )
         / min by (pod, namespace, container) (
           container_ulimits_soft{ulimit="max_open_files"}
@@ -666,10 +666,10 @@ groups:
     expr: |-
       100 * (
         sum by (namespace, pod, container) (
-          container_memory_working_set_bytes{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          container_memory_working_set_bytes{container=~"__mzmon_core_workloads__"}
         )
         / sum by (namespace, pod, container) (
-          container_spec_memory_limit_bytes{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"} != 0
+          container_spec_memory_limit_bytes{container=~"__mzmon_core_workloads__"} != 0
         )
       ) > 80
     for: 10m
@@ -683,10 +683,10 @@ groups:
     expr: |-
       100 * (
         sum by (namespace, pod, container) (
-          container_memory_working_set_bytes{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+          container_memory_working_set_bytes{container=~"__mzmon_important_workloads__"}
         )
         / sum by (namespace, pod, container) (
-          container_spec_memory_limit_bytes{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"} != 0
+          container_spec_memory_limit_bytes{container=~"__mzmon_important_workloads__"} != 0
         )
       ) > 80
     for: 60m
@@ -699,10 +699,10 @@ groups:
   - alert: infra-oomkill-core-systems
     expr: |-
       sum by (container, namespace, pod) (
-        kube_pod_container_status_restarts_total{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
-        - kube_pod_container_status_restarts_total{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"} offset 3h > 1
+        kube_pod_container_status_restarts_total{container=~"__mzmon_core_workloads__"}
+        - kube_pod_container_status_restarts_total{container=~"__mzmon_core_workloads__"} offset 3h > 1
         and ignoring(reason)
-        kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+        kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"__mzmon_core_workloads__"}
       ) > 0
     for: 1m
     labels:
@@ -717,10 +717,10 @@ groups:
   - alert: infra-oomkill-important-systems
     expr: |-
       sum by (container, namespace, pod) (
-        kube_pod_container_status_restarts_total{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
-        - kube_pod_container_status_restarts_total{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"} offset 3h > 1
+        kube_pod_container_status_restarts_total{container=~"__mzmon_important_workloads__"}
+        - kube_pod_container_status_restarts_total{container=~"__mzmon_important_workloads__"} offset 3h > 1
         and ignoring(reason)
-        kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+        kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"__mzmon_important_workloads__"}
       ) > 0
     for: 1m
     labels:
@@ -732,10 +732,10 @@ groups:
   - alert: infra-oomkill-nonessential-systems
     expr: |-
       sum by (container, namespace, pod) (
-        kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}
-        - kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"} offset 3h > 1
+        kube_pod_container_status_restarts_total{container=~"__mzmon_nonessential_workloads__"}
+        - kube_pod_container_status_restarts_total{container=~"__mzmon_nonessential_workloads__"} offset 3h > 1
         and ignoring(reason)
-        kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}
+        kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"__mzmon_nonessential_workloads__"}
       ) > 0
     for: 1m
     labels:
@@ -761,7 +761,7 @@ groups:
   - alert: pod-restart-rate-high
     expr: |-
       avg by (container, namespace) (
-        rate(kube_pod_container_status_restarts_total{namespace!~"__mzmon_operator_namespaces__|__mzmon_environment_namespaces__", container!~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}[10m])
+        rate(kube_pod_container_status_restarts_total{namespace!~"__mzmon_operator_namespaces__|__mzmon_environment_namespaces__", container!~"__mzmon_nonessential_workloads__"}[10m])
       ) * 100 > 0
     for: 15m
     labels:
@@ -773,7 +773,7 @@ groups:
   - alert: pod-restart-rate-high-nonessential
     expr: |-
       avg by (container, namespace) (
-        rate(kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}[10m])
+        rate(kube_pod_container_status_restarts_total{container=~"__mzmon_nonessential_workloads__"}[10m])
       ) * 100 > 0
     for: 15m
     labels:

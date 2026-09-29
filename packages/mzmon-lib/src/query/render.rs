@@ -261,6 +261,11 @@ fn extraction_context<'a>(
         ("mzClusterListRegex", ".+"),
         ("mzReplicaListRegex", ".+"),
         ("mzNamespaceList", "materialize-environment"),
+        // Workload tiers. Extraction only reads metric names, so any regex does.
+        ("infraCoreWorkloadList", ".+"),
+        ("infraImportantWorkloadList", ".+"),
+        ("infraNonessentialWorkloadList", ".+"),
+        ("infraDaemonsetWorkloadList", ".+"),
         (
             "cAdvisorFilter",
             r#"container!="POD", container!="", namespace=~"materialize-environment""#,
