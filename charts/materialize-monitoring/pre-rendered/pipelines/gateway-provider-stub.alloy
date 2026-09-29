@@ -49,3 +49,25 @@ provider_gcp_gcs "provider" {
 	scrape_interval = "5m"
 	scrape_timeout = "2m"
 }
+
+provider_azure_postgres "provider" {
+	subscription_id = "00000000-0000-0000-0000-000000000000"
+	servers = [
+		"example-pg",
+	]
+	cloud_environment = "azurecloud"
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout = "2m"
+}
+
+provider_azure_blob "provider" {
+	subscription_id = "00000000-0000-0000-0000-000000000000"
+	storage_accounts = [
+		"examplestorage",
+	]
+	cloud_environment = "azurecloud"
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout = "2m"
+}

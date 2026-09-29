@@ -9,6 +9,11 @@
 #   * Thanos — `global.commonLabels`, which feeds the `thanos.labels` helper that
 #     the pod templates render. There is no `podLabels` in this chart, so the
 #     label has to travel with the common set.
+#   * The Alloy gateway — `controller.podLabels`, which reaches the pod template
+#     and never the Deployment's selector. Keyed on the gateway having an
+#     `azure.workload.identity/client-id` annotation rather than on
+#     `object_storage.cloud`: the gateway needs an Azure identity only for what
+#     it reads from Azure Monitor, which is independent of where the buckets are.
 #
 # `commonLabels` also lands on object metadata, which is harmless, and — checked,
 # because it would otherwise be a breaking change — *not* in any workload
@@ -37,4 +42,20 @@ locals {
       }
     }
   })]
+
+  # Both sources of gateway annotations; see destinations.tf and values.tf.
+  # Only the keys are read, and those are known at plan even when the client ID
+  # is not.
+  gateway_azure_identity = contains(keys(merge(
+    try(local.storage.gateway_service_account_annotations, {}),
+    var.gateway_service_account_annotations,
+  )), "azure.workload.identity/client-id")
+
+  azure_gateway_identity_document = local.gateway_azure_identity ? [yamlencode({
+    alloy-gateway = {
+      controller = {
+        podLabels = { "azure.workload.identity/use" = "true" }
+      }
+    }
+  })] : []
 }

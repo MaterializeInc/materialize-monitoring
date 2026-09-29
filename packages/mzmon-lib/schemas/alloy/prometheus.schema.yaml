@@ -95,6 +95,12 @@ oneOf:
         $ref: "#/$defs/prometheus.exporter.gcp"
     required: [prometheus.exporter.gcp]
     additionalProperties: false
+  - type: object
+    properties:
+      prometheus.exporter.azure:
+        $ref: "#/$defs/prometheus.exporter.azure"
+    required: [prometheus.exporter.azure]
+    additionalProperties: false
 
 $defs:
   label:
@@ -1123,3 +1129,79 @@ $defs:
         format: go-duration
     required: [project_ids, metrics_prefixes]
     additionalProperties: false
+
+  prometheus.exporter.azure:
+    description: |
+      Pulls Azure Monitor metrics through the embedded `azure-metrics-exporter`
+      and exports them as a scrape target. Azure is called on scrape, as with
+      the CloudWatch exporter, and the credential is resolved on the first
+      call rather than when the component is built.
+
+      Four behaviours decide how this is used:
+
+        * Each scrape runs one Resource Graph query for `resource_type`,
+          narrowed by `resource_graph_query_filter`, then one metrics call per
+          resource per twenty metrics. Without a filter it pulls every resource
+          of that type the identity can read.
+        * `metric_aggregations` applies to EVERY metric in the block. A metric
+          that needs a different aggregation asks for both, and the unwanted
+          series are dropped downstream.
+        * Only the newest datapoint of `timespan` with a value is kept, at
+          `interval` granularity. The window ends at the scrape, so that
+          datapoint is usually a partial bucket. Samples carry the scrape's
+          timestamp.
+        * `included_resource_tags` defaults to `["owner"]`, which turns a
+          resource tag into a label on every series.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.azure/
+    type: object
+    properties:
+      label:
+        $ref: "#/$defs/label"
+      subscriptions:
+        description: Subscriptions to query.
+        $ref: "#/$defs/expressionOrStringList"
+      resource_type:
+        description: The Resource Graph resource type, such as `Microsoft.DBforPostgreSQL/flexibleServers`.
+        type: string
+      metrics:
+        description: Azure Monitor metric names, up to twenty per call.
+        $ref: "#/$defs/expressionOrStringList"
+      resource_graph_query_filter:
+        description: A Kusto clause appended to the Resource Graph query after a `|`.
+        $ref: "#/$defs/expressionOrString"
+      metric_aggregations:
+        description: |
+          Aggregations to request for every metric: `average`, `minimum`,
+          `maximum`, `total` or `count`. Defaults to each metric's primary one.
+        $ref: "#/$defs/expressionOrStringList"
+      timespan:
+        description: ISO 8601 window each pull reads, ending at the scrape. Defaults to `PT5M`.
+        type: string
+        pattern: "^P"
+      interval:
+        description: ISO 8601 datapoint granularity. Defaults to `PT1M`.
+        type: string
+        pattern: "^P"
+      metric_namespace:
+        description: Sub-namespace for resource types with several, such as `Microsoft.Storage/storageAccounts/blobServices`.
+        type: string
+      included_dimensions:
+        description: Dimensions to split each metric by. Every one applies to every metric.
+        $ref: "#/$defs/expressionOrStringList"
+      included_resource_tags:
+        description: Resource tags to copy onto every series. Defaults to `["owner"]`.
+        $ref: "#/$defs/expressionOrStringList"
+      regions:
+        description: Regions to read at subscription scope. Cannot be combined with `resource_graph_query_filter`.
+        $ref: "#/$defs/expressionOrStringList"
+      azure_cloud_environment:
+        description: "`azurecloud`, `azurechinacloud` or `azureusgovernmentcloud`. Defaults to `azurecloud`."
+        $ref: "#/$defs/expressionOrString"
+      validate_dimensions:
+        description: Refuse a dimension a metric does not have. Defaults to false.
+        type: boolean
+    required: [subscriptions, resource_type, metrics]
+    additionalProperties: false
+    not:
+      required: [regions, resource_graph_query_filter]

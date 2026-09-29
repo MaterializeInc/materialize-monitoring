@@ -9,8 +9,8 @@ named in `pipeline.metrics.provider.*`: the shape is the pipeline's, and the
 count is the chart's.
 
 A `declare` body cannot repeat a block, so a component takes one resource
-(CloudWatch) or one service's worth of resources (GCP, whose filter names them
-all). Each instance is a flat block of arguments, and `alloy validate` rejects
+(CloudWatch) or one service's worth of resources (GCP and Azure, whose filters
+name them all). Each instance is a flat block of arguments, and `alloy validate` rejects
 an argument the component does not declare, so these instances are checked
 against the module's contract at install by the pre-validate job, and at build
 by `gateway-provider-stub.yaml`.
@@ -102,6 +102,35 @@ provider_gcp_gcs "provider" {
 }
     {{- end }}
   {{- end }}
+
+  {{- $az := $provider.azure | default dict }}
+  {{- if $az.enabled }}
+    {{- $subscription := $az.subscriptionId | default "" | toString }}
+    {{- $servers := dig "postgres" "servers" list $az }}
+    {{- if $servers }}
+
+provider_azure_postgres "provider" {
+    subscription_id   = {{ $subscription | quote }}
+    servers           = {{ $servers | toJson }}
+    cloud_environment = {{ $az.cloudEnvironment | quote }}
+    scrape_interval   = {{ $az.scrapeInterval | quote }}
+    scrape_timeout    = {{ $az.scrapeTimeout | quote }}
+    forward_to        = {{ $forwardTo }}
+}
+    {{- end }}
+    {{- $accounts := dig "blob" "storageAccounts" list $az }}
+    {{- if $accounts }}
+
+provider_azure_blob "provider" {
+    subscription_id   = {{ $subscription | quote }}
+    storage_accounts  = {{ $accounts | toJson }}
+    cloud_environment = {{ $az.cloudEnvironment | quote }}
+    scrape_interval   = {{ $az.scrapeInterval | quote }}
+    scrape_timeout    = {{ $az.scrapeTimeout | quote }}
+    forward_to        = {{ $forwardTo }}
+}
+    {{- end }}
+  {{- end }}
 {{- end }}
 
 {{- /*
@@ -129,7 +158,8 @@ Usage:
   {{- /* Which families each provider produces, by its Prometheus name prefix. */}}
   {{- $families := dict
         "cloudwatch" ( list "aws_rds_.*" "aws_s3_.*" )
-        "gcp" ( list "stackdriver_cloudsql_database_.*" "stackdriver_gcs_bucket_.*" ) }}
+        "gcp" ( list "stackdriver_cloudsql_database_.*" "stackdriver_gcs_bucket_.*" )
+        "azure" ( list "azure_microsoft_dbforpostgresql_flexibleservers_.*" "azure_microsoft_storage_storageaccounts_blobservices_.*" ) }}
 
   {{- if has $floor $levels }}
     {{- $floorRank := 0 }}
@@ -205,7 +235,7 @@ Usage:
   {{- $levels := include "mzmon.alloyGateway.provider.importanceLevels" $ | fromYamlArray }}
   {{- $saAnnotations := dig "serviceAccount" "annotations" dict ( index $.Values "alloy-gateway" | default dict ) | default dict }}
 
-  {{- range $name := list "cloudwatch" "gcp" }}
+  {{- range $name := list "cloudwatch" "gcp" "azure" }}
     {{- $p := get $provider $name | default dict }}
     {{- $path := printf "pipeline.metrics.provider.%s" $name }}
     {{- if $p.enabled }}
@@ -284,6 +314,58 @@ Usage:
           "context" $ "role" "alloy-gateway" "env" "GOOGLE_APPLICATION_CREDENTIALS" ) | trim }}
     {{- if and ( not ( hasKey $saAnnotations "iam.gke.io/gcp-service-account" ) ) ( ne $adcSource "extraEnv" ) }}
       {{- $warnings = append $warnings "pipeline.metrics.provider.gcp is enabled, and the gateway has neither an iam.gke.io/gcp-service-account annotation on alloy-gateway.serviceAccount nor GOOGLE_APPLICATION_CREDENTIALS in alloy-gateway.alloy.extraEnv. On GKE the pull runs as whatever identity the metadata server gives the pod, which needs roles/monitoring.viewer or every pull returns nothing. Outside Google Cloud, with no credential at all, the exporter cannot be built and the whole gateway fails to start." }}
+    {{- end }}
+  {{- end }}
+
+  {{- $az := $provider.azure | default dict }}
+  {{- if $az.enabled }}
+    {{- $path := "pipeline.metrics.provider.azure" }}
+    {{- $subscription := $az.subscriptionId | default "" | toString }}
+    {{- if not $subscription }}
+      {{- $errors = append $errors ( printf "%s.enabled is true but subscriptionId is empty." $path ) }}
+    {{- else if not ( regexMatch "^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$" $subscription ) }}
+      {{- $errors = append $errors ( printf "%s.subscriptionId is %q. Use the subscription ID, a GUID, not its display name." $path $subscription ) }}
+    {{- end }}
+    {{- $environments := list "azurecloud" "azurechinacloud" "azureusgovernmentcloud" }}
+    {{- if not ( has ( $az.cloudEnvironment | toString ) $environments ) }}
+      {{- $errors = append $errors ( printf "%s.cloudEnvironment is %q. It must be one of %s." $path ( $az.cloudEnvironment | toString ) ( join ", " $environments ) ) }}
+    {{- end }}
+    {{- $servers := dig "postgres" "servers" list $az }}
+    {{- $accounts := dig "blob" "storageAccounts" list $az }}
+    {{- if and ( not $servers ) ( not $accounts ) }}
+      {{- $errors = append $errors ( printf "%s.enabled is true but lists no resources. Set postgres.servers or blob.storageAccounts; resources are named, never discovered." $path ) }}
+    {{- end }}
+    {{- /* The names go into a Kusto filter between single quotes, and a name the
+           filter does not match is a pull that silently returns nothing. Both
+           shapes are Azure's own naming rules, so anything else is a mistake:
+           usually an FQDN, an endpoint URL or a resource ID. */}}
+    {{- range $servers }}
+      {{- if not ( regexMatch "^[a-z0-9][a-z0-9-]*$" ( . | toString ) ) }}
+        {{- $errors = append $errors ( printf "%s.postgres.servers entry %q is not a Flexible Server name. List the name alone — lowercase letters, digits and hyphens — not its FQDN or resource ID." $path ( . | toString ) ) }}
+      {{- end }}
+    {{- end }}
+    {{- range $accounts }}
+      {{- if not ( regexMatch "^[a-z0-9]+$" ( . | toString ) ) }}
+        {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %q is not a storage account name. List the name alone — lowercase letters and digits — not its endpoint or resource ID." $path ( . | toString ) ) }}
+      {{- end }}
+    {{- end }}
+    {{- /* Like CloudWatch, and unlike GCP, the credential is resolved on the first
+           pull rather than when the exporter is built, so no case here stops
+           the gateway. With no workload identity injected, the default chain
+           reaches the node's managed identity through IMDS instead. Measured on
+           AKS, Resource Graph refuses that identity outright, so `up` is 0 and
+           the gateway logs `service discovery failed`. A node identity that can
+           read anything in the subscription would instead get an empty result,
+           with `up` at 1. */}}
+    {{- $podLabels := dig "controller" "podLabels" dict ( index $.Values "alloy-gateway" | default dict ) | default dict }}
+    {{- $clientIdSource := include "mzmon.alloy.envSource" ( dict
+          "context" $ "role" "alloy-gateway" "env" "AZURE_CLIENT_ID" ) | trim }}
+    {{- if hasKey $saAnnotations "azure.workload.identity/client-id" }}
+      {{- if ne ( get $podLabels "azure.workload.identity/use" | toString ) "true" }}
+        {{- $warnings = append $warnings ( printf "%s is enabled and alloy-gateway.serviceAccount carries an azure.workload.identity/client-id annotation, but alloy-gateway.controller.podLabels has no azure.workload.identity/use: \"true\". The Entra webhook injects the workload identity only into pods with that label, so without it the pull runs as the node's managed identity. That identity usually has no access to the subscription, so Resource Graph refuses every pull and up is 0." $path ) }}
+      {{- end }}
+    {{- else if ne $clientIdSource "extraEnv" }}
+      {{- $warnings = append $warnings ( printf "%s is enabled with no azure.workload.identity/client-id annotation on alloy-gateway.serviceAccount and no AZURE_CLIENT_ID in alloy-gateway.alloy.extraEnv. The pull will use whatever the Azure default credential chain finds — AZURE_CLIENT_ID with AZURE_CLIENT_SECRET from the mzmon-alloy-gateway-env Secret, or on AKS the node's managed identity. The identity needs Monitoring Reader on each named resource. Without any access in the subscription every pull is refused and up is 0; with access elsewhere but not to a named resource, that resource is silently left out." $path ) }}
     {{- end }}
   {{- end }}
 

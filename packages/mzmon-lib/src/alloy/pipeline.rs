@@ -95,6 +95,9 @@ pub enum ComponentBlock {
     #[serde(rename = "prometheus.exporter.gcp")]
     // Boxed: three `ExpressableList` fields.
     PrometheusExporterGcp(Box<prometheus::PrometheusExporterGcpBlock>),
+    #[serde(rename = "prometheus.exporter.azure")]
+    // Boxed: five `ExpressableList` fields.
+    PrometheusExporterAzure(Box<prometheus::PrometheusExporterAzureBlock>),
     #[serde(rename = "otelcol.receiver.otlp")]
     OtelcolReceiverOtlp(otelcol::OtelcolReceiverOtlpBlock),
     #[serde(rename = "otelcol.receiver.prometheus")]
@@ -144,6 +147,7 @@ impl_to_block_dispatch!(ComponentBlock {
     PrometheusExporterCadvisor,
     PrometheusExporterCloudwatch,
     PrometheusExporterGcp,
+    PrometheusExporterAzure,
     OtelcolReceiverOtlp,
     OtelcolReceiverPrometheus,
     OtelcolExporterOtlp,
