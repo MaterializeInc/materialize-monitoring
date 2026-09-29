@@ -44,7 +44,7 @@ tests:
     template: templates/alerts/prometheusrules.yaml
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
       - isKind:
           of: PrometheusRule
       - equal:
@@ -156,7 +156,7 @@ tests:
         - egress-gateway
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
 
   # --- placeholders ---------------------------------------------------------
 
@@ -273,6 +273,31 @@ tests:
       - matchRegex:
           path: spec.groups[*].rules[?(@.alert == "pod-restart-rate-high")].expr
           pattern: 'container!~"a\^"'
+
+  # --- who an alert is for --------------------------------------------------
+
+  - it: labels the deployment's alerts for the platform
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "environmentd-down")].labels.audience
+          value: platform
+
+  - it: labels a user cluster's alerts for the workload
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-workload-alerts
+    asserts:
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-hydration-stuck")].labels.audience
+          value: workload
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-hydration-stuck")].for
+          value: 1h
 
   - it: reads Cloud's SQL metric prefix in cloud mode
     template: templates/alerts/prometheusrules.yaml

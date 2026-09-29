@@ -1,0 +1,393 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Alerting rules for what runs on Materialize: the user clusters (`u*`), their
+# freshness, hydration and sizing, and the sources feeding them. These are
+# what whoever runs the workload acts on, by resizing a cluster or fixing a
+# dataflow or an upstream. The deployment itself, including the system
+# clusters, is materialize-alerts.yaml.
+
+description: |
+  Alerting rules for the workloads running on Materialize.
+
+  Every alert here carries `audience: workload`, so a route can send them to
+  the people who own the clusters rather than to whoever runs the deployment.
+  Each is scoped to user clusters (`u*`); the same condition on a system
+  cluster is a platform alert.
+
+metricImportanceHint: essential
+
+alertLabels:
+  audience: workload
+
+alerts:
+  # --- freshness -----------------------------------------------------------
+  - alert: cluster-falling-behind
+    group: freshness
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster's collections have averaged over 60s of lag for 15m.
+      degraded: |
+        Data is reaching queries later than usual. Check the cluster's replicas
+        for CPU or memory pressure first, then the sources upstream of the
+        lagging collections: a source that is itself behind makes everything
+        downstream of it lag too.
+      notes: |
+        Lag is measured on each collection's freshest replica, the one serving
+        reads, and a collection no replica has hydrated yet is left out, so a
+        restart alone does not fire it; cluster-hydration-stuck covers that
+        case.
+
+        Not in the default set. Some clusters are behind by design: a
+        materialized view on a refresh schedule lags by up to its interval
+        between refreshes, and a collection nobody reads may stay frozen for
+        months. Across a large fleet those are most of the clusters an
+        absolute threshold catches, so select this where freshness matters.
+    query:
+      id: materialize.clusters.falling_behind
+      stability: best-effort
+      description:
+        summary: Per user cluster, the worst 15m average lag of any collection, on its freshest replica.
+      promQL:
+        # A collection no replica has hydrated is exported as u64::MAX seconds.
+        # One such sample would drag the average past any threshold after every
+        # restart, so `< 1e18` drops it.
+        template: |
+          max by (namespace, materialize_cloud_organization_name, instance_id) (
+            avg_over_time(
+              (
+                min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+                  mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"u.*", %%{excludeEnvironmentFilter}}
+                ) < 1e18
+              )[15m:1m]
+            )
+          ) > 60
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # Datadog aggregates once and cannot drop the unhydrated sentinel, so this
+      # reads the worst replica rather than the freshest, and a hydrating replica
+      # reads as stale.
+      datadogQuery: |
+        avg(last_15m):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) > 60
+  - alert: cluster-stale
+    group: freshness
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: critical
+      component: clusterd
+    description:
+      summary: A cluster's collections have averaged over 10m of lag for 15m.
+      notes: |
+        Not in the default set, for the reasons cluster-falling-behind gives.
+      unhealthy: |
+        Queries are still answering, but with data this far behind its inputs,
+        and nothing downstream can tell. Check the cluster's replicas for CPU
+        or memory pressure and restarts, and the sources upstream of the
+        lagging collections.
+    query:
+      id: materialize.clusters.stale
+      stability: best-effort
+      description:
+        summary: Per user cluster, the worst 15m average lag of any collection, on its freshest replica.
+      promQL:
+        template: |
+          max by (namespace, materialize_cloud_organization_name, instance_id) (
+            avg_over_time(
+              (
+                min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+                  mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"u.*", %%{excludeEnvironmentFilter}}
+                ) < 1e18
+              )[15m:1m]
+            )
+          ) > 600
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # As cluster-falling-behind: the worst replica, sentinel included.
+      datadogQuery: |
+        avg(last_15m):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) > 600
+
+  # --- hydration -----------------------------------------------------------
+  - alert: cluster-hydration-stuck
+    group: hydration
+    stability: best-effort
+    enabledByDefault: true
+    # How long hydration takes depends on the workload: minutes for most, hours
+    # for a large one, even when nothing is wrong. Set this per deployment with
+    # `rules.overrides`.
+    for: 1h
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster has had collections with no hydrated replica for 1h.
+      degraded: |
+        Reads of those collections block rather than return stale data. If
+        this cluster normally takes this long to hydrate, lengthen the rule's
+        `for` with `rules.overrides`. Otherwise check for a crash-looping or
+        undersized replica, and for a source or upstream cluster the
+        collections are waiting on.
+      notes: |
+        Counts only collections that no replica has hydrated, so a restart of
+        one replica of several does not fire it.
+    query:
+      id: materialize.clusters.hydration_stuck
+      stability: best-effort
+      description:
+        summary: Per user cluster, collections that no replica has hydrated.
+      promQL:
+        template: |
+          count by (namespace, materialize_cloud_organization_name, instance_id) (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"u.*", %%{excludeEnvironmentFilter}}
+            ) >= 1e18
+          ) > 0
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # Datadog aggregates once, so this counts collections unhydrated on any
+      # replica rather than on every one.
+      datadogQuery: |
+        max(last_1h):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) >= 1000000000000000000
+
+  # --- cluster resources ---------------------------------------------------
+  - alert: cluster-memory-near-limit
+    group: cluster_resources
+    stability: best-effort
+    enabledByDefault: true
+    for: 1m
+    labels:
+      severity: critical
+      component: clusterd
+    description:
+      summary: A cluster replica's heap has reached 90% of the point where the kernel OOM-kills it.
+      unhealthy: |
+        At the limit the replica is killed and the cluster rehydrates from
+        scratch. Size the cluster up, or find what is holding the memory in
+        `mz_internal.mz_dataflow_arrangement_sizes`.
+      notes: |
+        Heap is RAM and swap in use, against the replica's cgroup memory plus
+        swap limits. With swap enabled, container memory normally reads close to
+        its limit, because spilling to swap is the design, so it cannot be used
+        here. Measured as the maximum over 15m: heap can climb fast enough that
+        an average stays under the threshold until the kill.
+    query:
+      id: materialize.clusters.memory_near_limit
+      stability: best-effort
+      description:
+        summary: Per user cluster replica, peak heap as a percentage of memory plus swap limits.
+      promQL:
+        template: |
+          100 * (
+            max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+              max_over_time(mz_metrics_resource_usage{metric="heap", cluster_environmentd_materialize_cloud_cluster_id=~"u.*", %%{excludeEnvironmentFilter}}[15m])
+            )
+            / on (namespace, pod) group_left ()
+            (
+              max by (namespace, pod) (mz_metrics_resource_usage{metric="memory_max"})
+              + on (namespace, pod)
+              max by (namespace, pod) (mz_metrics_resource_usage{metric="swap_max"})
+            )
+          ) > 90
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      datadogQuery: |
+        max(last_15m):100 * (
+          max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:u*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
+        ) > 90
+  - alert: cluster-memory-high
+    group: cluster_resources
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster replica's heap has averaged over 40% of its memory plus swap limits for 15m.
+      degraded: |
+        The replica is running with less headroom than a spike in its input
+        may need. Consider a larger size before it becomes
+        cluster-memory-near-limit.
+      notes: |
+        Not in the default set. What 40% means depends on how much swap a size
+        has against its RAM, which varies by deployment, so evaluate it against
+        your sizes before selecting it.
+    query:
+      id: materialize.clusters.memory_high
+      stability: best-effort
+      description:
+        summary: Per user cluster replica, average heap as a percentage of memory plus swap limits.
+      promQL:
+        template: |
+          100 * (
+            max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+              avg_over_time(mz_metrics_resource_usage{metric="heap", cluster_environmentd_materialize_cloud_cluster_id=~"u.*", %%{excludeEnvironmentFilter}}[15m])
+            )
+            / on (namespace, pod) group_left ()
+            (
+              max by (namespace, pod) (mz_metrics_resource_usage{metric="memory_max"})
+              + on (namespace, pod)
+              max by (namespace, pod) (mz_metrics_resource_usage{metric="swap_max"})
+            )
+          ) > 40
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      datadogQuery: |
+        avg(last_15m):100 * (
+          max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:u*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
+        ) > 40
+  - alert: cluster-cpu-high
+    group: cluster_resources
+    stability: best-effort
+    for: 15m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster replica has used over 85% of its CPU limit for 15m.
+      degraded: |
+        The replica is close to being throttled, and sustained it shows up as
+        lag next. Consider a larger size.
+      notes: |
+        Not in the default set: a batch workload can run at its limit by
+        design, so select this for clusters where saturation is a problem.
+    query:
+      id: materialize.clusters.cpu_high
+      stability: best-effort
+      description:
+        summary: Per user cluster replica pod, CPU usage as a percentage of its limit.
+      promQL:
+        template: |
+          100 * max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+            label_replace(
+              sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", %%{excludeEnvironmentFilter}}[15m]))
+              / sum by (namespace, pod) (kube_pod_container_resource_limits{container="clusterd", resource="cpu", pod=~".*-cluster-u[0-9]+-replica-.*"}),
+              "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+            )
+          ) > 85
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      datadogQuery: |
+        avg(last_15m):100 * (
+          sum:container_cpu_usage_seconds_total{container:clusterd, pod:*-cluster-u*-replica-*, %%{excludeEnvironmentFilter}} by {namespace,pod}.as_rate()
+          / sum:kube_pod_container_resource_limits{container:clusterd, resource:cpu, pod:*-cluster-u*-replica-*} by {namespace,pod}
+        ) > 85
+  - alert: cluster-replica-oomkilled
+    group: cluster_resources
+    stability: best-effort
+    enabledByDefault: true
+    for: 1m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster replica was OOM-killed in the last 10m.
+      degraded: |
+        The replica outgrew its memory and swap and is rehydrating from
+        scratch. Size the cluster up, or find what grew in
+        `mz_internal.mz_dataflow_arrangement_sizes`. Repeated kills leave the
+        cluster unable to finish hydrating.
+    query:
+      id: materialize.clusters.replica_oomkilled
+      stability: best-effort
+      description:
+        summary: User cluster replicas that restarted in the last 10m after an OOM kill.
+      promQL:
+        # The last termination reason outlives the restart it describes, so on
+        # its own this would fire until the pod is replaced. Pairing it with a
+        # restart in the last 10m keeps it to the kill.
+        template: |
+          max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+            label_replace(
+              kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}},
+              "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+            )
+          )
+          and on (namespace, pod)
+          max by (namespace, pod) (increase(kube_pod_container_status_restarts_total{container="clusterd"}[10m:1m])) > 0
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      # The restart-in-window condition is a join, so it is the second query
+      # here: combine the two in a composite monitor (a && b).
+      datadogQuery:
+        - |
+          max(last_10m):max:kube_pod_container_status_last_terminated_reason{reason:oomkilled, container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod} > 0
+        - |
+          sum(last_10m):(
+            sum:kube_pod_container_status_restarts_total{container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod}.as_count()
+          ) > 0
+
+  # --- sources -------------------------------------------------------------
+  - alert: source-disconnected
+    group: sources
+    stability: best-effort
+    for: 5m
+    labels:
+      severity: warning
+      component: storage
+    description:
+      summary: A source has lost sight of its upstream for 5m.
+      degraded: |
+        The source's known offset has fallen below the offset it last
+        committed, which happens when the broker or database it reads is
+        unreachable. Throughput stops and everything downstream of it starts to
+        lag. Read the error with
+        `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status <> 'running'`.
+      notes: |
+        Not in the default set yet: neither test install runs a source, so it
+        has not been seen to fire. It catches an unreachable upstream, not every
+        way a source can stall; the freshness alerts catch the rest.
+    query:
+      id: materialize.sources.disconnected
+      stability: best-effort
+      description:
+        summary: Sources whose committed offset is ahead of the offset they know of upstream.
+      promQL:
+        template: |
+          max by (namespace, materialize_cloud_organization_name, source_id) (
+            mz_source_offset_committed{%%{excludeEnvironmentFilter}}
+          )
+          > max by (namespace, materialize_cloud_organization_name, source_id) (
+            mz_source_offset_known{%%{excludeEnvironmentFilter}}
+          )
+      # No value filter or `> bool` in Datadog: a positive difference is the
+      # disconnected case.
+      datadogQuery: |
+        max(last_5m):(
+          max:mz_source_offset_committed{%%{excludeEnvironmentFilter}} by {namespace,source_id}
+          - max:mz_source_offset_known{%%{excludeEnvironmentFilter}} by {namespace,source_id}
+        ) > 0
+
+queries:
+  # The cluster names these alerts carry come from the `mzClusterName` join,
+  # which reads this on its own account. Naming it here keeps it in the
+  # essential tier, so a deployment trimmed to `essential` still alerts on a
+  # cluster's name rather than on `u3`.
+  - id: materialize.clusters.names
+    stability: best-effort
+    description:
+      summary: Each cluster's name, by namespace and cluster id; the map the alerts join through to name a cluster.
+    promQL: |
+      group by (namespace, cluster_id, name) (mz_cluster_info{%%{mzEnvironmentFilter}})
+    datadogQuery: |
+      max:mz_cluster_info{%%{mzEnvironmentFilter}} by {namespace,cluster_id,name}

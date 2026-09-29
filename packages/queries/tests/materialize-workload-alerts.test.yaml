@@ -1,0 +1,112 @@
+# promtool unit tests for the rules rendered from materialize-workload-alerts.yaml.
+#
+# Run by `make rules-check`; see materialize-alerts.test.yaml for how the rule
+# files beside this one are produced and which placeholder values they carry.
+rule_files:
+  - materialize-workload-alerts.yaml
+evaluation_interval: 1m
+tests:
+  # --- cluster-stale: the freshest replica, and never the sentinel ----------
+  #
+  # A collection is as fresh as its freshest replica, since that one serves
+  # reads. A collection no replica has hydrated is exported as u64::MAX
+  # seconds, which would read as 580 billion years of lag after every restart.
+  - name: cluster-stale reads the freshest replica and ignores unhydrated collections
+    interval: 1m
+    input_series:
+      - series: 'mz_cluster_info{namespace="materialize-environment", cluster_id="u2", name="analytics", pod="mz-environmentd-0"}'
+        values: "1x40"
+      # u1: one replica is far behind, the other is fresh. Quiet.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u1", replica_id="u1", collection_id="u10", quantile="1"}'
+        values: "900x40"
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u1", replica_id="u2", collection_id="u10", quantile="1"}'
+        values: "5x40"
+      # u2: its only replica is 15 minutes behind. Fires, named.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u2", replica_id="u3", collection_id="u20", quantile="1"}'
+        values: "900x40"
+      # u3: still hydrating. Quiet here; it is the hydration rule's.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u3", replica_id="u4", collection_id="u30", quantile="1"}'
+        values: "18446744073709551615x40"
+    promql_expr_test:
+      - expr: count by (instance_id, cluster_name) (ALERTS{alertname="cluster-stale", alertstate="firing"})
+        eval_time: 30m
+        exp_samples:
+          - labels: '{instance_id="u2", cluster_name="analytics"}'
+            value: 1
+
+  # --- cluster-hydration-stuck: no replica hydrated, for the whole window ---
+  - name: cluster-hydration-stuck fires only when no replica has hydrated
+    interval: 1m
+    input_series:
+      # u3: unhydrated on its only replica. Fires once the hour is up.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u3", replica_id="u4", collection_id="u30", quantile="1"}'
+        values: "18446744073709551615x90"
+      # u1: one replica is hydrating, the other already serves. Quiet.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u1", replica_id="u1", collection_id="u10", quantile="1"}'
+        values: "18446744073709551615x90"
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u1", replica_id="u2", collection_id="u10", quantile="1"}'
+        values: "2x90"
+      # s2: a system cluster is the platform's rule, not this one.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="s2", replica_id="s1", collection_id="s400", quantile="1"}'
+        values: "18446744073709551615x90"
+    promql_expr_test:
+      - expr: count by (instance_id) (ALERTS{alertname="cluster-hydration-stuck", alertstate="firing"})
+        eval_time: 30m
+        exp_samples: []
+      - expr: count by (instance_id) (ALERTS{alertname="cluster-hydration-stuck", alertstate="firing"})
+        eval_time: 75m
+        exp_samples:
+          - labels: '{instance_id="u3"}'
+            value: 1
+
+  # --- cluster-memory-near-limit: heap against memory plus swap -------------
+  - name: cluster-memory-near-limit measures heap against memory plus swap
+    interval: 1m
+    input_series:
+      # u1: 95 of 50 + 50. Fires.
+      - series: 'mz_metrics_resource_usage{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd", metric="heap", cluster_environmentd_materialize_cloud_cluster_id="u1", cluster_environmentd_materialize_cloud_replica_id="u1", materialize_cloud_organization_name="main"}'
+        values: "95x20"
+      - series: 'mz_metrics_resource_usage{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd", metric="memory_max"}'
+        values: "50x20"
+      - series: 'mz_metrics_resource_usage{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd", metric="swap_max"}'
+        values: "50x20"
+      # u2: past its RAM but well inside its swap, which is the design. Quiet.
+      - series: 'mz_metrics_resource_usage{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd", metric="heap", cluster_environmentd_materialize_cloud_cluster_id="u2", cluster_environmentd_materialize_cloud_replica_id="u2", materialize_cloud_organization_name="main"}'
+        values: "60x20"
+      - series: 'mz_metrics_resource_usage{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd", metric="memory_max"}'
+        values: "50x20"
+      - series: 'mz_metrics_resource_usage{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd", metric="swap_max"}'
+        values: "50x20"
+    promql_expr_test:
+      - expr: count by (cluster_environmentd_materialize_cloud_cluster_id) (ALERTS{alertname="cluster-memory-near-limit", alertstate="firing"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{cluster_environmentd_materialize_cloud_cluster_id="u1"}'
+            value: 1
+
+  # --- cluster-replica-oomkilled: the kill, not the pod's lifetime ----------
+  #
+  # The last termination reason persists for the life of the pod, so on its own
+  # the rule would fire from the first OOM until the pod was replaced.
+  - name: cluster-replica-oomkilled fires on a recent kill and does not latch
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd", reason="OOMKilled"}'
+        values: "1x60"
+      # One restart at 10m, then none.
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd"}'
+        values: "0x9 1x50"
+      # A system cluster's OOM is system-cluster-terminated's.
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="materialize-environment", pod="mz-cluster-s2-replica-s1-gen-1-0", container="clusterd", reason="OOMKilled"}'
+        values: "1x60"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-s2-replica-s1-gen-1-0", container="clusterd"}'
+        values: "0x9 1x50"
+    promql_expr_test:
+      - expr: count by (pod) (ALERTS{alertname="cluster-replica-oomkilled", alertstate="firing"})
+        eval_time: 14m
+        exp_samples:
+          - labels: '{pod="mz-cluster-u1-replica-u1-gen-1-0"}'
+            value: 1
+      - expr: count by (pod) (ALERTS{alertname="cluster-replica-oomkilled", alertstate="firing"})
+        eval_time: 45m
+        exp_samples: []

@@ -654,6 +654,24 @@ rules:
     - materialize
     enabledByDefault: false
     minImportance: essential
+  environmentd-down:
+    file: materialize-alerts.yaml
+    group: environmentd
+    severity: critical
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  environmentd-not-scraped:
+    file: materialize-alerts.yaml
+    group: environmentd
+    severity: critical
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
   auth-errors:
     file: materialize-alerts.yaml
     group: auth
@@ -782,6 +800,42 @@ rules:
     - swap-nodes
     enabledByDefault: false
     minImportance: essential
+  system-cluster-falling-behind:
+    file: materialize-alerts.yaml
+    group: system_clusters
+    severity: warning
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  system-cluster-stale:
+    file: materialize-alerts.yaml
+    group: system_clusters
+    severity: critical
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  system-cluster-hydration-stuck:
+    file: materialize-alerts.yaml
+    group: system_clusters
+    severity: warning
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  system-cluster-memory-near-limit:
+    file: materialize-alerts.yaml
+    group: system_clusters
+    severity: critical
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
   environment-pod-pending-critical:
     file: materialize-alerts.yaml
     group: environment_health
@@ -799,6 +853,15 @@ rules:
     requires:
     - kube-state-metrics
     enabledByDefault: false
+    minImportance: essential
+  cluster-replica-not-ready:
+    file: materialize-alerts.yaml
+    group: environment_health
+    severity: warning
+    audience: platform
+    requires:
+    - kube-state-metrics
+    enabledByDefault: true
     minImportance: essential
   certificate-not-ready:
     file: materialize-alerts.yaml
@@ -870,5 +933,78 @@ rules:
     audience: platform
     requires:
     - feature-flags
+    enabledByDefault: false
+    minImportance: essential
+  cluster-falling-behind:
+    file: materialize-workload-alerts.yaml
+    group: freshness
+    severity: warning
+    audience: workload
+    requires:
+    - materialize
+    enabledByDefault: false
+    minImportance: essential
+  cluster-stale:
+    file: materialize-workload-alerts.yaml
+    group: freshness
+    severity: critical
+    audience: workload
+    requires:
+    - materialize
+    enabledByDefault: false
+    minImportance: essential
+  cluster-hydration-stuck:
+    file: materialize-workload-alerts.yaml
+    group: hydration
+    severity: warning
+    audience: workload
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  cluster-memory-near-limit:
+    file: materialize-workload-alerts.yaml
+    group: cluster_resources
+    severity: critical
+    audience: workload
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  cluster-memory-high:
+    file: materialize-workload-alerts.yaml
+    group: cluster_resources
+    severity: warning
+    audience: workload
+    requires:
+    - materialize
+    enabledByDefault: false
+    minImportance: essential
+  cluster-cpu-high:
+    file: materialize-workload-alerts.yaml
+    group: cluster_resources
+    severity: warning
+    audience: workload
+    requires:
+    - kube-state-metrics
+    - cadvisor
+    enabledByDefault: false
+    minImportance: essential
+  cluster-replica-oomkilled:
+    file: materialize-workload-alerts.yaml
+    group: cluster_resources
+    severity: warning
+    audience: workload
+    requires:
+    - kube-state-metrics
+    enabledByDefault: true
+    minImportance: essential
+  source-disconnected:
+    file: materialize-workload-alerts.yaml
+    group: sources
+    severity: warning
+    audience: workload
+    requires:
+    - materialize
     enabledByDefault: false
     minImportance: essential
