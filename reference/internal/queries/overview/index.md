@@ -15,6 +15,8 @@ are end-user voice; see [Dashboard Style Guidelines](/materialize-monitoring/ref
 
 ## In this section
 
+- **[Authoring Alerts](/materialize-monitoring/reference/internal/queries/alerts/)** — how an `alerts:` entry becomes an installed Prometheus rule: the
+  alerting context, capabilities, the default set, and what `gen-rules` rejects.
 - **[Datadog Translations](/materialize-monitoring/reference/internal/queries/datadog/)** — the PromQL→Datadog mapping, the OTLP naming assumptions it
   rests on, and the gaps where Datadog's language cannot express what the PromQL does.
 
@@ -67,8 +69,10 @@ The parameter names are shared across engines; the values are not.
 A PromQL context supplies label matchers (`mzEnvironmentFilter` → `materialize_cloud_organization_name=~"…"`), a
 Datadog context supplies tag matchers (`materialize_cloud_organization_name:…`).
 
-The permitted parameter names are an enum in the schema, so a typo fails validation rather than rendering an empty string.
-Every one of them must be implemented by the template engine.
+The permitted parameter names are an enum in the schema (`knownParameter`), and `check-queries` checks every `%%{…}`
+against it, so a typo fails validation rather than rendering an empty string.
+Every one of them must be implemented by the dashboard and extraction contexts, which a test reads from the schema to
+enforce. The alerting context implements a subset on purpose; see [Authoring Alerts](/materialize-monitoring/reference/internal/queries/alerts/).
 
 ## Consumers
 
@@ -95,6 +99,10 @@ Adding or changing a query has effects beyond the query itself:
   The converse also holds, because tiers select by metric *name*. A query naming a generic family such as
   `go_goroutines` admits every target's copy of it, not only the copy the query was written for, which is why
   `infra-alloy.yaml` holds its Go runtime families at `extended`.
+- **Alerting rules** (`mz-monitoring-build gen-rules`) render every `alerts:` entry into
+  `charts/materialize-monitoring/pre-rendered/rules/prometheus/`, which the chart installs as `PrometheusRule` resources.
+  An alert's query renders through its own context and is held to stricter checks than a panel's; see
+  [Authoring Alerts](/materialize-monitoring/reference/internal/queries/alerts/).
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries](/materialize-monitoring/reference/stable-metrics/common-queries/) from it.
   There is no generated intermediate to refresh.

@@ -160,23 +160,22 @@ It costs nothing and settles the question:
 count by (materialize_cloud_organization_name) (mz_dataflow_wallclock_lag_seconds)
 ```
 
-## Alert definitions are not alerts
+## Most alert definitions are not installed alerts
 
 > [!WARNING]
-> **No alert rules ship today, so silence proves nothing.**
+> **Only the default set of bundled rules installs, so silence proves little.**
 
-The alert definitions in this repo render to the docsite and describe real failure modes with real thresholds, but they
-are **not installed as rules**.
-No chart template emits a `PrometheusRule`, and the pre-rendered rule directories are empty, however
-`config.rules.prometheus.enabled` is set.
+The chart installs a default set of rules that have been checked against self-managed installs, and only where the
+deployment has what each rule needs (see [Configuring Alerting](../../alerting/configuring/#the-bundled-rules)).
+Most of the definitions in this repo are outside that set: some await triage, and some describe components only
+Materialize Cloud runs, so a self-managed install has no data behind them either way.
 
-So never reason "nothing is alerting, therefore it is healthy", and do not send someone to check their alerts.
+So never reason "nothing is alerting, therefore it is healthy" without first checking the alert is installed.
+`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
+default set, and the Thanos ruler's own rule list says what it is evaluating.
 Read the definitions as *thresholds* — they are the closest thing here to "how bad is this number" — and evaluate their
-expressions yourself against Thanos.
+expressions yourself against Thanos when in doubt.
 That is what the alert would have done.
-
-Some definitions also describe components that only exist in Materialize Cloud, so a self-managed install has no data
-behind them either way.
 
 ## Handing it over
 

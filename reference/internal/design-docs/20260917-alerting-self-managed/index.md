@@ -19,7 +19,7 @@ date: 2026-09-17
         </tr>
         <tr>
           <th>lastmod</th>
-          <td>2026-09-25 00:00:00 &#43;0000 UTC</td>
+          <td>2026-09-28 00:00:00 &#43;0000 UTC</td>
         </tr>
         <tr>
           <th>publishdate</th>
@@ -52,7 +52,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 Alertmanager is deployed and receives nothing, the Loki ruler runs with an empty rule store, the Thanos ruler is off, and the values key that claims to install Prometheus rules is read by no template.
 
 **The rules that exist are the wrong rules.**
-The query registry carries 85 alert definitions ported from Materialize Cloud, and roughly a quarter of them name components a self-managed deployment does not run.
+The query registry carries 89 alert definitions ported from Materialize Cloud, and roughly a quarter of them name components a self-managed deployment does not run.
 A rule set where one alert in four can never fire is not a starting point that can be trimmed; it is a starting point that has to be re-derived.
 
 **A whole class of alert has never been code anywhere.**
@@ -165,8 +165,8 @@ The honest summary is that every component is present and none of them are wired
 
 | Surface | State | Consequence |
 |---|---|---|
-| `packages/queries/materialize-alerts.yaml` | 30 alert definitions | Rendered to the docsite; not deployed |
-| `packages/queries/infra-alerts.yaml` | 55 alert definitions | Rendered to the docsite; not deployed |
+| `packages/queries/materialize-alerts.yaml` | 31 alert definitions | Rendered to the docsite; not deployed |
+| `packages/queries/infra-alerts.yaml` | 58 alert definitions | Rendered to the docsite; not deployed |
 | `charts/materialize-monitoring/templates/alerts/` | `.gitkeep` | No template emits any alerting resource |
 | `charts/materialize-monitoring/pre-rendered/rules/{prometheus,loki,thanos}/` | `.gitkeep` | Nothing is rendered into them; there is no `gen-rules` command |
 | `config.rules.prometheus.enabled` | `true` | Read by no template |
@@ -201,7 +201,7 @@ The design consequence is that **`thanos.ruler.enabled` is the switch that makes
 
 ### The rule set is Materialize Cloud's rule set
 
-The 85 definitions were ported from `infra/prometheus/alerting.py` in the Cloud repository, where they are deployed as an AWS Managed Prometheus `RuleGroupNamespace` and routed by `tier` and `team` labels.
+The 89 definitions were ported from the `alerting_v2.py` generation of `infra/prometheus/alerting.py` in the Cloud repository, where they are deployed as an AWS Managed Prometheus `RuleGroupNamespace` and routed by `tier` and `team` labels.
 That provenance shows.
 
 | Group | Count | Present in a stock self-managed install? | What it actually depends on |
@@ -213,7 +213,7 @@ That provenance shows.
 | `cilium` | 2 | Only on a cluster that runs Cilium | Cilium as the CNI, exporting its metrics |
 | `coredns` | 1 | Usually, as a cluster-provided component | CoreDNS being scraped |
 
-That is 28 of 85 that a stock install cannot fire, and only five of them carry the `deploymentMode: cloud-only` label that exists to say so.
+That is 28 of 89 that a stock install cannot fire, and only five of them carry the `deploymentMode: cloud-only` label that exists to say so.
 
 The fourth column is the point, and it is why the label is the wrong shape rather than merely incomplete.
 Every one of those dependencies is a property of a *deployment*, and each is a property a self-managed deployment may well have.
@@ -239,7 +239,7 @@ Three properties of that set are worth recording, because each is a direct conse
 
 **They are duplicated per region.** One rule per Loki datasource, three copies of each, kept in agreement by hand.
 
-**The copies have drifted.** Two carry a routing label that sends them to a test receiver rather than the on-call one, and their titles still end in `(copy)` and `(copy 2)`. The three copies of the panic detector do not agree on their own aggregation: two group by namespace, one by namespace and pod.
+**The copies have drifted.** Seven carry a routing label that sends them to a test receiver rather than the on-call one, and two titles still end in `(copy)` and `(copy 2)`. The three copies of the panic detector do not agree on their own aggregation: two group by namespace, one by namespace and pod, and as of September 2026 all three are paused.
 
 **Deployment-specific exclusions are compiled into the query.** Two of the panic detectors carry a hardcoded namespace exclusion naming a single environment, inside the LogQL, where nothing reviews it and nothing expires it.
 
@@ -530,6 +530,18 @@ several clusters merges their identical label sets into one alert.
 ## Choosing what ships enabled
 
 **Decision: every rule declares the capabilities it requires; `rules.selected` selects by capability and by name; applicability is checked at build time.**
+
+> [!NOTE]
+>   **As built, capabilities are mostly inferred rather than declared.**
+>   `gen-rules` maps every metric a rule reads through an ordered table (`packages/mzmon-lib/src/query/rules/capability.rs`),
+>   and a rule's `requires` lists only what metric names cannot show, such as a rule reading nothing but `up`.
+>   A metric the table does not claim fails the build, which is the applicability check below, with a list to check against.
+>   The vocabulary is twenty capabilities: eight the chart derives from what it deploys, twelve an operator lists in `rules.capabilities`.
+>   `synthetic-uptime` covers the probe exporter the examples below name, and `feature-flags` the flag-staleness rules.
+>
+>   **The vetted default is a property of the rule.** `enabledByDefault: true` puts a rule in the default set, meaning it installs wherever its capabilities are present.
+>   `rules.selected` takes alert names, rule-group names and `*` rather than capability tags, since a capability already gates applicability and selecting by one would say the same thing twice.
+>   The contributor-facing detail is [Authoring Alerts](../../queries/alerts/).
 
 ### `cloud-only` is the wrong axis
 
@@ -839,9 +851,9 @@ Work in this repository, roughly in dependency order.
 
 | Item | Why it blocks |
 |---|---|
-| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | Nothing renders rules today; every item below consumes the output |
-| Capability tags (`requires`) on rules, and the schema change behind them | Replaces `deploymentMode: cloud-only` with what it was standing for |
-| Build-time applicability check against the extracted metric set | Decides the default-enabled set, and catches an untagged rule that cannot fire |
+| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done for PromQL, through an alerting render context whose deployment-specific values are install-time placeholders. LogQL is not rendered yet |
+| Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
+| Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
@@ -852,9 +864,9 @@ Work in this repository, roughly in dependency order.
 | Alertmanager ServiceMonitor | ✅ done |
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
-| `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | An alert with no stated action is half an alert |
-| Alert names added to the committed-surface check | Three extension points name alerts |
-| `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | The extension surface |
+| `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | 🔨 Every rule carries `runbook_url`, pointing for now at its entry on Common Alerts. The runbooks are not written |
+| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/prometheus/_index.yaml` is in the committed-surface table and CODEOWNERS |
+| `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled` and `rules.capabilities` are done; `extra` and `overrides` are not |
 | `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |
@@ -862,14 +874,14 @@ Work in this repository, roughly in dependency order.
 | Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
 | Terraform module surface for receivers and criticality, with `sensitive` credential variables | Where the Secret-creation ergonomics belong |
-| Remove `config.rules.*` / `config.alerts.enabled` or make them load-bearing | Four values keys currently read by nothing |
+| Remove `config.rules.*` / `config.alerts.enabled` or make them load-bearing | ✅ removed; the render warns when a values file still sets them |
 
 ## Testing
 
 The kind E2E tiers can prove most of this, and the parts they cannot are worth naming rather than pretending.
 
-- **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group.
-- **Every shipped rule's metrics exist.** The applicability check, asserted as a test rather than only as a build step, so that a rule added later cannot quietly reintroduce the problem.
+- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built for PromQL: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. No LogQL rules exist yet to validate.
+- ✅ **Every shipped rule's metrics exist.** The applicability check, asserted as a test rather than only as a build step, so that a rule added later cannot quietly reintroduce the problem.
 - **The rulers load what the chart rendered.** Assert against each ruler's own API that the group count and names match the render, rather than asserting the ConfigMap exists. A ruler that rejected a group reports healthy.
 - **An alert reaches Alertmanager.** Install a rule that fires on `vector(1)`, assert it appears in Alertmanager's API within the evaluation and group-wait interval. This is the end-to-end assertion the whole page exists for.
 - **The routing matrix routes.** For each of the three criticality settings, assert that a synthetic alert at each severity lands on the expected receiver, read from Alertmanager's own routing-tree API rather than from the rendered config. Rendering the tree correctly and Alertmanager interpreting it as intended are different claims.
@@ -886,7 +898,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
   rather than two. The second half is the check that a two-replica default does not double every page.
 - **Losing a replica keeps notifying.** Delete one Alertmanager pod and assert an alert still reaches its receiver, which is the node-drain case the HA default exists for.
 - **Every shipped alert has a reachable runbook.** Assert each `runbook_url` resolves to a page that exists in the built docsite, in CI without a cluster. A dead runbook link is discovered at 03:00 otherwise.
-- **Capability-tagged rules stay out until selected.** Assert a `crdb-dedicated` rule is absent by default and present once the tag is selected, since a tag that fails open is worse than no tag.
+- ✅ **Capability-tagged rules stay out until selected.** Assert a `crdb-dedicated` rule is absent by default and present once the tag is selected, since a tag that fails open is worse than no tag.
 - ✅ **Credentials do not appear in the render.** Assert no receiver credential is present in any rendered object except
   by Secret reference, which is the mechanical half of the inlining rule.
 - **`ALERTS` arrives through the gateway.** Assert the series is queryable in Thanos *and* visible to a gateway destination, because landing in Thanos by a second path would satisfy a naive version of this test.
@@ -919,9 +931,9 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 
 Settled in review and recorded in the sections above rather than here: alert names are committed, `notice` stays, Alertmanager runs two replicas with gossip by default, runbooks live under `operating/runbooks/`, receiver types are Alertmanager's rather than the chart's, and the `cloud-only` rules become capability-tagged rather than deleted.
 
-- [ ] **Which rules are in the default-enabled set, exactly?** The mechanism is proposed; the list is not. It SHOULD be short enough that an operator reads all of it, and every entry SHOULD have a runbook.
-- [ ] **What is the full capability-tag vocabulary?** Five tags are named as examples. The set wants deriving from the rules rather than inventing, and a tag that applies to one rule is a label pretending to be a category.
-- [ ] **Does the build-time applicability check exclude or fail for an untagged rule?** Failing is proposed, on the grounds that an untagged unreachable rule is mistagged or broken. It turns a scrape-config change into a broken build in an unrelated area, which is the cost.
+- [ ] **Which rules are in the default-enabled set, exactly?** The mechanism is proposed; the list is not. It SHOULD be short enough that an operator reads all of it, and every entry SHOULD have a runbook. As built, eighteen rules are in it, each evaluated against both self-managed test installs without firing falsely; the rest await triage.
+- [x] **What is the full capability-tag vocabulary?** Five tags are named as examples. The set wants deriving from the rules rather than inventing, and a tag that applies to one rule is a label pretending to be a category. Derived from the rules: twenty, listed in the schema.
+- [x] **Does the build-time applicability check exclude or fail for an untagged rule?** Failing is proposed, on the grounds that an untagged unreachable rule is mistagged or broken. It turns a scrape-config change into a broken build in an unrelated area, which is the cost. As built, it fails when a metric has no known source, and otherwise infers the tag, so an untagged rule cannot exist.
 - [ ] **Is `severity` itself on the deprecation cycle?** Alert names are, as of this design. External routing matches on `severity` too, which makes adding a fourth value a change to somebody's routing tree, and the same argument that committed the names applies to the label values.
 - [ ] **Does the chart render log rules per tenant, and is `byNamespace` supportable at all?** A namespace created after the last Helm run has no rules under it, and there may be no version of this that is complete.
 - [ ] **What is the grouping key?** `[alertname, namespace]` produces one notification per condition per environment, which is right for most rules and wrong for a node-level condition affecting forty pods. Grouping may need to be per rule rather than global.

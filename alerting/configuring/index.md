@@ -8,10 +8,10 @@
 A default install runs two rule evaluators and one notifier.
 Thanos Ruler evaluates PromQL, Loki Ruler evaluates LogQL, and both send what they produce to a single Alertmanager.
 
-**The evaluators and the notifier are wired; the shipped rule set is not built yet.**
-`pre-rendered/rules/` ships empty, so the only rules evaluated are those an operator applies and the Thanos subchart's own mixin rules.
-Where an alert goes is configured under `alerting`, and until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
-This page describes the two evaluators and how they reach Alertmanager.
+**The evaluators, the notifier and a default set of bundled rules are all installed.**
+Which bundled rules install is configured under `rules`, and where an alert goes under `alerting`.
+Until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
+This page describes the bundled rules, the two evaluators, and how they reach Alertmanager.
 [Alert Architecture](../architecture/) describes Alertmanager itself, and [Alert Channels](../channels/) describes routing and receivers.
 The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
@@ -24,6 +24,40 @@ document are to be interpreted as described in
 <a href="https://datatracker.ietf.org/doc/html/rfc2119" rel="external" class="external-link">RFC 2119</a>.
 </blockquote>
 
+
+## The bundled rules
+
+The chart ships alerting rules for Materialize and for the platform under it, installed as `PrometheusRule` resources that the Thanos ruler evaluates.
+[Common Alerts](../../reference/stable-metrics/common-alerts/) lists every one, with what it detects.
+
+A rule installs when all of the following hold:
+
+| Condition | Configured by |
+|---|---|
+| Rules are enabled | `rules.enabled`, default `true` |
+| Every capability the rule requires is present | derived from what the chart deploys, plus `rules.capabilities` |
+| The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
+| The rule is not disabled | `rules.disabled` takes alert names |
+
+A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
+The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
+Everything else is listed explicitly; the full list and what each means are in the chart's `values.yaml` under `rules.capabilities`.
+A selected rule whose capabilities are missing is still not installed, and the render says so.
+
+The **default set** is the rules that have been evaluated against a live self-managed install without firing falsely.
+The rest of the bundled rules are available through `rules.selected`, and SHOULD be evaluated against the deployment before being relied on.
+
+Rules about a Materialize environment's pods scope to its namespaces.
+The chart takes them from `rules.namespaces.environment`, falling back to `materialize.namespaces` and then to `materialize-system.namespace`.
+A deployment whose environments live elsewhere MUST set one of these, or those rules match nothing.
+`rules.namespaces.exclude` removes namespaces from alerting altogether.
+
+The infrastructure rules grade a workload by its tier in `rules.infraWorkloads`: `core`, `important`, `nonessential`, and `daemonset` for what every node runs.
+The defaults cover the Kubernetes add-ons common on EKS and GKE and this chart's own collectors.
+A cluster with other add-ons SHOULD list them, since a workload in no tier is one the tiered rules never grade.
+Each entry is a regex matched against the whole container or Deployment name.
+
+`materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
 
 ## Two evaluators, one notifier
 
@@ -108,6 +142,11 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `loki.ruler.enabled` | `true` | Deploys the LogQL evaluator |
 | `loki.loki.rulerConfig.alertmanager_url` | Every replica of the bundled Alertmanager, by SRV lookup | Clearing it leaves the ruler evaluating recording rules and discarding alerts. The `_http._tcp.` form requires `enable_alertmanager_discovery: true` |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
+| `rules.enabled` | `true` | Installs the bundled rules that apply |
+| `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
+| `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
+| `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
+| `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
@@ -135,10 +174,9 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 
 | Missing | Consequence |
 |---|---|
-| The shipped rule set | Only rules an operator supplies, and the Thanos subchart's mixin rules, fire |
-| `gen-rules` | The alert definitions in the query registry render to [Common Alerts](../../reference/stable-metrics/common-alerts/) and are not deployed |
+| Triage of the rest of the bundled set | Most bundled rules are outside the default set until each is checked against a self-managed install |
 | Log-derived alert definitions | Panic and correctness detection is not yet expressible here |
-| Runbook links | An alert with no stated action is half an alert |
+| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/stable-metrics/common-alerts/) until runbooks exist |
 | A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
 | Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
 

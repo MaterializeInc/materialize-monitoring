@@ -5,9 +5,13 @@
 
 # Common Alerts
 
+These are the alerting rules the chart bundles, generated from the query registry.
+Each is installed only where the deployment has the capabilities it requires, and only the default set installs without
+being selected; see [Configuring Alerting](/materialize-monitoring/alerting/configuring/#the-bundled-rules).
+
 > [!WARNING]
-> Many of these alerts are not suited for all deployments.
-> Do not use the entire set as is!
+> Rules outside the default set have not all been checked against a self-managed install.
+> Evaluate one against the deployment before relying on it.
 
 
 
@@ -31,6 +35,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_capacity_used <span style="color:#f92672">/</span> crdb_dedicated_capacity
@@ -45,6 +52,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_capacity_used <span style="color:#f92672">/</span> crdb_dedicated_capacity
@@ -59,6 +69,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_capacity_used <span style="color:#f92672">/</span> crdb_dedicated_capacity
@@ -73,6 +86,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>crdb_dedicated_sys_cpu_combined_percent_normalized[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
@@ -87,6 +103,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>crdb_dedicated_sys_cpu_combined_percent_normalized[<span style="color:#e6db74">2h</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
@@ -101,6 +120,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.95</span>,
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -117,6 +139,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_rocksdb_read_amplification<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">150</span>
 </span></span></code></pre></div>
@@ -129,6 +154,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_rocksdb_read_amplification<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">50</span>
 </span></span></code></pre></div>
@@ -141,6 +169,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_ranges_unavailable<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
@@ -153,6 +184,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_ranges_underreplicated<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
@@ -165,6 +199,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">deriv</span><span style="color:#f92672">(</span>crdb_dedicated_sql_mem_distsql_current[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
@@ -179,6 +216,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  crdb_dedicated_sql_mem_distsql_current
@@ -197,6 +237,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_intentcount<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span>
 </span></span></code></pre></div>
@@ -209,6 +252,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>crdb_dedicated_intentcount<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">10</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">1000</span>
 </span></span></code></pre></div>
@@ -221,6 +267,9 @@ Labels:
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>crdb-dedicated</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max_over_time</span><span style="color:#f92672">(</span>crdb_dedicated_schedules_backup_last_completed_time[<span style="color:#e6db74">60m</span>]<span style="color:#f92672">))</span>
@@ -235,6 +284,9 @@ Labels:
         <li><strong>component:</strong> cilium</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cilium</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>map_name, instance<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  cilium_bpf_map_pressure
@@ -249,6 +301,9 @@ Labels:
         <li><strong>component:</strong> cilium</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cilium</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>direction, reason, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cilium_drop_count_total[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
@@ -263,6 +318,9 @@ Labels:
         <li><strong>component:</strong> coredns</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>coredns</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, service<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -279,6 +337,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_node_spec_taint{key<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">node.kubernetes.io/unreachable</span>&#34;}
 </span></span></code></pre></div>
@@ -291,6 +352,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_current_replicas
@@ -306,6 +370,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_horizontalpodautoscaler_status_current_replicas
@@ -321,6 +388,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_fs_usage_bytes<span style="color:#f92672">)</span>
@@ -336,6 +406,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_node_status_condition{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">DiskPressure</span>&#34;, status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">true</span>&#34;}
@@ -350,6 +423,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kubelet-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, persistentvolumeclaim<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -369,6 +445,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>alloy</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_write_dropped_entries_total[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -383,6 +462,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -402,6 +484,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>loki_panic_total[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
@@ -416,6 +501,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.95</span>,
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le, job<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -432,6 +520,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -451,6 +542,9 @@ Labels:
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, job, route<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -470,6 +564,9 @@ Labels:
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*/.*materialize-(environmentd|clusterd)</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">s5</span>&#34;}
@@ -484,6 +581,9 @@ Labels:
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>job, app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -503,6 +603,9 @@ Labels:
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>loki</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>loki_distributor_bytes_received_total[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">))</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
@@ -515,6 +618,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>deployment, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
@@ -529,6 +635,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>deployment, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
@@ -543,6 +652,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>deployment, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_deployment_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Available</span>&#34;, status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">true</span>&#34;, deployment<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
@@ -557,6 +669,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1.77</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
@@ -575,6 +690,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">10730942464</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
@@ -593,6 +711,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1.77</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
@@ -611,6 +732,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -630,6 +754,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -649,6 +776,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_file_descriptors<span style="color:#f92672">)</span>
@@ -666,6 +796,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -685,6 +818,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, namespace, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -704,6 +840,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -723,6 +862,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -742,6 +884,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraCoreWorkloadList}</span>&#34;}
@@ -759,6 +904,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraImportantWorkloadList}</span>&#34;}
@@ -776,6 +924,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;}
@@ -793,6 +944,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_status_phase{<span style="color:#960050;background-color:#1e0010">${excludeMzDeploymentNamespaceFilter</span>}, phase<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
@@ -807,6 +961,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{<span style="color:#960050;background-color:#1e0010">${excludeMzDeploymentNamespaceFilter</span>}, container<span style="color:#960050;background-color:#1e0010">!~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
@@ -821,6 +978,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">${infraNonessentialWorkloadList}</span>&#34;}[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
@@ -835,6 +995,9 @@ Labels:
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_container_status_waiting <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
@@ -850,6 +1013,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">absent</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -869,6 +1035,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>node_network_receive_bytes_total{device<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">eth0</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -887,6 +1056,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>node_network_receive_bytes_total{device<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">eth0</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -905,6 +1077,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>, <code>node-exporter</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>node_network_receive_bytes_total{device<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">eth0</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -923,6 +1098,9 @@ Labels:
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>node-exporter</code>, <code>kubelet-metrics</code>, <code>egress-gateway</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -956,6 +1134,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}can_connect{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -973,6 +1154,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}can_connect{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -990,6 +1174,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}envd_up{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -1004,6 +1191,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}views_query_successful{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -1018,6 +1208,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>synthetic-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}views_query_successful{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -1032,6 +1225,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>, <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">s.*[1345]</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
@@ -1052,6 +1248,9 @@ Labels:
         <li><strong>component:</strong> storage</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  mz_shard_finalization_outstanding{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -1066,6 +1265,9 @@ Labels:
         <li><strong>component:</strong> auth</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>frontegg-auth</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, status<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_auth_request_count{status<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">(2|401).*</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
@@ -1080,6 +1282,9 @@ Labels:
         <li><strong>component:</strong> auth</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>frontegg-auth</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_auth_request_count{status<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">401.*</span>&#34;, path<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">refresh_token</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
@@ -1094,6 +1299,9 @@ Labels:
         <li><strong>component:</strong> console</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>application_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1124,6 +1332,9 @@ Labels:
         <li><strong>component:</strong> persist</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_blob_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_consensus_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
@@ -1151,6 +1362,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_pod_container_status_last_terminated_exitcode{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">166</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
@@ -1165,6 +1379,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*environmentd.+</span>&#34;, container<span style="color:#f92672">!=</span>&#34;&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
@@ -1183,6 +1400,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1202,6 +1422,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance, container, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_cfs_throttled_periods_total{container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">environmentd</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
@@ -1217,6 +1440,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cadvisor</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1236,6 +1462,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, container<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
@@ -1254,6 +1483,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>kube_pod_container_status_last_terminated_exitcode{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*cluster-s.*</span>&#34;} <span style="color:#f92672">!=</span> <span style="color:#ae81ff">166</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
@@ -1268,6 +1500,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>memory-limiter</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
@@ -1287,6 +1522,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span>mz_dataflow_replica_expiration_remaining_seconds{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*cluster.+</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">24</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">7</span>
@@ -1300,6 +1538,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>, <code>swap-nodes</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
@@ -1334,6 +1575,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod_base<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
@@ -1351,6 +1595,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  kube_pod_status_phase{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, phase<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
@@ -1365,6 +1612,9 @@ Labels:
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>cert-manager</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name, namespace, condition<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  certmanager_certificate_ready_status{condition<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">True</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
@@ -1379,6 +1629,9 @@ Labels:
         <li><strong>component:</strong> console</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.95</span>,
@@ -1397,6 +1650,9 @@ Labels:
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
@@ -1422,6 +1678,9 @@ Labels:
         <li><strong>component:</strong> external-uptime</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>external-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  mz_external_envd_up
@@ -1436,6 +1695,9 @@ Labels:
         <li><strong>component:</strong> external-uptime</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>external-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>connection_type, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_external_calls_count{status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">failed</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -1450,6 +1712,9 @@ Labels:
         <li><strong>component:</strong> external-uptime</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>external-uptime</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>connection_type, namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>mz_external_calls_count{status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">attempted</span>&#34;}[<span style="color:#e6db74">2m</span>]<span style="color:#f92672">)</span>
@@ -1464,6 +1729,9 @@ Labels:
         <li><strong>component:</strong> launchdarkly</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>feature-flags</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">timestamp</span><span style="color:#f92672">(</span>mz_parameter_frontend_last_sse_time_seconds{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
@@ -1479,6 +1747,9 @@ Labels:
         <li><strong>component:</strong> launchdarkly</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>feature-flags</code>.
+</p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">timestamp</span><span style="color:#f92672">(</span>mz_parameter_frontend_last_cse_time_seconds{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
