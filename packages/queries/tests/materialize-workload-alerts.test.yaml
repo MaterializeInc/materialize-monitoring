@@ -110,3 +110,61 @@ tests:
       - expr: count by (pod) (ALERTS{alertname="cluster-replica-oomkilled", alertstate="firing"})
         eval_time: 45m
         exp_samples: []
+
+  # --- cluster-cpu-high: a user replica's CPU against its own limit ----------
+  #
+  # The cluster id comes from the replica's pod name, since cAdvisor series
+  # carry no cluster label, and only user clusters are this rule's.
+  - name: cluster-cpu-high fires on a user replica near its CPU limit
+    interval: 1m
+    input_series:
+      # u1: 0.9 of a 1-core limit. Fires.
+      - series: 'container_cpu_usage_seconds_total{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd"}'
+        values: "0+54x60"
+      - series: 'kube_pod_container_resource_limits{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd", resource="cpu"}'
+        values: "1x60"
+      # u2: half its limit. Quiet.
+      - series: 'container_cpu_usage_seconds_total{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd"}'
+        values: "0+30x60"
+      - series: 'kube_pod_container_resource_limits{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd", resource="cpu"}'
+        values: "1x60"
+      # s2: hotter still, but a system cluster is the platform's.
+      - series: 'container_cpu_usage_seconds_total{namespace="materialize-environment", pod="mz-cluster-s2-replica-s1-gen-1-0", container="clusterd"}'
+        values: "0+57x60"
+      - series: 'kube_pod_container_resource_limits{namespace="materialize-environment", pod="mz-cluster-s2-replica-s1-gen-1-0", container="clusterd", resource="cpu"}'
+        values: "1x60"
+    promql_expr_test:
+      - expr: count by (pod, cluster_environmentd_materialize_cloud_cluster_id) (ALERTS{alertname="cluster-cpu-high", alertstate="firing"})
+        eval_time: 40m
+        exp_samples:
+          - labels: '{pod="mz-cluster-u1-replica-u1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u1"}'
+            value: 1
+
+  # --- source-disconnected: committed ahead of known, and only while it lasts --
+  #
+  # Neither test install runs a source, so this is the only place the
+  # comparison is exercised.
+  - name: source-disconnected fires while a source cannot see its upstream
+    interval: 1m
+    input_series:
+      # u5: disconnected throughout. Fires.
+      - series: 'mz_source_offset_committed{namespace="materialize-environment", materialize_cloud_organization_name="main", source_id="u5"}'
+        values: "100x20"
+      - series: 'mz_source_offset_known{namespace="materialize-environment", materialize_cloud_organization_name="main", source_id="u5"}'
+        values: "90x20"
+      # u6: behind for two minutes, then reconnected. Quiet.
+      - series: 'mz_source_offset_committed{namespace="materialize-environment", materialize_cloud_organization_name="main", source_id="u6"}'
+        values: "100x20"
+      - series: 'mz_source_offset_known{namespace="materialize-environment", materialize_cloud_organization_name="main", source_id="u6"}'
+        values: "90x2 110x18"
+      # u7: healthy, known ahead of committed. Quiet.
+      - series: 'mz_source_offset_committed{namespace="materialize-environment", materialize_cloud_organization_name="main", source_id="u7"}'
+        values: "100x20"
+      - series: 'mz_source_offset_known{namespace="materialize-environment", materialize_cloud_organization_name="main", source_id="u7"}'
+        values: "120x20"
+    promql_expr_test:
+      - expr: count by (source_id) (ALERTS{alertname="source-disconnected", alertstate="firing"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{source_id="u5"}'
+            value: 1

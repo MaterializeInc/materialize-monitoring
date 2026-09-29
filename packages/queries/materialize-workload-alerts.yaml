@@ -156,7 +156,7 @@ alerts:
       # Datadog aggregates once, so this counts collections unhydrated on any
       # replica rather than on every one.
       datadogQuery: |
-        max(last_1h):(
+        min(last_1h):(
           max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
         ) >= 1000000000000000000
 
@@ -373,7 +373,7 @@ alerts:
       # No value filter or `> bool` in Datadog: a positive difference is the
       # disconnected case.
       datadogQuery: |
-        max(last_5m):(
+        min(last_5m):(
           max:mz_source_offset_committed{%%{excludeEnvironmentFilter}} by {namespace,source_id}
           - max:mz_source_offset_known{%%{excludeEnvironmentFilter}} by {namespace,source_id}
         ) > 0

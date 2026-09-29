@@ -471,7 +471,7 @@ alerts:
       promQL: |
         kube_node_spec_taint{key="node.kubernetes.io/unreachable"}
       datadogQuery: |
-        max(last_10m):max:kube_node_spec_taint{key:node.kubernetes.io/unreachable} by {node} >= 1
+        min(last_10m):max:kube_node_spec_taint{key:node.kubernetes.io/unreachable} by {node} >= 1
   - alert: k8s-horizontalpodautoscaler-replicas-critical
     group: hpa
     stability: best-effort
@@ -570,7 +570,7 @@ alerts:
           kube_node_status_condition{condition="DiskPressure", status="true"}
         ) > 0
       datadogQuery: |
-        max(last_15m):(
+        min(last_15m):(
           max:kube_node_status_condition{condition:DiskPressure, status:true} by {node}
         ) > 0
   - alert: k8s-volume-usage
@@ -1330,7 +1330,7 @@ alerts:
           kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase="Pending"}
         ) > 0
       datadogQuery: |
-        max(last_20m):(
+        min(last_20m):(
           max:kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase:Pending} by {namespace,pod}
         ) > 0
   - alert: pod-restart-rate-high
@@ -1403,7 +1403,7 @@ alerts:
         ) > 0
       # The 10-minute pod-age guard has no Datadog equivalent.
       datadogQuery: |
-        max(last_1m):(
+        min(last_1m):(
           sum:kube_pod_container_status_waiting{*} by {namespace,pod}
         ) > 0
 
