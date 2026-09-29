@@ -229,6 +229,7 @@ There is no CI gate for this — see [why](../design-docs/20260823-deprecation-p
 | `terraform/modules/*/variables.tf`, `outputs.tf` | module inputs and outputs |
 | `charts/*/pre-rendered/dashboards/` | dashboard identities |
 | `charts/*/pre-rendered/metrics/metric-tiers.yaml` | tier names |
+| `charts/*/pre-rendered/rules/prometheus/_index.yaml` | the alert names that ship, which are in the default set, and the capability names `rules.capabilities` accepts |
 
 These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/CODEOWNERS) covers, so the review request arrives on its own.
 The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.

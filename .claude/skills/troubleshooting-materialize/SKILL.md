@@ -58,10 +58,12 @@ conveniences. Everything they do, Grafana's Explore view also does.
 `packages/queries/*.yaml`, and that prose is what the panel shows. Do not invent an
 interpretation of a metric that has one written down.
 
-**Silence is not health.** No alert rules ship — the definitions exist, but no
-template emits a `PrometheusRule`. Never conclude "nothing is alerting, so it is
-fine", and never send someone to check their alerts. Evaluate the alert's own
-expression instead; that is what it would have done.
+**Silence is not health.** Only a default set of the bundled rules installs, and
+only where the deployment has what each needs; most definitions are not
+installed. Never conclude "nothing is alerting, so it is fine" without checking
+the alert is in `pre-rendered/rules/prometheus/_index.yaml`'s default set and the
+ruler is evaluating it. Evaluate the alert's own expression instead; that is what
+it would have done.
 
 **Confirm a label before building on it.** `count by (<label>) (<metric>)` costs
 nothing and settles what a series actually carries. The scoping label on

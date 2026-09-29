@@ -44,6 +44,7 @@ jobs:
               - packages/mz-monitoring-build/**
               - charts/materialize-monitoring/pre-rendered/pipelines/**
               - charts/materialize-monitoring/pre-rendered/metrics/**
+              - charts/materialize-monitoring/pre-rendered/rules/**
               - Cargo.toml
               - Cargo.lock
               - Makefile
@@ -110,6 +111,21 @@ jobs:
           dir=charts/materialize-monitoring/pre-rendered/metrics
           if [ -n "$(git status --porcelain -- "$dir")" ]; then
             echo "::error::Generated metric-tiers.yaml is stale or uncommitted. Run 'make metrics' locally and commit."
+            git status --porcelain -- "$dir"
+            exit 1
+          fi
+      # The alerting rules are rendered from the query registry and checked in,
+      # the same freshness contract again. gen-rules also fails outright on any
+      # alert it cannot render, so this step is the registry's rule check too.
+      - name: make rules
+        run: |
+          rm -f charts/materialize-monitoring/pre-rendered/rules/prometheus/*.yaml
+          make rules
+      - name: generated alerting rules are up to date
+        run: |
+          dir=charts/materialize-monitoring/pre-rendered/rules
+          if [ -n "$(git status --porcelain -- "$dir")" ]; then
+            echo "::error::Generated alerting rules are stale or uncommitted. Run 'make rules' locally and commit."
             git status --porcelain -- "$dir"
             exit 1
           fi

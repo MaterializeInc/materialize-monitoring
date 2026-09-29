@@ -1,0 +1,409 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for which bundled alerting rules install, and what they say once they do.
+#
+# The rules are rendered at build time into pre-rendered/rules/prometheus/ and
+# filtered here. Every mistake these tests lock down is silent at runtime: a rule
+# gated on a capability the deployment has, a namespace placeholder left in an
+# expression, or a misspelt name in `rules.disabled` all produce a healthy ruler
+# evaluating the wrong set, and an alert that never fires reads exactly like one
+# that has nothing to report.
+#
+# Presence is asserted with JSONPath filters on the parsed document
+# (`spec.groups[*].rules[?(@.alert == "x")]`) rather than with the `*Raw` regex
+# asserts, which read only non-YAML templates and pass vacuously on a manifest.
+suite: alerting rules
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+templates:
+  - templates/alerts/prometheusrules.yaml
+  - templates/validate.yaml
+  - templates/NOTES.txt
+tests:
+  # --- what installs --------------------------------------------------------
+
+  - it: installs the vetted default set as PrometheusRules
+    template: templates/alerts/prometheusrules.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: PrometheusRule
+      - equal:
+          path: metadata.labels["app.kubernetes.io/part-of"]
+          value: materialize-monitoring
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+
+  - it: installs a vetted rule without it being selected
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "clusterd-error-kill")]
+
+  - it: leaves an unvetted rule out until it is selected
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "k8s-daemonset-saturating-cpu")]
+
+  # Capability-gated rules stay out until the deployment says it has what they
+  # need. The CockroachDB rules read CockroachDB Cloud's export prefix, which no
+  # stock install produces.
+  - it: leaves capability-gated rules out even when every rule is selected
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["*"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - notExists:
+          path: spec.groups[?(@.name == "crdb")]
+
+  - it: installs capability-gated rules once the capability is listed
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["crdb"]
+      rules.capabilities: ["crdb-dedicated"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - exists:
+          path: spec.groups[?(@.name == "crdb")].rules[?(@.alert == "crdb-disk-usage-critical")]
+
+  # The `loki` group also holds `alloy-log-drops`, which needs Alloy rather than
+  # Loki, so the group survives and only the Loki rules leave it.
+  - it: drops rules for a component the chart no longer collects
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      loki.monitoring.serviceMonitor.enabled: false
+      rules.selected: ["loki"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "loki-push-err-high")]
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "alloy-log-drops")]
+
+  - it: disables a default rule by name
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.disabled: ["envd-terminated"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "envd-terminated")]
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "clusterd-error-kill")]
+
+  - it: renders nothing when rules are off
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The template fails on any placeholder it does not fill, so a render with
+  # every rule in it is the leftover check.
+  - it: fills every placeholder when every rule installs
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["*"]
+      rules.capabilities:
+        - synthetic-uptime
+        - external-uptime
+        - feature-flags
+        - frontegg-auth
+        - memory-limiter
+        - crdb-dedicated
+        - cilium
+        - coredns
+        - cert-manager
+        - kubelet-metrics
+        - swap-nodes
+        - egress-gateway
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  # --- placeholders ---------------------------------------------------------
+
+  - it: scopes environment rules to the configured namespaces
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.namespaces.environment: ["env-a", "env-b"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "environment_health")].rules[?(@.alert == "environment-pod-pending-critical")].expr
+          pattern: 'namespace=~"env-a\|env-b"'
+
+  - it: defaults the environment namespace to materialize-system.namespace
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      materialize-system.namespace: my-env
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "environment_health")].rules[?(@.alert == "environment-pod-pending-critical")].expr
+          pattern: 'namespace=~"my-env"'
+
+  - it: prefers materialize.namespaces over materialize-system.namespace
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      materialize.namespaces: ["scoped-a", "scoped-b"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "environment_health")].rules[?(@.alert == "environment-pod-pending-critical")].expr
+          pattern: 'namespace=~"scoped-a\|scoped-b"'
+
+  - it: excludes the configured namespaces
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.namespaces.exclude: ["scratch"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "environment_health")].rules[?(@.alert == "environment-pod-pending-critical")].expr
+          pattern: 'namespace!~"scratch"'
+
+  # `a^` matches no string. An empty alternation would be `namespace!~""`, which
+  # drops every series that has a namespace at all.
+  - it: renders an empty exclusion as a regex that matches nothing
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "environment_health")].rules[?(@.alert == "environment-pod-pending-critical")].expr
+          pattern: 'namespace!~"a\^"'
+
+  - it: excludes the whole Materialize deployment from the infrastructure rules
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "k8s-infra-pod-pending-too-long")].expr
+          pattern: 'namespace!~"materialize\|materialize-environment"'
+
+  - it: grades infrastructure by the default workload tiers
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["infra-memory-high"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "infra-memory-high")].expr
+          pattern: 'container=~"aws-load-balancer-controller\|aws-node\|[^"]*\|coredns\|'
+
+  - it: grades infrastructure by the configured workload tiers
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["infra-memory-high", "k8s-deployment-unavailable-critical"]
+      rules.infraWorkloads.core: ["my-dns", "my-cni-.*"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "infra-memory-high")].expr
+          pattern: 'container=~"my-dns\|my-cni-\.\*"'
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "k8s-deployment-unavailable-critical")].expr
+          pattern: 'deployment=~"my-dns\|my-cni-\.\*"'
+
+  # The complement is the case that matters: `pod-restart-rate-high` covers every
+  # container not in the non-essential tier, so an empty tier has to widen it to
+  # every container. `!~"a^"` does; `!~""` would keep only unnamed containers.
+  - it: renders an empty workload tier as a regex that matches nothing
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["pod-restart-rate-high"]
+      rules.infraWorkloads.nonessential: []
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "pod-restart-rate-high")].expr
+          pattern: 'container!~"a\^"'
+
+  - it: reads Cloud's SQL metric prefix in cloud mode
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["env-uptime-sla"]
+      rules.capabilities: ["synthetic-uptime"]
+      materialize.deploymentMode: cloud
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "env-uptime-sla")].expr
+          pattern: "v2_mz_can_connect"
+
+  - it: reads the self-managed SQL metric prefix by default
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["env-uptime-sla"]
+      rules.capabilities: ["synthetic-uptime"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "env-uptime-sla")].expr
+          pattern: '\bmz_can_connect'
+      - notMatchRegex:
+          path: spec.groups[*].rules[?(@.alert == "env-uptime-sla")].expr
+          pattern: "v2_mz_"
+
+  - it: keeps the runbook link built from the alert name
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "clusterd-error-kill")].annotations.runbook_url
+          pattern: "common-alerts/#clusterd-error-kill$"
+
+  # --- validators -----------------------------------------------------------
+
+  - it: rejects an unknown capability
+    template: templates/validate.yaml
+    set:
+      rules.capabilities: ["cockroach"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.capabilities names "cockroach", which is not a capability'
+
+  - it: rejects a misspelt name in rules.disabled
+    template: templates/validate.yaml
+    set:
+      rules.disabled: ["envd-terminted"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.disabled names "envd-terminted", which is not an alert'
+
+  - it: rejects a misspelt name in rules.selected
+    template: templates/validate.yaml
+    set:
+      rules.selected: ["crbd"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.selected names "crbd", which is neither an alert nor a rule group'
+
+  - it: rejects a namespace that is not a Kubernetes name
+    template: templates/validate.yaml
+    set:
+      rules.namespaces.exclude: ["Not_A_Namespace"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.namespaces.exclude contains "Not_A_Namespace"'
+
+  # An entry is pasted into a PromQL string literal, so a quote would end it.
+  - it: rejects a workload entry that would break out of the expression
+    template: templates/validate.yaml
+    set:
+      rules.infraWorkloads.important: ['cert-manager", foo="bar']
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.infraWorkloads.important contains .*may not be empty or contain a quote'
+
+  - it: rejects a workload tier that does not exist
+    template: templates/validate.yaml
+    set:
+      rules.infraWorkloads.critical: ["coredns"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.infraWorkloads.critical is not a tier'
+
+  - it: rejects an unknown deployment mode
+    template: templates/validate.yaml
+    set:
+      materialize.deploymentMode: hybrid
+    asserts:
+      - failedTemplate:
+          errorPattern: 'materialize.deploymentMode is "hybrid"'
+
+  - it: warns when a selected rule is gated out by a missing capability
+    template: templates/NOTES.txt
+    set:
+      rules.selected: ["crdb-backup-missing"]
+    asserts:
+      - matchRegexRaw:
+          pattern: 'rules.selected names "crdb-backup-missing", which requires crdb-dedicated'
+
+  - it: warns when rules render with no ruler to evaluate them
+    template: templates/NOTES.txt
+    set:
+      thanos.ruler.enabled: false
+    asserts:
+      - matchRegexRaw:
+          pattern: "thanos.ruler is off, so nothing in this release evaluates them"
+
+  - it: warns that the retired config.rules keys do nothing
+    template: templates/NOTES.txt
+    set:
+      config.rules.prometheus.enabled: true
+    asserts:
+      - matchRegexRaw:
+          pattern: "config.rules and config.alerts were never read"
+
+  # A destination filtering below a rule's metrics starves the rule, and the rule
+  # reads as healthy.
+  - it: warns when the thanos destination filters out a selected rule's metrics
+    template: templates/NOTES.txt
+    set:
+      rules.selected: ["loki-req-duration-high"]
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
+    asserts:
+      - matchRegexRaw:
+          pattern: 'Alert "loki-req-duration-high" reads a metric in the "extended" tier'

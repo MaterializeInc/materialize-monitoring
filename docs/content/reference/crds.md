@@ -89,10 +89,9 @@ See [Scraping]({{< relref "../metrics/scraping.md" >}}#classic) for the download
 
 ### PrometheusRule
 
-`config.rules.prometheus.enabled` defaults to `true` and is the switch for installing the bundled recording and alerting rules as `PrometheusRule` resources.
-
-The rule content is **not in the chart yet**, so nothing renders one today — the CRD and the value are in place ahead of it.
-Progress is tracked in the [Rules & alerts]({{< relref "internal/roadmap.md" >}}#rules--alerts) workstream.
+`rules.enabled` defaults to `true` and installs the bundled alerting rules as `PrometheusRule` resources, one per query-registry file that defines alerts.
+The Thanos ruler's import sidecar is what reads them; no Prometheus Operator is involved.
+Which rules install is described in [Configuring Alerting]({{< relref "../alerting/configuring.md" >}}#the-bundled-rules).
 
 ## Grafana Operator CRDs
 

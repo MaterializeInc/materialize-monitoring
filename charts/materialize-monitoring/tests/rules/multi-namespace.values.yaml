@@ -1,0 +1,7 @@
+# Several environments and an exclusion: the alternations the chart renders into
+# the rules' namespace matchers must still parse.
+rules:
+  namespaces:
+    environment: ["env-a", "env-b", "env-c"]
+    operator: ["mz-operator"]
+    exclude: ["scratch", "load-test"]

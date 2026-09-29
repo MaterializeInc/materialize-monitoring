@@ -130,9 +130,11 @@ The reasoning behind each is in **Designing to avoid the cycle** in `docs/conten
 
 ## Context that prevents wrong calls
 
-- **The alerting path is not yet rendered** in self-managed — `charts/*/pre-rendered/rules/` is empty.
-  The 89 alerts in `packages/queries/` are Cloud-era references, so renaming one today breaks nobody.
-  Still ask for the note: the naming decision wants to be deliberate before the path ships, because it stops being free that day.
+- **The alerting path renders**, into `charts/materialize-monitoring/pre-rendered/rules/prometheus/`.
+  An alert with `enabledByDefault: true` installs on every deployment where it applies, so its name is committed from the release that first ships it: a rename owes a changelog entry now and a deprecation cycle after 1.0.
+  The rest are selectable but not defaults, so renaming one breaks only a deployment that named it in `rules.selected` or `rules.disabled`. Still ask for the note.
+  `_index.yaml` in that directory lists every shipped name, which makes the rename easy to see in a diff.
+- **A capability added or removed** changes what `rules.capabilities` accepts; removing one fails the render for a deployment that lists it.
 - **Alert names are kebab-case** (`crdb-disk-usage-critical`) against a PascalCase ecosystem norm.
   A PR proposing the switch is a *wanted* change, not a violation.
   It just needs to be all of them at once rather than one at a time.

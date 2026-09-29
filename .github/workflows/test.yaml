@@ -58,6 +58,11 @@ jobs:
       # rendered configuration is checked by the amtool that would load it.
       - name: amtool check-config over the rendered Alertmanager configuration
         run: make alertmanager-config-check
+      # The same shape for the alerting rules: render the chart, extract each
+      # PrometheusRule, and check it with the promtool in the pinned Prometheus
+      # image, then run the rule unit tests in packages/queries/tests/.
+      - name: promtool check + test over the rendered alerting rules
+        run: make rules-check
 
   terraform-check:
     name: terraform check

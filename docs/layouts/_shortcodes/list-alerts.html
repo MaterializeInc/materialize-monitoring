@@ -1,12 +1,18 @@
 {{/*
   list-alerts: renders a list of available alerts.
 
-  Reads alerts from assets/queries/*.yaml.
+  Reads alerts from assets/queries/*.yaml, and each alert's effective
+  capabilities and default-set membership from the generated rule index
+  (assets/rules/_index.yaml, mounted from the chart's pre-rendered rules).
 
   Usage:
     {{< list-alerts >}}
 */}}
 {{- $found := resources.Match "queries/*.yaml" -}}
+{{- $ruleIndex := dict "rules" dict -}}
+{{- with resources.Get "rules/_index.yaml" }}
+  {{- $ruleIndex = .Content | transform.Unmarshal }}
+{{- end }}
 {{- if not $found }}
   <p>No query registries found.</p>
 {{- else }}
@@ -30,6 +36,13 @@ Labels:
         <li><strong>{{ $key }}:</strong> {{ $value }}</li>
       {{- end }}
 </ul>
+        {{- with index $ruleIndex.rules .alert }}
+<p><strong>Installed:</strong> {{ if .enabledByDefault }}by default, wherever it applies{{ else }}only when named in <code>rules.selected</code>{{ end }}.
+          {{- with .requires }}
+<strong>Requires:</strong> {{ range $i, $c := . }}{{ if $i }}, {{ end }}<code>{{ $c }}</code>{{ end }}.
+          {{- end }}
+</p>
+        {{- end }}
         {{- $promQL := slice }}
         {{- if reflect.IsSlice .query.promQL }}
           {{- $promQL = .query.promQL }}
@@ -43,13 +56,6 @@ Labels:
           {{- end }}
           {{- $query = $query | replaceRE "%%\\{([^}]+)\\}" "$${$1}"}}
           {{- $highlight := transform.Highlight $query "promql" }}
-          {{- $highlight3 := $highlight | replaceRE
-            `<span[^>]+>([^<&]*)&lt;&lt;</span>([^>+<]+)<span[^>]+>&gt;&gt;</span>`
-            "$1<span class='replaceable' data-replace='$2'>$${$2}</span>"
-            | replaceRE
-            `<span[^>]+>&lt;&lt;([^>+<]+)&gt;&gt;</span>`
-            "<span class='replaceable' data-replace='$1'>$${$1}</span>"
-          }}
 {{ $highlight | safe.HTML }}
         {{- end }}
       {{- end }}

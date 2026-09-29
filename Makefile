@@ -96,7 +96,10 @@ metrics: metric-tiers docs/assets/metrics/metrics.yaml
 metric-tiers: charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml
 .PHONY: metric-tiers
 
-synced: dashboards charts pipelines scrapers metric-tiers
+rules: charts/materialize-monitoring/pre-rendered/rules/prometheus/_index.yaml
+.PHONY: rules
+
+synced: dashboards charts pipelines scrapers metric-tiers rules
 .PHONY: synced
 
 all: synced
@@ -189,6 +192,15 @@ charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml: $(wildcard
 		--source-dir packages/queries \
 		--out "$@"
 
+# Render the query registry's alerts into Prometheus rule files, one per
+# registry file, plus the _index.yaml the chart selects from. gen-rules owns the
+# directory and removes rule files the registry no longer produces; _index.yaml
+# is always rewritten, which makes it the target.
+charts/materialize-monitoring/pre-rendered/rules/prometheus/_index.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
+	target/debug/mz-monitoring-build gen-rules \
+		--source-dir packages/queries \
+		--out-dir "$(@D)"
+
 docs/assets/metrics/metrics.yaml: $(wildcard packages/queries/*.yaml) target/debug/mz-monitoring-build
 	mkdir -p "$(@D)"
 	target/debug/mz-monitoring-build extract-metrics --out-dir docs/assets/metrics/
@@ -263,7 +275,7 @@ HELM_DOCS_SOURCES_materialize-monitoring = \
 	charts/materialize-monitoring/values.yaml \
 	charts/materialize-monitoring/Chart.yaml
 
-charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers
+charts/materialize-monitoring/pre-rendered: charts/materialize-monitoring/pre-rendered/pipelines charts/materialize-monitoring/pre-rendered/scrapers charts/materialize-monitoring/pre-rendered/rules/prometheus/_index.yaml
 	touch "$@"
 
 # Generate the chart-local README.md from values.yaml + the README template.
@@ -420,6 +432,15 @@ helm-update-snapshots:
 alertmanager-config-check:
 	./bin/check-alertmanager-config.sh
 .PHONY: alertmanager-config-check
+
+# Check the rendered alerting rules with `promtool check rules`, per scenario, and
+# run the rule unit tests in packages/queries/tests/ (`promtool test rules`), with
+# the promtool in a pinned Prometheus image. A rule the ruler rejects takes its
+# whole group with it and nothing says so. Needs docker, or PROMTOOL=<binary>.
+# See bin/check-rules.sh for the scenarios.
+rules-check:
+	./bin/check-rules.sh
+.PHONY: rules-check
 
 # Scan the rendered chart for Kubernetes misconfigurations.
 #

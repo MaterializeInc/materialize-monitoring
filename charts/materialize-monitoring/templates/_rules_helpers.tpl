@@ -1,0 +1,304 @@
+{{- /* Alerting-rule helpers and validators.
+
+The rules themselves are rendered at build time by `mz-monitoring-build
+gen-rules` into `pre-rendered/rules/prometheus/`: one `groups:` document per
+query-registry file, and `_index.yaml`, which records each rule's capabilities
+and whether it is in the default set. These helpers decide which of those rules
+install, and fill in the placeholders the build left for facts only an install
+knows. `templates/alerts/prometheusrules.yaml` emits the result.
+*/}}
+
+{{- /*
+Check if kube-state-metrics is enabled.
+
+This returns a truthy string if enabled and a falsy string (empty) if not.
+*/}}
+{{- define "mzmon.kubeStateMetrics.enabled" }}
+  {{- $values := index $.Values "kube-state-metrics" | required "kube-state-metrics is missing from values." }}
+  {{- $tags := $.Values.tags }}
+  {{- if hasKey $values "enabled" }}
+    {{- ternary "true" "" $values.enabled }}
+  {{- else }}
+    {{- if ( or $tags.default ( index $tags "cluster-metrics" ) ( index $tags "kube-state-metrics" ) ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+Check if node-exporter is enabled.
+
+This returns a truthy string if enabled and a falsy string (empty) if not.
+*/}}
+{{- define "mzmon.nodeExporter.enabled" }}
+  {{- $values := index $.Values "node-exporter" | required "node-exporter is missing from values." }}
+  {{- $tags := $.Values.tags }}
+  {{- if hasKey $values "enabled" }}
+    {{- ternary "true" "" $values.enabled }}
+  {{- else }}
+    {{- if ( or $tags.default ( index $tags "cluster-metrics" ) ( index $tags "node-exporter" ) ) }}
+      {{- "true" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+The rule index written by gen-rules, parsed.
+
+Usage:
+  {{- $index := include "mzmon.rules.index" $ | fromYaml }}
+*/}}
+{{- define "mzmon.rules.index" }}
+  {{- $index := $.Files.Get "pre-rendered/rules/prometheus/_index.yaml" | required "pre-rendered/rules/prometheus/_index.yaml cannot be missing/empty; run `make rules`" | fromYaml }}
+  {{- /* `fromYaml` reports a parse failure as an `Error` key rather than failing. */}}
+  {{- if hasKey $index "Error" }}
+    {{- fail ( printf "pre-rendered/rules/prometheus/_index.yaml does not parse: %s" $index.Error ) }}
+  {{- end }}
+  {{- $index | toYaml }}
+{{- end }}
+
+{{- /*
+Capabilities the chart derives from what it deploys, as a YAML list.
+
+Each is present only where the chart both runs the component and collects its
+metrics, which in this chart means through the alloy-gateway. Must derive
+exactly the capabilities `_index.yaml` marks `derived: true`; the rules
+helm-unittest pins the list.
+
+Usage:
+  {{- $derived := include "mzmon.rules.derivedCapabilities" $ | fromYamlArray }}
+*/}}
+{{- define "mzmon.rules.derivedCapabilities" }}
+  {{- $caps := list }}
+  {{- if ( include "mzmon.alloyGateway.enabled" $ ) }}
+    {{- $mz := $.Values.materialize }}
+    {{- if and $mz.environmentd.serviceMonitor.enabled $mz.clusterd.serviceMonitor.enabled }}
+      {{- $caps = append $caps "materialize" }}
+    {{- end }}
+    {{- if $mz.environmentdSQL.serviceMonitor.enabled }}
+      {{- $caps = append $caps "materialize-sql" }}
+    {{- end }}
+    {{- if ( index $.Values "materialize-operator" ).serviceMonitor.enabled }}
+      {{- $caps = append $caps "materialize-operator" }}
+    {{- end }}
+    {{- if ( include "mzmon.kubeStateMetrics.enabled" $ ) }}
+      {{- $caps = append $caps "kube-state-metrics" }}
+    {{- end }}
+    {{- /* The gateway scrapes every kubelet's cAdvisor endpoint unconditionally. */}}
+    {{- $caps = append $caps "cadvisor" }}
+    {{- if ( include "mzmon.nodeExporter.enabled" $ ) }}
+      {{- $caps = append $caps "node-exporter" }}
+    {{- end }}
+    {{- if and ( include "mzmon.loki.enabled" $ ) ( dig "monitoring" "serviceMonitor" "enabled" false $.Values.loki ) }}
+      {{- $caps = append $caps "loki" }}
+    {{- end }}
+    {{- if and ( include "mzmon.alloyAgent.enabled" $ ) ( dig "serviceMonitor" "enabled" false ( index $.Values "alloy-agent" ) ) }}
+      {{- $caps = append $caps "alloy" }}
+    {{- end }}
+  {{- end }}
+  {{- $caps | toYaml }}
+{{- end }}
+
+{{- /*
+Every capability this deployment has: derived, plus `rules.capabilities`.
+*/}}
+{{- define "mzmon.rules.capabilities" }}
+  {{- $derived := include "mzmon.rules.derivedCapabilities" $ | fromYamlArray }}
+  {{- concat $derived ( $.Values.rules.capabilities | default list ) | uniq | toYaml }}
+{{- end }}
+
+{{- /*
+The effective namespace lists, as a dict of lists.
+
+Values cannot reference other values, so the defaults are computed here:
+environments come from `rules.namespaces.environment`, else
+`materialize.namespaces`, else `materialize-system.namespace`; the operator from
+`rules.namespaces.operator`, else `materialize-operator.namespace`.
+*/}}
+{{- define "mzmon.rules.namespaceLists" }}
+  {{- $ns := $.Values.rules.namespaces | default dict }}
+  {{- $environment := $ns.environment | default list }}
+  {{- if not $environment }}
+    {{- $environment = $.Values.materialize.namespaces | default list }}
+  {{- end }}
+  {{- if not $environment }}
+    {{- $system := index $.Values "materialize-system" | default dict }}
+    {{- with $system.namespace }}
+      {{- $environment = list . }}
+    {{- end }}
+  {{- end }}
+  {{- $operator := $ns.operator | default list }}
+  {{- if not $operator }}
+    {{- with ( index $.Values "materialize-operator" ).namespace }}
+      {{- $operator = list . }}
+    {{- end }}
+  {{- end }}
+  {{- dict "environment" $environment "operator" $operator "exclude" ( $ns.exclude | default list ) | toYaml }}
+{{- end }}
+
+{{- /*
+Placeholder token -> install-time value, as a dict.
+
+A namespace list or workload tier renders as a regex alternation. An empty one
+renders as `a^`, which matches no string, and never as an empty string:
+`namespace=~""` would match nothing without saying so, and `namespace!~""` would
+drop every series that has a namespace.
+*/}}
+{{- define "mzmon.rules.substitutions" }}
+  {{- $lists := include "mzmon.rules.namespaceLists" $ | fromYaml }}
+  {{- $alternation := dict }}
+  {{- range $key, $list := $lists }}
+    {{- $_ := set $alternation $key ( ternary ( join "|" $list ) "a^" ( gt ( len $list ) 0 ) ) }}
+  {{- end }}
+  {{- $workloads := $.Values.rules.infraWorkloads | default dict }}
+  {{- range $tier := list "core" "important" "nonessential" "daemonset" }}
+    {{- $list := get $workloads $tier | default list }}
+    {{- $_ := set $alternation $tier ( ternary ( join "|" $list ) "a^" ( gt ( len $list ) 0 ) ) }}
+  {{- end }}
+  {{- $prefix := ternary "v2_mz_" "mz_" ( eq ( $.Values.materialize.deploymentMode | toString ) "cloud" ) }}
+  {{- dict
+      "__mzmon_environment_namespaces__" $alternation.environment
+      "__mzmon_operator_namespaces__" $alternation.operator
+      "__mzmon_excluded_namespaces__" $alternation.exclude
+      "__mzmon_core_workloads__" $alternation.core
+      "__mzmon_important_workloads__" $alternation.important
+      "__mzmon_nonessential_workloads__" $alternation.nonessential
+      "__mzmon_daemonset_workloads__" $alternation.daemonset
+      "__mzmon_sql_prefix__" $prefix
+    | toYaml }}
+{{- end }}
+
+{{- /*
+The names of the rules that install, as a YAML list.
+
+A rule installs when rules are enabled, every capability it requires is
+present, it is in the default set or named (or its group named, or `*`) in
+`rules.selected`, and it is not named in `rules.disabled`.
+*/}}
+{{- define "mzmon.rules.installed" }}
+  {{- $installed := list }}
+  {{- if $.Values.rules.enabled }}
+    {{- $index := include "mzmon.rules.index" $ | fromYaml }}
+    {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
+    {{- $selected := $.Values.rules.selected | default list }}
+    {{- $disabled := $.Values.rules.disabled | default list }}
+    {{- range $name, $rule := $index.rules }}
+      {{- $applies := true }}
+      {{- range $rule.requires }}
+        {{- if not ( has . $caps ) }}
+          {{- $applies = false }}
+        {{- end }}
+      {{- end }}
+      {{- $chosen := or $rule.enabledByDefault ( has $name $selected ) ( has $rule.group $selected ) ( has "*" $selected ) }}
+      {{- if and $applies $chosen ( not ( has $name $disabled ) ) }}
+        {{- $installed = append $installed $name }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- $installed | toYaml }}
+{{- end }}
+
+{{- /*
+Validation for the rules surface.
+*/}}
+{{- define "mzmon.rules.validate" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $values := $.Values.rules | default dict }}
+
+  {{- $config := $.Values.config | default dict }}
+  {{- if or ( hasKey $config "rules" ) ( hasKey $config "alerts" ) }}
+    {{- $warnings = append $warnings "config.rules and config.alerts were never read by any template and have been removed; which alerting rules install is configured under `rules`." }}
+  {{- end }}
+
+  {{- $mode := $.Values.materialize.deploymentMode | toString }}
+  {{- if not ( has $mode ( list "self-managed" "cloud" ) ) }}
+    {{- $errors = append $errors ( printf "materialize.deploymentMode is %q; it must be `self-managed` or `cloud`, because it decides the metric prefix the alerting rules read." $mode ) }}
+  {{- end }}
+
+  {{- $index := include "mzmon.rules.index" $ | fromYaml }}
+  {{- $known := keys $index.capabilities | sortAlpha }}
+  {{- range ( $values.capabilities | default list ) }}
+    {{- if not ( has . $known ) }}
+      {{- $errors = append $errors ( printf "rules.capabilities names %q, which is not a capability. Known capabilities: %s." . ( join ", " $known ) ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- $names := keys $index.rules }}
+  {{- $groups := list }}
+  {{- range $index.rules }}
+    {{- $groups = append $groups .group }}
+  {{- end }}
+  {{- range ( $values.selected | default list ) }}
+    {{- if not ( or ( eq . "*" ) ( has . $names ) ( has . $groups ) ) }}
+      {{- $errors = append $errors ( printf "rules.selected names %q, which is neither an alert nor a rule group. A misspelt name would otherwise select nothing without saying so." . ) }}
+    {{- end }}
+  {{- end }}
+  {{- range ( $values.disabled | default list ) }}
+    {{- if not ( has . $names ) }}
+      {{- $errors = append $errors ( printf "rules.disabled names %q, which is not an alert. A misspelt name would otherwise leave the alert installed." . ) }}
+    {{- end }}
+  {{- end }}
+
+  {{- $lists := include "mzmon.rules.namespaceLists" $ | fromYaml }}
+  {{- range $key, $list := $lists }}
+    {{- range $list }}
+      {{- if not ( regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ( toString . ) ) }}
+        {{- $errors = append $errors ( printf "rules.namespaces.%s contains %q, which is not a Kubernetes namespace name." $key ( toString . ) ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- /* Entries land inside a PromQL string literal in a YAML block scalar. */}}
+  {{- $workloads := $values.infraWorkloads | default dict }}
+  {{- range $tier, $list := $workloads }}
+    {{- if not ( has $tier ( list "core" "important" "nonessential" "daemonset" ) ) }}
+      {{- $errors = append $errors ( printf "rules.infraWorkloads.%s is not a tier. The tiers are core, important, nonessential and daemonset." $tier ) }}
+    {{- else }}
+      {{- range ( $list | default list ) }}
+        {{- if not ( regexMatch "^[^\"\\\\\\s]+$" ( toString . ) ) }}
+          {{- $errors = append $errors ( printf "rules.infraWorkloads.%s contains %q. An entry is a regex fragment matched against a workload name, and may not be empty or contain a quote, a backslash or whitespace." $tier ( toString . ) ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if not $lists.environment }}
+    {{- $warnings = append $warnings "No Materialize environment namespace is known (rules.namespaces.environment, materialize.namespaces and materialize-system.namespace are all empty), so rules scoped to an environment's pods match nothing." }}
+  {{- end }}
+
+  {{- if $values.enabled }}
+    {{- if not ( include "mzmon.thanos.ruler.enabled" $ ) }}
+      {{- $warnings = append $warnings "rules.enabled renders PrometheusRule resources, but thanos.ruler is off, so nothing in this release evaluates them. That is only correct if another component in the cluster imports PrometheusRules." }}
+    {{- end }}
+
+    {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
+    {{- range $name := ( $values.selected | default list ) }}
+      {{- with ( get $index.rules $name ) }}
+        {{- $missing := list }}
+        {{- range .requires }}
+          {{- if not ( has . $caps ) }}
+            {{- $missing = append $missing . }}
+          {{- end }}
+        {{- end }}
+        {{- if $missing }}
+          {{- $warnings = append $warnings ( printf "rules.selected names %q, which requires %s that this deployment does not have, so it is not installed. Add %s to rules.capabilities if the deployment does." $name ( join ", " $missing ) ( join ", " $missing ) ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* A destination filtering below a rule's metrics starves the rule. */}}
+    {{- $floor := dig "pipeline" "metrics" "gateway" "destination" "prometheusRemoteWrite" "thanos" "minMetricImportance" "all" ( $.Values | toYaml | fromYaml ) | toString }}
+    {{- $rank := dict "essential" 0 "recommended" 1 "extended" 2 "diagnostic" 3 "all" 4 }}
+    {{- if hasKey $rank $floor }}
+      {{- range $name := ( include "mzmon.rules.installed" $ | fromYamlArray ) }}
+        {{- $rule := get $index.rules $name }}
+        {{- with $rule.minImportance }}
+          {{- if gt ( get $rank . | int ) ( get $rank $floor | int ) }}
+            {{- $warnings = append $warnings ( printf "Alert %q reads a metric in the %q tier, but the thanos destination keeps only %q and above, so the rule cannot see it." $name . $floor ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}

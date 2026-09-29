@@ -1,0 +1,18 @@
+# Every bundled rule, whatever it requires. The rules check renders this so that
+# `promtool check rules` sees the whole set and the unit tests under
+# packages/queries/tests/ can reach any rule.
+rules:
+  selected: ["*"]
+  capabilities:
+    - synthetic-uptime
+    - external-uptime
+    - feature-flags
+    - frontegg-auth
+    - memory-limiter
+    - crdb-dedicated
+    - cilium
+    - coredns
+    - cert-manager
+    - kubelet-metrics
+    - swap-nodes
+    - egress-gateway

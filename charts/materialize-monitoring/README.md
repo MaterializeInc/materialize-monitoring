@@ -1156,7 +1156,7 @@ Materialize-specific configuration values.
       <td class="helm-value-key">materialize<wbr>.deploymentMode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"self-managed"</code></td>
-      <td class="helm-value-desc">Deployment mode normalization hint. One of: `self-managed`, `cloud`. Drives relabeling rules in the pipeline.
+      <td class="helm-value-desc">Where Materialize runs: `self-managed` or `cloud`. Decides the prefix the alerting rules expect on SQL-backed metrics (`mz_`, or Cloud's `v2_mz_`).
 </td>
     </tr>
     <tr>
@@ -2642,56 +2642,6 @@ no folder resource to create.
 | `parent.folderRef` | — | Nest under another key in this map. Refers to that entry's resource name, so it needs `create: true`. |
 | `parent.folderUID` | — | Nest under a folder UID this chart does not manage. Takes precedence over `folderRef`. |
 
-#### Rule configuration
-
-Configuration for rules
-
-<table class="helm-values">
-  <thead>
-    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-  </thead>
-  <tbody>    <tr>
-      <td class="helm-value-key">config<wbr>.rules<wbr>.prometheus<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled Prometheus recording and alerting rules as PrometheusRule resources.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">config<wbr>.rules<wbr>.loki<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Loki rules.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">config<wbr>.rules<wbr>.thanos<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Install the bundled Thanos rules.
-</td>
-    </tr>
-  </tbody>
-</table>
-
-#### Alert configuration
-
-Configuration for alerts
-
-<table class="helm-values">
-  <thead>
-    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
-  </thead>
-  <tbody>    <tr>
-      <td class="helm-value-key">config<wbr>.alerts<wbr>.enabled</td>
-      <td class="helm-value-type">bool</td>
-      <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Read by no template. Alertmanager routing is configured under `alerting`. Kept rather than removed so that a values file setting it still renders; removing it is tracked with the other `config.rules.*` keys in the alerting design doc.
-</td>
-    </tr>
-  </tbody>
-</table>
-
 #### Scraper configuration
 
 Configuration for scrapers
@@ -3337,6 +3287,232 @@ every replica like any other.
 []</pre>
 </td>
       <td class="helm-value-desc">Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+#### Alerting rules
+
+Which alerting rules install: the bundled rule set, gated by what this deployment contains.
+
+The bundled rules are rendered at build time from the query registry
+(`packages/queries/`) and installed as `PrometheusRule` resources, which the
+Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
+below.
+
+A rule installs when **every capability it requires is present**, and it is
+either in the **default set** or named in `selected`, and it is not named in
+`disabled`. Capabilities name what a deployment contains, never who operates
+it: a CockroachDB rule is for a deployment running CockroachDB. Most are
+derived from what this chart deploys (`materialize`, `kube-state-metrics`,
+`loki`, …); the rest are listed in `capabilities`. The generated
+`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+capabilities it requires.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">rules<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Install the bundled alerting rules.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.capabilities</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Capabilities this deployment has beyond those the chart derives.
+
+| Capability | Means |
+|---|---|
+| `synthetic-uptime` | A per-environment probe exporter writes connection and `SELECT 1` results |
+| `external-uptime` | An external uptime checker probes environments from outside the network |
+| `feature-flags` | A feature-flag service synchronizes system parameters into environmentd |
+| `frontegg-auth` | environmentd authenticates through Frontegg |
+| `memory-limiter` | clusterd's memory limiter is active |
+| `crdb-dedicated` | The metadata database is a dedicated CockroachDB cluster exporting `crdb_dedicated_*` |
+| `cilium` | The CNI is Cilium and its metrics are scraped |
+| `coredns` | CoreDNS is scraped |
+| `cert-manager` | cert-manager is scraped |
+| `kubelet-metrics` | The kubelet's own `/metrics` is scraped (this chart scrapes only `/metrics/cadvisor`) |
+| `swap-nodes` | Materialize runs on swap-enabled nodes whose `materialize.cloud/swap` label reaches cAdvisor series |
+| `egress-gateway` | A dedicated egress-gateway node pool, identified by a `workload` label |
+
+The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
+`kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
+present when this chart runs the component and collects its metrics. List
+one here as well when something outside the chart provides it — your own
+kube-state-metrics, say. An unknown name fails the render.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.selected</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Bundled rules to install beyond the default set: alert names, rule-group names, or `*` for every rule that applies.
+
+Selecting a rule does not bypass its capabilities: a selected rule whose
+capabilities are missing is still not installed, and the render warns.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.disabled</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Alert names never to install, even when they apply and are in the default set.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.namespaces<wbr>.environment</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces holding Materialize environments.
+
+Rules about an environment's pods (pending, restarting, OOMKilled) scope
+to these. Empty uses `materialize.namespaces`, and if that is empty too,
+`materialize-system.namespace`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.namespaces<wbr>.operator</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces holding the Materialize operator. Empty uses `materialize-operator.namespace`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.namespaces<wbr>.exclude</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Namespaces excluded from alerting, such as a scratch environment nobody should be paged for.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><em>common EKS and GKE add-ons and this chart's collectors, per tier below</em></td>
+      <td class="helm-value-desc">Which infrastructure workloads the rules treat as core, important, non-essential, or on every node.
+
+The infrastructure rules (memory, OOMKills, restarts, file descriptors,
+Deployment availability, daemonset budgets) grade a workload by the tier it
+is in. Each entry is an RE2 fragment matched against the whole name:
+container names, and for the `k8s-deployment-unavailable-*` rules,
+Deployment names. That is why a tier lists both where they differ, such as
+`ebs-plugin` and `ebs-csi-controller`. It may not contain a quote, a
+backslash or whitespace.
+
+The defaults are the Kubernetes add-ons common on EKS and GKE, plus this
+chart's own collectors. Replace a tier to describe your cluster; an empty
+tier matches nothing. Container names shared across unrelated workloads
+(Karpenter's is `controller`) are left out, since the match is on the name
+alone.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.core</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "aws-load-balancer-controller",
+  "aws-node",
+  "cilium-agent",
+  "cilium-operator",
+  "coredns",
+  "csi-attacher",
+  "csi-node-driver-registrar",
+  "csi-provisioner",
+  "csi-resizer",
+  "csi-snapshotter",
+  "external-dns",
+  "karpenter",
+  "kube-dns",
+  "kube-proxy",
+  "kubedns",
+  "node-cache",
+  "node-driver-registrar",
+  "openebs-lvm.*",
+  "snapshot-controller"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads the cluster cannot run without: DNS, networking, storage provisioning, autoscaling.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.important</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  ".*kube-state-metrics",
+  ".*metrics-server.*",
+  "alloy.*",
+  "cert-manager.*",
+  "ebs-csi-controller",
+  "ebs-plugin",
+  "gce-pd-driver",
+  "hubble-relay",
+  "liveness-probe",
+  "node-exporter",
+  "prometheus-adapter"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads whose loss degrades the cluster without stopping it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.nonessential</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "event-exporter",
+  "grafana.*",
+  "hubble-ui",
+  "loki.*",
+  "lvm-exporter",
+  "memcached"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads worth a notice rather than a page. `pod-restart-rate-high` covers every container not listed here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.daemonset</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "alloy",
+  "aws-eks-nodeagent",
+  "aws-node",
+  "cilium-agent",
+  "csi-driver-registrar",
+  "csi-node-driver-registrar",
+  "ebs-plugin",
+  "gce-pd-driver",
+  "kube-proxy",
+  "liveness-probe",
+  "lvm-exporter",
+  "node-cache",
+  "node-driver-registrar",
+  "node-exporter",
+  "openebs-lvm-plugin"
+]</pre>
+</td>
+      <td class="helm-value-desc">Containers every node runs, whose requests the `k8s-daemonset-*` rules total against a per-node budget.
 </td>
     </tr>
   </tbody>
