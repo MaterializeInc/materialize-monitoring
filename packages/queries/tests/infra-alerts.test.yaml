@@ -10,10 +10,16 @@ tests:
   #
   # A container with no memory limit reports a limit of 0, and dividing by it
   # gave +Inf, which is above every threshold: on a reference install this kept
-  # a dozen series firing permanently.
+  # a dozen series firing permanently. The rule also grades only the core tier
+  # (`rules.infraWorkloads.core`, which by default includes coredns), so an
+  # application container just as close to its limit is not its business.
   - name: infra-memory-high fires near a real limit and ignores no limit
     interval: 1m
     input_series:
+      - series: 'container_memory_working_set_bytes{namespace="shop", pod="web-a", container="web"}'
+        values: "95x30"
+      - series: 'container_spec_memory_limit_bytes{namespace="shop", pod="web-a", container="web"}'
+        values: "100x30"
       - series: 'container_memory_working_set_bytes{namespace="kube-system", pod="coredns-a", container="coredns"}'
         values: "100x30"
       - series: 'container_spec_memory_limit_bytes{namespace="kube-system", pod="coredns-a", container="coredns"}'

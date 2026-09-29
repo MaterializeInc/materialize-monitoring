@@ -230,6 +230,50 @@ tests:
           path: spec.groups[*].rules[?(@.alert == "k8s-infra-pod-pending-too-long")].expr
           pattern: 'namespace!~"materialize\|materialize-environment"'
 
+  - it: grades infrastructure by the default workload tiers
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["infra-memory-high"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "infra-memory-high")].expr
+          pattern: 'container=~"aws-load-balancer-controller\|aws-node\|[^"]*\|coredns\|'
+
+  - it: grades infrastructure by the configured workload tiers
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["infra-memory-high", "k8s-deployment-unavailable-critical"]
+      rules.infraWorkloads.core: ["my-dns", "my-cni-.*"]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "infra-memory-high")].expr
+          pattern: 'container=~"my-dns\|my-cni-\.\*"'
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "k8s-deployment-unavailable-critical")].expr
+          pattern: 'deployment=~"my-dns\|my-cni-\.\*"'
+
+  # The complement is the case that matters: `pod-restart-rate-high` covers every
+  # container not in the non-essential tier, so an empty tier has to widen it to
+  # every container. `!~"a^"` does; `!~""` would keep only unnamed containers.
+  - it: renders an empty workload tier as a regex that matches nothing
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["pod-restart-rate-high"]
+      rules.infraWorkloads.nonessential: []
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-alerts
+    asserts:
+      - matchRegex:
+          path: spec.groups[*].rules[?(@.alert == "pod-restart-rate-high")].expr
+          pattern: 'container!~"a\^"'
+
   - it: reads Cloud's SQL metric prefix in cloud mode
     template: templates/alerts/prometheusrules.yaml
     set:
@@ -303,6 +347,23 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'rules.namespaces.exclude contains "Not_A_Namespace"'
+
+  # An entry is pasted into a PromQL string literal, so a quote would end it.
+  - it: rejects a workload entry that would break out of the expression
+    template: templates/validate.yaml
+    set:
+      rules.infraWorkloads.important: ['cert-manager", foo="bar']
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.infraWorkloads.important contains .*may not be empty or contain a quote'
+
+  - it: rejects a workload tier that does not exist
+    template: templates/validate.yaml
+    set:
+      rules.infraWorkloads.critical: ["coredns"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.infraWorkloads.critical is not a tier'
 
   - it: rejects an unknown deployment mode
     template: templates/validate.yaml

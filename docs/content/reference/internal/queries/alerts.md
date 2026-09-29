@@ -40,7 +40,7 @@ A dashboard renders a query against variables its viewer chooses.
 A ruler has no viewer, so alerts render through a third context, `packages/mzmon-lib/src/query/rules/context.rs`, which differs from the dashboard context in two ways.
 
 **Deployment-specific values render as placeholders.**
-Rules are rendered once, at build time, while which namespaces hold Materialize and which metric prefix it uses are facts about one install.
+Rules are rendered once, at build time, while which namespaces hold Materialize, which workloads the cluster counts as core infrastructure, and which metric prefix Materialize uses are facts about one install.
 Those parameters render to a `__mzmon_*__` token that the chart replaces at install time.
 
 | Parameter | Renders to | The chart fills it from |
@@ -50,9 +50,17 @@ Those parameters render to a `__mzmon_*__` token that the chart replaces at inst
 | `excludeMzDeploymentNamespaceFilter` | `namespace!~"<operator>\|<environments>"` | both of the above |
 | `excludeEnvironmentFilter` | `namespace!~"__mzmon_excluded_namespaces__"` | `rules.namespaces.exclude` |
 | `mzSqlPrefix` | `__mzmon_sql_prefix__` | `materialize.deploymentMode`: `mz_`, or `v2_mz_` for `cloud` |
+| `infraCoreWorkloadList` | `__mzmon_core_workloads__`, a bare value: `container=~"%%{infraCoreWorkloadList}"` | `rules.infraWorkloads.core` |
+| `infraImportantWorkloadList` | `__mzmon_important_workloads__` | `rules.infraWorkloads.important` |
+| `infraNonessentialWorkloadList` | `__mzmon_nonessential_workloads__` | `rules.infraWorkloads.nonessential` |
+| `infraDaemonsetWorkloadList` | `__mzmon_daemonset_workloads__` | `rules.infraWorkloads.daemonset` |
 | `mzEnvironmentFilter` | `materialize_cloud_organization_name=~".+"` | nothing; a rule covers every environment |
 
-An empty namespace list renders as `a^`, a regex that matches nothing, rather than as an empty string.
+An empty namespace list or workload tier renders as `a^`, a regex that matches nothing, rather than as an empty string.
+
+An infrastructure alert MUST read a workload tier rather than list container or Deployment names.
+Which workloads a cluster cannot run without is a fact about that cluster, and a list written into the expression is one no operator can correct.
+Each tier holds container and Deployment names alike, so the same parameter serves `container=~` and `deployment=~`.
 
 **Selection parameters are absent.**
 `interval`, `range`, `rangeWindow`, the log pickers and the generation filters mean "whatever the viewer chose".

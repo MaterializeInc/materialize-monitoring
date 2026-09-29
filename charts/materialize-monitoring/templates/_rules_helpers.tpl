@@ -139,10 +139,10 @@ environments come from `rules.namespaces.environment`, else
 {{- /*
 Placeholder token -> install-time value, as a dict.
 
-A namespace list renders as a regex alternation. An empty one renders as `a^`,
-which matches no string, and never as an empty string: `namespace=~""` would
-match nothing without saying so, and `namespace!~""` would drop every series
-that has a namespace.
+A namespace list or workload tier renders as a regex alternation. An empty one
+renders as `a^`, which matches no string, and never as an empty string:
+`namespace=~""` would match nothing without saying so, and `namespace!~""` would
+drop every series that has a namespace.
 */}}
 {{- define "mzmon.rules.substitutions" }}
   {{- $lists := include "mzmon.rules.namespaceLists" $ | fromYaml }}
@@ -150,11 +150,20 @@ that has a namespace.
   {{- range $key, $list := $lists }}
     {{- $_ := set $alternation $key ( ternary ( join "|" $list ) "a^" ( gt ( len $list ) 0 ) ) }}
   {{- end }}
+  {{- $workloads := $.Values.rules.infraWorkloads | default dict }}
+  {{- range $tier := list "core" "important" "nonessential" "daemonset" }}
+    {{- $list := get $workloads $tier | default list }}
+    {{- $_ := set $alternation $tier ( ternary ( join "|" $list ) "a^" ( gt ( len $list ) 0 ) ) }}
+  {{- end }}
   {{- $prefix := ternary "v2_mz_" "mz_" ( eq ( $.Values.materialize.deploymentMode | toString ) "cloud" ) }}
   {{- dict
       "__mzmon_environment_namespaces__" $alternation.environment
       "__mzmon_operator_namespaces__" $alternation.operator
       "__mzmon_excluded_namespaces__" $alternation.exclude
+      "__mzmon_core_workloads__" $alternation.core
+      "__mzmon_important_workloads__" $alternation.important
+      "__mzmon_nonessential_workloads__" $alternation.nonessential
+      "__mzmon_daemonset_workloads__" $alternation.daemonset
       "__mzmon_sql_prefix__" $prefix
     | toYaml }}
 {{- end }}
@@ -236,6 +245,19 @@ Validation for the rules surface.
     {{- range $list }}
       {{- if not ( regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ( toString . ) ) }}
         {{- $errors = append $errors ( printf "rules.namespaces.%s contains %q, which is not a Kubernetes namespace name." $key ( toString . ) ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- /* Entries land inside a PromQL string literal in a YAML block scalar. */}}
+  {{- $workloads := $values.infraWorkloads | default dict }}
+  {{- range $tier, $list := $workloads }}
+    {{- if not ( has $tier ( list "core" "important" "nonessential" "daemonset" ) ) }}
+      {{- $errors = append $errors ( printf "rules.infraWorkloads.%s is not a tier. The tiers are core, important, nonessential and daemonset." $tier ) }}
+    {{- else }}
+      {{- range ( $list | default list ) }}
+        {{- if not ( regexMatch "^[^\"\\\\\\s]+$" ( toString . ) ) }}
+          {{- $errors = append $errors ( printf "rules.infraWorkloads.%s contains %q. An entry is a regex fragment matched against a workload name, and may not be empty or contain a quote, a backslash or whitespace." $tier ( toString . ) ) }}
+        {{- end }}
       {{- end }}
     {{- end }}
   {{- end }}

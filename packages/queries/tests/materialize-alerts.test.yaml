@@ -5,7 +5,8 @@
 # PrometheusRule's groups into <registry-file>.yaml beside this file, and runs
 # `promtool test rules`. The install-time placeholders are therefore filled with
 # the chart defaults: environments in `materialize-environment`, the operator in
-# `materialize`, nothing excluded, and the self-managed `mz_` SQL prefix.
+# `materialize`, nothing excluded, the default `rules.infraWorkloads` tiers, and
+# the self-managed `mz_` SQL prefix.
 #
 # Each test proves one behaviour a rule is easy to get wrong: that it fires on
 # the failure it exists for, and stays quiet on the case that used to misfire.

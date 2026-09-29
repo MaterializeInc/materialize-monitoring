@@ -49,6 +49,11 @@ The chart takes them from `rules.namespaces.environment`, falling back to `mater
 A deployment whose environments live elsewhere MUST set one of these, or those rules match nothing.
 `rules.namespaces.exclude` removes namespaces from alerting altogether.
 
+The infrastructure rules grade a workload by its tier in `rules.infraWorkloads`: `core`, `important`, `nonessential`, and `daemonset` for what every node runs.
+The defaults cover the Kubernetes add-ons common on EKS and GKE and this chart's own collectors.
+A cluster with other add-ons SHOULD list them, since a workload in no tier is one the tiered rules never grade.
+Each entry is a regex matched against the whole container or Deployment name.
+
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
 
 ## Two evaluators, one notifier
@@ -138,6 +143,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
+| `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.

@@ -3403,6 +3403,118 @@ to these. Empty uses `materialize.namespaces`, and if that is empty too,
       <td class="helm-value-desc">Namespaces excluded from alerting, such as a scratch environment nobody should be paged for.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><em>common EKS and GKE add-ons and this chart's collectors, per tier below</em></td>
+      <td class="helm-value-desc">Which infrastructure workloads the rules treat as core, important, non-essential, or on every node.
+
+The infrastructure rules (memory, OOMKills, restarts, file descriptors,
+Deployment availability, daemonset budgets) grade a workload by the tier it
+is in. Each entry is an RE2 fragment matched against the whole name:
+container names, and for the `k8s-deployment-unavailable-*` rules,
+Deployment names. That is why a tier lists both where they differ, such as
+`ebs-plugin` and `ebs-csi-controller`. It may not contain a quote, a
+backslash or whitespace.
+
+The defaults are the Kubernetes add-ons common on EKS and GKE, plus this
+chart's own collectors. Replace a tier to describe your cluster; an empty
+tier matches nothing. Container names shared across unrelated workloads
+(Karpenter's is `controller`) are left out, since the match is on the name
+alone.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.core</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "aws-load-balancer-controller",
+  "aws-node",
+  "cilium-agent",
+  "cilium-operator",
+  "coredns",
+  "csi-attacher",
+  "csi-node-driver-registrar",
+  "csi-provisioner",
+  "csi-resizer",
+  "csi-snapshotter",
+  "external-dns",
+  "karpenter",
+  "kube-dns",
+  "kube-proxy",
+  "kubedns",
+  "node-cache",
+  "node-driver-registrar",
+  "openebs-lvm.*",
+  "snapshot-controller"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads the cluster cannot run without: DNS, networking, storage provisioning, autoscaling.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.important</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  ".*kube-state-metrics",
+  ".*metrics-server.*",
+  "alloy.*",
+  "cert-manager.*",
+  "ebs-csi-controller",
+  "ebs-plugin",
+  "gce-pd-driver",
+  "hubble-relay",
+  "liveness-probe",
+  "node-exporter",
+  "prometheus-adapter"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads whose loss degrades the cluster without stopping it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.nonessential</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "event-exporter",
+  "grafana.*",
+  "hubble-ui",
+  "loki.*",
+  "lvm-exporter",
+  "memcached"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads worth a notice rather than a page. `pod-restart-rate-high` covers every container not listed here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.daemonset</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "alloy",
+  "aws-eks-nodeagent",
+  "aws-node",
+  "cilium-agent",
+  "csi-driver-registrar",
+  "csi-node-driver-registrar",
+  "ebs-plugin",
+  "gce-pd-driver",
+  "kube-proxy",
+  "liveness-probe",
+  "lvm-exporter",
+  "node-cache",
+  "node-driver-registrar",
+  "node-exporter",
+  "openebs-lvm-plugin"
+]</pre>
+</td>
+      <td class="helm-value-desc">Containers every node runs, whose requests the `k8s-daemonset-*` rules total against a per-node budget.
+</td>
+    </tr>
   </tbody>
 </table>
 

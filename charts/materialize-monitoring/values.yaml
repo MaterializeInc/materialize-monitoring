@@ -2210,6 +2210,85 @@ rules:
     # @default -- `[]`
     exclude: []
 
+  # -- (object) Which infrastructure workloads the rules treat as core, important, non-essential, or on every node.
+  # @raw
+  #
+  # The infrastructure rules (memory, OOMKills, restarts, file descriptors,
+  # Deployment availability, daemonset budgets) grade a workload by the tier it
+  # is in. Each entry is an RE2 fragment matched against the whole name:
+  # container names, and for the `k8s-deployment-unavailable-*` rules,
+  # Deployment names. That is why a tier lists both where they differ, such as
+  # `ebs-plugin` and `ebs-csi-controller`. It may not contain a quote, a
+  # backslash or whitespace.
+  #
+  # The defaults are the Kubernetes add-ons common on EKS and GKE, plus this
+  # chart's own collectors. Replace a tier to describe your cluster; an empty
+  # tier matches nothing. Container names shared across unrelated workloads
+  # (Karpenter's is `controller`) are left out, since the match is on the name
+  # alone.
+  # @default -- common EKS and GKE add-ons and this chart's collectors, per tier below
+  # @notationType -- desc
+  infraWorkloads:
+    # -- Workloads the cluster cannot run without: DNS, networking, storage provisioning, autoscaling.
+    core:
+      - aws-load-balancer-controller
+      - aws-node
+      - cilium-agent
+      - cilium-operator
+      - coredns
+      - csi-attacher
+      - csi-node-driver-registrar
+      - csi-provisioner
+      - csi-resizer
+      - csi-snapshotter
+      - external-dns
+      - karpenter
+      - kube-dns
+      - kube-proxy
+      - kubedns
+      - node-cache
+      - node-driver-registrar
+      - openebs-lvm.*
+      - snapshot-controller
+    # -- Workloads whose loss degrades the cluster without stopping it.
+    important:
+      - .*kube-state-metrics
+      - .*metrics-server.*
+      - alloy.*
+      - cert-manager.*
+      - ebs-csi-controller
+      - ebs-plugin
+      - gce-pd-driver
+      - hubble-relay
+      - liveness-probe
+      - node-exporter
+      - prometheus-adapter
+    # -- Workloads worth a notice rather than a page. `pod-restart-rate-high` covers every container not listed here.
+    nonessential:
+      - event-exporter
+      - grafana.*
+      - hubble-ui
+      - loki.*
+      - lvm-exporter
+      - memcached
+    # -- Containers every node runs, whose requests the `k8s-daemonset-*` rules total against a per-node budget.
+    daemonset:
+      - alloy
+      - aws-eks-nodeagent
+      - aws-node
+      - cilium-agent
+      - csi-driver-registrar
+      - csi-node-driver-registrar
+      - ebs-plugin
+      - gce-pd-driver
+      - kube-proxy
+      - liveness-probe
+      - lvm-exporter
+      - node-cache
+      - node-driver-registrar
+      - node-exporter
+      - openebs-lvm-plugin
+
 # -- (h4) Where alerts go: receivers, severity presets, and extra routes.
 # @notationType -- (sectionstart) Alert routing
 # @raw
