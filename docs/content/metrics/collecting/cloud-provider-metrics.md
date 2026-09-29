@@ -13,6 +13,8 @@ The gateway can pull what a cloud provider's monitoring API publishes about the 
 The result is written beside every other metric, with the same retention, the same PromQL, and the same destinations.
 A provider series is therefore joinable with `mz_persist_*` in a single expression, which a Grafana CloudWatch or Cloud Monitoring datasource cannot offer.
 
+The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws them, with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
@@ -21,7 +23,9 @@ The [external-dependency design](../../../reference/internal/design-docs/2026092
 <!--
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
 charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
-sets on this page are that file's; change them there, not here first. The numbers on this page
+sets on this page are that file's; change them there, not here first. packages/queries/infra-cloud.yaml and
+packages/dashboards/src/grafana/infra_cloud/ draw them, so a metric added to a pull reaches no panel until
+those follow, and a metric removed leaves a panel empty. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, with Alloy v1.20.0 locally and v1.19.2 in-cluster, and are the ones to
 re-measure if the exporters are bumped.
@@ -154,8 +158,9 @@ The scrape of it is clustered, so one replica owns it and each provider is calle
 
 ## Which destinations receive it
 
-Provider families have no dashboard or alert reading them yet, so they have no tier from the query registry.
-Each provider assigns its families one instead, through `metricImportance`, which defaults to `extended`.
+Each provider assigns its families a tier through `metricImportance`, which defaults to `extended`.
+The families `infra-cloud` draws are also named in the query registry, at `diagnostic`, the lowest tier.
+A registry tier admits a metric at that tier and above, so `metricImportance` decides for every destination floor above `diagnostic`.
 
 | Destination `minMetricImportance` | Receives provider families at the default |
 |---|---|
@@ -184,6 +189,8 @@ The pull does not read those types back, so it does not loop.
 An exporter whose provider call fails still answers its scrape, with no provider series in it.
 Measured with credentials missing — for CloudWatch anywhere, and for GCP where a metadata server exists — both exporters return HTTP 200 and report healthy, so `up` stays 1.
 `up` only says the exporter exists and is being scraped.
+
+The Collection tab of `infra-cloud` draws the checks below.
 
 | Question | Query |
 |---|---|

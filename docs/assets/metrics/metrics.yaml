@@ -739,15 +739,20 @@
   usage:
   - materialize.persist.failures
 - importance: essential
-  labels: []
+  labels:
+  - materialize_cloud_organization_name
   name: mz_persist_compaction_dropped
   usage:
+  - materialize.persist.compaction.outcomes
   - materialize.persist.failures
 - importance: essential
-  labels: []
+  labels:
+  - materialize_cloud_organization_name
   name: mz_persist_compaction_failed
   usage:
+  - materialize.persist.compaction.outcomes
   - materialize.persist.failures
+  - materialize.persist.health.compaction_failures
 - importance: essential
   labels: []
   name: mz_persist_compaction_noop
@@ -764,14 +769,22 @@
   usage:
   - materialize.persist.failures
 - importance: essential
-  labels: []
+  labels:
+  - materialize_cloud_organization_name
+  - op
   name: mz_persist_external_failed_count
   usage:
+  - materialize.consensus.failures.by_operation
+  - materialize.consensus.health.failed_ops
   - materialize.persist.failures
+  - materialize.persist.failures.by_operation
+  - materialize.persist.health.failed_ops
 - importance: essential
-  labels: []
+  labels:
+  - materialize_cloud_organization_name
   name: mz_persist_lease_timeout_read
   usage:
+  - materialize.consensus.gc.lease_timeouts
   - materialize.persist.failures
 - importance: essential
   labels: []
@@ -1073,6 +1086,7 @@
   - infra.alloy.resources.memory
   - infra.alloy.resources.terminations
   - infra.alloy.resources.throttling
+  - infra.cloud.collection.pulls
   - infra.loki.health.up
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
@@ -1670,6 +1684,255 @@
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
+  name: mz_persist_blob_cache_hits_bytes
+  usage:
+  - materialize.persist.cache.hits
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_blob_hedges_fired
+  usage:
+  - materialize.persist.hedging
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_blob_hedges_won
+  usage:
+  - materialize.persist.hedging
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_cmd_cas_mismatch_count
+  usage:
+  - materialize.consensus.contention.conflicts
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_applied
+  usage:
+  - materialize.persist.compaction.outcomes
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_bytes
+  usage:
+  - materialize.persist.writes.amplification
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_queued_seconds
+  usage:
+  - materialize.persist.compaction.queue_wait
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_requested
+  usage:
+  - materialize.persist.compaction.outcomes
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_seconds
+  usage:
+  - materialize.persist.compaction.busy
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_started
+  usage:
+  - materialize.persist.compaction.outcomes
+  - materialize.persist.compaction.queue_wait
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_timed_out
+  usage:
+  - materialize.persist.compaction.outcomes
+  - materialize.persist.health.compaction_failures
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_compaction_write_stall_count
+  usage:
+  - materialize.persist.health.write_stalls
+  - materialize.persist.writes.stalls_by_process
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - op
+  name: mz_persist_external_bytes_count
+  usage:
+  - materialize.consensus.ops.bytes
+  - materialize.persist.cache.hits
+  - materialize.persist.ops.throughput
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_external_consensus_truncated_count
+  usage:
+  - materialize.consensus.state.versions
+- importance: recommended
+  labels:
+  - external
+  - materialize_cloud_organization_name
+  name: mz_persist_external_rtt_latency
+  usage:
+  - materialize.consensus.latency.round_trip
+  - materialize.persist.latency.round_trip
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - op
+  name: mz_persist_external_seconds
+  usage:
+  - materialize.consensus.latency.mean_by_operation
+  - materialize.persist.latency.mean_by_operation
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - op
+  name: mz_persist_external_started_count
+  usage:
+  - materialize.consensus.health.commits
+  - materialize.consensus.latency.mean_by_operation
+  - materialize.consensus.ops.by_type
+  - materialize.consensus.ops.commits_by_process
+  - materialize.persist.latency.mean_by_operation
+  - materialize.persist.ops.by_type
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - op
+  name: mz_persist_external_succeeded_count
+  usage:
+  - materialize.consensus.state.versions
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_gc_finished
+  usage:
+  - materialize.consensus.gc.runs
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_gc_noop
+  usage:
+  - materialize.consensus.gc.runs
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_gc_started
+  usage:
+  - materialize.consensus.gc.runs
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_acquire_seconds
+  usage:
+  - materialize.consensus.pool.acquire_wait
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_acquires
+  usage:
+  - materialize.consensus.pool.acquire_wait
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_available
+  usage:
+  - materialize.consensus.health.waiting
+  - materialize.consensus.pool.in_use
+  - materialize.consensus.pool.waiting
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_connection_errors
+  usage:
+  - materialize.consensus.failures.connection_errors
+  - materialize.consensus.health.connection_errors
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_connections_created
+  usage:
+  - materialize.consensus.pool.churn
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_size
+  usage:
+  - infra.cloud.db.connections
+  - materialize.consensus.health.connections_held
+  - materialize.consensus.pool.in_use
+  - materialize.consensus.pool.size
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_postgres_connpool_ttl_reconnections
+  usage:
+  - materialize.consensus.pool.churn
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  - op
+  name: mz_persist_retry_retries_count
+  usage:
+  - materialize.consensus.retries.by_operation
+  - materialize.persist.retries.by_operation
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_s3_connect_timeouts
+  usage:
+  - materialize.persist.failures.timeouts
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_s3_errors
+  usage:
+  - materialize.persist.failures.store_errors
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_s3_operation_attempt_timeouts
+  usage:
+  - materialize.persist.failures.timeouts
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_s3_operation_timeouts
+  usage:
+  - materialize.persist.failures.timeouts
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_s3_operations
+  usage:
+  - materialize.persist.failures.timeouts
+  - materialize.persist.ops.requests
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_s3_read_timeouts
+  usage:
+  - materialize.persist.failures.timeouts
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_user_bytes
+  usage:
+  - materialize.persist.writes.amplification
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_user_write_stall_count
+  usage:
+  - materialize.persist.health.write_stalls
+  - materialize.persist.writes.stalls_by_process
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
   name: mz_query_total
   usage:
   - materialize.connections.queries.distribution
@@ -1829,6 +2092,79 @@
   name: mz_tables_count
   usage:
   - materialize.storage.tables.count
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_failed_count
+  usage:
+  - materialize.consensus.failures.by_operation
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_acquire_seconds
+  usage:
+  - materialize.consensus.pool.acquire_wait
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_acquires
+  usage:
+  - materialize.consensus.pool.acquire_wait
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_available
+  usage:
+  - materialize.consensus.health.waiting
+  - materialize.consensus.pool.in_use
+  - materialize.consensus.pool.waiting
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_connection_errors
+  usage:
+  - materialize.consensus.failures.connection_errors
+  - materialize.consensus.health.connection_errors
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_connections_created
+  usage:
+  - materialize.consensus.pool.churn
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_size
+  usage:
+  - infra.cloud.db.connections
+  - materialize.consensus.health.connections_held
+  - materialize.consensus.pool.in_use
+  - materialize.consensus.pool.size
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_postgres_connpool_ttl_reconnections
+  usage:
+  - materialize.consensus.pool.churn
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_retry_retries_count
+  usage:
+  - materialize.consensus.retries.by_operation
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_seconds
+  usage:
+  - materialize.consensus.oracle.latency
+- importance: recommended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_ts_oracle_started_count
+  usage:
+  - materialize.consensus.oracle.latency
+  - materialize.consensus.oracle.ops
 - importance: recommended
   labels:
   - materialize_cloud_organization_name
@@ -2627,6 +2963,73 @@
   - infra.alloy.log_pipeline.request_latency
 - importance: extended
   labels:
+  - materialize_cloud_organization_name
+  - op
+  name: mz_persist_external_op_latency_bucket
+  usage:
+  - materialize.consensus.health.commit_latency_p99
+  - materialize.consensus.latency.commit
+  - materialize.consensus.latency.commit_by_process
+  - materialize.persist.health.read_latency_p99
+  - materialize.persist.health.write_latency_p99
+  - materialize.persist.latency.read_by_process
+  - materialize.persist.latency.read_write
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_gc_live_diffs
+  usage:
+  - materialize.consensus.state.live
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_seqnos_held
+  usage:
+  - materialize.consensus.state.held
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_usage_current_state_batches_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - materialize.consensus.ops.collections
+  - materialize.persist.health.stored
+  - materialize.persist.usage.by_state
+  - materialize.persist.usage.largest
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_usage_current_state_rollups_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - materialize.persist.health.stored
+  - materialize.persist.usage.by_state
+  - materialize.persist.usage.largest
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_usage_leaked_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - materialize.persist.usage.by_state
+  - materialize.persist.usage.leaked
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_usage_not_leaked_not_referenced_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - materialize.persist.usage.by_state
+- importance: extended
+  labels:
+  - materialize_cloud_organization_name
+  name: mz_persist_shard_usage_referenced_not_current_state_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - materialize.persist.usage.by_state
+  - materialize.persist.usage.held
+- importance: extended
+  labels:
   - app
   - namespace
   - pod
@@ -2657,3 +3060,217 @@
   name: prometheus_remote_storage_sent_batch_duration_seconds_bucket
   usage:
   - infra.alloy.metric_pipeline.send_latency
+- importance: diagnostic
+  labels: []
+  name: aws_rds_burst_balance_minimum
+  usage:
+  - infra.cloud.rds.io_balances
+- importance: diagnostic
+  labels: []
+  name: aws_rds_cpucredit_balance_minimum
+  usage:
+  - infra.cloud.rds.cpu_credits
+- importance: diagnostic
+  labels: []
+  name: aws_rds_cpuutilization_average
+  usage:
+  - infra.cloud.collection.resources
+  - infra.cloud.db.cpu
+- importance: diagnostic
+  labels: []
+  name: aws_rds_database_connections_maximum
+  usage:
+  - infra.cloud.db.connections
+- importance: diagnostic
+  labels: []
+  name: aws_rds_disk_queue_depth_average
+  usage:
+  - infra.cloud.rds.queue_depth
+- importance: diagnostic
+  labels: []
+  name: aws_rds_ebsbyte_balance_percent_minimum
+  usage:
+  - infra.cloud.rds.io_balances
+- importance: diagnostic
+  labels: []
+  name: aws_rds_ebsiobalance_percent_minimum
+  usage:
+  - infra.cloud.rds.io_balances
+- importance: diagnostic
+  labels: []
+  name: aws_rds_free_storage_space_minimum
+  usage:
+  - infra.cloud.rds.free_storage
+- importance: diagnostic
+  labels: []
+  name: aws_rds_freeable_memory_minimum
+  usage:
+  - infra.cloud.rds.freeable_memory
+- importance: diagnostic
+  labels: []
+  name: aws_rds_maximum_used_transaction_ids_maximum
+  usage:
+  - infra.cloud.db.transaction_ids
+- importance: diagnostic
+  labels: []
+  name: aws_rds_read_latency_average
+  usage:
+  - infra.cloud.rds.io_latency
+- importance: diagnostic
+  labels: []
+  name: aws_rds_write_latency_average
+  usage:
+  - infra.cloud.rds.io_latency
+- importance: diagnostic
+  labels: []
+  name: aws_s3_bucket_size_bytes_average
+  usage:
+  - infra.cloud.bucket.bytes
+  - infra.cloud.collection.resources
+- importance: diagnostic
+  labels: []
+  name: aws_s3_number_of_objects_average
+  usage:
+  - infra.cloud.bucket.objects
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count
+  usage:
+  - infra.cloud.db.connections
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count
+  usage:
+  - infra.cloud.flexible.connections_failed
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count
+  usage:
+  - infra.cloud.flexible.cpu_credits
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent
+  usage:
+  - infra.cloud.collection.resources
+  - infra.cloud.db.cpu
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_disk_bandwidth_consumed_percentage_maximum_percent
+  usage:
+  - infra.cloud.flexible.io_consumed
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_disk_iops_consumed_percentage_maximum_percent
+  usage:
+  - infra.cloud.flexible.io_consumed
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count
+  usage:
+  - infra.cloud.flexible.queue_depth
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count
+  usage:
+  - infra.cloud.flexible.alive
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count
+  usage:
+  - infra.cloud.db.transaction_ids
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent
+  usage:
+  - infra.cloud.flexible.memory
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent
+  usage:
+  - infra.cloud.flexible.storage
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent
+  usage:
+  - infra.cloud.blob.availability
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - infra.cloud.collection.resources
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count
+  usage:
+  - infra.cloud.bucket.objects
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_storage_storageaccounts_blobservices_successe2elatency_average_milliseconds
+  usage:
+  - infra.cloud.blob.latency
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_storage_storageaccounts_blobservices_successserverlatency_average_milliseconds
+  usage:
+  - infra.cloud.blob.latency
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization
+  usage:
+  - infra.cloud.collection.resources
+  - infra.cloud.db.cpu
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization
+  usage:
+  - infra.cloud.cloudsql.disk
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization
+  usage:
+  - infra.cloud.cloudsql.memory
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends
+  usage:
+  - infra.cloud.cloudsql.backends_by_database
+  - infra.cloud.db.connections
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state
+  usage:
+  - infra.cloud.cloudsql.backends_by_state
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization
+  usage:
+  - infra.cloud.db.transaction_ids
+- importance: diagnostic
+  labels: []
+  name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up
+  usage:
+  - infra.cloud.cloudsql.up
+- importance: diagnostic
+  labels: []
+  name: stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes
+  usage:
+  - infra.cloud.bucket.bytes
+  - infra.cloud.collection.resources
+  - infra.cloud.gcs.bytes_by_type
+- importance: diagnostic
+  labels: []
+  name: stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count
+  usage:
+  - infra.cloud.bucket.objects
+  - infra.cloud.gcs.objects_by_type
+- importance: diagnostic
+  labels: []
+  name: stackdriver_monitoring_api_calls_total
+  usage:
+  - infra.cloud.collection.gcp_calls
+- importance: diagnostic
+  labels: []
+  name: stackdriver_monitoring_last_scrape_error
+  usage:
+  - infra.cloud.collection.gcp_errors

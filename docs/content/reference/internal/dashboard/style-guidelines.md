@@ -676,6 +676,31 @@ Things that have surprised us during development; worth knowing before touching 
   `*_count` metrics) live *only* on a "legacy" job, so an exclusion list blanks real panels.
   Pick the dedup label-set carefully: `max without (job)` keeps every other label; if a metric is also multi-scraped per
   `instance`, add `instance` to the `without` set.
+- **Persist publishes latency for both dependencies.** `mz_persist_external_op_latency` is a histogram by `op`, covering
+  `blob_get`, `blob_set` and `consensus_cas`; every other operation has a mean from `mz_persist_external_seconds /
+  mz_persist_external_started_count`. `mz_persist_external_rtt_latency{external="blob"|"consensus"}` is a gauge each
+  process refreshes on its own schedule. `env-persist` and `env-consensus` are built on these.
+- **`mz_persist_retry_*` `op` is a retry loop, not a call.** Most loops wrap one dependency — `apply_unbatched_cmd::cas`,
+  `fetch_state::scan` and `gc::truncate` the metadata database; `batch::set`, `fetch_batch::get` and `rollup::*` object
+  storage — and the same names appear in the WARN log line `external operation <op> has failed N times, retrying`, which
+  carries the dependency's own error text. `next_listen_batch` and `snapshot` retry constantly while polling for new data
+  and must never be drawn as retries.
+- **`mz_persist_postgres_connpool_available` goes negative** by the number of callers waiting for a connection
+  (deadpool's `Status.available`), and is sampled at each acquire. `clamp_min(-available, 0)` is the queue. The pool's
+  maximum size is not published. The timestamp oracle has its own pool under `mz_ts_oracle_postgres_connpool_*`.
+- **`mz_persist_shard_*` is reported by every process that has the shard open**, so a total takes `max by (shard)`
+  first. environmentd has every shard open; on the reference installs a plain sum counted 100 shards as 180.
+- **`mz_persist_s3_*` exists on Azure Blob and reads zero.** Materialize registers the S3 client's counters on every
+  install, but reaches Azure Blob with Azure's own client. A panel on them keeps its series only while
+  `mz_persist_s3_operations` is non-zero, so Azure shows the empty state instead of a flat "no timeouts".
+  `mz_persist_s3_errors` is the exception: it is created on the first error, so it is absent until then everywhere.
+- **Thanos flags `rate()` over most persist counters.** Materialize names them without `_total`
+  (`mz_persist_postgres_connpool_connection_errors`, `mz_persist_compaction_failed`), and Thanos returns `PromQL info:
+  metric might not be a counter` for each, which Grafana draws as a warning icon on the panel. The query is correct; the
+  warning cannot be avoided short of a rename upstream.
+- **A ratio of two rates is `NaN` over a window with no calls**, and Grafana applies `noValue` per field, so the panel's
+  empty-state text lands in the legend beside the series. Mean latencies on the dependency dashboards are wrapped in
+  `(…) >= 0`, which drops the `NaN` points.
 
 ## Logs dashboard conventions
 
@@ -792,8 +817,8 @@ Two things worth keeping if this pattern spreads:
 
 ## Rendering a row on a discovered variable
 
-**New precedent, first used on `infra-net`'s CNI and Security tabs.** `Row::only_when_variable` and
-`Row::only_unless_variable` own it, beside the time-range pair.
+**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows.**
+`Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
 variant, or render conditionally.
@@ -805,7 +830,7 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Four rules, all of them learned from the one implementation:
+Five rules, the first four learned from `infra-net` and the fifth from its first shipped bug:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -820,6 +845,14 @@ Four rules, all of them learned from the one implementation:
 - **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
   fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
   Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
+- **Give the discovery variable no custom "All" value.** Grafana evaluates a row condition against the variable's
+  `getValue()`. For a multi-value variable on "All" with a custom `allValue`, that is a `CustomAllValue` object with no
+  `toString()`, so the condition's regex is tested against `[object Object]`: every `matches` row hides and the negated
+  fallback shows. Without a custom value, "All" is the array of discovered values, which the condition tests one by
+  one. Grafana also *defaults* a freshly loaded multi-value variable to "All", so this is the state every reader starts
+  in. `infra-net` shipped with `.+` as its dataplane's "All" and showed "No Dataplane Metrics" on every cluster until it
+  was removed; `test_support::assert_row_conditions_can_read_all` now guards both dashboards. A discovery variable no
+  query reads has no use for a custom value in the first place.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -827,6 +860,28 @@ for `cilium` still renders when the value is `cilium,kube-proxy`. Both direction
 offers the negative operator directly.
 
 Verified round-tripping: Grafana accepts all eight conditional rows and returns them unchanged on a read.
+Verified rendering, on Grafana 13.2.2 against a live EKS install: with "All" selected, `infra-net`'s CNI tab shows the
+VPC CNI rows, and `infra-cloud` shows its RDS rows over a window in which CloudWatch was pulled and its fallback over one
+in which nothing was.
+
+## Cloud provider families
+
+What `infra-cloud` is built on: the metrics the gateway pulls from CloudWatch, Cloud Monitoring and Azure Monitor.
+The pipeline side is on [Cloud Provider Metrics]({{< relref "../../../metrics/collecting/cloud-provider-metrics.md" >}});
+the conventions below are the ones a query against those families has to follow.
+
+| Convention | Why |
+|---|---|
+| Read every series through `last_over_time`: `[15m]` for CloudWatch, Azure and Cloud SQL, `[30m]` for GCS | A pull runs every five minutes, and Cloud Monitoring samples arrive minutes old with their own timestamps. A default five-minute lookback draws gaps; GCS data is over ten minutes old on arrival |
+| Never `rate()` a provider counter over `$__rate_interval` | That interval is sized from the datasource's scrape interval, which is far shorter than a pull, so the window holds one sample and draws nothing. Use a fixed `[30m]` |
+| One expression per provider in a cross-provider query, each with its own legend | Two of the three are empty on any install, which costs nothing. The alternative, a `label_replace` onto a common resource label, hides which provider a number came from |
+| Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
+| Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
+
+Azure metric names come from the exporter's `azure_{type}_{metric}_{aggregation}_{unit}` template, lowercased, where
+`{type}` is the metric namespace when one is set.
+The blob families are therefore `azure_microsoft_storage_storageaccounts_blobservices_*`, not
+`…_storageaccounts_*`.
 
 ## Kubernetes events in Loki
 

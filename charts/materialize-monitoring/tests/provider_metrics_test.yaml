@@ -211,8 +211,15 @@ tests:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
           pattern: '\|aws_rds_\.\*\|aws_s3_\.\*$'
 
-  # A disabled provider must not widen any allowlist.
-  - it: should add nothing to the allowlist when no provider is enabled
+  # A disabled provider must not widen any allowlist with its families.
+  #
+  # The `infra-cloud` dashboard's queries name individual provider metrics, and
+  # the registry tiers those at `diagnostic` — the one level no values setting
+  # can undercut, so `metricImportance` stays in charge everywhere above it. A
+  # `diagnostic` destination therefore lists those names whether or not a
+  # provider is enabled, which costs nothing when no such series exist. What a
+  # disabled provider must not add is its whole-family pattern.
+  - it: should add no provider family to the allowlist when no provider is enabled
     template: templates/pipelines/cm-alloy-gateway-env.yaml
     set:
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
@@ -221,7 +228,7 @@ tests:
     asserts:
       - notMatchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: 'aws_rds_|aws_s3_|stackdriver_'
+          pattern: 'aws_rds_\.\*|aws_s3_\.\*|stackdriver_[a-z_]+\.\*'
 
   # --- validation --------------------------------------------------------------
 

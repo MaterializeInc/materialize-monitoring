@@ -18,7 +18,7 @@ tests:
   - it: should ship every dashboard the default patterns select
     asserts:
       - hasDocuments:
-          count: 8
+          count: 11
       - containsDocument:
           any: true
           apiVersion: grafana.integreatly.org/v1beta1
@@ -54,6 +54,26 @@ tests:
           apiVersion: grafana.integreatly.org/v1beta1
           kind: GrafanaManifest
           name: mzmon-dashboards-infra-nodes-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-infra-net-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-env-persist-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-env-consensus-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-infra-cloud-dashboard
 
   # The resource names must NOT collide with the ones the umbrella chart used to
   # create (`mzmon-<stem>-dashboard`). Helm refuses an object owned by another

@@ -111,6 +111,9 @@ from.
 | `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
 | `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
 | `infra-alloy` | `grafana/infra_alloy/` | `mz-mon-infra-alloy` | Alloy Meta Monitoring |
+| `env-persist` | `grafana/env_persist/` | `mz-mon-env-persist` | Materialize Persist (Storage) |
+| `env-consensus` | `grafana/env_consensus/` | `mz-mon-env-consensus` | Materialize Consensus (Metadata) |
+| `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider |
 
 Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -440,6 +443,58 @@ Six things about it are not re-derivable by reading the modules:
 - **Drop reasons are classified by a test.** `loki_process_dropped_lines_total` mixes the debug tap's deliberate
   sampling with guard losses. `log_pipeline.rs` reads every `drop_counter_reason` from the rendered pipelines and
   fails when one is neither excluded as deliberate nor a known guard.
+
+## The external-dependency dashboards
+
+Three dashboards for the two services Materialize depends on and does not run: the metadata database and object
+storage. They replace the single `infra-deps` the external-dependency design proposed; the design doc's
+"As built" section records why. All three carry `tags::content::DEPENDENCIES`.
+
+### `env-persist` and `env-consensus` tabs
+
+The client's view — persist's own measurement — scoped to one environment and filed under `Folder::Materialize`.
+Queries are `packages/queries/materialize-persist.yaml` and `materialize-consensus.yaml`. Shared presentation (the
+per-process legend, the empty state, the latency ladder) is `grafana/dependency.rs`.
+
+| `env-persist` tab | Module | `env-consensus` tab | Module |
+|---|---|---|---|
+| Overview | `overview.rs` | Overview | `overview.rs` |
+| Operations | `operations.rs` | Operations | `operations.rs` |
+| Compaction | `compaction.rs` | Connections | `connections.rs` |
+| Storage | `storage.rs` | State and Cleanup | `state.rs` |
+
+Four things about them are not re-derivable by reading the modules:
+
+- **`variable::dependency_scoped` has no cluster or replica picker.** environmentd carries no cluster label and is a
+  heavy client of both dependencies, so a picker would need `env-top`'s two-matcher pattern on every query. "Which
+  process" is a legend (`{{app}} {{cluster_name}}`, via `mzClusterName` on the long-form id) rather than a filter.
+- **Each Overview ends in a Loki feed of persist's retry WARN lines**, filtered to the retry loops that wrap that
+  dependency. The error text is the diagnosis — `connection refused` and `remaining connection slots are reserved`
+  are both in the reference installs' logs, and read identically in every metric.
+- **The S3 client's counters exist on Azure and read zero**, so the panels on them gate on
+  `mz_persist_s3_operations > 0`.
+- **Every mean is `(A / B) >= 0`**, so an operation nobody called does not put the empty-state text into the legend.
+
+### `infra-cloud` tabs
+
+The provider's view — the gateway's CloudWatch, Cloud Monitoring and Azure Monitor pull — filed under `Folder::Infra`.
+Queries are `packages/queries/infra-cloud.yaml`.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Metadata Database | `database.rs` |
+| 2 | Object Storage | `object_storage.rs` |
+| 3 | Collection | `collection.rs` |
+
+- **Provider rows render on `$cloudProviderList`**, discovered from `up{job=~"integrations/(cloudwatch|gcp|azure)"}`,
+  with one negated fallback per data tab. It is the second user of the discovered-row mechanism, and building it found
+  that a custom "All" value broke the first; see the style guide's fifth rule.
+- **Cross-provider panels are one expression per provider**, each with its own legend, not a normalized series.
+- **Provider families are tiered `diagnostic`** in the registry, so each provider's `metricImportance` value keeps
+  deciding what reaches a destination.
+- **Neither reference install pulls continuously.** The AWS and GCP pulls ran for a few days and were turned off, so
+  CloudWatch and Cloud Monitoring panels were verified over those windows (Sep 26–28, 2026) rather than live; query
+  with `--time` inside them. The Azure pull was live when the dashboard landed.
 
 ## Notes on the trickier panels
 

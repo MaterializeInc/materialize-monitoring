@@ -5,7 +5,7 @@ weight: 20260920
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-20
-lastmod: 2026-09-20
+lastmod: 2026-09-29
 # custom parameters
 params:
   author: Heather Lapointe
@@ -131,8 +131,8 @@ Four stakeholder classes consume this:
 
 | Capability | State | Where |
 |---|---|---|
-| Client-side consensus signals | ⚠️ Arriving, barely read | `mz_persist_consensus_failures` reaches Thanos and appears in one composite alert |
-| Client-side blob signals | ⚠️ Arriving, barely read | `mz_persist_blob_failures`, `mz_persist_external_failed_count` and 13 siblings, all in the same composite alert |
+| Client-side consensus signals | ✅ Read | `env-consensus` (`materialize-consensus.yaml`): operations, latency, failures, connection pools, the timestamp oracle, and state growth. The composite alert still reads `mz_persist_consensus_failures` |
+| Client-side blob signals | ✅ Read | `env-persist` (`materialize-persist.yaml`): operations, latency, failures and error codes, compaction, and storage by purpose. The composite alert still reads `mz_persist_blob_failures` and siblings |
 | Loki object-store signals | ⚠️ Arriving, unread | 24 `loki_objstore_*` families land; no query in `packages/queries/` references any of them |
 | Thanos object-store signals | ⚠️ Arriving, unread | `thanos_objstore_bucket_operation_*` lands; same |
 | CockroachDB alerts | ⚠️ 15 defined, right conditions, wrong metric names | `infra-alerts.yaml`, written against `crdb_dedicated_*` — CockroachDB Cloud's export prefix. Disk and CPU are among them, which are the two conditions the field has actually hit |
@@ -589,14 +589,15 @@ Three clients already measure the same bucket, and between them they cover every
 | Thanos | `thanos_objstore_bucket_operation_*`, `..._failures_total`, `..._duration_seconds` | Block upload, compaction, and store-gateway reads |
 
 The Loki and Thanos families follow the same `objstore` convention, which means one pair of recording rules covers both and the adapter is nearly free.
-The persist families are counters without a latency histogram, so `ext:objstore_request_duration_seconds` is recorded from Loki and Thanos and is absent for the persist bucket.
+Persist also publishes a latency histogram, `mz_persist_external_op_latency`, for `blob_get`, `blob_set` and `consensus_cas`, which an earlier draft of this section missed.
 
-**That gap is the same one on the consensus side, and it is the most important thing this design cannot do.**
-A failure counter reports that a dependency *broke*; it never reports that one is *degrading*.
-The slow-and-getting-slower case that precedes an outage — rising commit latency, rising retry rates on the compare-and-swap loop — has no signal in persist at all, on either dependency.
+**The gap is narrower than first drafted, and is still the most important thing this design cannot do in full.**
+A failure counter reports that a dependency *broke*; a latency histogram reports that one is *degrading*.
+Persist has the second for its three hottest operations, plus `mz_persist_retry_retries_count` for retries, and `env-persist` and `env-consensus` lead with them.
+Every other operation — scans, truncation, deletes, and the timestamp oracle — has only a mean.
 The exporter and the provider see the database slowing down and cannot attribute it to Materialize's traffic; only persist can say what it experienced.
 
-This belongs in the [Tier 2 upstream asks](https://linear.app/materializeinc/issue/DEP-207) rather than in any work item here, and DEP-233 says the same.
+Histograms for the remaining operations belong in the [Tier 2 upstream asks](https://linear.app/materializeinc/issue/DEP-207) rather than in any work item here.
 
 Two conventions apply to reading these.
 
@@ -876,6 +877,28 @@ The [style guide](../../dashboard/style-guidelines/#rendering-a-row-on-a-discove
 The fourth rule is the one that makes this better than the conditional rendering the earlier draft proposed, which would have made the tab simply absent.
 A tab that disappears teaches nobody that the capability exists, which is the failure the tenant-query-api doc names about empty results, one level up.
 
+### As built: three dashboards, not one
+
+<!-- Agent note: recorded as a decision rather than rewriting the section above, which is the reasoning that was reviewed. -->
+
+The shipped shape splits `infra-deps` three ways, by product direction.
+
+| Dashboard | Folder | Reads | Scope |
+|---|---|---|---|
+| **Materialize Persist (Storage)**, `env-persist` | Materialize | The client's view of object storage | One environment |
+| **Materialize Consensus (Metadata)**, `env-consensus` | Materialize | The client's view of the metadata database, including the timestamp oracle | One environment |
+| **Infrastructure Cloud Provider**, `infra-cloud` | Infrastructure | The provider pull, for both dependencies | The cluster |
+
+The split follows the scoping argument above rather than contradicting it.
+The client's series carry `materialize_cloud_organization_name`, so they are environment-scoped and belong with Materialize; the provider's carry only a resource name, so they belong with the platform.
+The Summary tab this section proposed is each client dashboard's Overview, and it reads client collection only, as proposed.
+
+Three departures from the design, each for want of something the design assumed would exist first:
+
+- **No `ext:*` series are read.** None are recorded yet, so each client panel reads persist's families directly, and `infra-cloud` draws one expression per provider in place of a normalized one.
+- **Provider rows are discovered from the pull's `up`**, as `$cloudProviderList`, rather than from a `flavor` label on a recorded series.
+- **There is no exporter row.** No exporter is deployed, so there is nothing to discover and nothing to fall back from.
+
 ## Deployment shapes
 
 | Shape | Client | Exporter | Provider |
@@ -982,7 +1005,7 @@ Four questions from the first draft are settled and are recorded here rather tha
 - [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
 - [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.
-- [ ] **What does the persist blob path owe upstream?** Persist publishes failure counters and no latency histogram, which is the largest gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
+- [ ] **What does the persist blob path owe upstream?** Persist publishes a latency histogram for `blob_get`, `blob_set` and `consensus_cas` and only a mean for everything else, which is the remaining gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
 - [ ] **Is the Day 0 probe and the steady-state probe one component or two?** They answer the same question with the same credential and differ only in lifecycle — one runs as an install hook and fails the install, the other runs forever and feeds an alert. One component with two invocations is the obvious shape and couples an install-blocking check to a long-running workload.
 - [ ] **What is the version floor, and who owns it?** The version alert has no threshold this repository can set, and a values-supplied floor puts the policy on the operator, which is where it can be wrong quietly. A published support matrix is the real answer and does not exist in a form this can read.
 - [ ] **Does the shared-database signal generalize to object storage?** A bucket shared with another workload has the same attribution problem and no equivalent of `pg_database_size_bytes` — prefix-level size needs Storage Lens or an inventory report, which is a different mechanism at a different price.

@@ -15,17 +15,23 @@
 //! [`ALL`] is the registry the renderer walks, so adding a dashboard is a module
 //! plus one entry — nothing in the CLI needs to know their names.
 
+pub(crate) mod dependency;
+pub mod env_consensus;
 pub mod env_logs;
+pub mod env_persist;
 pub mod env_top;
 pub mod env_upgrade;
 pub mod field_override;
 pub mod infra_alloy;
+pub mod infra_cloud;
 pub mod infra_logs;
 pub mod infra_loki;
 pub mod infra_networking;
 pub mod infra_nodes;
 pub mod queries;
 pub mod render;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod transform;
 pub mod volume_guard;
 
@@ -99,6 +105,21 @@ pub const ALL: &[Renderable] = &[
         name: env_upgrade::NAME_STEM,
         summary: "What happened during a Materialize upgrade",
         render: env_upgrade::render,
+    },
+    Renderable {
+        name: env_persist::NAME_STEM,
+        summary: "Object storage, as a Materialize environment experiences it",
+        render: env_persist::render,
+    },
+    Renderable {
+        name: env_consensus::NAME_STEM,
+        summary: "The metadata database, as a Materialize environment experiences it",
+        render: env_consensus::render,
+    },
+    Renderable {
+        name: infra_cloud::NAME_STEM,
+        summary: "What the cloud provider reports about the metadata database and the buckets",
+        render: infra_cloud::render,
     },
 ];
 

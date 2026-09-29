@@ -117,6 +117,8 @@ pub mod extra {
     pub const LOKI_NAMESPACE: &str = "lokiNamespace";
     /// Which of the log store's processes a meta-monitoring panel reads.
     pub const LOKI_COMPONENT: &str = "lokiComponent";
+    /// Which cloud providers the gateway was found to be pulling from.
+    pub const CLOUD_PROVIDER_LIST: &str = "cloudProviderList";
 }
 
 /// An empty current selection.
@@ -814,11 +816,45 @@ pub fn network_components() -> dashboardv2::VariableKind {
         expr: r#"label_values(up{network_component=~".+"}, network_component)"#.to_string(),
         multi: true,
         include_all: true,
-        // `.+` rather than the discovered values, for the same reason the log
-        // pickers state their own: an expansion is empty whenever discovery has
-        // not run, and `network_component=~""` matches the series *missing* the
-        // label rather than all of them.
-        all_value: Some(".+"),
+        // No custom "All" value, unlike the log pickers. No query reads this
+        // variable -- only row conditions do -- and a row condition cannot see
+        // a custom one: Grafana hands the condition the variable's `getValue()`,
+        // which for "All" with a custom value is an object that stringifies to
+        // `[object Object]`. Every vendor row would hide and the fallback show.
+        // Without one, "All" is the list of discovered values, which is what
+        // the conditions want.
+        all_value: None,
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Cloud providers the gateway is pulling metrics from.
+///
+/// The provider rows of the cloud provider dashboard are rendered on this, the
+/// same way [`network_components`] renders the CNI rows. Discovered from `up`,
+/// for the same reason: an exporter that is running and returning nothing still
+/// has an `up`, and that — a pull configured but not authorized — is the case
+/// worth leaving the provider's rows on screen for, empty, rather than hiding.
+///
+/// Each provider exporter's scrape carries `job="integrations/<name>"`, which
+/// Alloy sets from the component name, so the values are
+/// `integrations/cloudwatch`, `integrations/gcp` and `integrations/azure`. Rows
+/// match a substring of those.
+pub fn cloud_providers() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::CLOUD_PROVIDER_LIST,
+        label: "Cloud Provider",
+        description: "Cloud providers the gateway was found to be pulling metrics from",
+        expr: r#"label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)"#.to_string(),
+        multi: true,
+        include_all: true,
+        // No custom "All" value, for the reason `network_components` gives: only
+        // row conditions read this, and they cannot see one.
+        all_value: None,
         hide: dashboardv2::VariableHide::DontHide,
         sort: dashboardv2::VariableSort::AlphabeticalAsc,
         skip_url_sync: false,
@@ -1392,6 +1428,41 @@ pub fn alloy_scoped() -> Vec<dashboardv2::VariableKind> {
         metric_adhoc_on(variables::ALLOY_NAMESPACE),
         logs_adhoc(),
     ]
+}
+
+/// Controls for a dashboard about one of Materialize's external dependencies, as
+/// the environment's own processes experience it.
+///
+/// The environment funnel without its cluster and replica steps. The metadata
+/// database and object storage serve the whole environment, so the question is
+/// never "show me cluster X" but "which process is suffering" — a breakdown in
+/// the legend rather than a filter. A cluster picker here would also have to
+/// keep environmentd visible when it narrowed, because environmentd carries no
+/// cluster label and is a heavy client of both dependencies; see the two-matcher
+/// pattern `env-top` pays that price with.
+///
+/// Both datasources: the metrics say that a dependency is failing, and only the
+/// logs carry its error text. The log panels scope by the same hidden
+/// `$mzNamespaceList`, which is sound because it holds the Kubernetes namespace
+/// on both sides.
+pub fn dependency_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        logs_datasource(),
+        environments(),
+        namespaces(),
+        metric_adhoc(),
+    ]
+}
+
+/// Controls for the cloud provider dashboard.
+///
+/// Only discovery. The provider series carry no namespace or environment label
+/// — a database is identified by its provider's resource name — so there is
+/// nothing an environment picker could narrow, and an ad-hoc filter seeded with
+/// a namespace would match none of them.
+pub fn cloud_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![metrics_datasource(), cloud_providers()]
 }
 
 pub fn logs_infra_scoped() -> Vec<dashboardv2::VariableKind> {
@@ -2012,6 +2083,54 @@ mod tests {
             dashboardv2::VariableKind::QueryVariableKind(v) => {
                 assert!(v.spec.regex.contains("(?<value>"), "{}", v.spec.regex);
                 assert!(v.spec.regex.contains("(?<text>"), "{}", v.spec.regex);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_dependency_set_defines_what_its_queries_and_its_adhoc_filter_name() {
+        // The dependency registries scope by `%%{mzEnvironmentFilter}` and, for
+        // their log panels, `%%{mzEnvironmentNamespaceFilter}`; the ad-hoc
+        // filter's base filter names `$mzNamespaceList` too. The cluster and
+        // replica pickers are deliberately absent, so no query may use them.
+        let set = dependency_scoped();
+        let names = names(&set);
+        for needed in [
+            "metricsDatasource",
+            "logsDatasource",
+            variables::ENVIRONMENT_NAME_LIST,
+            variables::MZ_NAMESPACE_LIST,
+        ] {
+            assert!(names.contains(&needed), "dependency set lacks ${needed}");
+        }
+        assert!(!names.contains(&variables::MZ_CLUSTER_LIST));
+        assert!(!names.contains(&variables::MZ_REPLICA_LIST));
+    }
+
+    #[test]
+    fn the_cloud_set_discovers_providers_and_scopes_nothing() {
+        // Provider series carry no namespace, so an ad-hoc filter seeded with
+        // one would silently match none of them.
+        let set = cloud_scoped();
+        assert_eq!(
+            names(&set),
+            vec!["metricsDatasource", extra::CLOUD_PROVIDER_LIST]
+        );
+    }
+
+    #[test]
+    fn provider_discovery_reads_up_for_every_provider() {
+        match cloud_providers() {
+            dashboardv2::VariableKind::QueryVariableKind(v) => {
+                let definition = v.spec.definition.expect("definition");
+                assert!(definition.starts_with("label_values(up{"), "{definition}");
+                for provider in ["cloudwatch", "gcp", "azure"] {
+                    assert!(definition.contains(provider), "{definition}");
+                }
+                // A row condition reads "All" with a custom value as
+                // `[object Object]`, so this must not have one.
+                assert_eq!(v.spec.all_value, None);
             }
             other => panic!("unexpected {other:?}"),
         }
