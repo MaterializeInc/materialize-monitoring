@@ -335,15 +335,13 @@
   usage:
   - materialize.kubernetes.deployments.readiness
 - importance: essential
-  labels:
-  - namespace
+  labels: []
   name: kube_horizontalpodautoscaler_spec_max_replicas
   usage:
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
 - importance: essential
-  labels:
-  - namespace
+  labels: []
   name: kube_horizontalpodautoscaler_status_current_replicas
   usage:
   - infra.kubernetes.hpa_replicas_critical
@@ -477,7 +475,10 @@
   - infra.nodes.pods.restarts
   - materialize.clusterd.error_kill
   - materialize.clusterd.new_restarts_during_release
+  - materialize.clusterd.not_receiving_commands
   - materialize.clusterd.swap_cluster_oom
+  - materialize.clusterd.system_cluster_terminated
+  - materialize.environmentd.terminated
 - importance: essential
   labels: []
   name: kube_pod_container_status_waiting
@@ -656,7 +657,14 @@
   - materialize.auth.errors
   - materialize.auth.refresh_failures
 - importance: essential
+  labels: []
+  name: mz_can_connect
+  usage:
+  - materialize.environmentd.uptime_sla
+  - materialize.environmentd.uptime_slo
+- importance: essential
   labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
   - pod
   - server_name
   name: mz_cluster_server_last_command_received
@@ -668,6 +676,11 @@
   name: mz_dataflow_replica_expiration_remaining_seconds
   usage:
   - materialize.clusterd.expiration_7d
+- importance: essential
+  labels: []
+  name: mz_envd_up
+  usage:
+  - materialize.environmentd.simplest_query
 - importance: essential
   labels:
   - status
@@ -797,6 +810,12 @@
   name: mz_txn_placeholder_schema_apply
   usage:
   - materialize.persist.failures
+- importance: essential
+  labels: []
+  name: mz_views_query_successful
+  usage:
+  - materialize.environmentd.query_views_critical
+  - materialize.environmentd.query_views_warning
 - importance: essential
   labels:
   - instance
@@ -1061,23 +1080,6 @@
   - materialize.scraper.mzmon.clusterd
   - materialize.scraper.mzmon.environmentd
   - materialize.scraper.mzmon.orchestratord
-- importance: essential
-  labels: []
-  name: v2_mz_can_connect
-  usage:
-  - materialize.environmentd.uptime_sla
-  - materialize.environmentd.uptime_slo
-- importance: essential
-  labels: []
-  name: v2_mz_envd_up
-  usage:
-  - materialize.environmentd.simplest_query
-- importance: essential
-  labels: []
-  name: v2_mz_views_query_successful
-  usage:
-  - materialize.environmentd.query_views_critical
-  - materialize.environmentd.query_views_warning
 - importance: recommended
   labels:
   - app

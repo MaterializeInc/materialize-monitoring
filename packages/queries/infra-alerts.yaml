@@ -10,6 +10,11 @@ description: |
   `severity` label (critical > warning > notice), and is tagged with a `component`
   label naming the subsystem it watches.
 
+  Most of these watch something a deployment may or may not contain -- a
+  CockroachDB metadata store, a Cilium CNI, an egress-gateway pool -- and install
+  only where it does. That is inferred from the metrics each alert reads, or
+  declared with `requires` where the metric names cannot show it.
+
 metricImportanceHint: essential
 
 alerts:
@@ -42,8 +47,9 @@ alerts:
           crdb_dedicated_capacity_used / crdb_dedicated_capacity
         ) * 100 > 90
       datadogQuery: |
-        avg(last_1m):max:crdb_dedicated_capacity_used{*} / max:crdb_dedicated_capacity{*} * 100
-          > 90
+        avg(last_1m):(
+          max:crdb_dedicated_capacity_used{*} / max:crdb_dedicated_capacity{*}
+        ) * 100 > 90
   - alert: crdb-disk-usage-high
     group: crdb
     stability: best-effort
@@ -66,8 +72,9 @@ alerts:
           crdb_dedicated_capacity_used / crdb_dedicated_capacity
         ) * 100 > 70
       datadogQuery: |
-        avg(last_5m):max:crdb_dedicated_capacity_used{*} / max:crdb_dedicated_capacity{*} * 100
-          > 70
+        avg(last_5m):(
+          max:crdb_dedicated_capacity_used{*} / max:crdb_dedicated_capacity{*}
+        ) * 100 > 70
   - alert: crdb-disk-usage-elevated
     group: crdb
     stability: best-effort
@@ -87,8 +94,9 @@ alerts:
           crdb_dedicated_capacity_used / crdb_dedicated_capacity
         ) * 100 > 30
       datadogQuery: |
-        avg(last_30m):max:crdb_dedicated_capacity_used{*} / max:crdb_dedicated_capacity{*} * 100
-          > 30
+        avg(last_30m):(
+          max:crdb_dedicated_capacity_used{*} / max:crdb_dedicated_capacity{*}
+        ) * 100 > 30
   - alert: crdb-cpu-usage-critical
     group: crdb
     stability: best-effort
@@ -112,7 +120,9 @@ alerts:
           avg_over_time(crdb_dedicated_sys_cpu_combined_percent_normalized[30m]) * 100
         ) > 89
       datadogQuery: |
-        avg(last_30m):max:crdb_dedicated_sys_cpu_combined_percent_normalized{*} * 100 > 89
+        avg(last_30m):(
+          max:crdb_dedicated_sys_cpu_combined_percent_normalized{*} * 100
+        ) > 89
   - alert: crdb-cpu-usage-high
     group: crdb
     stability: best-effort
@@ -135,7 +145,9 @@ alerts:
           avg_over_time(crdb_dedicated_sys_cpu_combined_percent_normalized[2h]) * 100
         ) > 85
       datadogQuery: |
-        avg(last_2h):max:crdb_dedicated_sys_cpu_combined_percent_normalized{*} * 100 > 85
+        avg(last_2h):(
+          max:crdb_dedicated_sys_cpu_combined_percent_normalized{*} * 100
+        ) > 85
   - alert: crdb-query-latency
     group: crdb
     stability: best-effort
@@ -161,7 +173,9 @@ alerts:
           )
         ) > 250 * 1000 * 1000
       datadogQuery: |
-        avg(last_20m):p95:crdb_dedicated_sql_service_latency{*} by {node} > 250000000
+        avg(last_20m):(
+          p95:crdb_dedicated_sql_service_latency{*} by {node}
+        ) > 250000000
   - alert: crdb-lsm-read-amplification-critical
     group: crdb
     stability: best-effort
@@ -267,7 +281,9 @@ alerts:
           deriv(crdb_dedicated_sql_mem_distsql_current[5m])
         ) > 8 * 1000 * 1000
       datadogQuery: |
-        avg(last_5m):derivative(max:crdb_dedicated_sql_mem_distsql_current{*} by {node_id}) > 8000000
+        avg(last_5m):derivative(
+          max:crdb_dedicated_sql_mem_distsql_current{*} by {node_id}
+        ) > 8000000
   - alert: crdb-sql-memory-pressure-high
     group: crdb
     stability: best-effort
@@ -291,8 +307,10 @@ alerts:
         )
         > 0.18
       datadogQuery: |
-        avg(last_3m):max:crdb_dedicated_sql_mem_distsql_current{*} by {node_id}
-          / max:crdb_dedicated_sys_totalmem{*} by {node_id} > 0.18
+        avg(last_3m):(
+          max:crdb_dedicated_sql_mem_distsql_current{*} by {node_id}
+          / max:crdb_dedicated_sys_totalmem{*} by {node_id}
+        ) > 0.18
   - alert: crdb-write-intent-accumulation-critical
     group: crdb
     stability: best-effort
@@ -379,7 +397,9 @@ alerts:
           cilium_bpf_map_pressure
         ) > 0.7
       datadogQuery: |
-        avg(last_15m):max:cilium_bpf_map_pressure{*} by {map_name,instance} > 0.7
+        avg(last_15m):(
+          max:cilium_bpf_map_pressure{*} by {map_name,instance}
+        ) > 0.7
   - alert: cilium-drop-rate-elevated
     group: cilium
     stability: best-effort
@@ -399,7 +419,9 @@ alerts:
           rate(cilium_drop_count_total[5m:1m])
         ) > 10
       datadogQuery: |
-        avg(last_5m):max:cilium_drop_count_total{*} by {direction,reason,pod}.as_rate() > 10
+        avg(last_5m):(
+          max:cilium_drop_count_total{*} by {direction,reason,pod}.as_rate()
+        ) > 10
 
   # --- CoreDNS (cluster DNS) -----------------------------------------------
   - alert: coredns-slow-queries
@@ -423,12 +445,15 @@ alerts:
           )
         ) > 0.5
       datadogQuery: |
-        avg(last_5m):p99:coredns_dns_request_duration_seconds{zone:.} by {service} > 0.5
+        avg(last_5m):(
+          p99:coredns_dns_request_duration_seconds{zone:.} by {service}
+        ) > 0.5
 
   # --- Kubernetes nodes / scheduling ---------------------------------------
   - alert: node-unreachable
     group: node_unreachable
     stability: best-effort
+    enabledByDefault: true
     for: 10m
     labels:
       severity: warning
@@ -463,15 +488,13 @@ alerts:
         summary: Current HPA replicas as a fraction of the configured maximum.
       promQL: |
         (
-          kube_horizontalpodautoscaler_status_current_replicas{namespace!~"alloy|loki"}
-          / kube_horizontalpodautoscaler_spec_max_replicas{namespace!~"alloy|loki"}
+          kube_horizontalpodautoscaler_status_current_replicas
+          / kube_horizontalpodautoscaler_spec_max_replicas
         ) > 0.9
       datadogQuery: |
         avg(last_10m):(
-          max:kube_horizontalpodautoscaler_status_current_replicas{!namespace:alloy, !namespace:loki}
-            by {namespace,horizontalpodautoscaler}
-          / max:kube_horizontalpodautoscaler_spec_max_replicas{!namespace:alloy, !namespace:loki}
-            by {namespace,horizontalpodautoscaler}
+          max:kube_horizontalpodautoscaler_status_current_replicas{*} by {namespace,horizontalpodautoscaler}
+          / max:kube_horizontalpodautoscaler_spec_max_replicas{*} by {namespace,horizontalpodautoscaler}
         ) > 0.9
   - alert: k8s-horizontalpodautoscaler-replicas-high
     group: hpa
@@ -502,6 +525,7 @@ alerts:
   - alert: k8s-container-disk-usage
     group: k8s_disk
     stability: best-effort
+    enabledByDefault: true
     for: 5m
     labels:
       severity: warning
@@ -512,20 +536,21 @@ alerts:
       id: infra.kubernetes.container_disk_usage
       stability: best-effort
       description:
-        summary: Container filesystem usage as a percentage of its limit, by host.
+        summary: Container filesystem usage as a percentage of its limit, by node.
       promQL: |
         100 * (
-          max by (kubernetes_io_hostname) (container_fs_usage_bytes)
-          / max by (kubernetes_io_hostname) (container_fs_limit_bytes)
+          max by (node) (container_fs_usage_bytes)
+          / max by (node) (container_fs_limit_bytes)
         ) > 70
       datadogQuery: |
         avg(last_5m):100 * (
-          max:container_fs_usage_bytes{*} by {kubernetes_io_hostname}
-            / max:container_fs_limit_bytes{*} by {kubernetes_io_hostname}
+          max:container_fs_usage_bytes{*} by {node}
+          / max:container_fs_limit_bytes{*} by {node}
         ) > 70
   - alert: k8s-node-disk-pressure
     group: k8s_disk
     stability: best-effort
+    enabledByDefault: true
     for: 15m
     labels:
       severity: warning
@@ -542,7 +567,9 @@ alerts:
           kube_node_status_condition{condition="DiskPressure", status="true"}
         ) > 0
       datadogQuery: |
-        max(last_15m):max:kube_node_status_condition{condition:DiskPressure, status:true} by {node} > 0
+        max(last_15m):(
+          max:kube_node_status_condition{condition:DiskPressure, status:true} by {node}
+        ) > 0
   - alert: k8s-volume-usage
     group: k8s_disk
     stability: best-effort
@@ -578,6 +605,7 @@ alerts:
   - alert: alloy-log-drops
     group: loki
     stability: best-effort
+    enabledByDefault: true
     for: 5m
     labels:
       severity: warning
@@ -598,10 +626,13 @@ alerts:
           rate(loki_write_dropped_entries_total[2m])
         ) > 0
       datadogQuery: |
-        avg(last_2m):sum:loki_write_dropped_entries_total{*} by {namespace,job,reason}.as_rate() > 0
+        avg(last_2m):(
+          sum:loki_write_dropped_entries_total{*} by {namespace,job,reason}.as_rate()
+        ) > 0
   - alert: loki-push-err-high
     group: loki
     stability: best-effort
+    enabledByDefault: true
     for: 5m
     labels:
       severity: warning
@@ -618,10 +649,10 @@ alerts:
         summary: Percentage of Loki push requests returning 4xx/5xx.
       promQL: |
         100 * (
-          sum by (namespace, app_kubernetes_io_component) (
+          sum by (namespace, job) (
             rate(loki_request_duration_seconds_count{status_code=~"4.*|5.*", route=~".*push.*"}[2m])
           )
-          / sum by (namespace, app_kubernetes_io_component) (
+          / sum by (namespace, job) (
             rate(loki_request_duration_seconds_count{route=~".*push.*"}[2m])
           )
         ) > 10
@@ -629,14 +660,13 @@ alerts:
       # Datadog exporter; without it there is nothing to divide.
       datadogQuery: |
         avg(last_2m):100 * (
-          sum:loki_request_duration_seconds.count{(status_code:4* OR status_code:5*), route:*push*}
-            by {namespace,app_kubernetes_io_component}.as_rate()
-          / sum:loki_request_duration_seconds.count{route:*push*}
-            by {namespace,app_kubernetes_io_component}.as_rate()
+          sum:loki_request_duration_seconds.count{(status_code:4* OR status_code:5*), route:*push*} by {namespace,job}.as_rate()
+          / sum:loki_request_duration_seconds.count{route:*push*} by {namespace,job}.as_rate()
         ) > 10
   - alert: loki-panics
     group: loki
     stability: best-effort
+    enabledByDefault: true
     for: 15m
     labels:
       severity: notice
@@ -649,11 +679,13 @@ alerts:
       description:
         summary: Rate of Loki panics, by component.
       promQL: |
-        sum by (namespace, job, app_kubernetes_io_component) (
+        sum by (namespace, job) (
           increase(loki_panic_total[10m])
         ) > 0
       datadogQuery: |
-        sum(last_10m):sum:loki_panic_total{*} by {namespace,job,app_kubernetes_io_component}.as_count() > 0
+        sum(last_10m):(
+          sum:loki_panic_total{*} by {namespace,job}.as_count()
+        ) > 0
   - alert: loki-req-duration-high
     group: loki
     stability: best-effort
@@ -670,15 +702,18 @@ alerts:
         summary: p95 Loki request duration (seconds), by component.
       promQL: |
         histogram_quantile(0.95,
-          sum by (le, app_kubernetes_io_component) (
+          sum by (le, job) (
             rate(loki_request_duration_seconds_bucket{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"}[5m])
           )
         ) > 1
       datadogQuery: |
-        avg(last_5m):p95:loki_request_duration_seconds{!route:*tail*} by {app_kubernetes_io_component} > 1
+        avg(last_5m):(
+          p95:loki_request_duration_seconds{!route:*tail*, !route:/schedulerpb.schedulerforquerier/querierloop} by {job}
+        ) > 1
   - alert: loki-req-err-high
     group: loki
     stability: best-effort
+    enabledByDefault: true
     for: 15m
     labels:
       severity: notice
@@ -692,18 +727,18 @@ alerts:
         summary: Percentage of Loki requests returning 5xx, by route.
       promQL: |
         100 * (
-          sum by (namespace, app_kubernetes_io_component, route) (
+          sum by (namespace, job, route) (
             rate(loki_request_duration_seconds_count{status_code=~"5.*"}[2m])
           )
-          / sum by (namespace, app_kubernetes_io_component, route) (
+          / sum by (namespace, job, route) (
             rate(loki_request_duration_seconds_count[2m])
           )
         ) > 10
       # As above: needs histograms::send_aggregation_metrics.
       datadogQuery: |
         avg(last_2m):100 * (
-          sum:loki_request_duration_seconds.count{status_code:5*} by {namespace,app_kubernetes_io_component,route}.as_rate()
-            / sum:loki_request_duration_seconds.count{*} by {namespace,app_kubernetes_io_component,route}.as_rate()
+          sum:loki_request_duration_seconds.count{status_code:5*} by {namespace,job,route}.as_rate()
+          / sum:loki_request_duration_seconds.count{*} by {namespace,job,route}.as_rate()
         ) > 10
   - alert: loki-writer-err-high
     group: loki
@@ -721,25 +756,28 @@ alerts:
         summary: Percentage of Loki requests recording a write error, by route.
       promQL: |
         100 * (
-          sum by (namespace, app_kubernetes_io_component, route) (
+          sum by (namespace, job, route) (
             rate(loki_request_duration_seconds_count{status_code="error"}[2m])
           )
-          / sum by (namespace, app_kubernetes_io_component, route) (
+          / sum by (namespace, job, route) (
             rate(loki_request_duration_seconds_count[2m])
           )
         ) > 10
       # As above: needs histograms::send_aggregation_metrics.
       datadogQuery: |
         avg(last_2m):100 * (
-          sum:loki_request_duration_seconds.count{status_code:error} by {namespace,app_kubernetes_io_component,route}.as_rate()
-            / sum:loki_request_duration_seconds.count{*} by {namespace,app_kubernetes_io_component,route}.as_rate()
+          sum:loki_request_duration_seconds.count{status_code:error} by {namespace,job,route}.as_rate()
+          / sum:loki_request_duration_seconds.count{*} by {namespace,job,route}.as_rate()
         ) > 10
 
   # --- Observability collection --------------------------------------------
   - alert: clusterd-metrics-missing
     group: metric_collection
     stability: best-effort
+    enabledByDefault: true
     for: 60m
+    # Reads only `up`, whose name says nothing about which targets it means.
+    requires: [materialize]
     labels:
       severity: warning
       component: monitoring
@@ -752,15 +790,23 @@ alerts:
         summary: Materialize scrape targets reporting up == 0, by pod.
       promQL: |
         max by (pod, namespace) (
-          up{job=~"materialize", cluster_environmentd_materialize_cloud_cluster_id!="s5"}
+          up{job=~".*/.*materialize-(environmentd|clusterd)", cluster_environmentd_materialize_cloud_cluster_id!="s5"}
         ) == 0
       datadogQuery: |
-        avg(last_1h):max:up{job:materialize, !cluster_environmentd_materialize_cloud_cluster_id:s5}
-          by {pod,namespace} <= 0
+        avg(last_1h):(
+          max:up{job IN (*/*materialize-environmentd,*/*materialize-clusterd), !cluster_environmentd_materialize_cloud_cluster_id:s5}
+            by {pod,namespace}
+        ) <= 0
   - alert: critical-metrics-missing
     group: metric_collection
     stability: best-effort
     for: 30m
+    # Reads only `up`. `cadvisor` is derived from this chart's gateway scraping
+    # at all, which is the precondition for its targets being down to mean
+    # anything.
+    # Monitoring infrastructure only: Materialize's own targets are
+    # `clusterd-metrics-missing`'s.
+    requires: [cadvisor]
     labels:
       severity: warning
       component: monitoring
@@ -774,19 +820,22 @@ alerts:
       promQL: |
         (
           count by (job, app) (
-            up{job=~"cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller"} == 0
+            up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway"} == 0
           )
           / count by (job, app) (
-            up{job=~"cilium|crdb|environment_controller|kubernetes-nodes.*|kubernetes-pods|lvm-exporter|node-exporter|new-promsql-exporter|region_controller"}
+            up{job=~"cadvisor|kube-state-metrics|node-exporter|alloy-agent|alloy-gateway"}
           )
         ) * 100 > 30
       # `up` is a 0/1 gauge, so 1 minus its mean is the fraction of targets
       # down — Datadog cannot count series by value.
       datadogQuery: |
-        avg(last_30m):(1 - avg:up{job IN (cilium,crdb,environment_controller,kubernetes-nodes*,kubernetes-pods,lvm-exporter,node-exporter,new-promsql-exporter,region_controller)} by {job}) * 100 > 30
+        avg(last_30m):(
+          1 - avg:up{job IN (cadvisor,kube-state-metrics,node-exporter,alloy-agent,alloy-gateway)} by {job}
+        ) * 100 > 30
   - alert: logging-collection-down
     group: metric_collection
     stability: best-effort
+    enabledByDefault: true
     for: 15m
     labels:
       severity: warning
@@ -798,16 +847,20 @@ alerts:
       stability: best-effort
       description:
         summary: Rate of bytes received by the Loki distributor.
+      # `sum()` over no series is empty, not zero, so a distributor that has
+      # stopped reporting at all would never fire this. The `or vector(0)` makes
+      # absence read as zero; the rule installs only where the bundled Loki
+      # runs, so absence there is itself the failure.
       promQL: |
-        sum(rate(loki_distributor_bytes_received_total{namespace="loki"}[5m])) == 0
+        (sum(rate(loki_distributor_bytes_received_total[5m])) or vector(0)) == 0
       datadogQuery: |
-        avg(last_5m):sum:loki_distributor_bytes_received_total{namespace:loki}.as_rate() <= 0
+        avg(last_5m):default_zero(sum:loki_distributor_bytes_received_total{*}.as_rate()) <= 0
 
   # --- Kubernetes deployments ----------------------------------------------
-  # Split by criticality of the workload (via the deployment name allowlist):
-  # tier-1 core control plane, tier-2 important supporting services, tier-3
-  # everything else. The allowlists are inherited from the cloud environment and
-  # will be pared to the self-managed set over time.
+  # Split by criticality of the workload: core, important and non-essential,
+  # the tiers an install sets in `rules.infraWorkloads`. Each tier lists
+  # container and Deployment names alike, so these match it against
+  # `deployment`.
   - alert: k8s-deployment-unavailable-critical
     group: deployment
     stability: best-effort
@@ -827,11 +880,13 @@ alerts:
         summary: Core control-plane deployments reporting no Available replicas.
       promQL: |
         group by (deployment, namespace) (
-          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller", %%{excludeEnvironmentFilter}} == 0
+          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"%%{infraCoreWorkloadList}", %%{excludeEnvironmentFilter}} == 0
         )
       datadogQuery: |
-        max(last_10m):max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (admission-webhook,aws-load-balancer-controller,balancer*,cilium-agent,cilium-operator,controller,coredns,csi-attacher,csi-node-driver-registrar,csi-provisioner,csi-resizer,csi-snapshotter,daemonset-taint-remover,environment-controller,external-dns,*internal-api*,*region-api*,*sync-server,karpenter,node-cache,node-driver-registrar,openebs-lvm*,region-controller,*scheduler,snapshot-controller), %%{excludeEnvironmentFilter}}
-          by {deployment,namespace} <= 0
+        max(last_10m):(
+          max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (%%{infraCoreWorkloadList}), %%{excludeEnvironmentFilter}}
+            by {deployment,namespace}
+        ) <= 0
   - alert: k8s-deployment-unavailable-warning
     group: deployment
     stability: best-effort
@@ -848,11 +903,13 @@ alerts:
         summary: Important supporting deployments reporting no Available replicas.
       promQL: |
         group by (deployment, namespace) (
-          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy", %%{excludeEnvironmentFilter}} == 0
+          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"%%{infraImportantWorkloadList}", %%{excludeEnvironmentFilter}} == 0
         )
       datadogQuery: |
-        max(last_10m):max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (cert-manager*,ebs-plugin,ebs-csi-controller,eip-operator,hubble-relay,kube-state-metrics,liveness-probe,metrics-server,new-promsql-exporter,node-driver-registrar,node-exporter,prometheus-adapter,sidecar-aws-sigv4-proxy), %%{excludeEnvironmentFilter}}
-          by {deployment,namespace} <= 0
+        max(last_10m):(
+          max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (%%{infraImportantWorkloadList}), %%{excludeEnvironmentFilter}}
+            by {deployment,namespace}
+        ) <= 0
   - alert: k8s-deployment-unavailable-notice
     group: deployment
     stability: best-effort
@@ -869,17 +926,20 @@ alerts:
         summary: Non-essential deployments reporting no Available replicas.
       promQL: |
         group by (deployment, namespace) (
-          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"backend|egress-check.*|egress-noop.*|exporter|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector", %%{excludeEnvironmentFilter}} == 0
+          kube_deployment_status_condition{condition=~"Available", status=~"true", deployment=~"%%{infraNonessentialWorkloadList}", %%{excludeEnvironmentFilter}} == 0
         )
       datadogQuery: |
-        max(last_10m):max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (backend,egress-check*,egress-noop*,exporter,frontend,hubble-ui,loki*,memcached,metrics-proxy,nginx,overprovisioning-placeholder,pause,polarsignals-scraper,tbot,teleport,cert-manager-csi-driver,lvm-exporter,parca-agent,vector), %%{excludeEnvironmentFilter}}
-          by {deployment,namespace} <= 0
+        max(last_10m):(
+          max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (%%{infraNonessentialWorkloadList}), %%{excludeEnvironmentFilter}}
+            by {deployment,namespace}
+        ) <= 0
 
   # --- Kubernetes daemonsets -----------------------------------------------
   # Node-local daemonsets reserve CPU/memory that is then unavailable to
   # clusterd. The alert fires as the headroom left after daemonset requests
-  # shrinks toward zero. (The per-node budgets 1.77 cores / 10730942464 bytes are
-  # inherited node sizings and will be parameterized for self-managed later.)
+  # shrinks toward zero. Which containers count is the daemonset tier in
+  # `rules.infraWorkloads`; the per-node budgets (1.77 cores, 10730942464 bytes)
+  # are still inherited node sizings, to be parameterized for self-managed later.
   - alert: k8s-daemonset-saturating-cpu
     group: daemonset
     stability: best-effort
@@ -898,7 +958,7 @@ alerts:
         (
           1.77 - sum(
             max by (container) (
-              kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="core", resource="cpu"}
+              kube_pod_container_resource_requests{container=~"%%{infraDaemonsetWorkloadList}", unit="core", resource="cpu"}
             )
           )
         ) < 0.01
@@ -906,9 +966,9 @@ alerts:
       # aggregates once, and per-node is the more useful reading of the same
       # budget.
       datadogQuery: |
-        avg(last_30m):1.77
-          - sum:kube_pod_container_resource_requests{unit:core, resource:cpu, container IN (cilium-agent,csi-node-driver-registrar,ebs-plugin,eip-operator,lvm-exporter,node-driver-registrar,node-exporter,openebs-lvm-plugin,parca-agent,vector)} by {node}
-          < 0.01
+        avg(last_30m):(
+          1.77 - sum:kube_pod_container_resource_requests{unit:core, resource:cpu, container IN (%%{infraDaemonsetWorkloadList})} by {node}
+        ) < 0.01
   - alert: k8s-daemonset-saturating-mem
     group: daemonset
     stability: best-effort
@@ -927,15 +987,15 @@ alerts:
         (
           10730942464 - sum(
             max by (container) (
-              kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="byte", resource="memory"}
+              kube_pod_container_resource_requests{container=~"%%{infraDaemonsetWorkloadList}", unit="byte", resource="memory"}
             )
           )
         ) < 5243000
       # As above: grouped by node rather than deduplicated by container.
       datadogQuery: |
-        avg(last_30m):10730942464
-          - sum:kube_pod_container_resource_requests{unit:byte, resource:memory, container IN (cilium-agent,csi-node-driver-registrar,ebs-plugin,eip-operator,lvm-exporter,node-driver-registrar,node-exporter,openebs-lvm-plugin,parca-agent,vector)} by {node}
-          < 5243000
+        avg(last_30m):(
+          10730942464 - sum:kube_pod_container_resource_requests{unit:byte, resource:memory, container IN (%%{infraDaemonsetWorkloadList})} by {node}
+        ) < 5243000
   - alert: k8s-daemonset-high-cpu
     group: daemonset
     stability: best-effort
@@ -954,15 +1014,15 @@ alerts:
         (
           1.77 - sum(
             max by (container) (
-              kube_pod_container_resource_requests{container=~"cilium-agent|csi-node-driver-registrar|ebs-plugin|eip-operator|lvm-exporter|node-driver-registrar|node-exporter|openebs-lvm-plugin|parca-agent|vector", unit="core", resource="cpu"}
+              kube_pod_container_resource_requests{container=~"%%{infraDaemonsetWorkloadList}", unit="core", resource="cpu"}
             )
           )
         ) < 0.1
       # As above: grouped by node rather than deduplicated by container.
       datadogQuery: |
-        avg(last_1h):1.77
-          - sum:kube_pod_container_resource_requests{unit:core, resource:cpu, container IN (cilium-agent,csi-node-driver-registrar,ebs-plugin,eip-operator,lvm-exporter,node-driver-registrar,node-exporter,openebs-lvm-plugin,parca-agent,vector)} by {node}
-          < 0.1
+        avg(last_1h):(
+          1.77 - sum:kube_pod_container_resource_requests{unit:core, resource:cpu, container IN (%%{infraDaemonsetWorkloadList})} by {node}
+        ) < 0.1
 
   # --- File descriptors ----------------------------------------------------
   - alert: container-file-descriptors-critical
@@ -982,7 +1042,7 @@ alerts:
       promQL: |
         100 * (
           sum by (pod, namespace, container) (
-            container_file_descriptors{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+            container_file_descriptors{container=~"%%{infraCoreWorkloadList}"}
           )
           / min by (pod, namespace, container) (
             container_ulimits_soft{ulimit="max_open_files"}
@@ -990,8 +1050,8 @@ alerts:
         ) > 70
       datadogQuery: |
         avg(last_1m):100 * (
-          sum:container_file_descriptors{container IN (admission-webhook,aws-load-balancer-controller,balancer*,cilium-agent,cilium-operator,controller,coredns,csi-attacher,csi-node-driver-registrar,csi-provisioner,csi-resizer,csi-snapshotter,daemonset-taint-remover,environment-controller,external-dns,*internal-api*,*region-api*,*sync-server,karpenter,node-cache,node-driver-registrar,openebs-lvm*,region-controller,*scheduler,snapshot-controller)} by {pod,namespace,container}
-            / min:container_ulimits_soft{ulimit:max_open_files} by {pod,namespace,container}
+          sum:container_file_descriptors{container IN (%%{infraCoreWorkloadList})} by {pod,namespace,container}
+          / min:container_ulimits_soft{ulimit:max_open_files} by {pod,namespace,container}
         ) > 70
   - alert: container-file-descriptors-warning
     group: file_descriptors
@@ -1010,7 +1070,7 @@ alerts:
       promQL: |
         100 * (
           sum by (pod, namespace, container) (
-            container_file_descriptors{container!~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+            container_file_descriptors{container!~"%%{infraCoreWorkloadList}"}
           )
           / min by (pod, namespace, container) (
             container_ulimits_soft{ulimit="max_open_files"}
@@ -1018,8 +1078,8 @@ alerts:
         ) > 70
       datadogQuery: |
         avg(last_1m):100 * (
-          sum:container_file_descriptors{container NOT IN (admission-webhook,aws-load-balancer-controller,balancer*,cilium-agent,cilium-operator,controller,coredns,csi-attacher,csi-node-driver-registrar,csi-provisioner,csi-resizer,csi-snapshotter,daemonset-taint-remover,environment-controller,external-dns,*internal-api*,*region-api*,*sync-server,karpenter,node-cache,node-driver-registrar,openebs-lvm*,region-controller,*scheduler,snapshot-controller)} by {pod,namespace,container}
-            / min:container_ulimits_soft{ulimit:max_open_files} by {pod,namespace,container}
+          sum:container_file_descriptors{container NOT IN (%%{infraCoreWorkloadList})} by {pod,namespace,container}
+          / min:container_ulimits_soft{ulimit:max_open_files} by {pod,namespace,container}
         ) > 70
   - alert: container-file-descriptors-elevated
     group: file_descriptors
@@ -1045,7 +1105,7 @@ alerts:
       datadogQuery: |
         avg(last_5m):100 * (
           sum:container_file_descriptors{*} by {pod,namespace,container}
-            / min:container_ulimits_soft{ulimit:max_open_files} by {pod,namespace,container}
+          / min:container_ulimits_soft{ulimit:max_open_files} by {pod,namespace,container}
         ) > 20
 
   # --- Infra pod CPU / memory ----------------------------------------------
@@ -1075,8 +1135,7 @@ alerts:
       datadogQuery: |
         avg(last_6h):(
           sum:container_cpu_usage_seconds_total{pod:vector-*, !container:""} by {pod,namespace,container}.as_rate()
-          / max:kube_pod_container_resource_requests{resource:cpu, pod:vector-*, !container:""}
-            by {pod,namespace,container}
+          / max:kube_pod_container_resource_requests{resource:cpu, pod:vector-*, !container:""} by {pod,namespace,container}
         ) > 1
   - alert: infra-pods-high-cpu-ratio
     group: infra_cpu
@@ -1095,17 +1154,17 @@ alerts:
       promQL: |
         (
           sum by (pod, namespace, container) (
-            rate(container_cpu_usage_seconds_total{namespace!~"environment.*", container!="", pod!~"parca-agent-.*|vector-.*|cilium-egress-.*"}[5m])
+            rate(container_cpu_usage_seconds_total{%%{excludeMzDeploymentNamespaceFilter}, container!="", pod!~"parca-agent-.*|vector-.*|cilium-egress-.*"}[5m])
           )
           / max by (pod, namespace, container) (
-            kube_pod_container_resource_requests{namespace!~"environment.*", resource="cpu", container!="", pod!~"parca-agent-.*|vector-.*|cilium-egress-.*"}
+            kube_pod_container_resource_requests{%%{excludeMzDeploymentNamespaceFilter}, resource="cpu", container!="", pod!~"parca-agent-.*|vector-.*|cilium-egress-.*"}
           )
         ) > 1
       datadogQuery: |
         avg(last_30m):(
-          sum:container_cpu_usage_seconds_total{!namespace:environment*, !container:"", pod NOT IN (parca-agent-*,vector-*,cilium-egress-*)}
+          sum:container_cpu_usage_seconds_total{%%{excludeMzDeploymentNamespaceFilter}, !container:"", pod NOT IN (parca-agent-*,vector-*,cilium-egress-*)}
             by {pod,namespace,container}.as_rate()
-          / max:kube_pod_container_resource_requests{!namespace:environment*, resource:cpu, !container:"", pod NOT IN (parca-agent-*,vector-*,cilium-egress-*)}
+          / max:kube_pod_container_resource_requests{%%{excludeMzDeploymentNamespaceFilter}, resource:cpu, !container:"", pod NOT IN (parca-agent-*,vector-*,cilium-egress-*)}
             by {pod,namespace,container}
         ) > 1
   - alert: infra-memory-high
@@ -1125,16 +1184,16 @@ alerts:
       promQL: |
         100 * (
           sum by (namespace, pod, container) (
-            container_memory_working_set_bytes{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+            container_memory_working_set_bytes{container=~"%%{infraCoreWorkloadList}"}
           )
           / sum by (namespace, pod, container) (
-            container_spec_memory_limit_bytes{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+            container_spec_memory_limit_bytes{container=~"%%{infraCoreWorkloadList}"} != 0
           )
         ) > 80
       datadogQuery: |
         avg(last_10m):100 * (
-          sum:container_memory_working_set_bytes{container IN (admission-webhook,aws-load-balancer-controller,balancer*,cilium-agent,cilium-operator,controller,coredns,csi-attacher,csi-node-driver-registrar,csi-provisioner,csi-resizer,csi-snapshotter,daemonset-taint-remover,environment-controller,external-dns,*internal-api*,*region-api*,*sync-server,karpenter,node-cache,node-driver-registrar,openebs-lvm*,region-controller,*scheduler,snapshot-controller)} by {namespace,pod,container}
-            / sum:container_spec_memory_limit_bytes{container IN (admission-webhook,aws-load-balancer-controller,balancer*,cilium-agent,cilium-operator,controller,coredns,csi-attacher,csi-node-driver-registrar,csi-provisioner,csi-resizer,csi-snapshotter,daemonset-taint-remover,environment-controller,external-dns,*internal-api*,*region-api*,*sync-server,karpenter,node-cache,node-driver-registrar,openebs-lvm*,region-controller,*scheduler,snapshot-controller)} by {namespace,pod,container}
+          sum:container_memory_working_set_bytes{container IN (%%{infraCoreWorkloadList})} by {namespace,pod,container}
+          / sum:container_spec_memory_limit_bytes{container IN (%%{infraCoreWorkloadList})} by {namespace,pod,container}
         ) > 80
   - alert: infra-memory-elevated
     group: infra_memory
@@ -1153,16 +1212,16 @@ alerts:
       promQL: |
         100 * (
           sum by (namespace, pod, container) (
-            container_memory_working_set_bytes{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+            container_memory_working_set_bytes{container=~"%%{infraImportantWorkloadList}"}
           )
           / sum by (namespace, pod, container) (
-            container_spec_memory_limit_bytes{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+            container_spec_memory_limit_bytes{container=~"%%{infraImportantWorkloadList}"} != 0
           )
         ) > 80
       datadogQuery: |
         avg(last_1h):100 * (
-          sum:container_memory_working_set_bytes{container IN (cert-manager*,ebs-plugin,ebs-csi-controller,eip-operator,hubble-relay,kube-state-metrics,liveness-probe,metrics-server,new-promsql-exporter,node-driver-registrar,node-exporter,prometheus-adapter,sidecar-aws-sigv4-proxy)} by {namespace,pod,container}
-            / sum:container_spec_memory_limit_bytes{container IN (cert-manager*,ebs-plugin,ebs-csi-controller,eip-operator,hubble-relay,kube-state-metrics,liveness-probe,metrics-server,new-promsql-exporter,node-driver-registrar,node-exporter,prometheus-adapter,sidecar-aws-sigv4-proxy)} by {namespace,pod,container}
+          sum:container_memory_working_set_bytes{container IN (%%{infraImportantWorkloadList})} by {namespace,pod,container}
+          / sum:container_spec_memory_limit_bytes{container IN (%%{infraImportantWorkloadList})} by {namespace,pod,container}
         ) > 80
   - alert: infra-oomkill-core-systems
     group: infra_memory
@@ -1183,16 +1242,17 @@ alerts:
         summary: Core infra containers that restarted with an OOMKilled last-termination reason in the last 3h.
       promQL: |
         sum by (container, namespace, pod) (
-          kube_pod_container_status_restarts_total{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
-          - kube_pod_container_status_restarts_total{container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"} offset 3h > 1
+          kube_pod_container_status_restarts_total{container=~"%%{infraCoreWorkloadList}"}
+          - kube_pod_container_status_restarts_total{container=~"%%{infraCoreWorkloadList}"} offset 3h > 1
           and ignoring(reason)
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"admission-webhook|aws-load-balancer-controller|balancer.*|cilium-agent|cilium-operator|controller|coredns|csi-attacher|csi-node-driver-registrar|csi-provisioner|csi-resizer|csi-snapshotter|daemonset-taint-remover|environment-controller|external-dns|.*internal-api.*|.*region-api.*|.*sync-server|karpenter|node-cache|node-driver-registrar|openebs-lvm.*|region-controller|.*scheduler|snapshot-controller"}
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"%%{infraCoreWorkloadList}"}
         ) > 0
       # The `offset 3h` self-diff and the OOMKilled-reason join are not
       # expressible; this counts restarts over the same 3h window instead.
       datadogQuery: |
-        sum(last_3h):sum:kube_pod_container_status_restarts_total{container IN (admission-webhook,aws-load-balancer-controller,balancer*,cilium-agent,cilium-operator,controller,coredns,csi-attacher,csi-node-driver-registrar,csi-provisioner,csi-resizer,csi-snapshotter,daemonset-taint-remover,environment-controller,external-dns,*internal-api*,*region-api*,*sync-server,karpenter,node-cache,node-driver-registrar,openebs-lvm*,region-controller,*scheduler,snapshot-controller)}
-          by {container,namespace,pod}.as_count() > 1
+        sum(last_3h):(
+          sum:kube_pod_container_status_restarts_total{container IN (%%{infraCoreWorkloadList})} by {container,namespace,pod}.as_count()
+        ) > 1
   - alert: infra-oomkill-important-systems
     group: infra_memory
     stability: best-effort
@@ -1209,15 +1269,16 @@ alerts:
         summary: Important infra containers that restarted with an OOMKilled last-termination reason in the last 3h.
       promQL: |
         sum by (container, namespace, pod) (
-          kube_pod_container_status_restarts_total{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
-          - kube_pod_container_status_restarts_total{container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"} offset 3h > 1
+          kube_pod_container_status_restarts_total{container=~"%%{infraImportantWorkloadList}"}
+          - kube_pod_container_status_restarts_total{container=~"%%{infraImportantWorkloadList}"} offset 3h > 1
           and ignoring(reason)
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"cert-manager.*|ebs-plugin|ebs-csi-controller|eip-operator|hubble-relay|kube-state-metrics|liveness-probe|metrics-server|new-promsql-exporter|node-driver-registrar|node-exporter|prometheus-adapter|sidecar-aws-sigv4-proxy"}
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"%%{infraImportantWorkloadList}"}
         ) > 0
       # As above: restart count over 3h, without the OOMKilled-reason join.
       datadogQuery: |
-        sum(last_3h):sum:kube_pod_container_status_restarts_total{container IN (cert-manager*,ebs-plugin,ebs-csi-controller,eip-operator,hubble-relay,kube-state-metrics,liveness-probe,metrics-server,new-promsql-exporter,node-driver-registrar,node-exporter,prometheus-adapter,sidecar-aws-sigv4-proxy)}
-          by {container,namespace,pod}.as_count() > 1
+        sum(last_3h):(
+          sum:kube_pod_container_status_restarts_total{container IN (%%{infraImportantWorkloadList})} by {container,namespace,pod}.as_count()
+        ) > 1
   - alert: infra-oomkill-nonessential-systems
     group: infra_memory
     stability: best-effort
@@ -1234,37 +1295,41 @@ alerts:
         summary: Non-essential infra containers that restarted with an OOMKilled last-termination reason in the last 3h.
       promQL: |
         sum by (container, namespace, pod) (
-          kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}
-          - kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"} offset 3h > 1
+          kube_pod_container_status_restarts_total{container=~"%%{infraNonessentialWorkloadList}"}
+          - kube_pod_container_status_restarts_total{container=~"%%{infraNonessentialWorkloadList}"} offset 3h > 1
           and ignoring(reason)
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container=~"%%{infraNonessentialWorkloadList}"}
         ) > 0
       # As above: restart count over 3h, without the OOMKilled-reason join.
       datadogQuery: |
-        sum(last_3h):sum:kube_pod_container_status_restarts_total{container IN (awslimitchecker,backend,egress-check*,egress-noop*,exporter,external-uptime-checker,frontend,hubble-ui,loki*,memcached,metrics-proxy,nginx,overprovisioning-placeholder,pause,polarsignals-scraper,tbot,teleport,cert-manager-csi-driver,lvm-exporter,parca-agent,vector)}
-          by {container,namespace,pod}.as_count() > 1
+        sum(last_3h):(
+          sum:kube_pod_container_status_restarts_total{container IN (%%{infraNonessentialWorkloadList})} by {container,namespace,pod}.as_count()
+        ) > 1
 
   # --- Infra pod health ----------------------------------------------------
   - alert: k8s-infra-pod-pending-too-long
     group: infra_pod_health
     stability: best-effort
-    for: 15m
+    enabledByDefault: true
+    for: 20m
     labels:
       severity: warning
       component: kubernetes
     description:
-      summary: An infra pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
+      summary: An infra pod has been Pending for 20m — the cluster may be unhealthy or out of capacity.
     query:
       id: infra.kubernetes.infra_pod_pending
       stability: best-effort
       description:
-        summary: Non-environment pods stuck in Pending.
+        summary: Pods outside the Materialize deployment stuck in Pending.
       promQL: |
         max by (namespace, pod) (
-          kube_pod_status_phase{namespace!~"environment.*", phase="Pending"}
+          kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase="Pending"}
         ) > 0
       datadogQuery: |
-        max(last_15m):max:kube_pod_status_phase{!namespace:environment*, phase:Pending} by {namespace,pod} > 0
+        max(last_20m):(
+          max:kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase:Pending} by {namespace,pod}
+        ) > 0
   - alert: pod-restart-rate-high
     group: infra_pod_health
     stability: best-effort
@@ -1281,11 +1346,13 @@ alerts:
         summary: Restart rate of important infra containers.
       promQL: |
         avg by (container, namespace) (
-          rate(kube_pod_container_status_restarts_total{namespace!~"environment.*", container!~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}[10m])
+          rate(kube_pod_container_status_restarts_total{%%{excludeMzDeploymentNamespaceFilter}, container!~"%%{infraNonessentialWorkloadList}"}[10m])
         ) * 100 > 0
       datadogQuery: |
-        avg(last_10m):avg:kube_pod_container_status_restarts_total{!namespace:environment*, container NOT IN (awslimitchecker,backend,egress-check*,egress-noop*,exporter,external-uptime-checker,frontend,hubble-ui,loki*,memcached,metrics-proxy,nginx,overprovisioning-placeholder,pause,polarsignals-scraper,tbot,teleport,cert-manager-csi-driver,lvm-exporter,parca-agent,vector)}
-          by {container,namespace}.as_rate() * 100 > 0
+        avg(last_10m):(
+          avg:kube_pod_container_status_restarts_total{%%{excludeMzDeploymentNamespaceFilter}, container NOT IN (%%{infraNonessentialWorkloadList})}
+            by {container,namespace}.as_rate()
+        ) * 100 > 0
   - alert: pod-restart-rate-high-nonessential
     group: infra_pod_health
     stability: best-effort
@@ -1302,14 +1369,16 @@ alerts:
         summary: Restart rate of non-essential infra containers.
       promQL: |
         avg by (container, namespace) (
-          rate(kube_pod_container_status_restarts_total{container=~"awslimitchecker|backend|egress-check.*|egress-noop.*|exporter|external-uptime-checker|frontend|hubble-ui|loki.*|memcached|metrics-proxy|nginx|overprovisioning-placeholder|pause|polarsignals-scraper|tbot|teleport|cert-manager-csi-driver|lvm-exporter|parca-agent|vector"}[10m])
+          rate(kube_pod_container_status_restarts_total{container=~"%%{infraNonessentialWorkloadList}"}[10m])
         ) * 100 > 0
       datadogQuery: |
-        avg(last_10m):avg:kube_pod_container_status_restarts_total{container IN (awslimitchecker,backend,egress-check*,egress-noop*,exporter,external-uptime-checker,frontend,hubble-ui,loki*,memcached,metrics-proxy,nginx,overprovisioning-placeholder,pause,polarsignals-scraper,tbot,teleport,cert-manager-csi-driver,lvm-exporter,parca-agent,vector)}
-          by {container,namespace}.as_rate() * 100 > 0
+        avg(last_10m):(
+          avg:kube_pod_container_status_restarts_total{container IN (%%{infraNonessentialWorkloadList})} by {container,namespace}.as_rate()
+        ) * 100 > 0
   - alert: pods-stuck-in-waiting
     group: infra_pod_health
     stability: best-effort
+    enabledByDefault: true
     for: 1m
     labels:
       severity: notice
@@ -1321,14 +1390,19 @@ alerts:
       stability: best-effort
       description:
         summary: Pods in a Waiting state for longer than 10 minutes.
+      # `on (namespace, pod)` is load-bearing: the waiting series is per
+      # container and the start-time series per pod, so a bare `and` requires
+      # label sets that never coincide and the alert can never fire.
       promQL: |
         sum by (namespace, pod) (
           kube_pod_container_status_waiting == 1
-          and time() - kube_pod_start_time > 10 * 60
+          and on (namespace, pod) (time() - kube_pod_start_time > 10 * 60)
         ) > 0
       # The 10-minute pod-age guard has no Datadog equivalent.
       datadogQuery: |
-        max(last_1m):sum:kube_pod_container_status_waiting{*} by {namespace,pod} > 0
+        max(last_1m):(
+          sum:kube_pod_container_status_waiting{*} by {namespace,pod}
+        ) > 0
 
   # --- Egress gateway ------------------------------------------------------
   # Each expression restricts node network throughput to egress-gateway nodes via
@@ -1338,6 +1412,7 @@ alerts:
   - alert: egress-traffic-missing-metrics
     group: egress_gateway
     stability: best-effort
+    requires: [egress-gateway]
     for: 5m
     labels:
       severity: warning
@@ -1366,6 +1441,7 @@ alerts:
   - alert: excessive-egress-traffic
     group: egress_gateway
     stability: best-effort
+    requires: [egress-gateway]
     for: 20m
     labels:
       severity: warning
@@ -1387,11 +1463,13 @@ alerts:
         > 5.5 * 1000 * 1000 * 1000 / 8
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
-        avg(last_20m):sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
-          > 687500000
+        avg(last_20m):(
+          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+        ) > 687500000
   - alert: high-egress-traffic
     group: egress_gateway
     stability: best-effort
+    requires: [egress-gateway]
     for: 20m
     labels:
       severity: notice
@@ -1413,11 +1491,13 @@ alerts:
         > 4.5 * 1000 * 1000 * 1000 / 8
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
-        avg(last_20m):sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
-          > 562500000
+        avg(last_20m):(
+          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+        ) > 562500000
   - alert: low-egress-traffic
     group: egress_gateway
     stability: best-effort
+    requires: [egress-gateway]
     for: 2m
     labels:
       severity: warning
@@ -1439,11 +1519,13 @@ alerts:
         < 100
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
-        avg(last_2m):sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
-          < 100
+        avg(last_2m):(
+          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+        ) < 100
   - alert: no-egress-traffic
     group: egress_gateway
     stability: best-effort
+    requires: [egress-gateway]
     for: 5m
     labels:
       severity: warning
@@ -1465,5 +1547,6 @@ alerts:
         ) == 0
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
-        avg(last_5m):min:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
-          <= 0
+        avg(last_5m):(
+          min:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+        ) <= 0

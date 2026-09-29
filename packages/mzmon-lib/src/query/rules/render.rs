@@ -774,7 +774,7 @@ mod tests {
             args: ["namespace"]
 "#;
         let yaml = format!(
-            "{}{}{joined}",
+            "{}{}{}{joined}",
             alert(
                 "cluster-offline",
                 LABELS,
@@ -787,6 +787,12 @@ mod tests {
                 r#"kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase="Pending"} > 0"#,
                 ""
             ),
+            alert(
+                "infra-oomkill",
+                LABELS,
+                r#"kube_pod_container_status_restarts_total{container=~"%%{infraCoreWorkloadList}|%%{infraImportantWorkloadList}|%%{infraDaemonsetWorkloadList}", container!~"%%{infraNonessentialWorkloadList}"} > 0"#,
+                ""
+            ),
         );
         let set = render_rules(&registry(&yaml)).unwrap();
         let file = set.rule_file_yaml("test-alerts").unwrap();
@@ -794,6 +800,24 @@ mod tests {
             assert!(file.contains(placeholder.token()), "{placeholder:?} unused");
         }
         crate::scrape::test_support::assert_promtool_rules_ok("test-alerts", &file);
+    }
+
+    /// The real registry renders without a single error, and every file it
+    /// produces is one promtool accepts.
+    #[test]
+    fn the_registry_renders_and_promtool_accepts_it() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../queries");
+        let registry = QueryRegistry::from_directory(&dir).expect("registry loads");
+        let set = render_rules(&registry).unwrap_or_else(|errors| {
+            let listed: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+            panic!("the registry has rule errors:\n{}", listed.join("\n"))
+        });
+        assert!(set.rules.len() > 50, "expected the whole alert set");
+        assert!(set.rules.iter().any(|r| r.enabled_by_default));
+        for source in set.sources() {
+            let file = set.rule_file_yaml(source).unwrap();
+            crate::scrape::test_support::assert_promtool_rules_ok(source, &file);
+        }
     }
 
     #[test]

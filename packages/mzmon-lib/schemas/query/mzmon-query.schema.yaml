@@ -173,6 +173,18 @@ $defs:
       # because being host-network is a property of a pod's whole series set
       # rather than of any one series.
       - "excludeHostNetworkPods"
+      # Infrastructure workload tiers, as bare regex values: the author writes the
+      # label, container=~"%%{infraCoreWorkloadList}" or deployment=~"...". Each
+      # is an alternation of container and Deployment names, and which workloads a
+      # tier holds is a fact about one cluster, so an alert reads the tier rather
+      # than listing names. Core is what the cluster cannot run without (DNS,
+      # networking, storage, autoscaling); important degrades it; non-essential
+      # is everything an operator would rather hear about than be paged for; the
+      # daemonset tier is what every node runs.
+      - "infraCoreWorkloadList"
+      - "infraImportantWorkloadList"
+      - "infraNonessentialWorkloadList"
+      - "infraDaemonsetWorkloadList"
 
   metricImportance:
     description: |

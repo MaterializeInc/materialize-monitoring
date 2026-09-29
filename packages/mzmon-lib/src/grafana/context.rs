@@ -537,6 +537,15 @@ pub fn dashboard_context<'a>(
             "excludeEnvironmentFilter",
             scope.exclude_environments.clone(),
         ),
+        // Which workloads a tier holds is an install-time value
+        // (`rules.infraWorkloads`), and a dashboard is rendered at build time
+        // with no install to read it from. No dashboard reads a tier today; one
+        // that did would cover every workload rather than a list that could
+        // disagree with the chart's.
+        ("infraCoreWorkloadList", ".+".to_string()),
+        ("infraImportantWorkloadList", ".+".to_string()),
+        ("infraNonessentialWorkloadList", ".+".to_string()),
+        ("infraDaemonsetWorkloadList", ".+".to_string()),
         // Generation, which is a *name* pattern rather than a label matcher --
         // see `GENERATION_NAME_PATTERN`. `:regex` for the same reason as the
         // cluster and replica forms: the value is a fragment of a larger regex,
