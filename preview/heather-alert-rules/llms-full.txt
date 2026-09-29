@@ -5972,6 +5972,11 @@ The chart takes them from `rules.namespaces.environment`, falling back to `mater
 A deployment whose environments live elsewhere MUST set one of these, or those rules match nothing.
 `rules.namespaces.exclude` removes namespaces from alerting altogether.
 
+The infrastructure rules grade a workload by its tier in `rules.infraWorkloads`: `core`, `important`, `nonessential`, and `daemonset` for what every node runs.
+The defaults cover the Kubernetes add-ons common on EKS and GKE and this chart's own collectors.
+A cluster with other add-ons SHOULD list them, since a workload in no tier is one the tiered rules never grade.
+Each entry is a regex matched against the whole container or Deployment name.
+
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
 
 ## Two evaluators, one notifier
@@ -6061,6 +6066,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
+| `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
@@ -10139,7 +10145,7 @@ A dashboard renders a query against variables its viewer chooses.
 A ruler has no viewer, so alerts render through a third context, `packages/mzmon-lib/src/query/rules/context.rs`, which differs from the dashboard context in two ways.
 
 **Deployment-specific values render as placeholders.**
-Rules are rendered once, at build time, while which namespaces hold Materialize and which metric prefix it uses are facts about one install.
+Rules are rendered once, at build time, while which namespaces hold Materialize, which workloads the cluster counts as core infrastructure, and which metric prefix Materialize uses are facts about one install.
 Those parameters render to a `__mzmon_*__` token that the chart replaces at install time.
 
 | Parameter | Renders to | The chart fills it from |
@@ -10149,9 +10155,17 @@ Those parameters render to a `__mzmon_*__` token that the chart replaces at inst
 | `excludeMzDeploymentNamespaceFilter` | `namespace!~"<operator>\|<environments>"` | both of the above |
 | `excludeEnvironmentFilter` | `namespace!~"__mzmon_excluded_namespaces__"` | `rules.namespaces.exclude` |
 | `mzSqlPrefix` | `__mzmon_sql_prefix__` | `materialize.deploymentMode`: `mz_`, or `v2_mz_` for `cloud` |
+| `infraCoreWorkloadList` | `__mzmon_core_workloads__`, a bare value: `container=~"%%{infraCoreWorkloadList}"` | `rules.infraWorkloads.core` |
+| `infraImportantWorkloadList` | `__mzmon_important_workloads__` | `rules.infraWorkloads.important` |
+| `infraNonessentialWorkloadList` | `__mzmon_nonessential_workloads__` | `rules.infraWorkloads.nonessential` |
+| `infraDaemonsetWorkloadList` | `__mzmon_daemonset_workloads__` | `rules.infraWorkloads.daemonset` |
 | `mzEnvironmentFilter` | `materialize_cloud_organization_name=~".+"` | nothing; a rule covers every environment |
 
-An empty namespace list renders as `a^`, a regex that matches nothing, rather than as an empty string.
+An empty namespace list or workload tier renders as `a^`, a regex that matches nothing, rather than as an empty string.
+
+An infrastructure alert MUST read a workload tier rather than list container or Deployment names.
+Which workloads a cluster cannot run without is a fact about that cluster, and a list written into the expression is one no operator can correct.
+Each tier holds container and Deployment names alike, so the same parameter serves `container=~` and `deployment=~`.
 
 **Selection parameters are absent.**
 `interval`, `range`, `rangeWindow`, the log pickers and the generation filters mean "whatever the viewer chose".
@@ -13685,6 +13699,118 @@ to these. Empty uses `materialize.namespaces`, and if that is empty too,
 []</pre>
 </td>
       <td class="helm-value-desc">Namespaces excluded from alerting, such as a scratch environment nobody should be paged for.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><em>common EKS and GKE add-ons and this chart's collectors, per tier below</em></td>
+      <td class="helm-value-desc">Which infrastructure workloads the rules treat as core, important, non-essential, or on every node.
+
+The infrastructure rules (memory, OOMKills, restarts, file descriptors,
+Deployment availability, daemonset budgets) grade a workload by the tier it
+is in. Each entry is an RE2 fragment matched against the whole name:
+container names, and for the `k8s-deployment-unavailable-*` rules,
+Deployment names. That is why a tier lists both where they differ, such as
+`ebs-plugin` and `ebs-csi-controller`. It may not contain a quote, a
+backslash or whitespace.
+
+The defaults are the Kubernetes add-ons common on EKS and GKE, plus this
+chart's own collectors. Replace a tier to describe your cluster; an empty
+tier matches nothing. Container names shared across unrelated workloads
+(Karpenter's is `controller`) are left out, since the match is on the name
+alone.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.core</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "aws-load-balancer-controller",
+  "aws-node",
+  "cilium-agent",
+  "cilium-operator",
+  "coredns",
+  "csi-attacher",
+  "csi-node-driver-registrar",
+  "csi-provisioner",
+  "csi-resizer",
+  "csi-snapshotter",
+  "external-dns",
+  "karpenter",
+  "kube-dns",
+  "kube-proxy",
+  "kubedns",
+  "node-cache",
+  "node-driver-registrar",
+  "openebs-lvm.*",
+  "snapshot-controller"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads the cluster cannot run without: DNS, networking, storage provisioning, autoscaling.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.important</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  ".*kube-state-metrics",
+  ".*metrics-server.*",
+  "alloy.*",
+  "cert-manager.*",
+  "ebs-csi-controller",
+  "ebs-plugin",
+  "gce-pd-driver",
+  "hubble-relay",
+  "liveness-probe",
+  "node-exporter",
+  "prometheus-adapter"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads whose loss degrades the cluster without stopping it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.nonessential</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "event-exporter",
+  "grafana.*",
+  "hubble-ui",
+  "loki.*",
+  "lvm-exporter",
+  "memcached"
+]</pre>
+</td>
+      <td class="helm-value-desc">Workloads worth a notice rather than a page. `pod-restart-rate-high` covers every container not listed here.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.infraWorkloads<wbr>.daemonset</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "alloy",
+  "aws-eks-nodeagent",
+  "aws-node",
+  "cilium-agent",
+  "csi-driver-registrar",
+  "csi-node-driver-registrar",
+  "ebs-plugin",
+  "gce-pd-driver",
+  "kube-proxy",
+  "liveness-probe",
+  "lvm-exporter",
+  "node-cache",
+  "node-driver-registrar",
+  "node-exporter",
+  "openebs-lvm-plugin"
+]</pre>
+</td>
+      <td class="helm-value-desc">Containers every node runs, whose requests the `k8s-daemonset-*` rules total against a per-node budget.
 </td>
     </tr>
   </tbody>
@@ -20360,10 +20486,22 @@ The schema field was called `datadogSQL` until this landed; it is now `datadogQu
 Queries that back an **alert** are written as full monitor queries, with the evaluation window from the alert's `for:` and the threshold inlined:
 
 ```text
-avg(last_5m):avg:v2_mz_can_connect{*} by {namespace,pod} <= 0.1
+avg(last_5m):(
+  avg:%%{mzSqlPrefix}can_connect{%%{excludeEnvironmentFilter}} by {namespace,pod}
+) <= 0.1
 ```
 
 Queries that back a **panel** are bare metric queries, with no window and no comparison.
+
+## Layout
+
+A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
+
+- **One line when the PromQL is.** A single-line PromQL gets a single-line monitor query.
+- **Otherwise the window opens a parenthesis**, where the PromQL's outer aggregation would. Each operand then takes a line of its own, indented two spaces.
+- **A binary operator leads its line**, at the indent of the operand before it: `/ sum:…`, as in `/ sum by (…) (`.
+- **The threshold follows the closing parenthesis**: `) > 80`.
+- **A line past 100 characters wraps before `by {…}`**, indented two more spaces.
 
 ## How metrics reach Datadog
 
@@ -20433,6 +20571,10 @@ This costs the exit-code exclusions on `materialize.clusterd.error_kill`, the sw
 queries — those now cover every node, not just the gateway pool.
 A composite monitor is the usual way back.
 
+Where the join is what makes a rule correct rather than merely narrower, the `datadogQuery` is a list and its second entry is the other half, to combine in a composite monitor (`a && b`).
+`envd-terminated` and `system-cluster-terminated` are the sharpest case: the last exit code outlives the restart it describes, so without the restart-in-window half the monitor keeps firing after recovery.
+`clusterd-not-receiving-commands` pairs its idle check with a no-restarts-in-6h query the same way.
+
 **Nested aggregation.** `count by (size) (group by (id, size) (m))` has no single-query form: Datadog aggregates once.
 Where the underlying metric is a 0/1 gauge, `sum:` by the outer label gets close (`materialize.clusters.replicas.sizes`
 counts *ready* replicas per size rather than all of them).
@@ -20446,6 +20588,7 @@ The `%%{…}` parameters are the same names as the PromQL, but the *values* a Da
 rather than label matchers — `mzEnvironmentFilter` renders as `materialize_cloud_organization_name:your-env-name`,
 `mzClusterList` as `*` rather than `.+`, and `interval` / `range` as bare seconds for `.rollup()` rather than bracketed
 ranges.
+The workload tiers (`infraCoreWorkloadList` and its siblings) sit inside `IN (…)`, so there they stand for a comma-separated list of names, with `*` for a wildcard.
 `mzmon_lib::query::render::doc_context` carries both sets.
 
 To render a query for Datadog, build a context on the `Datadog` engine:
