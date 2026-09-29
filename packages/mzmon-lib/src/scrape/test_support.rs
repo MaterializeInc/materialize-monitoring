@@ -86,7 +86,7 @@ pub(crate) fn assert_serializes_to<T: serde::Serialize>(value: &T, expected_yaml
 }
 
 /// True if the `promtool` binary is available on PATH.
-fn promtool_available() -> bool {
+pub(crate) fn promtool_available() -> bool {
     Command::new("promtool").arg("--version").output().is_ok()
 }
 
@@ -115,6 +115,36 @@ pub(crate) fn assert_promtool_ok(doc_yaml: &str) {
     assert!(
         output.status.success(),
         "promtool rejected rendered config:\n{doc_yaml}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+/// Assert that `rules_yaml` (a `groups:` rule file) is accepted by `promtool
+/// check rules`. Skips (does not fail) when `promtool` is not installed.
+pub(crate) fn assert_promtool_rules_ok(name: &str, rules_yaml: &str) {
+    if !promtool_available() {
+        eprintln!("skipping promtool rules oracle: `promtool` not found on PATH");
+        return;
+    }
+    let mut tmp = tempfile::Builder::new()
+        .suffix(".yaml")
+        .tempfile()
+        .expect("create temp file");
+    tmp.write_all(rules_yaml.as_bytes())
+        .expect("write temp file");
+    tmp.flush().expect("flush temp file");
+
+    let output = Command::new("promtool")
+        .arg("check")
+        .arg("rules")
+        .arg(tmp.path())
+        .output()
+        .expect("run promtool check rules");
+
+    assert!(
+        output.status.success(),
+        "promtool rejected the rules rendered for {name}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
 }

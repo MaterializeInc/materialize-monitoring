@@ -13,6 +13,7 @@ mod extract_metrics;
 mod gen_dashboards;
 mod gen_metric_tiers;
 mod gen_pipelines;
+mod gen_rules;
 mod gen_scrape_configs;
 mod github;
 mod propose;
@@ -42,6 +43,8 @@ enum Command {
     ExtractMetrics(extract_metrics::ExtractMetricsArgs),
     /// Group registry metrics by importance into a metric-tiers.yaml.
     GenMetricTiers(gen_metric_tiers::GenMetricTiersArgs),
+    /// Render the registry's alerts into the chart's pre-rendered Prometheus rules.
+    GenRules(gen_rules::GenRulesArgs),
     /// Report which merged PRs each component changelog would collect.
     Changelog(versioning::ChangelogArgs),
     /// Generate a version-update PR's changelog + version bumps for a component.
@@ -59,6 +62,7 @@ fn main() -> anyhow::Result<()> {
         Command::GenScrapeConfigs(args) => gen_scrape_configs::gen_scrape_configs(args),
         Command::ExtractMetrics(args) => extract_metrics::extract_metrics(args),
         Command::GenMetricTiers(args) => gen_metric_tiers::gen_metric_tiers(args),
+        Command::GenRules(args) => gen_rules::gen_rules(args),
         Command::Changelog(args) => versioning::changelog(args),
         Command::Release(args) => versioning::release(args),
         Command::ProposeBumps(args) => propose::propose_bumps(args),

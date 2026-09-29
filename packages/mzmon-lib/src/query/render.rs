@@ -219,6 +219,10 @@ fn extraction_context<'a>(
             "mzDeploymentNamespaceFilter",
             r#"namespace=~"materialize|materialize-environment""#,
         ),
+        (
+            "excludeMzDeploymentNamespaceFilter",
+            r#"namespace!~"materialize|materialize-environment""#,
+        ),
         // Generation filters. Extraction reads metric names out of the rendered
         // selector, so a sentinel generation is all these need to be.
         (

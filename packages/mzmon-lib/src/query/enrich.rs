@@ -130,11 +130,108 @@ pub fn with_cluster_name(value_expr: &str, id_label: &str, env_filter: &str) -> 
     left_join_labels(value_expr, id_label, &info, &["cluster_name"])
 }
 
+/// The label [`with_environment_name`] attaches.
+pub const ENVIRONMENT_NAME_LABEL: &str = "materialize_cloud_organization_name";
+
+/// Attach [`ENVIRONMENT_NAME_LABEL`] to `value_expr` by joining on `key`
+/// (normally `namespace`), for series that do not carry it themselves —
+/// kube-state-metrics and cAdvisor series, which know a pod's namespace but not
+/// which environment it belongs to. The self-managed counterpart of the
+/// organization-name join Materialize Cloud's rules make.
+///
+/// The info side is the `up` series of the Materialize scrape targets matching
+/// `info_jobs`, which carry both labels because their PodMonitors copy the pod's
+/// organization label. It differs from [`left_join_labels`] in three ways, each
+/// because a rule is evaluated unattended and a failed evaluation is
+/// indistinguishable from silence:
+///
+/// 1. **Ambiguous keys are dropped, not joined.** Two environments sharing a
+///    namespace would give the info side two series per `key`, and `group_left`
+///    would fail the whole evaluation with "many-to-many matching not allowed".
+///    Keys with more than one organization are excluded from the info side, so
+///    their series simply stay unlabelled.
+/// 2. **The fallback adds nothing.** `left_join_labels` writes the id into the
+///    pulled label so a legend is never blank. Here that would stamp a namespace
+///    into an organization label that a route may match on, and overwrite the
+///    real value on series that already carry one. Unmatched series pass through
+///    unchanged instead.
+/// 3. **The info side is smoothed over an hour.** A pod that is Pending or
+///    restarting has no scrape target and so no `up`. Without
+///    `last_over_time`, an alert about exactly that pod would gain and lose the
+///    label as the target came and went, and every change of label set resets
+///    `for` and resolves one alert while firing another.
+///
+/// Matched and unmatched rows are disjoint on `key`, so the union never
+/// duplicates a series.
+pub fn with_environment_name(value_expr: &str, key: &str, info_jobs: &str) -> String {
+    // Templates are block scalars, so they arrive with a trailing newline.
+    let value_expr = value_expr.trim();
+    let label = ENVIRONMENT_NAME_LABEL;
+    let pairs = format!(
+        "group by ({key}, {label}) (\n\
+         last_over_time(up{{job=~\"{info_jobs}\", {label}!=\"\"}}[1h])\n\
+         )"
+    );
+    let unambiguous = format!(
+        "{pairs}\n\
+         and on ({key})\n\
+         (\n\
+         count by ({key}) (\n{pairs}\n) == 1\n\
+         )"
+    );
+    format!(
+        "(\n\
+         (\n{value_expr}\n)\n\
+         * on ({key}) group_left({label})\n\
+         (\n{unambiguous}\n)\n\
+         )\n\
+         or on ({key})\n\
+         (\n{value_expr}\n)"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const ENV: &str = r#"materialize_cloud_organization_name=~"$environmentNameList""#;
+
+    #[test]
+    fn environment_name_join_shape() {
+        let expr = with_environment_name("VALUE", "namespace", "JOBS");
+        assert_eq!(
+            expr,
+            r#"(
+(
+VALUE
+)
+* on (namespace) group_left(materialize_cloud_organization_name)
+(
+group by (namespace, materialize_cloud_organization_name) (
+last_over_time(up{job=~"JOBS", materialize_cloud_organization_name!=""}[1h])
+)
+and on (namespace)
+(
+count by (namespace) (
+group by (namespace, materialize_cloud_organization_name) (
+last_over_time(up{job=~"JOBS", materialize_cloud_organization_name!=""}[1h])
+)
+) == 1
+)
+)
+)
+or on (namespace)
+(
+VALUE
+)"#
+        );
+        let expr = with_environment_name(
+            "max by (namespace) (kube_pod_status_phase{phase=\"Pending\"}) > 0",
+            "namespace",
+            ".*/.*materialize-(environmentd|clusterd)",
+        );
+        promql_parser::parser::parse(&expr).expect("environment join must parse");
+    }
 
     /// Captured from `py_mzmon_lib.enrich.with_cluster_name("VALUE",
     /// "instance_id", env_filter=ENV)`. Byte-identical output is the contract:

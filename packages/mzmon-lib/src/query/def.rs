@@ -29,6 +29,7 @@ use serde_json::Value;
 use crate::query::error::{Error, Result};
 use crate::query::importance::Importance;
 use crate::query::model::{Description, TemplateExpr, TemplateFunction};
+use crate::query::rules::capability::Capability;
 use crate::query::stability::Stability;
 
 /// A whole registry file: a description, a metric-importance hint, and any of
@@ -164,6 +165,12 @@ pub struct AlertDef {
     pub query_id: Option<String>,
     #[serde(default)]
     pub query: Option<Box<QueryDef>>,
+    /// Capabilities the rule needs beyond those its metrics imply.
+    #[serde(default)]
+    pub requires: Vec<Capability>,
+    /// Install wherever it applies, without being selected.
+    #[serde(default, rename = "enabledByDefault")]
+    pub enabled_by_default: bool,
 }
 
 /// Lower a raw template value into a list of [`TemplateExpr`].
