@@ -20120,10 +20120,22 @@ The schema field was called `datadogSQL` until this landed; it is now `datadogQu
 Queries that back an **alert** are written as full monitor queries, with the evaluation window from the alert's `for:` and the threshold inlined:
 
 ```text
-avg(last_5m):avg:v2_mz_can_connect{*} by {namespace,pod} <= 0.1
+avg(last_5m):(
+  avg:%%{mzSqlPrefix}can_connect{%%{excludeEnvironmentFilter}} by {namespace,pod}
+) <= 0.1
 ```
 
 Queries that back a **panel** are bare metric queries, with no window and no comparison.
+
+## Layout
+
+A `datadogQuery` is laid out like the `promQL` beside it, so the two read side by side.
+
+- **One line when the PromQL is.** A single-line PromQL gets a single-line monitor query.
+- **Otherwise the window opens a parenthesis**, where the PromQL's outer aggregation would. Each operand then takes a line of its own, indented two spaces.
+- **A binary operator leads its line**, at the indent of the operand before it: `/ sum:…`, as in `/ sum by (…) (`.
+- **The threshold follows the closing parenthesis**: `) > 80`.
+- **A line past 100 characters wraps before `by {…}`**, indented two more spaces.
 
 ## How metrics reach Datadog
 
@@ -20193,6 +20205,10 @@ This costs the exit-code exclusions on `materialize.clusterd.error_kill`, the sw
 queries — those now cover every node, not just the gateway pool.
 A composite monitor is the usual way back.
 
+Where the join is what makes a rule correct rather than merely narrower, the `datadogQuery` is a list and its second entry is the other half, to combine in a composite monitor (`a && b`).
+`envd-terminated` and `system-cluster-terminated` are the sharpest case: the last exit code outlives the restart it describes, so without the restart-in-window half the monitor keeps firing after recovery.
+`clusterd-not-receiving-commands` pairs its idle check with a no-restarts-in-6h query the same way.
+
 **Nested aggregation.** `count by (size) (group by (id, size) (m))` has no single-query form: Datadog aggregates once.
 Where the underlying metric is a 0/1 gauge, `sum:` by the outer label gets close (`materialize.clusters.replicas.sizes`
 counts *ready* replicas per size rather than all of them).
@@ -20206,6 +20222,7 @@ The `%%{…}` parameters are the same names as the PromQL, but the *values* a Da
 rather than label matchers — `mzEnvironmentFilter` renders as `materialize_cloud_organization_name:your-env-name`,
 `mzClusterList` as `*` rather than `.+`, and `interval` / `range` as bare seconds for `.rollup()` rather than bracketed
 ranges.
+The workload tiers (`infraCoreWorkloadList` and its siblings) sit inside `IN (…)`, so there they stand for a comma-separated list of names, with `*` for a wildcard.
 `mzmon_lib::query::render::doc_context` carries both sets.
 
 To render a query for Datadog, build a context on the `Datadog` engine:
