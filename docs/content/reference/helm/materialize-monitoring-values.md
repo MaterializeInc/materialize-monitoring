@@ -3366,6 +3366,35 @@ capabilities are missing is still not installed, and the render warns.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">rules<wbr>.overrides</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Per-alert changes to a bundled rule: how long its condition must hold (`for`), and labels to add or replace.
+
+An override never changes a rule's expression. The usual reason for one is
+a workload whose normal behaviour a default does not fit: a large cluster
+can take hours to hydrate when nothing is wrong.
+
+```yaml
+rules:
+  overrides:
+    cluster-hydration-stuck:
+      for: 6h
+    cluster-cpu-high:
+      labels:
+        severity: notice
+        team: analytics
+```
+
+`severity` must stay one of `critical`, `warning` and `notice`, and
+`audience` one of `platform` and `workload`, so the routes still match. An
+unknown alert name fails the render, and an override for a rule that is
+not installed renders with a warning.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">rules<wbr>.namespaces<wbr>.environment</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>

@@ -164,28 +164,70 @@ pub const ENVIRONMENT_NAME_LABEL: &str = "materialize_cloud_organization_name";
 /// Matched and unmatched rows are disjoint on `key`, so the union never
 /// duplicates a series.
 pub fn with_environment_name(value_expr: &str, key: &str, info_jobs: &str) -> String {
-    // Templates are block scalars, so they arrive with a trailing newline.
-    let value_expr = value_expr.trim();
     let label = ENVIRONMENT_NAME_LABEL;
     let pairs = format!(
         "group by ({key}, {label}) (\n\
          last_over_time(up{{job=~\"{info_jobs}\", {label}!=\"\"}}[1h])\n\
          )"
     );
+    join_unambiguous(value_expr, key, label, &pairs)
+}
+
+/// Attach `cluster_name` to `value_expr` by joining on the namespace and the
+/// cluster id in `id_label`: the counterpart of [`with_cluster_name`] for rules.
+///
+/// A cluster id is unique only within one environment, and a rule has no
+/// environment picker to scope the join with, so the dashboard join would pair
+/// `u1` in one environment with `u1`'s name in every other. Keying on the
+/// namespace as well makes it environment-safe wherever each namespace holds
+/// one environment, and [`join_unambiguous`] leaves a namespace holding two
+/// unlabelled rather than failing the evaluation.
+///
+/// The info side is smoothed over an hour, as for [`with_environment_name`],
+/// and grouped so the environmentd `pod` label, which changes with every
+/// generation, does not split one cluster into two.
+pub fn with_cluster_name_in_namespace(value_expr: &str, id_label: &str) -> String {
+    let keys = format!("namespace, {id_label}");
+    let pairs = format!(
+        "group by ({keys}, cluster_name) (\n\
+         label_replace(\n\
+         label_replace(last_over_time({CLUSTER_INFO}[1h]), \"{id_label}\", \"$1\", \"cluster_id\", \"(.*)\"),\n\
+         \"cluster_name\", \"$1\", \"name\", \"(.*)\"\n\
+         )\n\
+         )"
+    );
+    join_unambiguous(value_expr, &keys, "cluster_name", &pairs)
+}
+
+/// The shape of the rule-safe joins: `value_expr` gains `label` from `pairs`
+/// wherever `keys` identify exactly one pair.
+///
+/// 1. **Ambiguous keys are dropped, not joined.** Two pairs for one key would
+///    make `group_left` fail the whole evaluation with "many-to-many matching
+///    not allowed", so keys with more than one are excluded from the info side
+///    and their series stay unlabelled.
+/// 2. **The fallback adds nothing.** Unmatched series pass through unchanged,
+///    rather than gaining a placeholder value a route might match on.
+///
+/// Matched and unmatched rows are disjoint on `keys`, so the union never
+/// duplicates a series.
+fn join_unambiguous(value_expr: &str, keys: &str, label: &str, pairs: &str) -> String {
+    // Templates are block scalars, so they arrive with a trailing newline.
+    let value_expr = value_expr.trim();
     let unambiguous = format!(
         "{pairs}\n\
-         and on ({key})\n\
+         and on ({keys})\n\
          (\n\
-         count by ({key}) (\n{pairs}\n) == 1\n\
+         count by ({keys}) (\n{pairs}\n) == 1\n\
          )"
     );
     format!(
         "(\n\
          (\n{value_expr}\n)\n\
-         * on ({key}) group_left({label})\n\
+         * on ({keys}) group_left({label})\n\
          (\n{unambiguous}\n)\n\
          )\n\
-         or on ({key})\n\
+         or on ({keys})\n\
          (\n{value_expr}\n)"
     )
 }
@@ -231,6 +273,25 @@ VALUE
             ".*/.*materialize-(environmentd|clusterd)",
         );
         promql_parser::parser::parse(&expr).expect("environment join must parse");
+    }
+
+    #[test]
+    fn cluster_name_join_is_keyed_on_the_namespace() {
+        let expr = with_cluster_name_in_namespace("VALUE", "instance_id");
+        assert!(
+            expr.contains("* on (namespace, instance_id) group_left(cluster_name)"),
+            "{expr}"
+        );
+        assert!(
+            expr.contains("count by (namespace, instance_id) ("),
+            "{expr}"
+        );
+        assert!(expr.contains("or on (namespace, instance_id)"), "{expr}");
+        let expr = with_cluster_name_in_namespace(
+            "max by (namespace, instance_id) (mz_dataflow_wallclock_lag_seconds) > 60",
+            "instance_id",
+        );
+        promql_parser::parser::parse(&expr).expect("cluster join must parse");
     }
 
     /// Captured from `py_mzmon_lib.enrich.with_cluster_name("VALUE",

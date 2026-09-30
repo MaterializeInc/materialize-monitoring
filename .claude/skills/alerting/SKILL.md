@@ -60,6 +60,18 @@ settles what a series carries. The Cloud spellings (`kubernetes_io_hostname`,
 `app_kubernetes_io_component`, `environment-*` namespaces) return empty results
 on self-managed, and empty reads as healthy.
 
+**Put an alert where the person who acts on it will see it.**
+The deployment and the system clusters (`s*`) are `materialize-alerts.yaml`,
+with `audience: platform`; user clusters (`u*`) and their sources are
+`materialize-workload-alerts.yaml`, with `audience: workload`. A signal that
+belongs to both is two alerts, scoped by cluster id. Authoring Alerts has the
+scoping labels.
+
+**Calibrate against more than two installs.** A threshold quiet on the test
+installs can page on a fleet. Aggregate queries over a larger fleet, with no
+customer identifiers in what comes back, are how the freshness defaults were
+found to page on clusters that are behind by design.
+
 **Let the capability table decide applicability.** A metric `gen-rules` cannot
 place is a question about what produces it, answered in
 `packages/mzmon-lib/src/query/rules/capability.rs`, not by declaring

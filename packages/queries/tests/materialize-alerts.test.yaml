@@ -219,3 +219,100 @@ tests:
       - expr: count(ALERTS{alertname="environmentd-memory-elevated"})
         eval_time: 45m
         exp_samples: []
+
+  # --- environmentd-down: the environmentd target, not its SQL exporter ------
+  #
+  # The `-environmentd-sql` job is a second target on the same pod, and the
+  # anchored job pattern keeps its failures out of this rule.
+  - name: environmentd-down fires on the environmentd target only
+    interval: 1m
+    input_series:
+      - series: 'up{job="monitoring/mzmon-materialize-environmentd", namespace="materialize-environment", pod="mz-environmentd-0", materialize_cloud_organization_name="main"}'
+        values: "0x20"
+      - series: 'up{job="monitoring/mzmon-materialize-environmentd-sql", namespace="materialize-environment", pod="mz-environmentd-0", materialize_cloud_organization_name="main"}'
+        values: "0x20"
+    promql_expr_test:
+      - expr: count by (pod) (ALERTS{alertname="environmentd-down", alertstate="firing"})
+        eval_time: 10m
+        exp_samples:
+          - labels: '{pod="mz-environmentd-0"}'
+            value: 1
+
+  # --- environmentd-not-scraped: silence is not health -----------------------
+  #
+  # With no environmentd target, environmentd-down has nothing to evaluate and
+  # stays quiet, which is exactly when this has to fire.
+  - name: environmentd-not-scraped fires when no environmentd target exists
+    interval: 1m
+    input_series:
+      - series: 'up{job="monitoring/mzmon-materialize-clusterd", namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0"}'
+        values: "1x20"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="environmentd-not-scraped", alertstate="firing"})
+        eval_time: 15m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+      - expr: count(ALERTS{alertname="environmentd-down"})
+        eval_time: 15m
+        exp_samples: []
+
+  - name: environmentd-not-scraped stays quiet while environmentd is scraped
+    interval: 1m
+    input_series:
+      - series: 'up{job="monitoring/mzmon-materialize-environmentd", namespace="materialize-environment", pod="mz-environmentd-0"}'
+        values: "1x20"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="environmentd-not-scraped"})
+        eval_time: 15m
+        exp_samples: []
+
+  # --- system-cluster-hydration-stuck: system clusters only ------------------
+  - name: system-cluster-hydration-stuck fires for a system cluster after 15m
+    interval: 1m
+    input_series:
+      - series: 'mz_cluster_info{namespace="materialize-environment", cluster_id="s2", name="mz_catalog_server", pod="mz-environmentd-0"}'
+        values: "1x30"
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="s2", replica_id="s1", collection_id="s400", quantile="1"}'
+        values: "18446744073709551615x30"
+      # A user cluster hydrating is the workload rule's, on its own window.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u1", replica_id="u1", collection_id="u10", quantile="1"}'
+        values: "18446744073709551615x30"
+    promql_expr_test:
+      - expr: count by (instance_id, cluster_name) (ALERTS{alertname="system-cluster-hydration-stuck", alertstate="firing"})
+        eval_time: 10m
+        exp_samples: []
+      - expr: count by (instance_id, cluster_name) (ALERTS{alertname="system-cluster-hydration-stuck", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{instance_id="s2", cluster_name="mz_catalog_server"}'
+            value: 1
+
+  # --- cluster-replica-not-ready: a crash loop that keeps passing its probe --
+  #
+  # Ready one minute in three. A rule on "not ready now" would reset `for` on
+  # every ready minute and never fire.
+  - name: cluster-replica-not-ready fires on a replica that is mostly not ready
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_status_ready{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", condition="true"}'
+        values: "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1"
+      - series: 'kube_pod_created{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0"}'
+        values: "0x30"
+      - series: 'kube_pod_status_ready{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", condition="true"}'
+        values: "1x30"
+      - series: 'kube_pod_created{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0"}'
+        values: "0x30"
+      # A replica created at 15m and still waiting on a node is the pending-pod
+      # alerts' to report, not this one's.
+      - series: 'kube_pod_status_ready{namespace="materialize-environment", pod="mz-cluster-u3-replica-u3-gen-1-0", condition="true"}'
+        values: "_x15 0x15"
+      - series: 'kube_pod_created{namespace="materialize-environment", pod="mz-cluster-u3-replica-u3-gen-1-0"}'
+        values: "_x15 900x15"
+    promql_expr_test:
+      # Old enough from 21m, so firing once that has held for 5m.
+      - expr: count by (pod, cluster_environmentd_materialize_cloud_cluster_id) (ALERTS{alertname="cluster-replica-not-ready", alertstate="firing"})
+        eval_time: 29m
+        exp_samples:
+          - labels: '{pod="mz-cluster-u1-replica-u1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u1"}'
+            value: 1

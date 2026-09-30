@@ -416,7 +416,7 @@ alerting:
             api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/data-team-slack-url
   routes:
     extra:
-      - matchers: ['component="storage"']
+      - matchers: ['audience="workload"']
         receiver: data-team
         continue: true
 ```
@@ -429,7 +429,9 @@ alerting:
 Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
 A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
 
-Storage alerts reach `data-team`, and, because the route continues, also whichever receivers the preset names for their severity.
+Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it.
+Here the workload alerts, such as a user cluster falling behind or running out of memory, reach `data-team`.
+Because the route continues, they also reach whichever receivers the preset names for their severity.
 
 This is where deployment-specific routing lives, including routing that names a particular customer or environment.
 It belongs in that deployment's own values, reviewed by the people who run it.

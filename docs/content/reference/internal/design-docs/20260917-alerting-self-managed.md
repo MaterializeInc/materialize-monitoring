@@ -843,7 +843,7 @@ Work in this repository, roughly in dependency order.
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | 🔨 Every rule carries `runbook_url`, pointing for now at its entry on Common Alerts. The runbooks are not written |
 | Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/prometheus/_index.yaml` is in the committed-surface table and CODEOWNERS |
-| `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled` and `rules.capabilities` are done; `extra` and `overrides` are not |
+| `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` are done; `extra` is not. An override sets one rule's `for` and labels, never its expression |
 | `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |

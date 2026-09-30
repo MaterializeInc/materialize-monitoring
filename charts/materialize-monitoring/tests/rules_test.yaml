@@ -44,7 +44,7 @@ tests:
     template: templates/alerts/prometheusrules.yaml
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
       - isKind:
           of: PrometheusRule
       - equal:
@@ -156,7 +156,7 @@ tests:
         - egress-gateway
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
 
   # --- placeholders ---------------------------------------------------------
 
@@ -274,6 +274,69 @@ tests:
           path: spec.groups[*].rules[?(@.alert == "pod-restart-rate-high")].expr
           pattern: 'container!~"a\^"'
 
+  # --- who an alert is for, and per-deployment overrides --------------------
+
+  - it: labels the deployment's alerts for the platform
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "environmentd-down")].labels.audience
+          value: platform
+
+  - it: labels a user cluster's alerts for the workload
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-workload-alerts
+    asserts:
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-hydration-stuck")].labels.audience
+          value: workload
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-hydration-stuck")].for
+          value: 1h
+
+  - it: lets a deployment lengthen a rule's for
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.overrides:
+        cluster-hydration-stuck:
+          for: 6h
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-workload-alerts
+    asserts:
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-hydration-stuck")].for
+          value: 6h
+      # Only the named rule changes.
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-memory-near-limit")].for
+          value: 1m
+
+  - it: merges override labels over the rule's own
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.overrides:
+        cluster-memory-near-limit:
+          labels:
+            severity: warning
+            team: analytics
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-workload-alerts
+    asserts:
+      - equal:
+          path: spec.groups[*].rules[?(@.alert == "cluster-memory-near-limit")].labels
+          value:
+            severity: warning
+            component: clusterd
+            audience: workload
+            team: analytics
+
   - it: reads Cloud's SQL metric prefix in cloud mode
     template: templates/alerts/prometheusrules.yaml
     set:
@@ -365,6 +428,68 @@ tests:
       - failedTemplate:
           errorPattern: 'rules.infraWorkloads.critical is not a tier'
 
+  - it: rejects an override for an alert that does not exist
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-hydraton-stuck:
+          for: 6h
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides names "cluster-hydraton-stuck", which is not an alert'
+
+  - it: rejects an override whose for is not a duration
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-hydration-stuck:
+          for: six hours
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-hydration-stuck.for is "six hours", which is not a Prometheus duration'
+
+  # `with` would read `0` as absent and drop it without a word.
+  - it: rejects an override whose for is falsy rather than ignoring it
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-hydration-stuck:
+          for: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-hydration-stuck.for is 0, which is not a Prometheus duration'
+
+  - it: rejects override labels that are not a map
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-hydration-stuck:
+          labels: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-hydration-stuck.labels is ""; it must be a map'
+
+  - it: rejects an override that would change the expression
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-stale:
+          expr: vector(1)
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-stale.expr is not something an override can change'
+
+  - it: rejects an override severity the routes do not know
+    template: templates/validate.yaml
+    set:
+      rules.overrides:
+        cluster-stale:
+          labels:
+            severity: page
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.overrides.cluster-stale.labels.severity is "page"'
+
   - it: rejects an unknown deployment mode
     template: templates/validate.yaml
     set:
@@ -380,6 +505,16 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: 'rules.selected names "crdb-backup-missing", which requires crdb-dedicated'
+
+  - it: warns that an override for a rule that is not installed does nothing
+    template: templates/NOTES.txt
+    set:
+      rules.overrides:
+        cluster-cpu-high:
+          for: 30m
+    asserts:
+      - matchRegexRaw:
+          pattern: 'rules.overrides names "cluster-cpu-high", which is not installed'
 
   - it: warns when rules render with no ruler to evaluate them
     template: templates/NOTES.txt
