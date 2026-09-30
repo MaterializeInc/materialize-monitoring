@@ -1,0 +1,182 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Pod-level hardening this chart adds on top of the subcharts: `RuntimeDefault`
+# seccomp and a non-root pod, where upstream ships an empty pod
+# securityContext. Grafana's read-only root and Alertmanager's are covered in
+# their own suites, beside the validators that guard them.
+#
+# Each case here is what `.trivyignore.yaml` no longer suppresses. KSV-0118
+# (default pod securityContext) was baselined for grafana-operator and
+# thanos-query until DEP-250, so a regression here is a gate failure too.
+suite: pod security contexts
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+tests:
+  # --- grafana-operator -------------------------------------------------------
+
+  - it: gives grafana-operator a pod securityContext of its own
+    set:
+      tags.grafana-operator: true
+    template: ../charts/grafana-operator/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+      # The subchart's container context is already locked down; it must
+      # survive alongside the pod-level one.
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+  # Without requests the operator is BestEffort, and the kubelet evicts it
+  # ahead of every pod within its requests whatever its priority class says.
+  - it: requests resources for grafana-operator so it is not BestEffort
+    set:
+      tags.grafana-operator: true
+    template: ../charts/grafana-operator/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests
+          value:
+            cpu: 10m
+            memory: 64Mi
+      - exists:
+          path: spec.template.spec.containers[0].resources.limits.memory
+
+  # Off by default, so none of the security-scan scenarios renders it. This is
+  # the only place a KSV-0118 regression on it would show.
+  - it: gives metrics-server a pod securityContext of its own
+    set:
+      tags.metrics-server: true
+    template: ../charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+
+  # --- thanos -----------------------------------------------------------------
+
+  # Query, Query Frontend and Bucketweb ship an empty pod securityContext and
+  # fall through to `thanos.global.podSecurityContext`.
+  - it: reaches Thanos Query through the global pod securityContext
+    set: &thanos
+      tags.thanos: true
+      thanos.global.objstore.config: |
+        type: s3
+        config:
+          bucket: test-thanos
+          endpoint: s3.amazonaws.com
+          region: us-east-1
+    template: ../charts/thanos/templates/query/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+
+  # The subchart takes the first non-empty of component and global without
+  # merging, and these four ship an `fsGroup` of their own — so the global
+  # context never reaches them. Each carries the same keys in its own block,
+  # which do merge over the subchart's. Asserting `fsGroup` too catches a
+  # values change that replaced the subchart's context instead of merging.
+  - it: reaches the Thanos Compactor, which ignores the global context
+    set: *thanos
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts: &fsGroupAndSeccomp
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 1000
+
+  - it: reaches the Thanos Store Gateway, which ignores the global context
+    set: *thanos
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts: *fsGroupAndSeccomp
+
+  - it: reaches Thanos Receive, which ignores the global context
+    set: *thanos
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts: *fsGroupAndSeccomp
+
+  - it: reaches the Thanos Ruler, which ignores the global context
+    set: *thanos
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts: *fsGroupAndSeccomp
+
+  # --- alloy ------------------------------------------------------------------
+
+  # The locked-down context `docs/content/reference/images/alloy.md` documents
+  # for the image. The agent still runs as root to read container logs.
+  - it: runs the Alloy agent under RuntimeDefault seccomp
+    set:
+      tags.pipeline: true
+      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+    template: ../charts/alloy-agent/templates/controllers/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+
+  - it: runs the Alloy gateway under RuntimeDefault seccomp
+    set:
+      tags.pipeline: true
+      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+
+  # --- node-exporter ----------------------------------------------------------
+
+  # Host namespaces and host mounts are its function, and baselined for that
+  # reason. Nothing else about it needs to be loose.
+  - it: locks down node-exporter everywhere its host access does not need
+    set:
+      tags.node-exporter: true
+    template: ../charts/node-exporter/templates/daemonset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      # Merged over the subchart's pod context, not replacing it.
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 65534
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+  - it: runs the pre-validate job under RuntimeDefault seccomp, like the cleanup job
+    set:
+      tags.pipeline: true
+      pipeline.logging.gateway.destination.loki.enabled: false
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+    template: templates/pipelines/validator/job-validate-agent.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault

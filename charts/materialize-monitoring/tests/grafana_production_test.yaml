@@ -522,6 +522,130 @@ tests:
       - notMatchRegexRaw:
           pattern: "pins no version"
 
+  # --- read-only root filesystem --------------------------------------------
+
+  # Both halves were measured on a live Grafana 13 rather than inferred. With
+  # no writable /tmp every backend plugin fails to start, because each one
+  # listens on a Unix socket there. With auto-update on, Grafana unloads the
+  # bundled Prometheus plugin to replace it, cannot delete it from the image,
+  # and the Thanos datasource answers "Unable to find datasource plugin". The
+  # pod reports Ready in both cases.
+  - it: runs Grafana on a read-only root with a writable /tmp
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      # The subchart's own hardening survives the merge.
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
+
+  - it: keeps bundled datasource plugins at the image's versions
+    template: ../charts/grafana/templates/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[plugins\]\npreinstall_auto_update = false'
+
+  - it: passes the read-only checks on the shipped defaults
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "readOnlyRootFilesystem is not true"
+
+  - it: errors when a read-only Grafana has nothing mounted at /tmp
+    set:
+      grafana.extraEmptyDirMounts: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "nothing is mounted at /tmp"
+
+  - it: accepts /tmp from extraVolumeMounts instead
+    set:
+      grafana.extraEmptyDirMounts: null
+      grafana.extraVolumes:
+        - name: scratch
+          emptyDir:
+            medium: Memory
+      grafana.extraVolumeMounts:
+        - name: scratch
+          mountPath: /tmp/
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: errors when a read-only Grafana still auto-updates bundled plugins
+    set:
+      grafana:
+        grafana.ini:
+          plugins:
+            preinstall_auto_update: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "preinstall_auto_update is not false"
+
+  # Grafana reads `GF_` variables over grafana.ini, so the validator does too.
+  - it: errors when the environment turns auto-update back on
+    set:
+      grafana.env.GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "true"
+    asserts:
+      - failedTemplate:
+          errorPattern: "preinstall_auto_update is not false"
+
+  - it: accepts auto-update when preinstall is disabled outright
+    set:
+      grafana:
+        grafana.ini:
+          plugins:
+            preinstall_auto_update: true
+            preinstall_disabled: true
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  # The image's `/run.sh` writes these profiles into the image under `set -e`,
+  # so the container exits before Grafana starts.
+  - it: errors when GF_AWS_PROFILES needs a writable path the read-only root lacks
+    set:
+      grafana.env.GF_AWS_PROFILES: default
+    asserts:
+      - failedTemplate:
+          errorPattern: "GF_AWS_PROFILES is set on a read-only root filesystem"
+
+  - it: accepts GF_AWS_PROFILES once its credentials directory is mounted
+    set:
+      grafana.env.GF_AWS_PROFILES: default
+      grafana.extraEmptyDirMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: aws
+          mountPath: /usr/share/grafana/.aws
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: warns when the root filesystem is made writable
+    set:
+      grafana.containerSecurityContext.readOnlyRootFilesystem: false
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "grafana.containerSecurityContext.readOnlyRootFilesystem is not true"
+
   # --- nulled sections ------------------------------------------------------
 
   # Setting a `grafana.ini` section to `null` is how a values file removes one a

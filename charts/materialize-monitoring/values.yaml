@@ -830,6 +830,8 @@ pipeline:
       runAsUser: 473
       runAsGroup: 473
       fsGroup: 473
+      seccompProfile:
+        type: RuntimeDefault
 
     # -- Security context for the pre-validate job container.
     # This is the hardened recommendation with the alloy user.
@@ -2857,6 +2859,8 @@ alloy-agent:
           - ALL
         # Unfortunately, DAC_READ_SEARCH is not sufficient to avoid root privileges
         # add: [DAC_READ_SEARCH]
+      seccompProfile:
+        type: RuntimeDefault
 
     # -- Resources for the alloy agent containers.
     # @raw
@@ -3131,6 +3135,9 @@ alloy-gateway:
           readOnly: true
 
     # -- Security context for the alloy gateway containers.
+    # The locked-down context the `mzmon-alloy` image documents, `RuntimeDefault`
+    # seccomp included. No pipeline component here needs a syscall that profile
+    # blocks; the eBPF-based ones, such as `beyla` and `pyroscope.ebpf`, would.
     securityContext:
       runAsNonRoot: true
       runAsUser: 473
@@ -3140,6 +3147,8 @@ alloy-gateway:
       capabilities:
         drop:
           - ALL
+      seccompProfile:
+        type: RuntimeDefault
 
     # -- Resources for the alloy gateway containers.
     # Memory is the gateway's binding constraint and the only axis that actually
@@ -4042,6 +4051,22 @@ thanos:
     # your own policy layered on top.
     networkPolicies: true
 
+    # -- Pod security context for Query, Query Frontend and Bucketweb.
+    # @raw
+    #
+    # The subchart ships this empty. Its container context is already read-only,
+    # non-root and drops every capability; this adds `RuntimeDefault` seccomp.
+    #
+    # It reaches only the components whose own `podSecurityContext` is empty.
+    # The subchart picks the first non-empty of component, parent and global
+    # without merging them, and Compactor, Store Gateway, Receive and Ruler each
+    # ship an `fsGroup` of their own. Those four carry the same two keys in
+    # their own blocks below, which merge over the subchart's `fsGroup`.
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
   # -- Thanos Query configuration. Query provides a PromQL query endpoint.
   query:
     enabled: true
@@ -4289,6 +4314,12 @@ thanos:
     persistence:
       enabled: false
 
+    # Merged over the subchart's `fsGroup`; see `thanos.global.podSecurityContext`.
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
   # -- Thanos Store Gateway configuration. Store Gateway provides historical block querying.
   # @raw
   #
@@ -4387,6 +4418,12 @@ thanos:
       - --store.limits.request-series=5000000
       - --store.limits.request-samples=200000000
 
+    # Merged over the subchart's `fsGroup`; see `thanos.global.podSecurityContext`.
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
   # -- (object) Thanos Compactor configuration. Compactor provides block compaction and downsampling.
   # @default -- enabled with default retention policies
   # @notationType -- desc
@@ -4464,6 +4501,12 @@ thanos:
       # 20Gi this chart shipped before was already short of the ~30Gi a medium
       # install needs.
       size: 50Gi
+
+    # Merged over the subchart's `fsGroup`; see `thanos.global.podSecurityContext`.
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
 
   # -- Thanos Query Frontend configuration. Query Frontend provides query parallelization and result caching. Only required for production.
   # @raw
@@ -4726,6 +4769,12 @@ thanos:
     persistence:
       enabled: false
 
+    # Merged over the subchart's `fsGroup`; see `thanos.global.podSecurityContext`.
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
     # -- Resource requests for the Ruler. Evaluation is a fan-out of PromQL to
     # Query, so the work happens there; the Ruler holds rule state and a WAL.
     resources:
@@ -4793,6 +4842,29 @@ grafana-operator:
   # ownership.
   crds:
     immutable: true
+
+  # -- Pod security context.
+  # The subchart ships an empty one. Its container context is already
+  # read-only, non-root and drops every capability; this adds `RuntimeDefault`
+  # seccomp, and keeps the whole pod non-root. No UID is set, so the image's own
+  # non-root user stands, which is what a registry profile swap needs.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+
+  # -- Resource requests and limits for the operator.
+  # The subchart sets none, which makes the operator BestEffort. Under node
+  # pressure the kubelet evicts it ahead of every pod still within its requests,
+  # whatever `priorityClassName` says. The operator idles at a few millicores
+  # and a few tens of MiB. The memory limit leaves room for many more dashboards
+  # than this chart ships; raise it if a cluster declares far more of its own.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
 
   serviceMonitor:
     enabled: true
@@ -4916,6 +4988,35 @@ grafana:
       memory: 256Mi
     limits:
       memory: 1Gi
+
+  # -- Container security context for Grafana.
+  # @raw
+  # Only the delta over the subchart's own, which already drops every
+  # capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+  #
+  # A read-only root filesystem needs two things from the rest of this block,
+  # and Grafana breaks quietly without either:
+  #
+  # | Needs | Supplied by | Without it |
+  # |---|---|---|
+  # | A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+  # | `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
+  #
+  # Everything else Grafana writes lands on the `storage` and `search` volumes
+  # the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
+  # The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
+  # profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
+  # Validators fail the render on each of these gaps, and warn when this is
+  # turned off.
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+
+  # -- Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`.
+  # This is a list, so a values file that sets it replaces the entry below
+  # rather than adding to it. Keep `/tmp` in any list that replaces it.
+  extraEmptyDirMounts:
+    - name: tmp
+      mountPath: /tmp
 
   # -- Persistent volume for Grafana's SQLite database and plugin directory.
   # @raw
@@ -5043,6 +5144,18 @@ grafana:
       # two people comparing the same dashboard read different numbers off the
       # same axis. Individuals can still override per dashboard.
       default_timezone: UTC
+    plugins:
+      # Grafana preinstalls a built-in plugin list at every start, whatever
+      # `plugins` below says. The list covers the Drilldown apps and the
+      # datasources the image already bundles, Prometheus and Loki among them.
+      # Left on, auto-update replaces each bundled datasource with the newest
+      # release on grafana.com, so the datasource every dashboard queries
+      # through changes on restart underneath a pinned Grafana. It also breaks
+      # outright under `readOnlyRootFilesystem`; see `containerSecurityContext`.
+      # Off, the bundled datasources stay at the image's versions. The Drilldown
+      # apps are not in the image, so they still download on each start.
+      # `preinstall_disabled: true` stops that too, at the cost of the apps.
+      preinstall_auto_update: false
 
   # -- NetworkPolicy for Grafana.
   # @raw
@@ -5079,10 +5192,12 @@ grafana:
   # **Egress is left unrestricted** (`egress.enabled: false` renders a policy with
   # no `Egress` policy type at all, rather than an empty allow). Grafana dials the
   # things it is configured to dial: Loki and Thanos in-namespace, a PostgreSQL
-  # state database wherever it lives, an OIDC provider on the internet, `grafana.com`
-  # if `plugins` is non-empty. The first two are knowable here and the rest are
-  # not, and a partial allowlist would fail as a dashboard that renders empty with
-  # no error — the worst failure mode this stack has.
+  # state database wherever it lives, an OIDC provider on the internet, and
+  # `grafana.com` on every start, for the plugins it preinstalls (see
+  # `grafana.ini.plugins`) and any listed in `plugins`. The first two are
+  # knowable here and the rest are not, and a partial allowlist would fail as a
+  # dashboard that renders empty with no error — the worst failure mode this
+  # stack has.
   networkPolicy:
     enabled: true
     # -- Emit the ingress rule. False renders a policy with no rules at all,
@@ -5706,6 +5821,20 @@ node-exporter:
     rollingUpdate:
       maxUnavailable: 10%
 
+  # -- Pod security context, merged over the subchart's non-root UID 65534.
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+
+  # -- Container security context, merged over the subchart's read-only root.
+  # The exporter runs as UID 65534 and needs no capability to read the host's
+  # `/proc`, `/sys` and `/`.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
   # -- kube-rbac-proxy sidecar, which would put the exporter behind
   # TokenReview/SubjectAccessReview over HTTPS.
   # @raw
@@ -5926,6 +6055,14 @@ metrics-server:
   # enabled: true
   # -- Number of replicas for metrics-server.
   replicas: 1
+
+  # -- Pod security context.
+  # The subchart ships an empty one beside an already locked-down container
+  # context; this makes the pod-level half say the same thing.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
 
   metrics:
     enabled: true
