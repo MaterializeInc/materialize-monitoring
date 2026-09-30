@@ -32,6 +32,7 @@ declared with <code>requires</code> where the metric names cannot show it.</p>
 CockroachDB disk usage is above 90% and likely to impact Materialize.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -49,6 +50,7 @@ Labels:
 CockroachDB disk usage is above 70% and may need a capacity increase.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -66,6 +68,7 @@ Labels:
 CockroachDB disk usage is above 30% and worth keeping an eye on.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -83,6 +86,7 @@ Labels:
 CockroachDB CPU usage is critically high (&gt;89%) and likely to impact Materialize.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -100,6 +104,7 @@ Labels:
 CockroachDB CPU usage is above 85% over 2h and may impact Materialize.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -117,6 +122,7 @@ Labels:
 CockroachDB p95 SQL service latency has been above 250ms for an extended period.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -136,6 +142,7 @@ Labels:
 CockroachDB LSM read amplification is critically high (&gt;150), indicating severe I/O overload.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -151,6 +158,7 @@ Labels:
 CockroachDB LSM read amplification is elevated (&gt;50), a sign writes may be outpacing compaction.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -166,6 +174,7 @@ Labels:
 CockroachDB has unavailable ranges, which may indicate node failures or replication issues.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -181,6 +190,7 @@ Labels:
 CockroachDB has under-replicated ranges, which may indicate node failures or replication issues.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -196,6 +206,7 @@ Labels:
 CockroachDB SQL memory is growing faster than 8 MB/s, a sign of a runaway query heading toward OOM.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -213,6 +224,7 @@ Labels:
 CockroachDB distsql memory exceeds 18% of node RAM, indicating high user-query memory pressure.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -234,6 +246,7 @@ Labels:
 CockroachDB write-intent count has exceeded 10M for 10m, indicating large transactions holding locks.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -249,6 +262,7 @@ Labels:
 CockroachDB write-intent count has exceeded 10M, a sign of large transactions accumulating locks.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -264,6 +278,7 @@ Labels:
 A CockroachDB backup may be missing — the last completed backup is more than 80 minutes old.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cockroachdb</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -281,6 +296,7 @@ Labels:
 A Cilium BPF map is filling up, which will cause networking issues if left unaddressed.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cilium</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -298,6 +314,7 @@ Labels:
 Cilium is dropping more packets than expected, which can indicate networking issues.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> cilium</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -315,6 +332,7 @@ Labels:
 CoreDNS p99 request latency is above 500ms, which can cause or accompany broader outages.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> coredns</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -334,6 +352,7 @@ Labels:
 A Kubernetes node is marked unreachable, which may indicate a node or network problem.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -349,6 +368,7 @@ Labels:
 A HorizontalPodAutoscaler is above 90% of its maximum replicas — nearly out of headroom to scale.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -367,6 +387,7 @@ Labels:
 A HorizontalPodAutoscaler is above 70% of its maximum replicas.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -385,6 +406,7 @@ Labels:
 A container filesystem is above 70% usage and should be cleaned up or resized.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -403,6 +425,7 @@ Labels:
 A Kubernetes node is under disk pressure, which can cause pods to fail scheduling or be evicted.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -420,6 +443,7 @@ Labels:
 A Kubernetes persistent volume is above 70% usage and should be cleaned up or resized.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -442,6 +466,7 @@ Labels:
 Alloy is dropping log entries — logs are being lost right now.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -459,6 +484,7 @@ Labels:
 Loki&rsquo;s push endpoint is returning 10%+ write errors, so logs are being rejected.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -481,6 +507,7 @@ Labels:
 A Loki component has panicked.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -498,6 +525,7 @@ Labels:
 Loki p95 request duration is above 1s (excluding tail/long-poll routes).
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -517,6 +545,7 @@ Labels:
 Loki read requests are returning 10%+ 5xx errors.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -539,6 +568,7 @@ Labels:
 Loki write requests are erroring for 10%+ of requests.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> loki</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -561,6 +591,7 @@ Labels:
 All metrics for a Materialize pod have been missing for 60m — the scrape target is likely down.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -578,6 +609,7 @@ Labels:
 More than 30% of a critical scrape job&rsquo;s targets have been down for 30m.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -600,6 +632,7 @@ Labels:
 Loki has received no logs for 15m — log collection is down.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> monitoring</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -615,6 +648,7 @@ Labels:
 A core control-plane deployment is unavailable.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -632,6 +666,7 @@ Labels:
 An important supporting deployment is unavailable.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -649,6 +684,7 @@ Labels:
 A non-essential deployment is unavailable.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -666,6 +702,7 @@ Labels:
 Daemonsets are requesting nearly all the CPU reserved for them, squeezing clusterd headroom.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -687,6 +724,7 @@ Labels:
 Daemonsets are requesting nearly all the memory reserved for them, squeezing clusterd headroom.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -708,6 +746,7 @@ Labels:
 Daemonsets are approaching the CPU budget reserved for them.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -729,6 +768,7 @@ Labels:
 A core container&rsquo;s open file descriptors are above 70% of its limit and it may be killed.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -751,6 +791,7 @@ Labels:
 A non-core container&rsquo;s open file descriptors are above 70% of its limit and it may be killed.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -773,6 +814,7 @@ Labels:
 A container&rsquo;s open file descriptors are above 20% of its limit.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -793,6 +835,7 @@ Labels:
 A vector pod has used more than its full CPU request for 6h and may be throttled.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -815,6 +858,7 @@ Labels:
 An infra pod is using more than its full CPU request and may be throttled.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -837,6 +881,7 @@ Labels:
 An important infra container is above 80% memory usage.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -859,6 +904,7 @@ Labels:
 A supporting infra container is above 80% memory usage.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -881,6 +927,7 @@ Labels:
 A core infra container has been OOMKilled.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -901,6 +948,7 @@ Labels:
 An important infra container has been OOMKilled.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -921,6 +969,7 @@ Labels:
 A non-essential infra container has been OOMKilled.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -941,6 +990,7 @@ Labels:
 An infra pod has been Pending for 20m — the cluster may be unhealthy or out of capacity.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -958,6 +1008,7 @@ Labels:
 An important infra container is restarting frequently, which may indicate a crash loop.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -975,6 +1026,7 @@ Labels:
 A non-essential infra container is restarting frequently, which may indicate a crash loop.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -992,6 +1044,7 @@ Labels:
 A pod has been stuck in Waiting for over 10m, which can indicate a scheduling or resource problem.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> kubernetes</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1010,6 +1063,7 @@ Labels:
 Egress-gateway node throughput metrics are missing, which may indicate an egress-gateway problem.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1032,6 +1086,7 @@ Labels:
 An egress-gateway node has very high traffic, which may indicate traffic is not routing through the internet gateway.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1053,6 +1108,7 @@ Labels:
 An egress-gateway node is above 90% of its allowed traffic and may soon exceed capacity.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1074,6 +1130,7 @@ Labels:
 An egress-gateway node has unusually low traffic, which may indicate the gateway is unhealthy.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1095,6 +1152,7 @@ Labels:
 An egress-gateway node has had no traffic for 5m, which may indicate external traffic is blocked.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> egress-gateway</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1131,6 +1189,7 @@ in the internal docs for how these render into rules.</p>
 environmentd is not accepting basic connections and may be unreachable.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -1151,6 +1210,7 @@ Labels:
 environmentd is not accepting basic connections and may be unreachable.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1171,6 +1231,7 @@ Labels:
 environmentd is not responding to a SELECT 1 and may be unhealthy.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -1188,6 +1249,7 @@ Labels:
 environmentd is not answering a simple query that reads from object storage.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -1205,6 +1267,7 @@ Labels:
 environmentd is not answering a simple query that reads from object storage.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1222,6 +1285,7 @@ Labels:
 A clusterd has not received commands from environmentd for 5m — the replica may be stalled or disconnected.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1245,6 +1309,7 @@ Labels:
 Storage shards have been stuck finalizing for 8h.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> storage</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1256,12 +1321,47 @@ Labels:
 </span></span><span style="display:flex;"><span>  mz_shard_finalization_outstanding{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
+<h4 id="environmentd-down">environmentd-down
+  <a class="anchor" href="#environmentd-down">#</a>
+</h4>
+environmentd has not answered its scrape for 5m, so the environment is likely down.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> environmentd</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*/.*materialize-environmentd</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="environmentd-not-scraped">environmentd-not-scraped
+  <a class="anchor" href="#environmentd-not-scraped">#</a>
+</h4>
+No environmentd is being scraped at all.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> monitoring</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">absent</span><span style="color:#f92672">(</span>up{job<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*/.*materialize-environmentd</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
 <h4 id="auth-errors">auth-errors
   <a class="anchor" href="#auth-errors">#</a>
 </h4>
 An elevated rate of unexpected authentication errors.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> auth</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1279,6 +1379,7 @@ Labels:
 An elevated rate of failed auth-token refreshes.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> auth</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1296,6 +1397,7 @@ Labels:
 The web console has returned an error for 2% or more of commands for 30m, across more than one environment.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> console</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1329,6 +1431,7 @@ Labels:
 Failures in Persist that should be rare are happening frequently.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> persist</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1359,6 +1462,7 @@ Labels:
 An environmentd was unexpectedly terminated — this should not happen.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1376,6 +1480,7 @@ Labels:
 An environmentd has been above 80% CPU usage for 90m.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1397,6 +1502,7 @@ Labels:
 An environmentd has been above 80% memory usage for 30m.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1419,6 +1525,7 @@ Labels:
 An environmentd container is being CPU throttled more than 50% of the time.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1437,6 +1544,7 @@ Labels:
 An environmentd is above 80% memory usage (lower-severity companion to environmentd-high-memory).
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1459,6 +1567,7 @@ Labels:
 A clusterd was terminated with an unexpected exit code — this should not happen.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1480,6 +1589,7 @@ Labels:
 A system cluster was unexpectedly terminated — this should not happen.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1497,6 +1607,7 @@ Labels:
 A system cluster is above 80% memory usage — this should not happen for system clusters.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1519,6 +1630,7 @@ Labels:
 A cluster replica will expire in less than a week.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1535,6 +1647,7 @@ Labels:
 A swap-enabled cluster was OOMKilled while below 80% swap usage.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1566,12 +1679,107 @@ Labels:
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
+<h4 id="system-cluster-falling-behind">system-cluster-falling-behind
+  <a class="anchor" href="#system-cluster-falling-behind">#</a>
+</h4>
+A system cluster has averaged over 60s of lag for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id, collection_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        mz_dataflow_wallclock_lag_seconds{quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">1</span>&#34;, instance_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">s.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">1</span>e18
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>[<span style="color:#e6db74">15m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+<h4 id="system-cluster-stale">system-cluster-stale
+  <a class="anchor" href="#system-cluster-stale">#</a>
+</h4>
+A system cluster has averaged over 10m of lag for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id, collection_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        mz_dataflow_wallclock_lag_seconds{quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">1</span>&#34;, instance_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">s.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">1</span>e18
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>[<span style="color:#e6db74">15m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">600</span>
+</span></span></code></pre></div>
+<h4 id="system-cluster-hydration-stuck">system-cluster-hydration-stuck
+  <a class="anchor" href="#system-cluster-hydration-stuck">#</a>
+</h4>
+A system cluster has had collections with no hydrated replica for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id, collection_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    mz_dataflow_wallclock_lag_seconds{quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">1</span>&#34;, instance_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">s.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">1</span>e18
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="system-cluster-memory-near-limit">system-cluster-memory-near-limit
+  <a class="anchor" href="#system-cluster-memory-near-limit">#</a>
+</h4>
+A system cluster replica&rsquo;s heap has reached 90% of the point where the kernel OOM-kills it.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max_over_time</span><span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">heap</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">s.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory_max</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">swap_max</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">90</span>
+</span></span></code></pre></div>
 <h4 id="environment-pod-pending-critical">environment-pod-pending-critical
   <a class="anchor" href="#environment-pod-pending-critical">#</a>
 </h4>
 An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -1592,6 +1800,7 @@ Labels:
 An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1603,12 +1812,35 @@ Labels:
 </span></span><span style="display:flex;"><span>  kube_pod_status_phase{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, phase<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
+<h4 id="cluster-replica-not-ready">cluster-replica-not-ready
+  <a class="anchor" href="#cluster-replica-not-ready">#</a>
+</h4>
+A cluster replica&rsquo;s pod has been ready for less than half of the last 10m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>kube_pod_status_ready{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">true</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-[a-z0-9]+-replica-.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">cluster_environmentd_materialize_cloud_cluster_id</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">pod</span>&#34;, &#34;<span style="color:#e6db74">.*-cluster-([a-z0-9]+)-replica-.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0.5</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_created <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">20</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
 <h4 id="certificate-not-ready">certificate-not-ready
   <a class="anchor" href="#certificate-not-ready">#</a>
 </h4>
 A certificate has not become ready in 20m, which can prevent an environment from coming up.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> environmentd</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1626,6 +1858,7 @@ Labels:
 Web-console query p95 latency has exceeded 10s for 15m.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> console</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1647,6 +1880,7 @@ Labels:
 A previously healthy clusterd is restarting during a release.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> clusterd</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1675,6 +1909,7 @@ Labels:
 environmentd is unreachable from outside the network by the external uptime checker.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> external-uptime</li>
         <li><strong>severity:</strong> critical</li>
 </ul>
@@ -1692,6 +1927,7 @@ Labels:
 New external connections to environmentd are failing, per the external uptime checker.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> external-uptime</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1709,6 +1945,7 @@ Labels:
 The external uptime checker has stopped making calls — the checker itself may be down.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> external-uptime</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1726,6 +1963,7 @@ Labels:
 The last LaunchDarkly server-side event is more than 40 minutes old — flag updates may not be reaching environmentd.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> launchdarkly</li>
         <li><strong>severity:</strong> warning</li>
 </ul>
@@ -1744,6 +1982,7 @@ Labels:
 The last LaunchDarkly client-side event is more than 40 minutes old — client analytics may be stale.
 Labels:
 <ul>
+        <li><strong>audience:</strong> platform</li>
         <li><strong>component:</strong> launchdarkly</li>
         <li><strong>severity:</strong> notice</li>
 </ul>
@@ -1755,6 +1994,201 @@ Labels:
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">timestamp</span><span style="color:#f92672">(</span>mz_parameter_frontend_last_cse_time_seconds{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> mz_parameter_frontend_last_cse_time_seconds{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">40</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+
+## materialize-workload-alerts
+
+<p>Alerting rules for the workloads running on Materialize.</p>
+<p>Every alert here carries <code>audience: workload</code>, so a route can send them to
+the people who own the clusters rather than to whoever runs the deployment.
+Each is scoped to user clusters (<code>u*</code>); the same condition on a system
+cluster is a platform alert.</p>
+
+<h4 id="cluster-falling-behind">cluster-falling-behind
+  <a class="anchor" href="#cluster-falling-behind">#</a>
+</h4>
+A cluster&rsquo;s collections have averaged over 60s of lag for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id, collection_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        mz_dataflow_wallclock_lag_seconds{quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">1</span>&#34;, instance_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">u.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">1</span>e18
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>[<span style="color:#e6db74">15m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+<h4 id="cluster-stale">cluster-stale
+  <a class="anchor" href="#cluster-stale">#</a>
+</h4>
+A cluster&rsquo;s collections have averaged over 10m of lag for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id, collection_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        mz_dataflow_wallclock_lag_seconds{quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">1</span>&#34;, instance_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">u.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span> <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">1</span>e18
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>[<span style="color:#e6db74">15m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">600</span>
+</span></span></code></pre></div>
+<h4 id="cluster-hydration-stuck">cluster-hydration-stuck
+  <a class="anchor" href="#cluster-hydration-stuck">#</a>
+</h4>
+A cluster has had collections with no hydrated replica for 1h.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, instance_id, collection_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    mz_dataflow_wallclock_lag_seconds{quantile<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">1</span>&#34;, instance_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">u.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">1</span>e18
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="cluster-memory-near-limit">cluster-memory-near-limit
+  <a class="anchor" href="#cluster-memory-near-limit">#</a>
+</h4>
+A cluster replica&rsquo;s heap has reached 90% of the point where the kernel OOM-kills it.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max_over_time</span><span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">heap</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">u.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory_max</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">swap_max</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">90</span>
+</span></span></code></pre></div>
+<h4 id="cluster-memory-high">cluster-memory-high
+  <a class="anchor" href="#cluster-memory-high">#</a>
+</h4>
+A cluster replica&rsquo;s heap has averaged over 40% of its memory plus swap limits for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">avg_over_time</span><span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">heap</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">u.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory_max</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_metrics_resource_usage{metric<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">swap_max</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">40</span>
+</span></span></code></pre></div>
+<h4 id="cluster-cpu-high">cluster-cpu-high
+  <a class="anchor" href="#cluster-cpu-high">#</a>
+</h4>
+A cluster replica has used over 85% of its CPU limit for 15m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>kube-state-metrics</code>, <code>cadvisor</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#ae81ff">100</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-u[0-9]+-replica-.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_resource_limits{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-u[0-9]+-replica-.*</span>&#34;}<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">cluster_environmentd_materialize_cloud_cluster_id</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">pod</span>&#34;, &#34;<span style="color:#e6db74">.*-cluster-([a-z0-9]+)-replica-.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">85</span>
+</span></span></code></pre></div>
+<h4 id="cluster-replica-oomkilled">cluster-replica-oomkilled
+  <a class="anchor" href="#cluster-replica-oomkilled">#</a>
+</h4>
+A cluster replica was OOM-killed in the last 10m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> clusterd</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>kube-state-metrics</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-u[0-9]+-replica-.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">cluster_environmentd_materialize_cloud_cluster_id</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">pod</span>&#34;, &#34;<span style="color:#e6db74">.*-cluster-([a-z0-9]+)-replica-.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>kube_pod_container_status_restarts_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;}[<span style="color:#e6db74">10m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="source-disconnected">source-disconnected
+  <a class="anchor" href="#source-disconnected">#</a>
+</h4>
+A source has lost sight of its upstream for 5m.
+Labels:
+<ul>
+        <li><strong>audience:</strong> workload</li>
+        <li><strong>component:</strong> storage</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, source_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  mz_source_offset_committed{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">&gt;</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, source_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  mz_source_offset_known{<span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 
 
