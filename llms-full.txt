@@ -2045,7 +2045,7 @@ There are five ways metrics reach `materialize-monitoring`, and most deployments
 | [Prometheus Remote Write](../prometheus-remote-write/) | You already run Prometheus and want it to ship into this stack | Something **pushes** |
 | [OpenTelemetry Endpoint](../opentelemetry-endpoint/) | You run an OpenTelemetry Collector, or an application that emits OTLP directly | Something **pushes** |
 | [Prometheus Scraper](../prometheus-scraper/) | You run your own Prometheus and this stack is not in the path at all | Your Prometheus **pulls** |
-| [Cloud Provider Metrics](../cloud-provider-metrics/) | The metadata database or the buckets are managed by AWS or Google Cloud, and their CPU, storage or burst headroom is wanted beside the rest | The gateway **pulls** from the provider's API |
+| [Cloud Provider Metrics](../cloud-provider-metrics/) | The metadata database or the buckets are managed by AWS, Google Cloud or Azure, and their CPU, storage or burst headroom is wanted beside the rest | The gateway **pulls** from the provider's API |
 
 All but the Prometheus Scraper land in the same place: the `alloy-gateway` pipeline, which processes and enriches everything uniformly before writing it to [storage](../../storing/).
 How it got in makes no difference downstream.
@@ -3269,7 +3269,8 @@ url: https://materializeinc.github.io/materialize-monitoring/metrics/collecting/
 
 The gateway can pull what a cloud provider's monitoring API publishes about the metadata database and the buckets a Materialize deployment depends on.
 The result is written beside every other metric, with the same retention, the same PromQL, and the same destinations.
-A provider series is therefore joinable with `mz_persist_*` in a single expression, which a Grafana CloudWatch or Cloud Monitoring datasource cannot offer.
+A provider series is therefore joinable with `mz_persist_*` in a single expression.
+A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
 
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
@@ -3281,8 +3282,10 @@ Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-
 charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
 sets on this page are that file's; change them there, not here first. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
-GKE and EKS test installs, with Alloy v1.20.0 locally and v1.19.2 in-cluster, and are the ones to
-re-measure if the exporters are bumped.
+GKE and EKS test installs, and on 2026-09-29 against the AKS one, with Alloy v1.20.0 locally and
+v1.19.2 in-cluster, and are the ones to re-measure if the exporters are bumped. The Azure call counts
+are read from the exporter's code (Alloy v1.19.2, azure-metrics-exporter 5092ac0), since it exports
+no counter of its own.
 -->
 
 ## What is pulled
@@ -3293,12 +3296,19 @@ re-measure if the exporters are bumped.
 | `cloudwatch` | S3 bucket | `BucketSizeBytes` per storage class, `NumberOfObjects` | Daily |
 | `gcp` | Cloud SQL instance | `cpu/utilization`, `memory/utilization`, `disk/utilization`, `postgresql/num_backends`, `postgresql/transaction_id_utilization`, `up` | One minute |
 | `gcp` | GCS bucket | `storage/v2/total_bytes`, `storage/v2/total_count`, split into live, noncurrent and soft-deleted objects | Daily, repeated every five minutes |
+| `azure` | PostgreSQL Flexible Server | `cpu_percent`, `cpu_credits_remaining`, `memory_percent`, `storage_percent`, `active_connections`, `connections_failed`, `disk_queue_depth`, `disk_iops_consumed_percentage`, `disk_bandwidth_consumed_percentage`, `maximum_used_transactionIDs`, `is_db_alive` | One minute, summarised per five-minute bucket |
+| `azure` | Blob Storage account | `BlobCapacity`, `BlobCount` | Hourly, refreshed about once a day |
+| `azure` | Blob Storage account | `Availability`, `SuccessServerLatency`, `SuccessE2ELatency` | One minute, summarised per five-minute bucket |
 
 The metric sets are fixed, and values only name the resources.
-Each pull is a custom component in the gateway's `gateway-provider` pipeline, instantiated once per listed resource, so changing what is pulled is a change to that pipeline.
+Each pull is a custom component in the gateway's `gateway-provider` pipeline, so changing what is pulled is a change to that pipeline.
+CloudWatch takes one instance of it per listed resource; GCP and Azure take one per service, whose filter names every listed resource.
 The Cloud SQL entries are metric-type prefixes, so `postgresql/num_backends` also pulls `num_backends_by_state` and `num_backends_by_application`, and `up` also pulls `uptime`.
 
-Azure Monitor is not supported yet.
+Azure applies one aggregation list to every metric in a call.
+The Flexible Server pull therefore asks for all four and keeps the one or two each metric needs.
+Those are the statistics the RDS pull asks CloudWatch for: average and maximum CPU, minimum credits, maximum connections, and so on.
+That is 11 series per server, and 12 on a Burstable tier, which also publishes `cpu_credits_remaining`.
 
 ### Metric names
 
@@ -3306,12 +3316,20 @@ Azure Monitor is not supported yet.
 |---|---|---|---|
 | `cloudwatch` | `aws_<service>_<metric>_<statistic>` | `aws_rds_free_storage_space_minimum` | `dimension_DBInstanceIdentifier`, `dimension_BucketName` |
 | `gcp` | `stackdriver_<resource type>_<metric type>` | `stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization` | `database_id` (`project:instance`), `bucket_name` |
+| `azure` | `azure_<resource type>_<metric>_<aggregation>_<unit>`, lowercased | `azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent` | `resourceName`, and `resourceID` lowercased |
 
 CloudWatch series also carry `region`, `account_id` and `account_alias`, and `name`, which is `rds` or `s3` on every series.
 Join on the `dimension_*` label.
 
-Every provider series carries `job="integrations/cloudwatch"` or `job="integrations/gcp"`.
-`instance` is the resource on CloudWatch series, since each resource has its own pull, and `cloudsql` or `gcs` on Cloud Monitoring series, since one pull covers every listed resource of a service.
+Azure series also carry `resourceGroup`, `subscriptionID` and `subscriptionName`.
+They also carry the `interval` and `timespan` each pull reads, as ISO 8601 durations.
+The Blob Storage families are named for the blob service, as `azure_microsoft_storage_storageaccounts_blobservices_*`.
+No resource tag is copied onto a series; the exporter copies `owner` by default, and the pull turns that off.
+
+Every provider series carries `job="integrations/cloudwatch"`, `job="integrations/gcp"` or `job="integrations/azure"`.
+`instance` is the resource on CloudWatch series, since each resource has its own pull.
+On Cloud Monitoring series it is `cloudsql` or `gcs`, since one pull covers every listed resource of a service.
+Azure series are the same, with `postgres`, `blob_capacity` or `blob_requests`.
 
 ## Configuring it
 
@@ -3336,9 +3354,21 @@ pipeline:
           instances: [mz-prod-pg]
         gcs:
           buckets: [mz-prod-storage]
+      azure:
+        enabled: true
+        subscriptionId: 00000000-0000-0000-0000-000000000000
+        postgres:
+          servers: [mz-prod-pg]
+        blob:
+          storageAccounts: [mzprodstorage]
 ```
 
 A Cloud SQL entry is the instance name, not the `project:region:instance` connection name.
+A Flexible Server entry is the server name, not its FQDN, and a storage account entry is the account name, not its endpoint.
+Both kinds of Azure name are unique across Azure, so no resource group is needed.
+The chart refuses anything else at render, since the names sit inside the Resource Graph query's filter.
+`subscriptionId` is the subscription's GUID.
+On Azure Government or Azure China, set `cloudEnvironment` to `azureusgovernmentcloud` or `azurechinacloud`.
 
 The chart refuses, at render, the values that would otherwise stop the gateway starting: a scrape timeout longer than the interval, and two buckets whose names differ only in `.` and `-`, which would become the same component label.
 Alloy accepts both in `alloy validate` and exits on them at load, which would stop logs and metrics along with the pull.
@@ -3354,19 +3384,31 @@ The pull runs as the gateway pod's own cloud identity, bound through `alloy-gate
 |---|---|---|
 | `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
+| `azure` | Workload identity (`azure.workload.identity/client-id`, plus a pod label), or a service principal as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named server and storage account |
+
+Azure workload identity needs two things on the gateway, not one.
+The annotation names the identity.
+The Entra webhook injects it only into pods labelled `azure.workload.identity/use: "true"`, set through `alloy-gateway.controller.podLabels`.
+The chart's Terraform module sets the label whenever the gateway's annotations include `azure.workload.identity/client-id`.
+On Azure the grant can be scoped to each resource, unlike on the other two clouds.
+Resource Graph returns only the resources the identity can read, so the grant is also what decides which named resources are pulled.
 
 On GCP, the service account the Terraform module creates for the Google Cloud Metrics exporter holds `roles/monitoring.metricWriter`, which writes metrics and cannot read them.
 Reading needs `roles/monitoring.viewer` added to the same account.
 
 The chart warns at render when a provider is enabled and the gateway's service account carries no matching annotation.
+On Azure it also warns when the annotation has no pod label beside it.
 It cannot tell whether EKS Pod Identity, a static key, or a direct Workload Identity principal is in use instead, so the warning is advisory.
 
-The two providers fail differently without a credential.
+The providers fail differently without a credential.
 CloudWatch resolves its credential on each pull, so a missing one produces empty pulls and the gateway keeps running.
 The GCP exporter resolves its credential when it starts.
 On GKE the metadata server always supplies one, so the result is again empty pulls.
 Outside Google Cloud there is no metadata server, so `GOOGLE_APPLICATION_CREDENTIALS` has to point at a mounted key or a Workload Identity Federation configuration.
 Without one the exporter cannot start, and the gateway fails to load along with every log and metric it carries.
+Azure, like CloudWatch, resolves its credential on the first pull, so the gateway keeps running.
+On AKS without the pod label, the pull falls through to the node's managed identity, which Resource Graph refuses with a 403.
+`up` is 0, and the gateway logs `service discovery failed`.
 
 ## Lag
 
@@ -3378,8 +3420,10 @@ Provider data is minutes old when it arrives, and that decides how it can be use
 | CloudWatch S3 | Up to a day | The scrape's |
 | Cloud SQL | About three minutes | Cloud Monitoring's |
 | GCS | Over ten minutes | Cloud Monitoring's |
+| Azure Flexible Server, Blob requests | About a minute | The scrape's |
+| Azure Blob capacity | Up to a day | The scrape's |
 
-CloudWatch samples are stamped at scrape time.
+CloudWatch and Azure samples are stamped at scrape time.
 Stamping a daily S3 datapoint with its own time would put it a day in the past, and the bundled Thanos Receive, which accepts no out-of-order samples, refuses samples that old.
 
 Cloud Monitoring samples keep their own timestamps.
@@ -3390,7 +3434,7 @@ Queries on provider families need `last_over_time(<series>[15m])` or a wider win
 Remote write forwards only samples stamped after it started, so that a restart does not resend what was already written.
 A Cloud Monitoring sample stamped before the restart is therefore never sent.
 After each restart, Cloud SQL series resume a few minutes later and GCS series over ten minutes later.
-CloudWatch samples carry the scrape's time, so they have no gap.
+CloudWatch and Azure samples carry the scrape's time, so they have no gap.
 
 No provider signal backs a fast page.
 Provider alerts cover the slow-moving conditions — storage headroom, burst-credit exhaustion, connection ceilings — with `for:` windows well above the publication delay.
@@ -3403,6 +3447,7 @@ The provider bills each pull, and the bill depends on configuration, not on how 
 |---|---|---|
 | `cloudwatch` | 12 `GetMetricStatistics` calls per RDS instance and 2 per bucket | 30 calls for two instances and three buckets, in-cluster |
 | `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets, counted by `stackdriver_monitoring_api_calls_total` |
+| `azure` | One Resource Graph query per service, then one metrics call per resource, since each set is under Azure's twenty-per-call limit. Blob Storage is two pulls, capacity and requests | 9 calls for two servers and two accounts, counted from the exporter's code, since it exports no call counter |
 
 `scrapeInterval` is the main lever, and defaults to five minutes.
 Rates change, so current provider pricing is the reference for what a call costs.
@@ -3434,21 +3479,30 @@ The pull does not read those types back, so it does not loop.
 |---|---|
 | GCS `api/request_count` | A per-minute DELTA, and the exporter adds only the newest point of each pull to its counter. At a five-minute interval it reports about a fifth of the real count. The clients report the same requests exactly |
 | S3 request metrics | Opt-in per bucket on the AWS side, and billed as custom metrics |
+| Azure Blob `Transactions` | The window each pull reads ends at the scrape, so its newest five-minute bucket is a minute or so short, and a count read from it under-counts. `Availability` already falls with throttling and server errors, and the clients report the same requests exactly |
+| Azure resource tags | The exporter copies the `owner` tag onto every series by default. Tags are free text, and the pull copies none |
 | Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each |
 
 ## Checking it works
 
-**`up` does not say whether a pull succeeded.**
+**On CloudWatch and GCP, `up` does not say whether a pull succeeded.**
 An exporter whose provider call fails still answers its scrape, with no provider series in it.
 Measured with credentials missing — for CloudWatch anywhere, and for GCP where a metadata server exists — both exporters return HTTP 200 and report healthy, so `up` stays 1.
 `up` only says the exporter exists and is being scraped.
 
+On Azure it says half of it.
+A Resource Graph query that fails — no identity, or one with no access to the subscription — fails the scrape, and `up` is 0.
+A metrics call that fails for one resource only drops that resource's series and logs a warning.
+A resource the identity cannot read is never found at all.
+`up` stays 1 in both cases.
+
 | Question | Query |
 |---|---|
-| Is the exporter running and scraped | `up{job=~"integrations/(cloudwatch\|gcp)"}` |
+| Is the exporter running and scraped | `up{job=~"integrations/(cloudwatch\|gcp\|azure)"}` |
 | Did the last GCP pull fail | `stackdriver_monitoring_last_scrape_error == 1` |
 | Is CloudWatch returning data, per instance | `count by (dimension_DBInstanceIdentifier) (aws_rds_cpuutilization_average)` |
 | Is Cloud Monitoring returning data, per instance | `count by (database_id) (last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m]))` |
+| Is Azure returning data, per server | `count by (resourceName) (azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count)` |
 
 CloudWatch publishes no equivalent of the GCP error series.
 Its `yace_cloudwatch_getmetricstatistics_requests_total` counts billed calls, but it is one counter per gateway replica, and every CloudWatch target a replica owns reports it.
@@ -9883,6 +9937,10 @@ What a custom component can and cannot vary:
 - **An argument is only ever a value.** A `declare` body cannot repeat, add or omit a block because of an argument. Anything that varies in block structure stays with the caller, which is why the provider pull takes one CloudWatch instance per resource and fixes its metric set in the body.
 - **Fields a body passes arguments into have to accept expressions.** Typed fields are widened as bodies need them: a scalar becomes `Expressable`, a list becomes `ExpressableList` (whose `Items` variant holds a literal list with expression members, `[{ref: argument.region.value}]`), and a map's values become `Expressable<String>`. Widen the schema in the same change, per the lockstep invariant.
 - **A receiver passes as a single value, not a list.** The body writes `forward_to: ["argument.forward_to.value"]`, which renders as a one-element list of the argument, and the caller passes one receiver. A caller passing a list would give the scrape a list of lists.
+- **A body can process its own output before the caller's receiver.**
+  `provider_azure_postgres` passes a nested `provider_scrape` the receiver of a `prometheus.relabel` declared in the same body.
+  Only that relabel forwards to `argument.forward_to.value`.
+  Order does not matter inside a body, any more than at top level.
 - **Instances are top-level components, so their labels are identifiers and unique.** Whatever derives a label from a resource name maps other characters to `_` and prefixes a letter, and something has to refuse two names that collide: Alloy refuses a duplicate label at load, which `alloy validate` does not catch.
 - **`alloy validate` checks the body's shape, not its values.** Component validation runs only when Alloy builds the component, so a body can pass validation and still fail to load when an instance supplies, say, a scrape timeout longer than its interval. Whatever renders the instances validates those values itself.
 
@@ -12254,7 +12312,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -12269,6 +12327,7 @@ records why this is a pull rather than a Grafana datasource.
 | --- | --- | --- |
 | `cloudwatch` | RDS instances, S3 buckets | `prometheus.exporter.cloudwatch` |
 | `gcp` | Cloud SQL instances, GCS buckets | `prometheus.exporter.gcp` |
+| `azure` | PostgreSQL Flexible Servers, Blob Storage accounts | `prometheus.exporter.azure` |
 
 Every provider is off by default. Provider collection is an addition to
 what the clients already report about the same dependencies, not a
@@ -12287,12 +12346,15 @@ pod's own cloud identity, bound through
 | --- | --- | --- |
 | `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
+| `azure` | Workload identity (`azure.workload.identity/client-id`, plus the `azure.workload.identity/use: "true"` label in `alloy-gateway.controller.podLabels`), or a service principal as `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named resource |
 
 **The data is minutes old when it arrives.** CloudWatch publishes RDS
 metrics a few minutes late and S3 storage metrics once a day. Cloud
 Monitoring stamps each sample with its own time: Cloud SQL samples arrive
-about three minutes old, and GCS storage samples over ten. Query these
-families with `last_over_time(...[15m])` or wider, and do not page on them.
+about three minutes old, and GCS storage samples over ten. Azure Monitor
+values are a minute or two behind, and blob capacity is refreshed daily.
+Query these families with `last_over_time(...[15m])` or wider, and do not
+page on them.
 
 **Each pull is billed by the provider.** The cost is a function of the
 interval and of how many resources and metrics are listed, not of how many
@@ -12304,8 +12366,9 @@ gateway replicas there are.
 
 **The metric sets are fixed, and live in the pipeline, not here.** Each
 pull is a custom component in the chart's `gateway-provider` pipeline,
-instantiated once per resource listed below. Changing what is pulled is
-a change to that pipeline.
+instantiated per resource (CloudWatch) or per service (GCP and Azure) for
+what is listed below. Changing what is pulled is a change to that
+pipeline.
 </td>
     </tr>
     <tr>
@@ -12436,6 +12499,79 @@ per-minute DELTA, and the exporter counts only the newest point of
 each pull, so at a five-minute interval they read about a fifth of
 the truth. The Loki, Thanos and persist clients report the same
 requests exactly.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Pull Azure Monitor metrics for the resources listed below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.subscriptionId</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Subscription that holds the resources, as its ID. Required when enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.cloudEnvironment</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"azurecloud"</code></td>
+      <td class="helm-value-desc">Azure cloud the subscription lives in: `azurecloud`, `azurechinacloud` or `azureusgovernmentcloud`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the gateway pulls. Every pull is one Resource Graph query per service, then one metrics call per resource.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.scrapeTimeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">Scrape timeout. Must not exceed `scrapeInterval`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.metricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"extended"</code></td>
+      <td class="helm-value-desc">Importance tier assigned to every Azure Monitor family, for destinations that filter by `minMetricImportance`. One of `essential`, `recommended`, `extended`, `diagnostic`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.postgres<wbr>.servers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">PostgreSQL Flexible Server names to watch — the name, not the FQDN or resource ID.
+Each is pulled for a fixed set: CPU, and the credits of a Burstable
+tier; memory, storage and connection headroom, and failed
+connections; disk queue depth, and how much of the disk's
+provisioned IOPS and throughput is in use, which at 100% throttles
+every write while every in-database metric stays flat;
+transaction-ID consumption; and whether Azure can reach the server.
+A metric Azure does not publish for a server is absent, never zero.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.blob<wbr>.storageAccounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Storage account names to watch, for their blob service.
+Each is pulled for its stored bytes and blob count, which Azure
+refreshes about once a day, and for request availability and
+latency, at the service and end to end. Transaction counts are
+deliberately not pulled: the exporter reads the newest five-minute
+bucket as the scrape ends it, which is a minute or so short. The
+Loki, Thanos and persist clients report the same requests exactly.
 </td>
     </tr>
     <tr>
@@ -18920,12 +19056,13 @@ See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 
 ## Cloud provider pulls
 
-`pipeline.metrics.provider.{cloudwatch,gcp}` pull provider metrics into the gateway, feeding `otelcol.receiver.prometheus "inputBridge"`.
+`pipeline.metrics.provider.{cloudwatch,gcp,azure}` pull provider metrics into the gateway, feeding `otelcol.receiver.prometheus "inputBridge"`.
 The operator-facing page is [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/).
 
 **The pulls are custom components, and the first use of the pattern** described in [Authoring]({{< relref "authoring.md" >}}#custom-components-declare).
 `packages/alloy-pipelines/gateway-provider.yaml` declares them, and it deploys: the chart includes the rendered `gateway-provider.alloy` in every gateway config, where it is inert until instantiated.
-The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, one per resource named in values, each a flat block of arguments.
+The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, each a flat block of arguments.
+There is one per resource named in values on CloudWatch, and one per service on GCP and Azure.
 
 | Component | Instances | Pulls |
 |---|---|---|
@@ -18934,12 +19071,15 @@ The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, one p
 | `provider_cloudwatch_s3` | One per bucket | `BucketSizeBytes` in standard storage and `NumberOfObjects`, daily |
 | `provider_gcp_cloudsql` | One per project | CPU, memory, disk, backends, transaction-ID use and `up`, for every listed instance through one filter |
 | `provider_gcp_gcs` | One per project | `storage/v2/total_bytes` and `total_count`, for every listed bucket through one filter |
+| `provider_azure_postgres` | One per subscription | 11 Flexible Server metrics, 11 series per server and 12 on a Burstable tier, for every listed server through one Resource Graph filter |
+| `provider_azure_blob` | One per subscription | Two pulls, as two exporters and two scrapes: `BlobCapacity` and `BlobCount` over a day at hourly grain, and `Availability` and both latencies over ten minutes at five-minute grain |
 
 A `declare` body cannot repeat a block, so the metric sets are fixed in the module rather than values, and CloudWatch takes one instance, and one exporter, per resource.
-Cloud Monitoring takes one per service, because a single filter names every resource.
+Cloud Monitoring and Azure Monitor take one per service, because a single filter names every resource.
 `gateway-provider-stub.yaml` instantiates each component once so `make pipelines` checks the argument names the chart passes; keep it in step with the helper's instances.
 
-Behaviours that decide the shape, all measured against Alloy v1.19.2 source and a v1.20.0 run:
+Behaviours that decide the shape, all measured against Alloy v1.19.2 source and a v1.20.0 run.
+The Azure rows also come from the `azure-metrics-exporter` revision Alloy vendors, 5092ac0:
 
 | Behaviour | Consequence |
 |---|---|
@@ -18952,7 +19092,13 @@ Behaviours that decide the shape, all measured against Alloy v1.19.2 source and 
 | GCP `metrics_prefixes` are prefixes; `extra_filters` split on the **first** colon | One `one_of(...)` filter per service, rendered only beside that service's prefixes. `database_id` keeps its `project:instance` colon |
 | GCP samples carry Cloud Monitoring's timestamps; DELTA metrics count only the newest point per pull | `api/request_count` is left out; queries use `last_over_time` |
 | Remote write's WAL watcher forwards only samples with `T > startTimestamp` (Prometheus `tsdb/wlog/watcher.go`, vendored at v0.313.2 by Alloy v1.19.2) | A sample stamped before the gateway started is never sent, so each restart leaves a gap as long as the provider's lag: minutes for Cloud SQL, over ten for GCS. Measured on the first rollout |
-| A failed provider call still answers the scrape with HTTP 200 | `up` does not report pull health |
+| A failed CloudWatch or GCP provider call still answers the scrape with HTTP 200 | `up` does not report pull health on those two |
+| Azure runs one Resource Graph query per scrape, then one metrics call per resource per twenty metrics. A failed query answers HTTP 500; a failed metrics call only logs a warning and drops that resource | `up` is 0 when the identity is missing or has no access to the subscription, and says nothing about a single resource. Resource Graph returns only what the identity can read, so an ungranted resource is silently absent |
+| Azure `metric_aggregations` applies to every metric in the call | `provider_azure_postgres` asks for all four and ends in a `prometheus.relabel` `keep` naming the one or two series each metric needs, plus `up` and `scrape_*` |
+| Azure keeps the newest datapoint with a value in `timespan`, whose window ends at the scrape, and stamps samples at scrape time | The newest bucket is a minute or so short, fine for averages and extremes and a lower bound for counts, so blob `Transactions` is left out. No post-restart gap, as on CloudWatch |
+| The Azure exporter copies the `owner` resource tag onto every series by default | `included_resource_tags = []` on every exporter |
+| Azure resolves its credential on the first pull, through `DefaultAzureCredential` | The gateway never fails to start for want of one. Without the `azure.workload.identity/use` pod label the webhook injects nothing and the chain reaches the node's managed identity through IMDS, which Resource Graph refused with a 403 on the AKS test install. The render warns |
+| One component with two exporters exports two targets | Each gets its own `instance` (`blob_capacity`, `blob_requests`), or their `up` series would collide |
 | YACE's request counters are process-wide and only appear in exporter output | With one exporter per resource, every target a replica owns reports that replica's running total, so the series cannot be summed across `instance`, and no pod-labelled copy exists on Alloy's own `/metrics`. Cost comes from the configuration: 12 calls per RDS instance and 2 per bucket per interval |
 | The GCP exporter resolves Application Default Credentials when it is **built**; CloudWatch resolves on each pull | With no ADC source at all (no `GOOGLE_APPLICATION_CREDENTIALS`, no metadata server) the GCP exporter fails to build and the gateway fails its initial load. On GKE the metadata server always answers, so it only degrades there. The render warns, since it cannot tell a direct Workload Identity principal from an install outside Google Cloud |
 | `alloy validate` type-checks and never builds a component, so it passes an argument that `alloy run` then refuses (a `scrape_timeout` longer than the interval, two components with the same label) | The initial load fails and the gateway exits, taking every log and metric with it. The pre-validate job cannot see this, so `mzmon.alloy.validate.provider` checks both at render |
@@ -19979,7 +20125,10 @@ On by default. The chart currently works with an empty password.
       <td class="tf-var-name"><a name="gateway_service_account_annotations" href="#gateway_service_account_annotations">gateway_<wbr>service_<wbr>account_<wbr>annotations</a></td>
         <td class="tf-var-type"><code>map(string)</code></td>
       <td class="tf-var-desc">Annotations for the Alloy gateway's ServiceAccount, for binding it to a cloud identity —
-`eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity.
+`eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity,
+`azure.workload.identity/client-id` for Azure workload identity. The last also labels the
+gateway pods `azure.workload.identity/use: "true"`, without which the Entra webhook injects
+nothing.
 
 Required by a `sigv4` remote-write destination, which has no other source of credentials.
 Merged with any annotations `object_storage` contributes, so both can be present.
@@ -23171,8 +23320,8 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters ([DEP-298](https://linear.app/materializeinc/issue/DEP-298)) | OO-M2 | ⬜ |
 | On-premise object-store adapter (MinIO / Garage / Ceph) ([DEP-299](https://linear.app/materializeinc/issue/DEP-299)) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter ([DEP-300](https://linear.app/materializeinc/issue/DEP-300)) | OO-M2 | ⬜ |
-| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | 🔨 (**CloudWatch and GCP built; Azure outstanding.** `pipeline.metrics.provider.{cloudwatch,gcp}` pull RDS and S3, and Cloud SQL and GCS, for resources named in values, never discovered. Each pull is a custom component (`declare`) in a pre-rendered, schema-validated module that deploys as-is, the repository's first; the chart renders only a flat instance per resource, which `alloy validate` checks against the declared arguments, and the metric sets are fixed in the module rather than values. Clustering is on the scrape, not the exporter: both exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The custom-component revision re-ran there too: five instances, each owned by exactly one replica and spread across both, and all 32 series in Thanos three minutes after the roll with `instance` naming the resource. The Terraform identities for both are DEP-302) |
-| Terraform: read-only provider roles on the per-cloud monitoring modules ([DEP-302](https://linear.app/materializeinc/issue/DEP-302)) | OO-M2 | ⬜ |
+| The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | ✅ (**CloudWatch, GCP and Azure built.** `pipeline.metrics.provider.{cloudwatch,gcp,azure}` pull RDS and S3, Cloud SQL and GCS, and Flexible Server and Blob Storage, for resources named in values, never discovered. Each pull is a custom component (`declare`) in a pre-rendered, schema-validated module that deploys as-is, the repository's first; the chart renders only flat instances, one per resource on CloudWatch and one per service on GCP and Azure, which `alloy validate` checks against the declared arguments, and the metric sets are fixed in the module rather than values. Clustering is on the scrape, not the exporter: all three exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The custom-component revision re-ran there too: five instances, each owned by exactly one replica and spread across both, and all 32 series in Thanos three minutes after the roll with `instance` naming the resource. **Azure** ran on an AKS test install with a workload identity holding Monitoring Reader on the four named resources only: 23 Flexible Server series from one call per server, after a relabel `keep` trims the exporter's every-aggregation output from 84 samples, and 10 Blob Storage series across two pulls, with each of the three targets owned by one replica. Without the `azure.workload.identity/use` pod label the pull fell through to the node's identity and Resource Graph refused it, so on Azure a missing identity does show as `up == 0`; the chart warns, and the Terraform module sets the label. The Terraform identities are DEP-302) |
+| Terraform: read-only provider roles on the per-cloud monitoring modules ([DEP-302](https://linear.app/materializeinc/issue/DEP-302)) | OO-M2 | 🔨 (**AWS and GCP merged; Azure outstanding.** A `provider_metrics` input on each module grants the gateway read access and names the resources in the chart values: an IRSA role holding `cloudwatch:GetMetricStatistics` and `iam:ListAccountAliases`, and `roles/monitoring.viewer` on the gateway's Google service account. Azure needs a user-assigned identity for the gateway, federated to its ServiceAccount, with Monitoring Reader scoped to each named server and storage account) |
 | The `externalDependencies:` values block and a `dependency-monitoring` profile ([DEP-303](https://linear.app/materializeinc/issue/DEP-303)) | OO-M2 | ⬜ |
 | Persist bucket `AbortIncompleteMultipartUpload` lifecycle rule, in `materialize-terraform-self-managed` ([DEP-304](https://linear.app/materializeinc/issue/DEP-304)) | OO-M2 | ⬜ |
 
@@ -28965,7 +29114,7 @@ Four stakeholder classes consume this:
 | PostgreSQL alerts | ❌ **None** | Nothing in the registry names a `pg_*` family |
 | Object-store alerts | ❌ **None** | The composite `mz_persist_*` alert is the closest thing, and it names Materialize rather than the bucket |
 | A `postgres_exporter` deployment | ❌ **Absent** | Two `postgres_exporter_*` *config* families were observed on a live install, from something outside this chart. Nothing here deploys one |
-| Provider metric pull | ⚠️ CloudWatch and GCP built, Azure absent | `pipeline.metrics.provider.{cloudwatch,gcp}`, as custom components in `gateway-provider.yaml` that the chart instantiates per resource. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
+| Provider metric pull | ✅ CloudWatch, GCP and Azure built | `pipeline.metrics.provider.{cloudwatch,gcp,azure}`, as custom components in `gateway-provider.yaml` that the chart instantiates per resource or per service. See [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/) |
 | Provider metric *push* | ✅ Shipped, opposite direction | `googleCloudExporter` and `datadogExporter` write metrics *out*. The GCP monitoring module already provisions a workload identity for it |
 | Recording rules | ❌ Declared, no producer | The registry models `rules:`, no file uses the branch, and `pre-rendered/rules/{prometheus,thanos,loki}/` are all empty |
 | Alerts as installable rules | 🔨 Designed, not built | `config.rules.prometheus.enabled` defaults true and no template emits a `PrometheusRule`, so an install gets no alerts at all. [Alerting in self-managed](../20260917-alerting-self-managed/) designs the path and finds that a `PrometheusRule` has exactly one consumer here — the Thanos ruler's `autoImportPrometheusRules` sidecar |

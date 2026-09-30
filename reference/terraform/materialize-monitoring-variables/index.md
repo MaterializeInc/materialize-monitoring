@@ -276,7 +276,10 @@ On by default. The chart currently works with an empty password.
       <td class="tf-var-name"><a name="gateway_service_account_annotations" href="#gateway_service_account_annotations">gateway_<wbr>service_<wbr>account_<wbr>annotations</a></td>
         <td class="tf-var-type"><code>map(string)</code></td>
       <td class="tf-var-desc">Annotations for the Alloy gateway's ServiceAccount, for binding it to a cloud identity —
-`eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity.
+`eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity,
+`azure.workload.identity/client-id` for Azure workload identity. The last also labels the
+gateway pods `azure.workload.identity/use: "true"`, without which the Entra webhook injects
+nothing.
 
 Required by a `sigv4` remote-write destination, which has no other source of credentials.
 Merged with any annotations `object_storage` contributes, so both can be present.
