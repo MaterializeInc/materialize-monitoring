@@ -15,6 +15,13 @@
 //! and its request metrics are opt-in and billed. The client's view of health is
 //! on Materialize Persist and is better than any provider's.
 //!
+//! Every size and count panel is on a base-10 log axis. One install's buckets
+//! span four orders of magnitude — a persist bucket in the hundreds of MiB
+//! beside a metrics bucket in the tens of GiB, and live data beside a hundred
+//! times as much soft-deleted — and on a linear axis every bucket but the
+//! largest is a flat line at zero. No `min(0)`: a log axis has no zero, so an
+//! empty bucket draws no line and reads 0 in the legend.
+//!
 //! The one panel that is not provider data is the point of pulling at all:
 //! _Bucket Size_ draws the bytes Materialize accounts for beside the bytes the
 //! provider bills. The gap is storage nothing uses, and on the reference GCS
@@ -78,7 +85,7 @@ fn bytes(q: &Queries) -> dashboardv2::PanelKind {
             &[aws, gcp, azure, "referenced by Materialize"],
         ))
         .unit("bytes")
-        .min(0.0)
+        .log_scale(10.0)
         .no_value(not_pulled())
         .build(0)
 }
@@ -87,7 +94,7 @@ fn objects(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Object Count")
         .query(q.legended("infra.cloud.bucket.objects", &BUCKET_LEGENDS))
         .unit("short")
-        .min(0.0)
+        .log_scale(10.0)
         .no_value(not_pulled())
         .build(0)
 }
@@ -99,7 +106,7 @@ fn gcs_bytes(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{bucket_name}} {{type}}"),
         )
         .unit("bytes")
-        .min(0.0)
+        .log_scale(10.0)
         .no_value(not_pulled())
         .build(0)
 }
@@ -111,7 +118,7 @@ fn gcs_objects(q: &Queries) -> dashboardv2::PanelKind {
                 .legend("{{bucket_name}} {{type}}"),
         )
         .unit("short")
-        .min(0.0)
+        .log_scale(10.0)
         .no_value(not_pulled())
         .build(0)
 }

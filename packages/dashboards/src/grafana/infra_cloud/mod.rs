@@ -355,6 +355,42 @@ mod tests {
     }
 
     #[test]
+    fn bucket_sizes_and_counts_are_drawn_on_a_log_axis() {
+        // One install's buckets span four orders of magnitude, and on a linear
+        // axis all but the largest read as zero. A log axis has no zero, so a
+        // `min` of 0 would be meaningless on it too.
+        let resource = built();
+        let json = serde_json::to_value(&resource.spec.elements).expect("serialize");
+        let titles = [
+            "Bucket Size",
+            "Object Count",
+            "Bytes by Object State",
+            "Objects by Object State",
+        ];
+        let mut seen = 0;
+        for element in json.as_object().expect("elements").values() {
+            let spec = &element["spec"];
+            let Some(title) = spec["title"].as_str() else {
+                continue;
+            };
+            if !titles.contains(&title) {
+                continue;
+            }
+            seen += 1;
+            let defaults = &spec["vizConfig"]["spec"]["fieldConfig"]["defaults"];
+            assert_eq!(
+                defaults["custom"]["scaleDistribution"]["type"], "log",
+                "{title} is not on a log axis"
+            );
+            assert!(
+                defaults["min"].is_null(),
+                "{title} pins a min on a log axis"
+            );
+        }
+        assert_eq!(seen, titles.len(), "a bucket panel went missing");
+    }
+
+    #[test]
     fn the_fallback_explains_rather_than_announces() {
         assert!(NO_PROVIDER.contains("not a fault"));
         assert!(NO_PROVIDER.contains("pipeline.metrics.provider"));

@@ -492,9 +492,9 @@ Queries are `packages/queries/infra-cloud.yaml`.
 - **Cross-provider panels are one expression per provider**, each with its own legend, not a normalized series.
 - **Provider families are tiered `diagnostic`** in the registry, so each provider's `metricImportance` value keeps
   deciding what reaches a destination.
-- **Neither reference install pulls continuously.** The AWS and GCP pulls ran for a few days and were turned off, so
-  CloudWatch and Cloud Monitoring panels were verified over those windows (Sep 26–28, 2026) rather than live; query
-  with `--time` inside them. The Azure pull was live when the dashboard landed.
+- **All three reference installs pull provider metrics** as of 2026-09-30, so every provider row can be checked live.
+  Before that the AWS and GCP pulls had run only Sep 26–28, which is where the first verification was done.
+- **Size and count panels are on a log axis**, with no `min(0)`: one install's buckets span four orders of magnitude.
 
 ## Notes on the trickier panels
 
