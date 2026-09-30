@@ -66,6 +66,115 @@ additional_values = [
         <td class="tf-var-default"><code>[]</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="alert_rules" href="#alert_rules">alert_<wbr>rules</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Which bundled alerting rules install, and how they are tuned. Maps onto the chart's `rules.*`;
+see Configuring Alerting in the docs for what each does.
+
+- `enabled` — install the bundled rules at all. The chart's default is `true`.
+- `capabilities` — what the deployment contains beyond what the chart derives, such as
+  `crdb-dedicated` or `cilium`. A rule installs only where every capability it requires is
+  present.
+- `selected` — alert names, rule-group names, or `"*"`, to install beyond the default set.
+- `disabled` — alert names never to install.
+- `overrides` — per alert, a `for_duration` (the rule's `for`) and `labels` to add or replace.
+  An override never changes an expression. The usual reason for one is a cluster whose normal
+  hydration takes longer than `cluster-hydration-stuck`'s hour.
+- `environment_namespaces` — where Materialize environments run. Null uses
+  `materialize_instance_namespace`.
+- `excluded_namespaces` — namespaces no rule alerts on.
+- `infra_workloads` — the workloads each infrastructure tier holds (`core`, `important`,
+  `nonessential`, `daemonset`). A tier given here replaces the chart's list for that tier.
+
+An unknown capability, alert or group name fails the Helm render, as does an override whose
+`for_duration` is not a duration.
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    enabled                = optional(bool)
+    capabilities           = optional(list(string))
+    selected               = optional(list(string))
+    disabled               = optional(list(string))
+    overrides              = optional(map(object({ for_duration = optional(string), labels = optional(map(string)) })))
+    environment_namespaces = optional(list(string))
+    excluded_namespaces    = optional(list(string))
+    infra_workloads = optional(object({
+      core         = optional(list(string))
+      important    = optional(list(string))
+      nonessential = optional(list(string))
+      daemonset    = optional(list(string))
+    }))
+  })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="alerting" href="#alerting">alerting</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Where the bundled Alertmanager sends alerts. Maps onto the chart's `alerting.*`; see Alert
+Channels in the docs for worked examples.
+
+- `preset` — which severity-to-class mapping routes alerts: `critical-infrastructure`,
+  `important` (the chart's default), `evaluation`, or a key of `presets`.
+- `presets` — severity-to-class mappings to add, or cells to change, keyed by preset name.
+- `unknown_severity` — the severity an alert with none, or an unknown one, is routed as.
+- `receivers` — notification receivers keyed by name, each with `class` (the class or list of
+  classes it serves), `config` (an Alertmanager receiver, verbatim, without `name`) and optional
+  `route` options. Empty means no alert reaches anybody.
+- `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
+  of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
+  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+- `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
+- `templates` — notification templates keyed by file name, each ending in `.tmpl`.
+
+The Alertmanager-native parts are typed `any` and passed through as written, so every
+integration Alertmanager documents works without a module release.
+
+**Credentials never belong here.** Reference them with a receiver field's `_file` variant —
+`api_url_file`, `routing_key_file`, `credentials_file` — at
+`/etc/alertmanager/secrets/alertmanager-receivers/<key>`, and supply `<key>` through
+`alerting_receiver_secrets`. The chart fails the render on an inline credential.
+</td>
+        <td class="tf-var-schema"><pre><code>object({
+    preset           = optional(string)
+    presets          = optional(map(map(string)))
+    unknown_severity = optional(string)
+    receivers        = optional(any)
+    routes           = optional(object({ root = optional(any), extra = optional(any) }))
+    inhibit_rules    = optional(any)
+    time_intervals   = optional(any)
+    templates        = optional(map(string))
+    global           = optional(any)
+  })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="alerting_receiver_secrets" href="#alerting_receiver_secrets">alerting_<wbr>receiver_<wbr>secrets</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">Receiver credentials, keyed by file name: a Slack webhook URL, a PagerDuty routing key, an
+Opsgenie API key. Each becomes a key of the `alertmanager-receivers` Secret, which the chart
+mounts at `/etc/alertmanager/secrets/alertmanager-receivers/`, so a receiver reads one as
+`/etc/alertmanager/secrets/alertmanager-receivers/<key>`.
+
+Delivered as a Secret this module creates, never through the Helm values: anything in `values`
+is readable with `helm get values` by anyone who can read the release Secret. Alertmanager
+re-reads a credential file on every send, so rotating one needs no restart.
+
+Empty creates no Secret, which is right when External Secrets Operator, Vault or a CSI driver
+owns `alertmanager-receivers` instead. When it is set, every path under that mount the
+receivers reference has to name one of these keys, or the plan fails.
+</td>
+        <td class="tf-var-default"><code>map[]</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="alertmanager_namespace" href="#alertmanager_namespace">alertmanager_<wbr>namespace</a></td>
+        <td class="tf-var-type"><code>string</code></td>
+      <td class="tf-var-desc">Namespace the Alertmanager pods run in, which is where `alerting_receiver_secrets` is created.
+Null uses `namespace`.
+
+Set it to `alertmanager` under the chart's `split-namespace` profile, which moves Alertmanager
+there. Not inferred: the module cannot see where an `additional_values` override put it. The
+namespace has to exist before apply.
+</td>
+        <td class="tf-var-default"><code>&{}</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="certificate_duration" href="#certificate_duration">certificate_<wbr>duration</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Lifetime of each issued certificate, as a Go duration (e.g. `2160h`). Null

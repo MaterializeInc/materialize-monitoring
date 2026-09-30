@@ -128,6 +128,7 @@ It is mounted as optional, so the pods start before it exists.
 Alertmanager reads a `*_file` credential each time it sends, so creating or rotating the Secret takes effect without a
 restart once the kubelet refreshes the mount, typically within a minute.
 
+The Terraform module creates it from `alerting_receiver_secrets`, keyed the same way, and fails the plan when a receiver reads a key that map does not set.
 External Secrets Operator, Vault Agent, SOPS, or a cloud secret store's CSI driver MAY own the Secret instead of `kubectl`.
 The chart consumes it by name and never creates it.
 

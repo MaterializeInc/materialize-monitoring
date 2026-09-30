@@ -148,6 +148,56 @@ module "monitoring" {
   # the server pod happens to roll first.
   internal_tls = "authenticate"
 
+  # Alerting, on the shape a production deployment starts from: a pager for the
+  # platform, a chat channel for everything else, and workload alerts routed to
+  # the people who own the clusters. Each credential is a key of
+  # `alerting_receiver_secrets`, read by path, so none of them reaches the Helm
+  # release; the render check asserts both halves.
+  alerting = {
+    preset = "critical-infrastructure"
+    receivers = {
+      oncall = {
+        class  = ["page"]
+        config = { pagerduty_configs = [{ routing_key_file = "/etc/alertmanager/secrets/alertmanager-receivers/pagerduty-key" }] }
+      }
+      platform = {
+        class = ["high", "normal", "low"]
+        config = { slack_configs = [{
+          channel       = "#platform-alerts"
+          api_url_file  = "/etc/alertmanager/secrets/alertmanager-receivers/slack-url"
+          send_resolved = true
+        }] }
+      }
+      data-team = {
+        config = { slack_configs = [{
+          channel      = "#data-platform"
+          api_url_file = "/etc/alertmanager/secrets/alertmanager-receivers/data-team-slack-url"
+        }] }
+      }
+    }
+    routes = {
+      extra = [{ matchers = ["audience=\"workload\""], receiver = "data-team", continue = true }]
+    }
+  }
+
+  # Placeholders, never sent anywhere: the example is only ever planned.
+  alerting_receiver_secrets = {
+    "pagerduty-key"       = "example-not-a-real-pagerduty-key"
+    "slack-url"           = "https://hooks.slack.com/services/example-not-a-real-webhook"
+    "data-team-slack-url" = "https://hooks.slack.com/services/example-not-a-real-webhook-2"
+  }
+
+  # A workload whose clusters take hours to hydrate, and a rule outside the
+  # default set turned on.
+  alert_rules = {
+    selected = ["cluster-cpu-high"]
+    overrides = {
+      cluster-hydration-stuck = { for_duration = "6h" }
+      cluster-cpu-high        = { labels = { severity = "notice" } }
+    }
+    excluded_namespaces = ["materialize-scratch"]
+  }
+
   node_selector = { workload = "generic" }
 
   tolerations = [
