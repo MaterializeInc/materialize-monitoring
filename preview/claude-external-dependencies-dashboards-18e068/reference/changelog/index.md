@@ -15,9 +15,50 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.26.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.27.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.26.0
+
+* DEP-301 Pull Azure Monitor metrics into the gateway
+    * [materialize-monitoring#417](https://github.com/MaterializeInc/materialize-monitoring/pull/417)
+    * **New `pipeline.metrics.provider.azure`**, off by default.
+        * It pulls a fixed, minimal set of PostgreSQL Flexible Server and Blob Storage metrics from Azure Monitor, for the servers and storage accounts listed under it. Nothing is discovered.
+        * Join on `resourceName`. `instance` is `postgres`, `blob_capacity` or `blob_requests`.
+        * See [Cloud Provider Metrics](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/cloud-provider-metrics/).
+    * **Credentials come from the gateway pod's identity, never from values.** The identity needs Monitoring Reader on each named resource.
+        * Workload identity needs both the `azure.workload.identity/client-id` annotation on `alloy-gateway.serviceAccount` and the `azure.workload.identity/use: "true"` label in `alloy-gateway.controller.podLabels`.
+        * The Terraform module sets the label whenever the annotation is present.
+    * **Azure families default to the `extended` tier**, like the other providers.
+* Alert on freshness, hydration and replica health, split by who acts on it
+    * [materialize-monitoring#418](https://github.com/MaterializeInc/materialize-monitoring/pull/418)
+    * The default set gains ten alerting rules: `environmentd-down`, `environmentd-not-scraped`, `system-cluster-falling-behind`, `system-cluster-stale`, `system-cluster-hydration-stuck`, `system-cluster-memory-near-limit`, `cluster-replica-not-ready`, `cluster-hydration-stuck`, `cluster-memory-near-limit` and `cluster-replica-oomkilled`.
+        * `cluster-falling-behind`, `cluster-stale`, `cluster-memory-high`, `cluster-cpu-high` and `source-disconnected` are new and install only when selected.
+        * The user-cluster rules install as a third `PrometheusRule`, `<release>-materialize-workload-alerts`.
+    * Every bundled alert carries an `audience` label, `platform` or `workload`, for routing with `alerting.routes.extra`. Alerts about a cluster also carry `cluster_name`.
+    * `rules.overrides.<alert>` is new: it sets a rule's `for` and adds or replaces its labels. A deployment whose clusters take longer than an hour to hydrate should lengthen `cluster-hydration-stuck`'s `for`.
+* Install the bundled alerting rules as PrometheusRules, gated by capability
+    * [materialize-monitoring#408](https://github.com/MaterializeInc/materialize-monitoring/pull/408)
+    * The chart now installs alerting rules. `rules.enabled`, default `true`, renders the bundled alerts as `PrometheusRule` resources, which the Thanos ruler evaluates.
+        * Eighteen rules are in the default set; the rest install only when named in `rules.selected`.
+        * A rule installs only where every capability it requires is present. Capabilities for what the chart deploys are derived; others, such as `crdb-dedicated` or `cilium`, are listed in `rules.capabilities`.
+        * The names of the rules in the default set are now part of the committed surface.
+    * `rules.capabilities`, `rules.selected`, `rules.disabled`, `rules.namespaces.{environment,operator,exclude}` and `rules.infraWorkloads.{core,important,nonessential,daemonset}` are new.
+        * Environment namespaces default to `materialize.namespaces`, then to `materialize-system.namespace`. A deployment whose environments live elsewhere needs to set one of them, or environment-scoped rules match nothing.
+        * `rules.infraWorkloads` says which infrastructure workloads the rules treat as core, important, non-essential, or on every node. The defaults cover common EKS and GKE add-ons and this chart's own collectors; list your cluster's own add-ons in the matching tier.
+    * `materialize.deploymentMode` now decides the metric prefix the rules read on SQL-backed metrics: `mz_`, or `v2_mz_` for `cloud`. Any other value fails the render.
+    * **Removed:** `config.rules.prometheus.enabled`, `config.rules.loki.enabled`, `config.rules.thanos.enabled` and `config.alerts.enabled`, which no template ever read. Use `rules.enabled`. A values file that still sets them renders with a warning.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+    * Adopt the registry's parameters in the alerts, fix what that exposed, and generate the rules
+        * [materialize-monitoring#413](https://github.com/MaterializeInc/materialize-monitoring/pull/413)
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Add an alerting render context, capabilities and gen-rules to the query registry
+        * [materialize-monitoring#412](https://github.com/MaterializeInc/materialize-monitoring/pull/412)
 
 ## Dashboards (Helm chart) v0.18.0 (Unreleased)
 
