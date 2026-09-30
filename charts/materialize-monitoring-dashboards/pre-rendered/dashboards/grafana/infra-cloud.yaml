@@ -1,0 +1,3412 @@
+apiVersion: dashboard.grafana.app/v2
+kind: Dashboard
+metadata:
+  annotations:
+    grafana.app/folder: infra
+    monitoring.materialize.cloud/min-mz-version: v26.24.0
+    monitoring.materialize.cloud/rec-mz-version: v26.24.0
+    monitoring.materialize.cloud/sql-metric-prefix: mz_
+    monitoring.materialize.cloud/target-export: generic
+  name: mz-mon-infra-cloud
+spec:
+  annotations:
+  - kind: AnnotationQuery
+    spec:
+      builtIn: true
+      enable: true
+      hide: true
+      iconColor: rgba(0, 211, 255, 1)
+      name: Annotations & Alerts
+      query:
+        datasource:
+          name: -- Grafana --
+        group: grafana
+        kind: DataQuery
+        spec: {}
+        version: v0
+  cursorSync: Crosshair
+  description: |-
+    The metadata database and the buckets Materialize depends on, as their cloud provider reports them.
+
+    CloudWatch, Cloud Monitoring and Azure Monitor metrics pulled by the gateway, with rows for whichever provider is configured. Materialize's own view of the same dependencies is on Materialize Consensus and Materialize Persist.
+  editable: true
+  elements:
+    blob-availability:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent[15m])
+                      ) / 100
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Fraction of requests to each storage account's blob service that Azure counted as successful.**
+
+          **Nominal:** 100%.
+
+          **Degraded:** Anything lower is requests failing for a reason Azure attributes to itself or to throttling — the account's request-rate or bandwidth limits. Materialize retries them, so they show there as latency first.
+        id: 1026
+        links: []
+        title: Availability
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    blob-latency:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successserverlatency_average_milliseconds[15m])
+                      ) / 1000
+                    legendFormat: server {{resourceName}}
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successserverlatency_average_milliseconds[15m])
+                      ) / 1000
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successe2elatency_average_milliseconds[15m])
+                      ) / 1000
+                    legendFormat: end to end {{resourceName}}
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successe2elatency_average_milliseconds[15m])
+                      ) / 1000
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Average time Azure took to serve each storage account's successful blob requests, measured at the service and end to end.**
+
+          **Nominal:** Milliseconds, with the two lines close together.
+
+          **Degraded:** Server latency rising is the storage account. End-to-end rising alone is the network or the clients — compare with Materialize's own measurement on Materialize Persist, _Overview -> Latency_.
+        id: 1027
+        links: []
+        title: Request Latency
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    bucket-bytes:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_BucketName) (
+                        last_over_time(aws_s3_bucket_size_bytes_average[15m])
+                      )
+                    legendFormat: '{{dimension_BucketName}}'
+                    qryType: 1
+                    query: |
+                      max by (dimension_BucketName) (
+                        last_over_time(aws_s3_bucket_size_bytes_average[15m])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
+                      )
+                    legendFormat: '{{bucket_name}}'
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])
+                      )
+                  version: v0
+                refId: query-2
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))
+                    legendFormat: referenced by Materialize
+                    qryType: 1
+                    query: |
+                      sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))
+                      + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))
+                  version: v0
+                refId: query-3
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes stored in each bucket, as the provider bills them, beside the data Materialize accounts for.**
+
+          **Nominal:** The persist bucket close to Materialize's line; the monitoring buckets growing with retention and then levelling off. S3 and Azure publish bucket size once a day, so on a growing environment the bucket can read below Materialize's line by up to a day's growth — compare over days, not hours.
+
+          **Degraded:** The persist bucket far above Materialize's line is storage nothing is using: object versions or soft-deleted objects the bucket's policy retains, aborted multipart uploads, or data Materialize leaked. On GCS, _GCS: Reclaimable Data_ separates the first two. A bucket that only ever grows is a lifecycle rule that is missing or a compactor that has stopped.
+
+          Published once a day, so this moves in daily steps and a new bucket has nothing for its first day. Materialize's line sums every environment on this cluster.
+        id: 1022
+        links: []
+        title: Bucket Size
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: bytes
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    bucket-none-detected:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why this tab has no provider rows on it.
+        id: 1028
+        links: []
+        title: No Provider Metrics
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **No cloud provider metrics are being collected.**
+
+                This is the default, not a fault. Pulling from CloudWatch, Cloud Monitoring or Azure Monitor is opt-in, because it needs a cloud identity with read access and every pull is billed by the provider.
+
+                - **To turn it on**, list the metadata database and buckets under `pipeline.metrics.provider.cloudwatch`, `.gcp` or `.azure` in the `materialize-monitoring` chart's values, and give the gateway's service account read access: `cloudwatch:GetMetricStatistics` on AWS, `roles/monitoring.viewer` on GCP, or Monitoring Reader on Azure. The Cloud Provider Metrics page of the documentation has the details.
+                - **A pull that is configured but not yet working still renders its rows here**, empty, so this note never hides a failing pull.
+                - **Self-hosted databases and on-premise object stores** — CNPG, CockroachDB, MinIO — have no cloud provider, and nothing on this dashboard applies to them.
+
+                Without provider metrics, Materialize's own view of both dependencies still works on every deployment: **Materialize Consensus** for the metadata database and **Materialize Persist** for object storage. That view says whether a dependency is failing Materialize; this dashboard, once enabled, says why.
+              mode: markdown
+          version: ''
+    bucket-objects:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_BucketName) (
+                        last_over_time(aws_s3_number_of_objects_average[15m])
+                      )
+                    legendFormat: '{{dimension_BucketName}}'
+                    qryType: 1
+                    query: |
+                      max by (dimension_BucketName) (
+                        last_over_time(aws_s3_number_of_objects_average[15m])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
+                      )
+                    legendFormat: '{{bucket_name}}'
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count[15m])
+                      )
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Objects stored in each bucket.**
+
+          **Nominal:** Tracks bucket size. Persist writes many small objects and compaction replaces them with fewer large ones.
+
+          **Degraded:** Objects growing much faster than bytes is small files accumulating — compaction falling behind, which Materialize Persist shows under _Compaction_.
+
+          Published once a day.
+        id: 1023
+        links: []
+        title: Object Count
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cloudsql-by-database:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (database_id, database) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
+                      )
+                    legendFormat: '{{database_id}} {{database}}'
+                    qryType: 1
+                    query: |
+                      sum by (database_id, database) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections on each Cloud SQL instance, by the database they are connected to.**
+
+          **Nominal:** Materialize's database holding nearly all of them, plus a couple of Cloud SQL's own (`cloudsqladmin`).
+
+          **Degraded:** Another database holding a large share is a neighbour sharing the instance — its connections and its load come out of the same `max_connections` and the same CPU that Materialize needs.
+        id: 1012
+        links: []
+        title: Connections by Database
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cloudsql-by-state:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (database_id, state) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state[15m])
+                      )
+                    legendFormat: '{{database_id}} {{state}}'
+                    qryType: 1
+                    query: |
+                      sum by (database_id, state) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections on each Cloud SQL instance, by what they are doing.**
+
+          **Nominal:** Mostly `idle`: Materialize keeps connections open between commits.
+
+          **Degraded:** `idle in transaction` accumulating is a client that opened a transaction and stopped; it holds locks and stops vacuum. Many `active` connections at once is the instance working hard, which its CPU should confirm.
+        id: 1013
+        links: []
+        title: Connections by State
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cloudsql-disk:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization[15m])
+                      )
+                    legendFormat: '{{database_id}}'
+                    qryType: 1
+                    query: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Fraction of each Cloud SQL instance's disk in use.**
+
+          **Nominal:** Low and roughly flat: Materialize's footprint in its metadata database is small and does not grow with your data.
+
+          **Degraded:** A steady climb is the table persist writes to growing — see Materialize Consensus, _State and Cleanup_ — or another database sharing the instance; _Connections by Database_ shows what else is on it.
+
+          **Unhealthy:** A full disk stops the instance accepting writes. Automatic storage increases, if enabled, only add space once it runs low.
+        id: 1009
+        links: []
+        title: Disk Used
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#F19903'
+                    value: 0.8
+                  - color: '#AB0003'
+                    value: 0.9
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cloudsql-memory:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization[15m])
+                      )
+                    legendFormat: '{{database_id}}'
+                    qryType: 1
+                    query: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Fraction of each Cloud SQL instance's memory in use.**
+
+          **Nominal:** High is normal: PostgreSQL uses spare memory as cache.
+
+          **Degraded:** Pinned at 100% on a small instance means it is swapping or evicting its cache, and queries slow down. Shared-core tiers reach this easily and are not recommended for a metadata database.
+        id: 1010
+        links: []
+        title: Memory Used
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    cloudsql-up:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m])
+                      )
+                    legendFormat: '{{database_id}}'
+                    qryType: 1
+                    query: |
+                      min by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Whether Cloud SQL considers each instance to be serving.**
+
+          **Nominal:** `1` for every instance.
+
+          **Unhealthy:** `0` is an instance that is down, restarting or failing over. Every Materialize process sees it as connection errors at the same moment.
+        id: 1011
+        links: []
+        title: Instance Serving
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    collection-about:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: How old provider data is, and what that means for reading it.
+        id: 1035
+        links: []
+        title: About Provider Data
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **Everything on this dashboard is minutes old, and some of it a day old.**
+
+                | Source | Age on arrival |
+                |---|---|
+                | RDS, Azure Flexible Server, Azure Blob requests | A few minutes |
+                | Cloud SQL | About three minutes |
+                | GCS | Over ten minutes |
+                | S3 size and object count, Azure Blob capacity | Up to a day |
+
+                Read it beside Materialize's own view — Materialize Consensus and Materialize Persist — which is current to the scrape. When the two disagree during an incident, the difference is usually the provider's delay rather than a contradiction.
+
+                - **A restart of the gateway leaves a gap** in the Cloud SQL and GCS series as long as their delay, because samples stamped before the restart are never sent. CloudWatch and Azure samples are stamped when they are pulled and have no gap.
+                - **A pull that answers is not a pull that worked.** _Provider Pulls_ reads 1 for an exporter whose call to the provider failed; _Resources Returning Data_ is the check, and the Cloud Monitoring and Azure Monitor rows say why a pull failed.
+                - **Each pull is billed by the provider**, at a cost set by how many resources are listed and how often they are pulled, not by how often this dashboard is viewed.
+              mode: markdown
+          version: ''
+    collection-azure-calls:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      label_replace(
+                        label_replace(
+                          sum by (resourceProvider, method) (
+                            rate(azurerm_api_request_count[30m])
+                          ) * 60,
+                          "resourceProvider", "resource graph", "method", "post"
+                        ),
+                        "resourceProvider", "other", "resourceProvider", ""
+                      )
+                    legendFormat: '{{resourceProvider}}'
+                    qryType: 1
+                    query: |
+                      label_replace(
+                        label_replace(
+                          sum by (resourceProvider, method) (
+                            rate(azurerm_api_request_count[30m])
+                          ) * 60,
+                          "resourceProvider", "resource graph", "method", "post"
+                        ),
+                        "resourceProvider", "other", "resourceProvider", ""
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Azure API calls per minute, by what they were for — the calls that count against the subscription's API limits.**
+
+          **Nominal:** Constant: each pull runs one Resource Graph query per service to find the listed resources, then one metrics call per resource.
+
+          **Degraded:** A rise without a configuration change is a Resource Graph filter now matching more resources than it did.
+        id: 1034
+        links: []
+        title: API Calls
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Not pulling from Azure Monitor.
+                unit: suffix:calls/min
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    collection-azure-failures:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (statusCode) (
+                        rate(azurerm_api_request_count{statusCode!~"2.."}[30m])
+                      ) * 60
+                    legendFormat: HTTP {{statusCode}}
+                    qryType: 1
+                    query: |
+                      sum by (statusCode) (
+                        rate(azurerm_api_request_count{statusCode!~"2.."}[30m])
+                      ) * 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Azure Monitor API calls that failed, per minute, by HTTP status.**
+
+          **Nominal:** Empty — every call succeeded.
+
+          **Degraded:** `401` or `403` on the Resource Graph lookup is the gateway having no Azure identity, or one with no access to the subscription; that pull also reads `0` in _Provider Pulls_. `429` is Azure throttling the subscription's API budget, which a shorter pull interval or more listed resources can cause.
+
+          A resource the identity cannot read is never found by the lookup, so it is never called and fails nothing here — it is simply missing from _Resources Returning Data_. Counted by the gateway itself rather than by the pull, so these series carry `job="alloy-gateway"`, not `integrations/azure`.
+        id: 1033
+        links: []
+        title: Failed API Calls
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No Azure Monitor call has failed in this window.
+                unit: suffix:calls/min
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    collection-gcp-calls:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (instance) (
+                        rate(stackdriver_monitoring_api_calls_total[30m])
+                      ) * 60
+                    legendFormat: '{{instance}}'
+                    qryType: 1
+                    query: |
+                      sum by (instance) (
+                        rate(stackdriver_monitoring_api_calls_total[30m])
+                      ) * 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Cloud Monitoring API calls per minute, by pull — the calls that are billed.**
+
+          **Nominal:** Constant: one listing per metric prefix and one read per metric type, each pull, whether anyone is looking or not.
+
+          **Degraded:** A rise without a configuration change is a prefix matching more metric types than it used to.
+
+          GCP only. CloudWatch's call counter is reported once per gateway replica under every target it owns, so it cannot be summed; its cost is 12 calls per RDS instance and 2 per bucket each pull.
+        id: 1032
+        links: []
+        title: API Calls
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: Not pulling from Cloud Monitoring.
+                unit: suffix:calls/min
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    collection-gcp-errors:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (instance) (
+                        last_over_time(stackdriver_monitoring_last_scrape_error[15m])
+                      )
+                    legendFormat: '{{instance}}'
+                    qryType: 1
+                    query: |
+                      max by (instance) (
+                        last_over_time(stackdriver_monitoring_last_scrape_error[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Whether the last Cloud Monitoring pull for each service failed.**
+
+          **Nominal:** `0`.
+
+          **Degraded:** `1` is a pull that reached Cloud Monitoring and was refused — most often the gateway's service account lacking `roles/monitoring.viewer` on the project.
+
+          GCP only. Azure's equivalent is _Collection -> Azure Monitor_. CloudWatch publishes none, so a failed CloudWatch pull shows only as missing data and as errors in the gateway's logs.
+        id: 1031
+        links: []
+        title: Failed Pulls
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                max: 1
+                min: 0
+                noValue: Not pulling from Cloud Monitoring.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    collection-pulls:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (job, instance) (up{job=~"integrations/(cloudwatch|gcp|azure)"})
+                    format: table
+                    instant: true
+                    qryType: 2
+                    query: |
+                      max by (job, instance) (up{job=~"integrations/(cloudwatch|gcp|azure)"})
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations:
+            - group: organize
+              kind: Transformation
+              spec:
+                options:
+                  excludeByName:
+                    Time: true
+                  indexByName:
+                    Value: 2
+                    instance: 1
+                    job: 0
+                  renameByName:
+                    Value: answering
+                    instance: pull
+                    job: provider
+        description: |-
+          **Every provider pull the gateway is running, and whether its last scrape answered.**
+
+          **Nominal:** One row per pull, all `1`: one per RDS instance and S3 bucket, one per service on GCP and Azure.
+
+          **Degraded:** `0` is the exporter itself failing to answer — and on Azure, also a Resource Graph lookup that failed, which is usually a missing identity or one with no access to the subscription. **`1` does not mean the provider returned data** — an exporter whose provider call failed still answers its scrape, with nothing in it. _Resources Returning Data_ is the check for that.
+        id: 1029
+        links: []
+        title: Provider Pulls
+        vizConfig:
+          group: table
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  align: auto
+                  filterable: true
+                  inspect: false
+                noValue: No provider pulls are configured. See pipeline.metrics.provider in the chart's values.
+                unit: short
+              overrides: []
+            options:
+              cellHeight: sm
+              footer:
+                countRows: false
+                reducer: []
+                show: false
+              frameIndex: 0
+              showHeader: true
+              showTypeIcons: false
+          version: ''
+    collection-resources:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count(max by (dimension_DBInstanceIdentifier) (last_over_time(aws_rds_cpuutilization_average[15m])))
+                    legendFormat: RDS instances
+                    qryType: 1
+                    query: |
+                      count(max by (dimension_DBInstanceIdentifier) (last_over_time(aws_rds_cpuutilization_average[15m])))
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count(max by (dimension_BucketName) (last_over_time(aws_s3_bucket_size_bytes_average[15m])))
+                    legendFormat: S3 buckets
+                    qryType: 1
+                    query: |
+                      count(max by (dimension_BucketName) (last_over_time(aws_s3_bucket_size_bytes_average[15m])))
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count(max by (database_id) (last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])))
+                    legendFormat: Cloud SQL instances
+                    qryType: 1
+                    query: |
+                      count(max by (database_id) (last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])))
+                  version: v0
+                refId: query-2
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count(max by (bucket_name) (last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])))
+                    legendFormat: GCS buckets
+                    qryType: 1
+                    query: |
+                      count(max by (bucket_name) (last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])))
+                  version: v0
+                refId: query-3
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count(max by (resourceName) (last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])))
+                    legendFormat: Flexible Servers
+                    qryType: 1
+                    query: |
+                      count(max by (resourceName) (last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])))
+                  version: v0
+                refId: query-4
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      count(max by (resourceName) (last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])))
+                    legendFormat: storage accounts
+                    qryType: 1
+                    query: |
+                      count(max by (resourceName) (last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])))
+                  version: v0
+                refId: query-5
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How many of each kind of resource returned data in the last pull.**
+
+          **Nominal:** The same as the number of resources listed in `pipeline.metrics.provider`.
+
+          **Degraded:** Fewer than configured is a pull that is running but not getting data back: a missing grant, a misspelled resource name, or a resource in a different region or project from the one configured. The gateway's logs name the failing call.
+        id: 1030
+        links: []
+        title: Resources Returning Data
+        vizConfig:
+          group: stat
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                color:
+                  fixedColor: '#BBBBBB'
+                  mode: shades
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              colorMode: none
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs: []
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+          version: ''
+    db-connections:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_database_connections_maximum[15m])
+                      )
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_database_connections_maximum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
+                      )
+                    legendFormat: '{{database_id}}'
+                    qryType: 1
+                    query: |
+                      sum by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count[15m])
+                      )
+                  version: v0
+                refId: query-2
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(mz_persist_postgres_connpool_size) + (sum(mz_ts_oracle_postgres_connpool_size) or vector(0))
+                    legendFormat: held by Materialize
+                    qryType: 1
+                    query: |
+                      sum(mz_persist_postgres_connpool_size) + (sum(mz_ts_oracle_postgres_connpool_size) or vector(0))
+                  version: v0
+                refId: query-3
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections open on each metadata database instance, beside the number Materialize holds.**
+
+          **Nominal:** The instance's count a little above Materialize's — the difference is the database's own background connections, and anything else that uses it.
+
+          **Degraded:** The instance's count approaching its `max_connections` refuses new connections, which Materialize reports as connection errors on every process at once. If the instance is well above what Materialize holds, something else is using it; on Cloud SQL, _Cloud SQL: Connections_ names the database those connections are to.
+
+          Materialize's line sums every environment on this cluster, since the provider cannot say which environment a database belongs to. The instance's `max_connections` is not published by any provider; on PostgreSQL, `SHOW max_connections` gives it.
+        id: 1001
+        links: []
+        title: 'Connections: Database and Materialize'
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    db-cpu:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_cpuutilization_average[15m])
+                      ) / 100
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_cpuutilization_average[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])
+                      )
+                    legendFormat: '{{database_id}}'
+                    qryType: 1
+                    query: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])
+                      ) / 100
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])
+                      ) / 100
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **CPU utilization of each metadata database instance, as its cloud provider measures it.**
+
+          **Nominal:** Below 60%. Materialize's sizing guidance keeps steady-state CPU there so that upgrades — which briefly run two generations of every process — and maintenance have room.
+
+          **Degraded:** Sustained above 60% is an instance that needs to be larger. The load grows with the number of continuously updated sources, tables and materialized views, not with data volume, so the fix is a larger instance class rather than a larger disk.
+
+          **Unhealthy:** Near 100%, commits queue behind each other and every Materialize write slows down. On Materialize Consensus, _Overview -> Latency_ shows it from the client's side.
+
+          A few minutes behind real time, like everything on this dashboard.
+        id: 1000
+        links: []
+        title: CPU Utilization
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#F19903'
+                    value: 0.6
+                  - color: '#AB0003'
+                    value: 0.9
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    db-none-detected:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why this tab has no provider rows on it.
+        id: 1021
+        links: []
+        title: No Provider Metrics
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **No cloud provider metrics are being collected.**
+
+                This is the default, not a fault. Pulling from CloudWatch, Cloud Monitoring or Azure Monitor is opt-in, because it needs a cloud identity with read access and every pull is billed by the provider.
+
+                - **To turn it on**, list the metadata database and buckets under `pipeline.metrics.provider.cloudwatch`, `.gcp` or `.azure` in the `materialize-monitoring` chart's values, and give the gateway's service account read access: `cloudwatch:GetMetricStatistics` on AWS, `roles/monitoring.viewer` on GCP, or Monitoring Reader on Azure. The Cloud Provider Metrics page of the documentation has the details.
+                - **A pull that is configured but not yet working still renders its rows here**, empty, so this note never hides a failing pull.
+                - **Self-hosted databases and on-premise object stores** — CNPG, CockroachDB, MinIO — have no cloud provider, and nothing on this dashboard applies to them.
+
+                Without provider metrics, Materialize's own view of both dependencies still works on every deployment: **Materialize Consensus** for the metadata database and **Materialize Persist** for object storage. That view says whether a dependency is failing Materialize; this dashboard, once enabled, says why.
+              mode: markdown
+          version: ''
+    db-transaction-ids:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_maximum_used_transaction_ids_maximum[15m])
+                      ) / 2147483648
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_maximum_used_transaction_ids_maximum[15m])
+                      ) / 2147483648
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization[15m])
+                      )
+                    legendFormat: '{{database_id}}'
+                    qryType: 1
+                    query: |
+                      max by (database_id) (
+                        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization[15m])
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count[15m])
+                      ) / 2147483648
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count[15m])
+                      ) / 2147483648
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How much of PostgreSQL's transaction-ID space each instance has used, as a fraction of the point at which it stops accepting writes.**
+
+          **Nominal:** Under 10%, sawtoothing as vacuum freezes old rows and reclaims IDs. Materialize commits constantly, so it consumes IDs faster than most workloads.
+
+          **Degraded:** Climbing steadily without the sawtooth means vacuum is not keeping up — commonly a long-running transaction or an abandoned replication slot holding it back. Past 25%, find out why before it becomes urgent.
+
+          **Unhealthy:** At 100% PostgreSQL refuses all writes to protect itself, and Materialize stops. Recovery is a manual vacuum, and it can take hours.
+        id: 1002
+        links: []
+        title: Transaction IDs Used
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#F19903'
+                    value: 0.25
+                  - color: '#AB0003'
+                    value: 0.5
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-alive:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Whether Azure could reach each Flexible Server.**
+
+          **Nominal:** `1` for every server.
+
+          **Unhealthy:** `0` is a server that is down, restarting or failing over. Every Materialize process sees it as connection errors at the same moment.
+        id: 1017
+        links: []
+        title: Server Reachable
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-connections-failed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections each Flexible Server refused, per pull interval.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** Refused connections are usually `max_connections`, authentication, or a firewall rule. Materialize's own account of the same failures, with the server's error text, is on Materialize Consensus under _Overview -> Logs_.
+
+          A total over the pull's window rather than a rate, and the newest window is a minute or so short, so read it as "any" rather than "how many".
+        id: 1020
+        links: []
+        title: Refused Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-cpu-credits:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **CPU credits left on Burstable-tier Flexible Servers.**
+
+          **Nominal:** Steady or rising. Absent on the other tiers.
+
+          **Degraded:** Falling to zero throttles the server to its baseline CPU, and every Materialize write slows down with no change in load. The Burstable tier is not recommended for a metadata database for this reason.
+        id: 1016
+        links: []
+        title: CPU Credits Remaining
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No Burstable-tier servers.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-io-consumed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_iops_consumed_percentage_maximum_percent[15m])
+                      ) / 100
+                    legendFormat: IOPS {{resourceName}}
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_iops_consumed_percentage_maximum_percent[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_bandwidth_consumed_percentage_maximum_percent[15m])
+                      ) / 100
+                    legendFormat: throughput {{resourceName}}
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_bandwidth_consumed_percentage_maximum_percent[15m])
+                      ) / 100
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **How much of each Flexible Server's provisioned disk IOPS and throughput is in use.**
+
+          **Nominal:** Well below 100%.
+
+          **Degraded:** At 100% the disk throttles every write, and Materialize's commits slow down while the server's CPU looks idle. Premium SSD v2 lets IOPS and throughput be raised without resizing the disk.
+        id: 1018
+        links: []
+        title: Disk IOPS and Throughput Used
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#F19903'
+                    value: 0.8
+                  - color: '#AB0003'
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-memory:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent[15m])
+                      ) / 100
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Fraction of each Flexible Server's memory in use.**
+
+          **Nominal:** High is normal: PostgreSQL uses spare memory as cache.
+
+          **Degraded:** Pinned near 100% means the server is short of memory and will slow down; the Memory Optimized tier is the recommended one for this reason.
+        id: 1015
+        links: []
+        title: Memory Used
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-queue-depth:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count[15m])
+                      )
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Disk requests waiting on each Flexible Server.**
+
+          **Nominal:** Near zero.
+
+          **Degraded:** A sustained queue is the disk unable to keep up, which _Disk IOPS and Throughput Used_ should confirm.
+        id: 1019
+        links: []
+        title: Disk Queue Depth
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    flexible-storage:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent[15m])
+                      ) / 100
+                    legendFormat: '{{resourceName}}'
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Fraction of each Flexible Server's storage in use.**
+
+          **Nominal:** Low and roughly flat: Materialize's footprint in its metadata database is small and does not grow with your data.
+
+          **Degraded:** A steady climb is the table persist writes to growing — see Materialize Consensus, _State and Cleanup_ — or something else sharing the server.
+
+          **Unhealthy:** A full server switches to read-only, and Materialize stops. Storage autogrow, if enabled, only adds space once it runs low.
+        id: 1014
+        links: []
+        title: Storage Used
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#A2F49B'
+                    value: null
+                  - color: '#F19903'
+                    value: 0.8
+                  - color: '#AB0003'
+                    value: 0.9
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    gcs-bytes-by-type:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name, type) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
+                      )
+                    legendFormat: '{{bucket_name}} {{type}}'
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name, type) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes in each GCS bucket, split into live objects, noncurrent versions and soft-deleted objects.**
+
+          **Nominal:** Almost all live.
+
+          **Degraded:** Soft-deleted or noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning enabled can hold many times its live size — a persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Disable soft delete, or shorten its retention, on buckets Materialize owns.
+        id: 1024
+        links: []
+        title: Bytes by Object State
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: bytes
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    gcs-objects-by-type:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (bucket_name, type) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
+                      )
+                    legendFormat: '{{bucket_name}} {{type}}'
+                    qryType: 1
+                    query: |
+                      sum by (bucket_name, type) (
+                        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Objects in each GCS bucket, split into live, noncurrent and soft-deleted.**
+
+          **Nominal:** Almost all live.
+
+          **Degraded:** Many more soft-deleted objects than live ones is the retention policy keeping everything compaction deleted.
+        id: 1025
+        links: []
+        title: Objects by Object State
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                custom:
+                  scaleDistribution:
+                    log: 10
+                    type: log
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    rds-balances:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_burst_balance_minimum[15m])
+                      ) / 100
+                    legendFormat: burst {{dimension_DBInstanceIdentifier}}
+                    qryType: 1
+                    query: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_burst_balance_minimum[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_ebsiobalance_percent_minimum[15m])
+                      ) / 100
+                    legendFormat: EBS I/O {{dimension_DBInstanceIdentifier}}
+                    qryType: 1
+                    query: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_ebsiobalance_percent_minimum[15m])
+                      ) / 100
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_ebsbyte_balance_percent_minimum[15m])
+                      ) / 100
+                    legendFormat: EBS throughput {{dimension_DBInstanceIdentifier}}
+                    qryType: 1
+                    query: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_ebsbyte_balance_percent_minimum[15m])
+                      ) / 100
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The burst credit balances that let each RDS volume exceed its baseline performance.**
+
+          **Nominal:** Near 100%. Only the balances that apply to the volume type are published.
+
+          **Degraded:** A balance falling to zero drops the volume to its baseline IOPS or throughput, and every Materialize write slows down while the database itself looks idle. No client-side or in-database signal shows this, which is the main reason to collect provider metrics at all.
+        id: 1008
+        links: []
+        title: Burst and I/O Balances
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: '#AB0003'
+                    value: null
+                  - color: '#F19903'
+                    value: 0.1
+                  - color: '#A2F49B'
+                    value: 0.5
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    rds-cpu-credits:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_cpucredit_balance_minimum[15m])
+                      )
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_cpucredit_balance_minimum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **CPU credits left on burstable (`db.t*`) instances.**
+
+          **Nominal:** Steady or rising. Absent on instance classes that do not burst.
+
+          **Degraded:** Falling to zero throttles the instance to its baseline CPU, which for small burstable classes is a fraction of a core — every Materialize write slows down with no change in load. A `db.t*` class is not recommended for a metadata database for this reason.
+        id: 1005
+        links: []
+        title: CPU Credit Balance
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No burstable (db.t*) instances.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    rds-free-storage:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_free_storage_space_minimum[15m])
+                      )
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_free_storage_space_minimum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Free storage on each RDS instance.**
+
+          **Nominal:** Plenty, and roughly flat: Materialize's footprint in its metadata database is small and does not grow with your data.
+
+          **Degraded:** A steady decline is the table persist writes to growing — see Materialize Consensus, _State and Cleanup_ — or something else sharing the instance.
+
+          **Unhealthy:** An instance that runs out of storage stops accepting writes, and Materialize stops with it. RDS storage autoscaling, if enabled, adds space only after it runs low.
+
+          CloudWatch publishes free space but not the allocated size, so this cannot be shown as a percentage.
+        id: 1003
+        links: []
+        title: Free Storage
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: bytes
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    rds-freeable-memory:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_freeable_memory_minimum[15m])
+                      )
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      min by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_freeable_memory_minimum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Memory on each RDS instance not in use by PostgreSQL or its cache.**
+
+          **Nominal:** A healthy fraction of the instance's memory. PostgreSQL uses spare memory as cache, so this is expected to be well below the total.
+
+          **Degraded:** Near zero, the instance starts swapping and every query slows down.
+        id: 1004
+        links: []
+        title: Freeable Memory
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: bytes
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    rds-io-latency:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_read_latency_average[15m])
+                      )
+                    legendFormat: read {{dimension_DBInstanceIdentifier}}
+                    qryType: 1
+                    query: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_read_latency_average[15m])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_write_latency_average[15m])
+                      )
+                    legendFormat: write {{dimension_DBInstanceIdentifier}}
+                    qryType: 1
+                    query: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_write_latency_average[15m])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Average time each RDS instance's disk takes to complete a read and a write.**
+
+          **Nominal:** Around a millisecond.
+
+          **Degraded:** Rising write latency with flat load is the volume throttling — check _Burst and I/O Balances_ — or the instance at its provisioned IOPS.
+        id: 1006
+        links: []
+        title: Disk Latency
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: s
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+    rds-queue-depth:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_disk_queue_depth_average[15m])
+                      )
+                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    qryType: 1
+                    query: |
+                      max by (dimension_DBInstanceIdentifier) (
+                        last_over_time(aws_rds_disk_queue_depth_average[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Disk requests waiting on each RDS instance's volume.**
+
+          **Nominal:** Near zero.
+
+          **Degraded:** A sustained queue is the volume unable to keep up — it is the signal that separates a disk bottleneck from a CPU one.
+        id: 1007
+        links: []
+        title: Disk Queue Depth
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; see Collection if it does not.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ''
+  layout:
+    kind: TabsLayout
+    spec:
+      tabs:
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch|gcp|azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: db-cpu
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: db-connections
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: db-transaction-ids
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: Headroom
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: rds-free-storage
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: rds-freeable-memory
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: rds-cpu-credits
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: 'RDS: Storage and Memory'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: rds-io-latency
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: rds-queue-depth
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: rds-balances
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: 'RDS: Disk I/O'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloudsql-disk
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloudsql-memory
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloudsql-up
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: 'Cloud SQL: Storage and Memory'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloudsql-by-database
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloudsql-by-state
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: 'Cloud SQL: Connections'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-storage
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-memory
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-cpu-credits
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-alive
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: 'Flexible Server: Storage and Memory'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-io-consumed
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-queue-depth
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: flexible-connections-failed
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: 'Flexible Server: Disk I/O and Connections'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: cloudwatch|gcp|azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: db-none-detected
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: No Provider Metrics
+          title: Metadata Database
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch|gcp|azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: bucket-bytes
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: bucket-objects
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Stored Data
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: gcs-bytes-by-type
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: gcs-objects-by-type
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: 'GCS: Reclaimable Data'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: blob-availability
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: blob-latency
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: 'Azure Blob: Availability and Latency'
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: cloudwatch|gcp|azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: bucket-none-detected
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: No Provider Metrics
+          title: Object Storage
+      - kind: TabsLayoutTab
+        spec:
+          layout:
+            kind: RowsLayout
+            spec:
+              rows:
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-pulls
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-resources
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Pulls
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-gcp-errors
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-gcp-calls
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Cloud Monitoring
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure
+                          variable: cloudProviderList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-azure-failures
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-azure-calls
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: Azure Monitor
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: true
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: collection-about
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: About Provider Data
+          title: Collection
+  links: []
+  liveNow: false
+  preload: false
+  tags:
+  - infrastructure
+  - mzmon
+  - external-dependencies
+  timeSettings:
+    autoRefresh: ''
+    autoRefreshIntervals:
+    - 5s
+    - 10s
+    - 30s
+    - 1m
+    - 5m
+    - 15m
+    - 30m
+    - 1h
+    - 2h
+    - 1d
+    fiscalYearStartMonth: 0
+    from: now-6h
+    hideTimepicker: false
+    timezone: browser
+    to: now
+  title: Infrastructure Cloud Provider
+  variables:
+  - kind: DatasourceVariable
+    spec:
+      allowCustomValue: false
+      current:
+        text: ''
+        value: ''
+      description: Datasource for metrics queries
+      hide: dontHide
+      includeAll: false
+      label: Metrics Datasource
+      multi: false
+      name: metricsDatasource
+      options: []
+      pluginId: prometheus
+      refresh: never
+      regex: ''
+      skipUrlSync: false
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ''
+        value: ''
+      definition: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
+      description: Cloud providers the gateway was found to be pulling metrics from
+      hide: dontHide
+      includeAll: true
+      label: Cloud Provider
+      multi: true
+      name: cloudProviderList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
+          qryType: 1
+          query: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
+        version: v0
+      refresh: never
+      regex: ''
+      regexApplyTo: value
+      skipUrlSync: false
+      sort: alphabeticalAsc

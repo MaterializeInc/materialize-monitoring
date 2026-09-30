@@ -324,6 +324,14 @@ mod tests {
     }
 
     #[test]
+    fn selecting_every_dataplane_still_renders_their_rows() {
+        // Picking "All" used to hide every vendor row and show the fallback:
+        // the variable carried a custom "All" value, which a row condition
+        // reads as `[object Object]`.
+        crate::grafana::test_support::assert_row_conditions_can_read_all(&built());
+    }
+
+    #[test]
     fn no_panel_scopes_a_node_label_by_the_node_picker() {
         // `$nodeList` holds node-exporter *addresses*; every family carrying a
         // `node` label spells it as the Kubernetes *name*. One picker cannot

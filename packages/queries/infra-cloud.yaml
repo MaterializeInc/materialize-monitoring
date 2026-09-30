@@ -1,0 +1,774 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# The metadata database and the buckets, as their cloud provider reports them.
+
+description: |
+  What the cloud provider publishes about the managed services a Materialize
+  deployment depends on: the metadata database and the object storage buckets.
+
+  These are the families the gateway pulls from CloudWatch, Cloud Monitoring and
+  Azure Monitor when `pipeline.metrics.provider.*` is enabled — see
+  `packages/alloy-pipelines/gateway-provider.yaml`, whose metric sets are the
+  ones named here. Each family belongs to exactly one provider, so every query
+  below that covers all three is a list of one expression per provider, and on
+  any given install two of them return nothing. That is deliberate: it is
+  cheaper and more honest than a normalization layer, and it keeps each
+  provider's own units and resource names visible.
+
+  The client's view of the same dependencies — what Materialize experienced —
+  is `materialize-consensus.yaml` and `materialize-persist.yaml`. The external
+  dependency design doc records why the two are separate dashboards.
+
+  ## Units
+
+  Each provider speaks its own: CloudWatch and Azure Monitor publish percent
+  as 0–100, Cloud Monitoring publishes the same quantities as 0–1 (its unit
+  label reads `10^2.%`). Everything here is converted to 0–1 so a panel can
+  pin its axis. Transaction-ID consumption is converted to a fraction of the
+  2^31 wraparound limit, which is what Cloud SQL's own ratio is measured
+  against.
+
+  ## Lag and the lookback window
+
+  Provider samples are sparse and old. The pull runs every five minutes by
+  default; CloudWatch and Azure Monitor samples are stamped at the pull,
+  Cloud SQL's arrive about three minutes old and GCS's over ten. A default
+  five-minute lookback would therefore draw gaps, so every expression reads
+  its series through `last_over_time`: 15 minutes for the scrape-stamped
+  providers and Cloud SQL, 30 for GCS. The cost is that a panel goes on
+  showing a stopped pull's last value for that long. `rate()` is never used
+  on a provider counter for the same reason: `$__rate_interval` is sized
+  from the datasource's scrape interval, which is far shorter than a pull.
+
+  ## Resource labels
+
+  | Provider | Database | Bucket |
+  |---|---|---|
+  | CloudWatch | `dimension_DBInstanceIdentifier` | `dimension_BucketName` |
+  | Cloud Monitoring | `database_id` (`project:instance`) | `bucket_name` |
+  | Azure Monitor | `resourceName` | `resourceName` (the storage account) |
+
+  Azure metric names are the exporter's `azure_{type}_{metric}_{aggregation}_{unit}`,
+  lowercased, where the type is the metric namespace when one is set — hence
+  `…_storageaccounts_blobservices_…` for the blob families.
+
+# Diagnostic, so that the importance each provider is assigned in values stays
+# the one that decides whether a destination receives its families: a registry
+# tier admits a metric at that tier or above, and `diagnostic` is the one level
+# no values setting can undercut.
+metricImportanceHint: diagnostic
+
+queries:
+  # --- Metadata Database: headroom, every provider -----------------------------
+  - id: infra.cloud.db.cpu
+    stability: experimental
+    description:
+      summary: |
+        CPU utilization of each metadata database instance, as its cloud
+        provider measures it.
+      nominal: |
+        Below 60%. Materialize's sizing guidance keeps steady-state CPU there
+        so that upgrades — which briefly run two generations of every process
+        — and maintenance have room.
+      degraded: |
+        Sustained above 60% is an instance that needs to be larger. The load
+        grows with the number of continuously updated sources, tables and
+        materialized views, not with data volume, so the fix is a larger
+        instance class rather than a larger disk.
+      unhealthy: |
+        Near 100%, commits queue behind each other and every Materialize write
+        slows down. On Materialize Consensus, _Overview -> Latency_ shows it
+        from the client's side.
+      notes: |
+        A few minutes behind real time, like everything on this dashboard.
+    promQL:
+      - |
+        max by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_cpuutilization_average[15m])
+        ) / 100
+      - |
+        max by (database_id) (
+          last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])
+        ) / 100
+
+  - id: infra.cloud.db.connections
+    stability: experimental
+    description:
+      summary: |
+        Connections open on each metadata database instance, beside the number
+        Materialize holds.
+      nominal: |
+        The instance's count a little above Materialize's — the difference is
+        the database's own background connections, and anything else that uses
+        it.
+      degraded: |
+        The instance's count approaching its `max_connections` refuses new
+        connections, which Materialize reports as connection errors on every
+        process at once. If the instance is well above what Materialize holds,
+        something else is using it; on Cloud SQL, _Cloud SQL: Connections_
+        names the database those connections are to.
+      notes: |
+        Materialize's line sums every environment on this cluster, since the
+        provider cannot say which environment a database belongs to. The
+        instance's `max_connections` is not published by any provider; on
+        PostgreSQL, `SHOW max_connections` gives it.
+    promQL:
+      - |
+        max by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_database_connections_maximum[15m])
+        )
+      - |
+        sum by (database_id) (
+          last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count[15m])
+        )
+      - |
+        sum(mz_persist_postgres_connpool_size) + (sum(mz_ts_oracle_postgres_connpool_size) or vector(0))
+
+  - id: infra.cloud.db.transaction_ids
+    stability: experimental
+    description:
+      summary: |
+        How much of PostgreSQL's transaction-ID space each instance has used,
+        as a fraction of the point at which it stops accepting writes.
+      nominal: |
+        Under 10%, sawtoothing as vacuum freezes old rows and reclaims IDs.
+        Materialize commits constantly, so it consumes IDs faster than most
+        workloads.
+      degraded: |
+        Climbing steadily without the sawtooth means vacuum is not keeping up
+        — commonly a long-running transaction or an abandoned replication slot
+        holding it back. Past 25%, find out why before it becomes urgent.
+      unhealthy: |
+        At 100% PostgreSQL refuses all writes to protect itself, and Materialize
+        stops. Recovery is a manual vacuum, and it can take hours.
+    promQL:
+      - |
+        max by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_maximum_used_transaction_ids_maximum[15m])
+        ) / 2147483648
+      - |
+        max by (database_id) (
+          last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization[15m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count[15m])
+        ) / 2147483648
+
+  # --- Metadata Database: RDS --------------------------------------------------
+  - id: infra.cloud.rds.free_storage
+    stability: experimental
+    description:
+      summary: |
+        Free storage on each RDS instance.
+      nominal: |
+        Plenty, and roughly flat: Materialize's footprint in its metadata
+        database is small and does not grow with your data.
+      degraded: |
+        A steady decline is the table persist writes to growing — see
+        Materialize Consensus, _State and Cleanup_ — or something else sharing
+        the instance.
+      unhealthy: |
+        An instance that runs out of storage stops accepting writes, and
+        Materialize stops with it. RDS storage autoscaling, if enabled, adds
+        space only after it runs low.
+      notes: |
+        CloudWatch publishes free space but not the allocated size, so this
+        cannot be shown as a percentage.
+    promQL: |
+      min by (dimension_DBInstanceIdentifier) (
+        last_over_time(aws_rds_free_storage_space_minimum[15m])
+      )
+
+  - id: infra.cloud.rds.freeable_memory
+    stability: experimental
+    description:
+      summary: |
+        Memory on each RDS instance not in use by PostgreSQL or its cache.
+      nominal: |
+        A healthy fraction of the instance's memory. PostgreSQL uses spare
+        memory as cache, so this is expected to be well below the total.
+      degraded: |
+        Near zero, the instance starts swapping and every query slows down.
+    promQL: |
+      min by (dimension_DBInstanceIdentifier) (
+        last_over_time(aws_rds_freeable_memory_minimum[15m])
+      )
+
+  - id: infra.cloud.rds.cpu_credits
+    stability: experimental
+    description:
+      summary: |
+        CPU credits left on burstable (`db.t*`) instances.
+      nominal: |
+        Steady or rising. Absent on instance classes that do not burst.
+      degraded: |
+        Falling to zero throttles the instance to its baseline CPU, which for
+        small burstable classes is a fraction of a core — every Materialize
+        write slows down with no change in load. A `db.t*` class is not
+        recommended for a metadata database for this reason.
+    promQL: |
+      min by (dimension_DBInstanceIdentifier) (
+        last_over_time(aws_rds_cpucredit_balance_minimum[15m])
+      )
+
+  - id: infra.cloud.rds.io_latency
+    stability: experimental
+    description:
+      summary: |
+        Average time each RDS instance's disk takes to complete a read and a
+        write.
+      nominal: |
+        Around a millisecond.
+      degraded: |
+        Rising write latency with flat load is the volume throttling — check
+        _Burst and I/O Balances_ — or the instance at its provisioned IOPS.
+    promQL:
+      - |
+        max by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_read_latency_average[15m])
+        )
+      - |
+        max by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_write_latency_average[15m])
+        )
+
+  - id: infra.cloud.rds.queue_depth
+    stability: experimental
+    description:
+      summary: |
+        Disk requests waiting on each RDS instance's volume.
+      nominal: Near zero.
+      degraded: |
+        A sustained queue is the volume unable to keep up — it is the
+        signal that separates a disk bottleneck from a CPU one.
+    promQL: |
+      max by (dimension_DBInstanceIdentifier) (
+        last_over_time(aws_rds_disk_queue_depth_average[15m])
+      )
+
+  - id: infra.cloud.rds.io_balances
+    stability: experimental
+    description:
+      summary: |
+        The burst credit balances that let each RDS volume exceed its baseline
+        performance.
+      nominal: |
+        Near 100%. Only the balances that apply to the volume type are
+        published.
+      degraded: |
+        A balance falling to zero drops the volume to its baseline IOPS or
+        throughput, and every Materialize write slows down while the database
+        itself looks idle. No client-side or in-database signal shows this,
+        which is the main reason to collect provider metrics at all.
+    promQL:
+      - |
+        min by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_burst_balance_minimum[15m])
+        ) / 100
+      - |
+        min by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_ebsiobalance_percent_minimum[15m])
+        ) / 100
+      - |
+        min by (dimension_DBInstanceIdentifier) (
+          last_over_time(aws_rds_ebsbyte_balance_percent_minimum[15m])
+        ) / 100
+
+  # --- Metadata Database: Cloud SQL --------------------------------------------
+  - id: infra.cloud.cloudsql.disk
+    stability: experimental
+    description:
+      summary: |
+        Fraction of each Cloud SQL instance's disk in use.
+      nominal: |
+        Low and roughly flat: Materialize's footprint in its metadata database
+        is small and does not grow with your data.
+      degraded: |
+        A steady climb is the table persist writes to growing — see
+        Materialize Consensus, _State and Cleanup_ — or another database
+        sharing the instance; _Connections by Database_ shows what else is on
+        it.
+      unhealthy: |
+        A full disk stops the instance accepting writes. Automatic storage
+        increases, if enabled, only add space once it runs low.
+    promQL: |
+      max by (database_id) (
+        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization[15m])
+      )
+
+  - id: infra.cloud.cloudsql.memory
+    stability: experimental
+    description:
+      summary: |
+        Fraction of each Cloud SQL instance's memory in use.
+      nominal: |
+        High is normal: PostgreSQL uses spare memory as cache.
+      degraded: |
+        Pinned at 100% on a small instance means it is swapping or evicting
+        its cache, and queries slow down. Shared-core tiers reach this easily
+        and are not recommended for a metadata database.
+    promQL: |
+      max by (database_id) (
+        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization[15m])
+      )
+
+  - id: infra.cloud.cloudsql.up
+    stability: experimental
+    description:
+      summary: |
+        Whether Cloud SQL considers each instance to be serving.
+      nominal: "`1` for every instance."
+      unhealthy: |
+        `0` is an instance that is down, restarting or failing over. Every
+        Materialize process sees it as connection errors at the same moment.
+    promQL: |
+      min by (database_id) (
+        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m])
+      )
+
+  - id: infra.cloud.cloudsql.backends_by_database
+    stability: experimental
+    description:
+      summary: |
+        Connections on each Cloud SQL instance, by the database they are
+        connected to.
+      nominal: |
+        Materialize's database holding nearly all of them, plus a couple of
+        Cloud SQL's own (`cloudsqladmin`).
+      degraded: |
+        Another database holding a large share is a neighbour sharing the
+        instance — its connections and its load come out of the same
+        `max_connections` and the same CPU that Materialize needs.
+    promQL: |
+      sum by (database_id, database) (
+        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
+      )
+
+  - id: infra.cloud.cloudsql.backends_by_state
+    stability: experimental
+    description:
+      summary: |
+        Connections on each Cloud SQL instance, by what they are doing.
+      nominal: |
+        Mostly `idle`: Materialize keeps connections open between commits.
+      degraded: |
+        `idle in transaction` accumulating is a client that opened a
+        transaction and stopped; it holds locks and stops vacuum. Many
+        `active` connections at once is the instance working hard, which
+        its CPU should confirm.
+    promQL: |
+      sum by (database_id, state) (
+        last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state[15m])
+      )
+
+  # --- Metadata Database: Azure Flexible Server --------------------------------
+  - id: infra.cloud.flexible.storage
+    stability: experimental
+    description:
+      summary: |
+        Fraction of each Flexible Server's storage in use.
+      nominal: |
+        Low and roughly flat: Materialize's footprint in its metadata database
+        is small and does not grow with your data.
+      degraded: |
+        A steady climb is the table persist writes to growing — see
+        Materialize Consensus, _State and Cleanup_ — or something else sharing
+        the server.
+      unhealthy: |
+        A full server switches to read-only, and Materialize stops. Storage
+        autogrow, if enabled, only adds space once it runs low.
+    promQL: |
+      max by (resourceName) (
+        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent[15m])
+      ) / 100
+
+  - id: infra.cloud.flexible.memory
+    stability: experimental
+    description:
+      summary: |
+        Fraction of each Flexible Server's memory in use.
+      nominal: |
+        High is normal: PostgreSQL uses spare memory as cache.
+      degraded: |
+        Pinned near 100% means the server is short of memory and will slow
+        down; the Memory Optimized tier is the recommended one for this
+        reason.
+    promQL: |
+      max by (resourceName) (
+        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent[15m])
+      ) / 100
+
+  - id: infra.cloud.flexible.cpu_credits
+    stability: experimental
+    description:
+      summary: |
+        CPU credits left on Burstable-tier Flexible Servers.
+      nominal: |
+        Steady or rising. Absent on the other tiers.
+      degraded: |
+        Falling to zero throttles the server to its baseline CPU, and every
+        Materialize write slows down with no change in load. The Burstable
+        tier is not recommended for a metadata database for this reason.
+    promQL: |
+      min by (resourceName) (
+        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count[15m])
+      )
+
+  - id: infra.cloud.flexible.alive
+    stability: experimental
+    description:
+      summary: |
+        Whether Azure could reach each Flexible Server.
+      nominal: "`1` for every server."
+      unhealthy: |
+        `0` is a server that is down, restarting or failing over. Every
+        Materialize process sees it as connection errors at the same moment.
+    promQL: |
+      min by (resourceName) (
+        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count[15m])
+      )
+
+  - id: infra.cloud.flexible.io_consumed
+    stability: experimental
+    description:
+      summary: |
+        How much of each Flexible Server's provisioned disk IOPS and
+        throughput is in use.
+      nominal: Well below 100%.
+      degraded: |
+        At 100% the disk throttles every write, and Materialize's commits slow
+        down while the server's CPU looks idle. Premium SSD v2 lets IOPS and
+        throughput be raised without resizing the disk.
+    promQL:
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_iops_consumed_percentage_maximum_percent[15m])
+        ) / 100
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_bandwidth_consumed_percentage_maximum_percent[15m])
+        ) / 100
+
+  - id: infra.cloud.flexible.queue_depth
+    stability: experimental
+    description:
+      summary: |
+        Disk requests waiting on each Flexible Server.
+      nominal: Near zero.
+      degraded: |
+        A sustained queue is the disk unable to keep up, which
+        _Disk IOPS and Throughput Used_ should confirm.
+    promQL: |
+      max by (resourceName) (
+        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count[15m])
+      )
+
+  - id: infra.cloud.flexible.connections_failed
+    stability: experimental
+    description:
+      summary: |
+        Connections each Flexible Server refused, per pull interval.
+      nominal: Zero.
+      degraded: |
+        Refused connections are usually `max_connections`, authentication, or
+        a firewall rule. Materialize's own account of the same failures, with
+        the server's error text, is on Materialize Consensus under
+        _Overview -> Logs_.
+      notes: |
+        A total over the pull's window rather than a rate, and the newest
+        window is a minute or so short, so read it as "any" rather than "how
+        many".
+    promQL: |
+      max by (resourceName) (
+        last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count[15m])
+      )
+
+  # --- Object Storage: every provider ------------------------------------------
+  - id: infra.cloud.bucket.bytes
+    stability: experimental
+    description:
+      summary: |
+        Bytes stored in each bucket, as the provider bills them, beside the
+        data Materialize accounts for.
+      nominal: |
+        The persist bucket close to Materialize's line; the monitoring buckets
+        growing with retention and then levelling off. S3 and Azure publish
+        bucket size once a day, so on a growing environment the bucket can read
+        below Materialize's line by up to a day's growth — compare over days,
+        not hours.
+      degraded: |
+        The persist bucket far above Materialize's line is storage nothing is
+        using: object versions or soft-deleted objects the bucket's policy
+        retains, aborted multipart uploads, or data Materialize leaked. On
+        GCS, _GCS: Reclaimable Data_ separates the first two. A bucket that
+        only ever grows is a lifecycle rule that is missing or a compactor
+        that has stopped.
+      notes: |
+        Published once a day, so this moves in daily steps and a new bucket
+        has nothing for its first day. Materialize's line sums every
+        environment on this cluster.
+    promQL:
+      - |
+        max by (dimension_BucketName) (
+          last_over_time(aws_s3_bucket_size_bytes_average[15m])
+        )
+      - |
+        sum by (bucket_name) (
+          last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])
+        )
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes))
+        + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes))
+        + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))
+        + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))
+        + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))
+
+  - id: infra.cloud.bucket.objects
+    stability: experimental
+    description:
+      summary: |
+        Objects stored in each bucket.
+      nominal: |
+        Tracks bucket size. Persist writes many small objects and compaction
+        replaces them with fewer large ones.
+      degraded: |
+        Objects growing much faster than bytes is small files accumulating —
+        compaction falling behind, which Materialize Persist shows under
+        _Compaction_.
+      notes: Published once a day.
+    promQL:
+      - |
+        max by (dimension_BucketName) (
+          last_over_time(aws_s3_number_of_objects_average[15m])
+        )
+      - |
+        sum by (bucket_name) (
+          last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count[15m])
+        )
+
+  # --- Object Storage: GCS -----------------------------------------------------
+  - id: infra.cloud.gcs.bytes_by_type
+    stability: experimental
+    description:
+      summary: |
+        Bytes in each GCS bucket, split into live objects, noncurrent versions
+        and soft-deleted objects.
+      nominal: |
+        Almost all live.
+      degraded: |
+        Soft-deleted or noncurrent bytes are billed like live ones and read by
+        nothing. Persist deletes constantly, so a bucket with soft delete or
+        object versioning enabled can hold many times its live size — a
+        persist bucket holding over a hundred times its live data in
+        soft-deleted objects has been seen on a default GCS bucket. Disable
+        soft delete, or shorten its retention, on buckets Materialize owns.
+    promQL: |
+      sum by (bucket_name, type) (
+        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
+      )
+
+  - id: infra.cloud.gcs.objects_by_type
+    stability: experimental
+    description:
+      summary: |
+        Objects in each GCS bucket, split into live, noncurrent and
+        soft-deleted.
+      nominal: Almost all live.
+      degraded: |
+        Many more soft-deleted objects than live ones is the retention policy
+        keeping everything compaction deleted.
+    promQL: |
+      sum by (bucket_name, type) (
+        last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
+      )
+
+  # --- Object Storage: Azure Blob ----------------------------------------------
+  - id: infra.cloud.blob.availability
+    stability: experimental
+    description:
+      summary: |
+        Fraction of requests to each storage account's blob service that Azure
+        counted as successful.
+      nominal: 100%.
+      degraded: |
+        Anything lower is requests failing for a reason Azure attributes to
+        itself or to throttling — the account's request-rate or bandwidth
+        limits. Materialize retries them, so they show there as latency first.
+    promQL: |
+      min by (resourceName) (
+        last_over_time(azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent[15m])
+      ) / 100
+
+  - id: infra.cloud.blob.latency
+    stability: experimental
+    description:
+      summary: |
+        Average time Azure took to serve each storage account's successful
+        blob requests, measured at the service and end to end.
+      nominal: |
+        Milliseconds, with the two lines close together.
+      degraded: |
+        Server latency rising is the storage account. End-to-end rising
+        alone is the network or the clients — compare with Materialize's own
+        measurement on Materialize Persist, _Overview -> Latency_.
+    promQL:
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successserverlatency_average_milliseconds[15m])
+        ) / 1000
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successe2elatency_average_milliseconds[15m])
+        ) / 1000
+
+  # --- Collection --------------------------------------------------------------
+  - id: infra.cloud.collection.pulls
+    stability: experimental
+    description:
+      summary: |
+        Every provider pull the gateway is running, and whether its last
+        scrape answered.
+      nominal: |
+        One row per pull, all `1`: one per RDS instance and S3 bucket, one per
+        service on GCP and Azure.
+      degraded: |
+        `0` is the exporter itself failing to answer — and on Azure, also a
+        Resource Graph lookup that failed, which is usually a missing identity
+        or one with no access to the subscription. **`1` does not mean the
+        provider returned data** — an exporter whose provider call failed
+        still answers its scrape, with nothing in it. _Resources Returning
+        Data_ is the check for that.
+    instant: true
+    promQL: |
+      max by (job, instance) (up{job=~"integrations/(cloudwatch|gcp|azure)"})
+
+  - id: infra.cloud.collection.resources
+    stability: experimental
+    description:
+      summary: |
+        How many of each kind of resource returned data in the last pull.
+      nominal: |
+        The same as the number of resources listed in
+        `pipeline.metrics.provider`.
+      degraded: |
+        Fewer than configured is a pull that is running but not getting data
+        back: a missing grant, a misspelled resource name, or a resource in a
+        different region or project from the one configured. The gateway's
+        logs name the failing call.
+    promQL:
+      - |
+        count(max by (dimension_DBInstanceIdentifier) (last_over_time(aws_rds_cpuutilization_average[15m])))
+      - |
+        count(max by (dimension_BucketName) (last_over_time(aws_s3_bucket_size_bytes_average[15m])))
+      - |
+        count(max by (database_id) (last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])))
+      - |
+        count(max by (bucket_name) (last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])))
+      - |
+        count(max by (resourceName) (last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])))
+      - |
+        count(max by (resourceName) (last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])))
+
+  - id: infra.cloud.collection.gcp_errors
+    stability: experimental
+    description:
+      summary: |
+        Whether the last Cloud Monitoring pull for each service failed.
+      nominal: "`0`."
+      degraded: |
+        `1` is a pull that reached Cloud Monitoring and was refused — most
+        often the gateway's service account lacking `roles/monitoring.viewer`
+        on the project.
+      notes: |
+        GCP only. Azure's equivalent is _Collection -> Azure Monitor_.
+        CloudWatch publishes none, so a failed CloudWatch pull shows only as
+        missing data and as errors in the gateway's logs.
+    promQL: |
+      max by (instance) (
+        last_over_time(stackdriver_monitoring_last_scrape_error[15m])
+      )
+
+  - id: infra.cloud.collection.gcp_calls
+    stability: experimental
+    description:
+      summary: |
+        Cloud Monitoring API calls per minute, by pull — the calls that are
+        billed.
+      nominal: |
+        Constant: one listing per metric prefix and one read per metric type,
+        each pull, whether anyone is looking or not.
+      degraded: |
+        A rise without a configuration change is a prefix matching more
+        metric types than it used to.
+      notes: |
+        GCP only. CloudWatch's call counter is reported once per gateway
+        replica under every target it owns, so it cannot be summed; its cost
+        is 12 calls per RDS instance and 2 per bucket each pull.
+    promQL: |
+      sum by (instance) (
+        rate(stackdriver_monitoring_api_calls_total[30m])
+      ) * 60
+
+  - id: infra.cloud.collection.azure_failures
+    stability: experimental
+    description:
+      summary: |
+        Azure Monitor API calls that failed, per minute, by HTTP status.
+      nominal: Empty — every call succeeded.
+      degraded: |
+        `401` or `403` on the Resource Graph lookup is the gateway having no
+        Azure identity, or one with no access to the subscription; that pull
+        also reads `0` in _Provider Pulls_. `429` is Azure throttling the
+        subscription's API budget, which a shorter pull interval or more
+        listed resources can cause.
+      notes: |
+        A resource the identity cannot read is never found by the lookup, so
+        it is never called and fails nothing here — it is simply missing from
+        _Resources Returning Data_. Counted by the gateway itself rather than
+        by the pull, so these series carry `job="alloy-gateway"`, not
+        `integrations/azure`.
+    promQL: |
+      sum by (statusCode) (
+        rate(azurerm_api_request_count{statusCode!~"2.."}[30m])
+      ) * 60
+
+  - id: infra.cloud.collection.azure_calls
+    stability: experimental
+    description:
+      summary: |
+        Azure API calls per minute, by what they were for — the calls that
+        count against the subscription's API limits.
+      nominal: |
+        Constant: each pull runs one Resource Graph query per service to find
+        the listed resources, then one metrics call per resource.
+      degraded: |
+        A rise without a configuration change is a Resource Graph filter now
+        matching more resources than it did.
+    # POSTs are the Resource Graph lookups and carry no resourceProvider;
+    # the rest are named by the provider they read.
+    promQL: |
+      label_replace(
+        label_replace(
+          sum by (resourceProvider, method) (
+            rate(azurerm_api_request_count[30m])
+          ) * 60,
+          "resourceProvider", "resource graph", "method", "post"
+        ),
+        "resourceProvider", "other", "resourceProvider", ""
+      )

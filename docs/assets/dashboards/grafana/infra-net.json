@@ -192,7 +192,7 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "**Load balancer metrics are not collected yet.**\n\nKubernetes can say that a load balancer exists and what address it was given — that is the table above. Everything about what it is *doing* lives at the cloud provider:\n\n- **AWS** — `AWS/ApplicationELB` and `AWS/NetworkELB` in CloudWatch: request and connection counts, target response time, `HealthyHostCount`, `UnHealthyHostCount`, and the 4xx/5xx families that separate a backend fault from a load balancer one.\n- **GCP** — the `loadbalancing.googleapis.com` metrics in Cloud Monitoring.\n- **Azure** — the Load Balancer and Application Gateway metric namespaces in Azure Monitor.\n\nCollecting these needs a cloud-provider scrape path, which this stack does not have. Tracked as DEP-233 🔒.\n\nUntil then: an unreachable endpoint whose Service *does* appear above is usually a target health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster substitute — a Service with no endpoints has nothing for the load balancer to send to.",
+                "content": "**Load balancer metrics are not collected yet.**\n\nKubernetes can say that a load balancer exists and what address it was given — that is the table above. Everything about what it is *doing* lives at the cloud provider:\n\n- **AWS** — `AWS/ApplicationELB` and `AWS/NetworkELB` in CloudWatch: request and connection counts, target response time, `HealthyHostCount`, `UnHealthyHostCount`, and the 4xx/5xx families that separate a backend fault from a load balancer one.\n- **GCP** — the `loadbalancing.googleapis.com` metrics in Cloud Monitoring.\n- **Azure** — the Load Balancer and Application Gateway metric namespaces in Azure Monitor.\n\nThe gateway can pull provider metrics, and the Infrastructure Cloud Provider dashboard reads them for the metadata database and the buckets, but load balancers are not among the resources it pulls. Tracked as DEP-233 🔒.\n\nUntil then: an unreachable endpoint whose Service *does* appear above is usually a target health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster substitute — a Service with no endpoints has nothing for the load balancer to send to.",
                 "mode": "markdown"
               }
             },
@@ -4480,7 +4480,6 @@
       {
         "kind": "QueryVariable",
         "spec": {
-          "allValue": ".+",
           "allowCustomValue": true,
           "current": {
             "text": "",

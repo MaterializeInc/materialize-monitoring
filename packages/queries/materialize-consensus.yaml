@@ -1,0 +1,759 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# The metadata database, as Materialize experiences it.
+
+description: |
+  The metadata (consensus) database, from the vantage point of the Materialize
+  processes that use it.
+
+  Persist is Materialize's storage layer. Every durable collection — a table,
+  a source, a materialized view, the catalog itself — is a persist *shard*:
+  data files in object storage, plus a small record of the shard's current
+  state in the metadata database. Every change to a shard commits a new
+  version of that record with a compare-and-set, so the database sees a steady
+  stream of small conditional writes (about 80 a second on an idle
+  environment) and very little else. The timestamp oracle is the second client:
+  environmentd keeps the read and write timestamps of each timeline in the same
+  database.
+
+  Everything here is the **client's** measurement, which is the SLI: it is what
+  a Materialize process experienced, including the network, DNS, TLS and its
+  own connection pool. It needs no cloud credentials and is identical on every
+  database flavor. What the database was doing at the time — CPU, storage,
+  connection ceilings — is the provider's view, on `infra-cloud`. The external
+  dependency design doc records why the two are separate.
+
+  ## Label families
+
+  `op` on `mz_persist_external_*` names the operation: `consensus_cas` (the
+  commit), `consensus_head`, `consensus_scan`, `consensus_truncate` and
+  `consensus_list_keys`. The `blob_*` values of the same label are object
+  storage and belong to `materialize-persist.yaml`. The latency histogram
+  `mz_persist_external_op_latency` covers `consensus_cas` only on this side;
+  the other operations have a mean from `_seconds / _started_count`.
+
+  `op` on `mz_persist_retry_*` is a *retry loop*, named after the work rather
+  than the call. The five listed in `materialize.consensus.retries.by_operation`
+  are the ones that wrap a metadata-database call; `next_listen_batch` and
+  `snapshot` also retry constantly, but they are polling for new data rather
+  than recovering from a failure and must never be drawn as retries. The same
+  names, as they appear in the logs, back `materialize.consensus.logs.retries`.
+
+  The process breakdown is `app` (`environmentd` or `clusterd`) plus the
+  long-form cluster id, which only `clusterd` carries. `mzClusterName` turns
+  the id into the cluster's name and leaves environmentd's blank.
+
+  ## Two things that are easy to get wrong
+
+  * `mz_persist_postgres_connpool_available` goes **negative** by the number of
+    callers waiting for a connection (deadpool's `Status.available`), and is
+    sampled at each acquire. `clamp_min(-available, 0)` is the queue.
+  * Pool **size** is connections the process currently holds, which is what the
+    database counts against `max_connections`. The pool's configured maximum is
+    not published.
+
+  Every mean here is a ratio of two rates wrapped in `(…) >= 0`. An operation
+  nobody called in the window divides zero by zero, and the resulting `NaN`
+  would otherwise be drawn — and would put the panel's empty-state text into
+  its legend, which Grafana applies per field.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- Overview: verdict ------------------------------------------------------
+  - id: materialize.consensus.health.failed_ops
+    stability: experimental
+    description:
+      summary: |
+        Metadata database calls that failed, per second, across every
+        Materialize process in this environment.
+      nominal: |
+        Zero. A short burst while a process restarts or the database fails
+        over is retried and harmless.
+      degraded: |
+        Any sustained rate means Materialize is retrying its writes and cannot
+        make progress while it does: freshness stalls everywhere at once. The
+        cause is almost always on the database side — unreachable, out of
+        connection slots, or restarting.
+      notes: |
+        _Retrying Metadata Database Operations_ below has the database's own
+        error text, which is what tells those causes apart.
+    promQL: |
+      sum(rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval}))
+
+  - id: materialize.consensus.health.connection_errors
+    stability: experimental
+    description:
+      summary: |
+        Failed attempts to open a connection to the metadata database, per
+        second.
+      nominal: Zero.
+      degraded: |
+        Materialize cannot connect. On a new install this is almost always
+        configuration: the host, port, database name or credentials in the
+        metadata backend URL, TLS settings, or a network path the cluster does
+        not have. On a running install it is the database refusing connections
+        — restarting, failing over, or at its `max_connections` limit.
+      notes: |
+        Counts both clients: persist's connection pools and the timestamp
+        oracle's.
+    promQL: |
+      sum(rate(mz_persist_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval}))
+      + (sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval})) or vector(0))
+
+  - id: materialize.consensus.health.commit_latency_p99
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of commits to the metadata database take.
+      nominal: |
+        Single-digit to low tens of milliseconds when the database is in the
+        same region as the cluster.
+      degraded: |
+        Every write in Materialize waits on a commit, so this is a floor under
+        how fresh anything can be. A rise that tracks the database's CPU is the
+        database saturating; one that does not is usually the network, or a
+        process waiting for its own connection pool.
+      notes: |
+        Measured by the client, so it includes the round trip and any wait for
+        a pooled connection. Compare with _Round-Trip Time by Process_ to
+        separate the two.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
+        )
+      )
+
+  - id: materialize.consensus.health.waiting
+    stability: experimental
+    description:
+      summary: |
+        Calls currently queued for a free database connection, across every
+        process.
+      nominal: |
+        Zero. Each pool normally has spare connections.
+      degraded: |
+        Calls are waiting on the pool rather than on the database. Brief
+        bursts are fine; a queue that persists means the pools are too small
+        for the load or connections are being held too long — which a slow
+        database causes.
+      notes: |
+        A snapshot taken at each connection request, so an idle process
+        reports its last reading.
+    promQL: |
+      sum(clamp_min(-mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0))
+      + (sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0)) or vector(0))
+
+  - id: materialize.consensus.health.connections_held
+    stability: experimental
+    description:
+      summary: |
+        Connections to the metadata database this environment currently holds
+        open.
+      nominal: |
+        A few per process — each cluster replica keeps its own pool, and so
+        does environmentd. Around 50 is typical for a small environment.
+      degraded: |
+        This is what the database counts against its `max_connections`.
+        Adding clusters and replicas adds connections, and a rollout briefly
+        runs two generations of every process at once, so the peak during an
+        upgrade is roughly double the steady state. If the database is shared
+        with anything else, that headroom is shared too.
+      notes: |
+        The database's own count, and its limit, are on the Infrastructure
+        Cloud Provider dashboard under _Metadata Database -> Headroom_.
+    promQL: |
+      sum(mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}})
+      + (sum(mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}}) or vector(0))
+
+  - id: materialize.consensus.health.commits
+    stability: experimental
+    description:
+      summary: |
+        Commits to the metadata database per second — the load this
+        environment puts on it.
+      nominal: |
+        Steady. It scales with the number of durable collections that are
+        being updated, not with data volume or query rate, and an idle
+        environment already commits dozens of times a second.
+      notes: |
+        This is the number the metadata database is sized against. See
+        _Operations -> Load_ for where it comes from.
+    promQL: |
+      sum(rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval}))
+
+  # --- Overview: latency and failures -----------------------------------------
+  - id: materialize.consensus.latency.commit
+    stability: experimental
+    description:
+      summary: |
+        Commit latency to the metadata database: the median and the slowest
+        1%.
+      nominal: |
+        Flat, with the p99 a small multiple of the median.
+      degraded: |
+        Both rising together is the database or the network getting slower for
+        everyone. The p99 rising alone is contention — some commits are waiting
+        on others, or on the pool.
+    promQL:
+      - |
+        histogram_quantile(0.50,
+          sum by (le) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
+          )
+        )
+      - |
+        histogram_quantile(0.99,
+          sum by (le) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
+          )
+        )
+
+  - id: materialize.consensus.latency.round_trip
+    stability: experimental
+    description:
+      summary: |
+        The network round trip from each Materialize process to the metadata
+        database, as that process last measured it.
+      nominal: |
+        About a millisecond within one region, and roughly the same for every
+        process.
+      degraded: |
+        One process far above the rest is that process's network path — its
+        node, its zone, or a proxy in the way. Every process high at once is
+        the database, or a database that is not in the cluster's region.
+      notes: |
+        A gauge the client refreshes on its own schedule, so it can lag the
+        latency panels by a few seconds.
+    promQL:
+      template: |
+        max by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+          mz_persist_external_rtt_latency{%%{mzEnvironmentFilter}, external="consensus"}
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.consensus.failures.by_operation
+    stability: experimental
+    description:
+      summary: |
+        Failed metadata database calls per second, by operation.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        `consensus_cas` failing is writes failing. `consensus_scan` and
+        `consensus_head` failing are reads of a collection's state, which
+        every process does when it opens one — failures there on their own
+        often mean a process that is starting up cannot reach the database.
+        Timestamp oracle failures stop every query from being assigned a
+        timestamp.
+    promQL:
+      - |
+        sum by (op) (
+          rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
+        )
+      - |
+        sum by (op) (
+          rate(mz_ts_oracle_failed_count{%%{mzEnvironmentFilter}}%%{interval})
+        )
+
+  - id: materialize.consensus.failures.connection_errors
+    stability: experimental
+    description:
+      summary: |
+        Failed connection attempts per second, by the process that made them.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        Every process at once is the database, its address, or its
+        credentials. One process alone is that process's network path.
+    promQL:
+      - template: |
+          sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+            rate(mz_persist_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval})
+          )
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      - |
+        sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.consensus.logs.retries
+    stability: experimental
+    description:
+      summary: |
+        What Materialize logged while retrying calls to the metadata database,
+        with the database's own error text.
+      nominal: |
+        Empty. A healthy database needs no retries worth logging.
+      degraded: |
+        The error text is the diagnosis. The common ones:
+
+        - `Connection refused`, or a timeout — the database is down,
+          restarting, or unreachable from the cluster.
+        - `remaining connection slots are reserved` or `too many clients` —
+          the database is at `max_connections`.
+        - `password authentication failed`, or a TLS error — the credentials
+          or `sslmode` in the metadata backend URL.
+        - `could not serialize access` — contention between writers, which
+          retries resolve on their own.
+      notes: |
+        A retry is logged once it has failed a few times, so a single blip
+        does not appear here. If the environment picker is empty, Materialize
+        never started far enough to report metrics; its logs are still on
+        Materialize Logs and Events under _Logs -> All Logs_.
+    logQL: |
+      {%%{mzEnvironmentNamespaceFilter}}
+        |= "external operation"
+        |~ "external operation (fetch_state::scan|apply_unbatched_cmd::cas|gc::truncate|maybe_init::cas|consensus::open|read_ts|write_ts|peek_write_ts|apply_write|get_all_timelines|open) "
+
+  # --- Operations -------------------------------------------------------------
+  - id: materialize.consensus.ops.by_type
+    stability: experimental
+    description:
+      summary: |
+        Metadata database calls per second, by operation.
+      nominal: |
+        `consensus_cas` — commits — is nearly all of it. `consensus_scan`
+        reads a collection's recent history and `consensus_truncate` deletes
+        history nothing needs any more, both at a few per second.
+      degraded: |
+        A step change in commits without a matching change in the number of
+        collections usually means something is being rewritten in a loop — a
+        collection that cannot settle.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
+      )
+
+  - id: materialize.consensus.ops.commits_by_process
+    stability: experimental
+    description:
+      summary: |
+        Commits per second, by the process making them.
+      nominal: |
+        environmentd and the system cluster (`mz_catalog_server`) commit
+        continuously even with no user workload. User clusters add commits in
+        proportion to the sources, tables and materialized views they maintain.
+      degraded: |
+        The process at the top is the one to look at when the database is
+        busier than expected.
+    promQL:
+      template: |
+        sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+          rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.consensus.ops.bytes
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second exchanged with the metadata database, by operation.
+      nominal: |
+        Small — the state record of a collection is kilobytes, not data. A
+        commit writes one; a scan reads several.
+      degraded: |
+        Rising commit bytes with a steady commit rate means the state records
+        themselves are growing, which the _State and Cleanup_ tab explains.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_external_bytes_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
+      )
+
+  - id: materialize.consensus.ops.collections
+    stability: experimental
+    description:
+      summary: |
+        Durable collections in this environment — each one a stream of
+        commits to the metadata database.
+      nominal: |
+        Grows with what you create. The system catalog alone is around a
+        hundred.
+      notes: |
+        Metadata database sizing guidance is stated in continuously updated
+        objects: roughly 4,500 for the smallest recommended instance and
+        18,000 for the default. This count is an upper bound on that, since it
+        also includes collections that rarely change.
+
+        List them with `SELECT s.shard_id, o.name, o.type FROM
+        mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id =
+        s.object_id`.
+    promQL: |
+      count(group by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
+
+  - id: materialize.consensus.latency.mean_by_operation
+    stability: experimental
+    description:
+      summary: |
+        Average time per metadata database call, by operation.
+      nominal: |
+        Milliseconds, and similar across operations.
+      degraded: |
+        Truncate alone slowing down is the database struggling to delete — on
+        PostgreSQL, usually a sign that autovacuum is behind on the table
+        persist writes to.
+      notes: |
+        A mean hides the tail. The commit has a real percentile on
+        _Commit Latency by Process (p99)_.
+    promQL: |
+      (
+        sum by (op) (
+          rate(mz_persist_external_seconds{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
+        )
+        /
+        sum by (op) (
+          rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
+        )
+      ) >= 0
+
+  - id: materialize.consensus.latency.commit_by_process
+    stability: experimental
+    description:
+      summary: |
+        Slowest 1% of commits, by the process making them.
+      nominal: |
+        Every process close to the others.
+      degraded: |
+        One process well above the rest is local to it — its network path, or
+        its own pool running out of connections (compare _Connections ->
+        Waiting for a Connection by Process_). All of them rising together is
+        the database.
+    promQL:
+      template: |
+        histogram_quantile(0.99,
+          sum by (le, app, cluster_environmentd_materialize_cloud_cluster_id) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval})
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.consensus.contention.conflicts
+    stability: experimental
+    description:
+      summary: |
+        Commits that lost a race with another writer and were retried, per
+        second, by process.
+      nominal: |
+        A trickle. Several processes write the same collections, so the odd
+        conflict is expected and costs one retry.
+      degraded: |
+        A burst during an upgrade is the two generations overlapping, and
+        stops when the old one is retired. A sustained high rate outside a
+        rollout means two processes are fighting over the same collections —
+        usually a replica that should have been shut down and was not.
+    promQL:
+      template: |
+        sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+          rate(mz_persist_cmd_cas_mismatch_count{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.consensus.retries.by_operation
+    stability: experimental
+    description:
+      summary: |
+        Metadata database calls retried after a failure, per second, by the
+        work that was retrying.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        A retry is a failure that has not been given up on yet. Retries across
+        every operation at once mean the database is unreachable or refusing
+        work; retries on truncation alone are cleanup falling behind, which is
+        not urgent until _State and Cleanup_ shows the backlog growing.
+      notes: |
+        Excludes persist's polling loops, which are named like retries but
+        are waiting for new data rather than recovering from an error.
+    promQL:
+      - |
+        sum by (op) (
+          rate(mz_persist_retry_retries_count{%%{mzEnvironmentFilter}, op=~"fetch_state::scan|apply_unbatched_cmd::cas|gc::truncate|maybe_init::cas|consensus::open"}%%{interval})
+        )
+      - |
+        sum by (op) (
+          rate(mz_ts_oracle_retry_retries_count{%%{mzEnvironmentFilter}}%%{interval})
+        )
+
+  - id: materialize.consensus.oracle.ops
+    stability: experimental
+    description:
+      summary: |
+        Timestamp oracle calls per second, by operation.
+      nominal: |
+        A few per second. `read_ts` is asked for by queries, `write_ts` and
+        `apply_write` by writes.
+      notes: |
+        The timestamp oracle keeps the timestamps every query and write is
+        assigned, in the metadata database. It runs in environmentd only, so a
+        failure here stops queries and writes environment-wide rather than on
+        one cluster.
+    promQL: |
+      sum by (op) (
+        rate(mz_ts_oracle_started_count{%%{mzEnvironmentFilter}}%%{interval})
+      )
+
+  - id: materialize.consensus.oracle.latency
+    stability: experimental
+    description:
+      summary: |
+        Average time per timestamp oracle call, by operation.
+      nominal: A millisecond or two.
+      degraded: |
+        Every `SELECT` waits for `read_ts`, so this adds directly to query
+        latency. A rise here beside a rise in commit latency is the database;
+        a rise here alone points at the oracle's own single connection pool,
+        on _Connections_.
+    promQL: |
+      (
+        sum by (op) (
+          rate(mz_ts_oracle_seconds{%%{mzEnvironmentFilter}}%%{interval})
+        )
+        /
+        sum by (op) (
+          rate(mz_ts_oracle_started_count{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      ) >= 0
+
+  # --- Connections ------------------------------------------------------------
+  - id: materialize.consensus.pool.size
+    stability: experimental
+    description:
+      summary: |
+        Connections to the metadata database held open, by process.
+      nominal: |
+        A handful per process, stable. Pools shrink as idle connections expire
+        and grow back on demand.
+      degraded: |
+        The sum across processes is what the database counts against
+        `max_connections`. A process whose pool keeps growing is waiting on a
+        slow database and opening more connections to compensate.
+    promQL:
+      - template: |
+          sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+            mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}}
+          )
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      - |
+        sum(mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}})
+
+  - id: materialize.consensus.pool.in_use
+    stability: experimental
+    description:
+      summary: |
+        Connections actively lent out to a call, by process.
+      nominal: |
+        Well under the pool's size.
+      degraded: |
+        In use equal to held, with callers queued in _Waiting for a
+        Connection by Process_, is a pool that is too small or a database
+        that is holding each connection too long.
+    promQL:
+      - template: |
+          sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+            mz_persist_postgres_connpool_size{%%{mzEnvironmentFilter}}
+            - clamp_min(mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0)
+          )
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      - |
+        sum(
+          mz_ts_oracle_postgres_connpool_size{%%{mzEnvironmentFilter}}
+          - clamp_min(mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0)
+        )
+
+  - id: materialize.consensus.pool.waiting
+    stability: experimental
+    description:
+      summary: |
+        Calls queued for a connection, by process.
+      nominal: Zero.
+      degraded: |
+        Queueing in one process is that process's pool. Queueing in every
+        process at once, with commit latency rising, is a slow database
+        holding each connection longer.
+      notes: |
+        A snapshot at each connection request rather than a continuous
+        measure.
+    promQL:
+      - template: |
+          sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+            clamp_min(-mz_persist_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0)
+          )
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      - |
+        sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{%%{mzEnvironmentFilter}}, 0))
+
+  - id: materialize.consensus.pool.acquire_wait
+    stability: experimental
+    description:
+      summary: |
+        Average time a call waits to be handed a connection, by process.
+      nominal: |
+        Microseconds — a free connection is almost always ready.
+      degraded: |
+        Milliseconds or more is time added to every commit before it reaches
+        the database, and is invisible from the database's side.
+    promQL:
+      - template: |
+          (
+            sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+              rate(mz_persist_postgres_connpool_acquire_seconds{%%{mzEnvironmentFilter}}%%{interval})
+            )
+            /
+            sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+              rate(mz_persist_postgres_connpool_acquires{%%{mzEnvironmentFilter}}%%{interval})
+            )
+          ) >= 0
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      - |
+        (
+          sum(rate(mz_ts_oracle_postgres_connpool_acquire_seconds{%%{mzEnvironmentFilter}}%%{interval}))
+          /
+          sum(rate(mz_ts_oracle_postgres_connpool_acquires{%%{mzEnvironmentFilter}}%%{interval}))
+        ) >= 0
+
+  - id: materialize.consensus.pool.churn
+    stability: experimental
+    description:
+      summary: |
+        New connections opened per second, and how many of those replaced a
+        connection that had reached its age limit.
+      nominal: |
+        The two lines close together and low: connections are recycled on a
+        timer so that a database failover is picked up, and that recycling is
+        most of what opens new ones.
+      degraded: |
+        New connections well above the recycling rate means connections are
+        being lost and reopened — a database dropping them, or a proxy with a
+        short idle timeout in the path. Each new connection costs the
+        database a TLS handshake and a backend process.
+    promQL:
+      - |
+        sum(rate(mz_persist_postgres_connpool_connections_created{%%{mzEnvironmentFilter}}%%{interval}))
+        + (sum(rate(mz_ts_oracle_postgres_connpool_connections_created{%%{mzEnvironmentFilter}}%%{interval})) or vector(0))
+      - |
+        sum(rate(mz_persist_postgres_connpool_ttl_reconnections{%%{mzEnvironmentFilter}}%%{interval}))
+        + (sum(rate(mz_ts_oracle_postgres_connpool_ttl_reconnections{%%{mzEnvironmentFilter}}%%{interval})) or vector(0))
+
+  # --- State and Cleanup ------------------------------------------------------
+  - id: materialize.consensus.state.versions
+    stability: experimental
+    description:
+      summary: |
+        State versions written to the metadata database per second, beside
+        versions deleted.
+      nominal: |
+        The two lines on top of each other: every commit adds a version, and
+        cleanup deletes the ones nothing needs any more.
+      degraded: |
+        Written staying above deleted for hours means the table persist
+        writes to is growing. The usual cause is a reader holding old
+        versions — _Versions Held by Collection_ names it. On PostgreSQL a
+        growing table is also more work for autovacuum, which is how this
+        eventually shows up as commit latency.
+    promQL:
+      - |
+        sum(rate(mz_persist_external_succeeded_count{%%{mzEnvironmentFilter}, op="consensus_cas"}%%{interval}))
+      - |
+        sum(rate(mz_persist_external_consensus_truncated_count{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.consensus.state.live
+    stability: experimental
+    description:
+      summary: |
+        State versions currently stored in the metadata database, summed
+        across every collection — roughly the number of rows persist keeps
+        there.
+      nominal: |
+        Flat, at a few hundred per collection.
+      degraded: |
+        Steady growth is the backlog that _Versions Written and Deleted_
+        shows as a gap. It is not urgent on its own, but it is the database's
+        storage and vacuum load growing without anything new being stored.
+      notes: |
+        Measured at each collection's last cleanup, so it moves in steps.
+    promQL: |
+      sum(max by (shard) (mz_persist_shard_gc_live_diffs{%%{mzEnvironmentFilter}}))
+
+  - id: materialize.consensus.state.held
+    stability: experimental
+    description:
+      summary: |
+        The ten collections holding the most old state versions, which cleanup
+        cannot delete until whatever is reading them moves on.
+      nominal: |
+        Hundreds at most, and moving.
+      degraded: |
+        A collection whose count only ever grows has a reader stuck in the
+        past: a subscription or a replica that is not keeping up, or one that
+        went away without releasing its hold. Its hold is released when the
+        reader's lease expires.
+      notes: |
+        Translate a shard id to an object with
+        `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN
+        mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
+    promQL: |
+      topk(10, max by (shard) (mz_persist_shard_seqnos_held{%%{mzEnvironmentFilter}}))
+
+  - id: materialize.consensus.gc.runs
+    stability: experimental
+    description:
+      summary: |
+        Cleanup passes per second: started, finished, and skipped because
+        another process had already done the work.
+      nominal: |
+        Started and finished on top of each other.
+      degraded: |
+        Started above finished for any length of time is cleanup failing or
+        stalling, usually on the same database trouble the _Overview_ tab
+        shows. It is what makes _Versions Written and Deleted_ diverge.
+    promQL:
+      - |
+        sum(rate(mz_persist_gc_started{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_gc_finished{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_gc_noop{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.consensus.gc.lease_timeouts
+    stability: experimental
+    description:
+      summary: |
+        Readers whose lease on a collection expired, per second.
+      nominal: |
+        Occasional, around restarts: a process that goes away without saying
+        so has its leases expire instead.
+      degraded: |
+        Steady expirations with no restarts mean readers are being starved —
+        a process too busy to renew its leases. Each expiry releases the old
+        state versions that reader was holding, so this is also what un-sticks
+        _Versions Held by Collection_.
+    promQL: |
+      sum(rate(mz_persist_lease_timeout_read{%%{mzEnvironmentFilter}}%%{interval}))
+
+metricOverrides:
+  # The latency histogram is per operation, per process, per bucket — the bulk
+  # of the cardinality here, and worth having without paying for it on a
+  # metered backend at the default tier.
+  - metricPattern: "mz_persist_external_op_latency_(bucket|sum|count)"
+    importance: extended
+    priority: 5
+  # Per-shard families scale with the number of collections, which is the
+  # cardinality budget's first enemy on a large environment. Named, since an
+  # override sets importance outright and a wider pattern would demote the
+  # per-shard family the `persist-failures` alert reads.
+  - metricPattern: "mz_persist_shard_(seqnos_held|gc_live_diffs)"
+    importance: extended
+    priority: 5

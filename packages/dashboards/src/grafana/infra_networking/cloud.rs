@@ -15,8 +15,9 @@
 //! back. It does not know anything about what that load balancer is doing —
 //! connection counts, rejected requests, how many targets it believes are
 //! healthy — because none of that is in the cluster. It is in CloudWatch, Cloud
-//! Monitoring and Azure Monitor, and this stack does not read them yet
-//! ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)).
+//! Monitoring and Azure Monitor. The gateway's provider pull reads those for the
+//! metadata database and the buckets (`infra-cloud`), and not yet for load
+//! balancers ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)).
 //!
 //! So the first row is real and the rest are stubs. The split is worth being
 //! explicit about rather than shipping a tab that looks broken: the Kubernetes
@@ -79,8 +80,9 @@ const PROVIDER_NOTE: &str = "**Load balancer metrics are not collected yet.**\n\
        families that separate a backend fault from a load balancer one.\n\
      - **GCP** — the `loadbalancing.googleapis.com` metrics in Cloud Monitoring.\n\
      - **Azure** — the Load Balancer and Application Gateway metric namespaces in Azure Monitor.\n\n\
-     Collecting these needs a cloud-provider scrape path, which this stack does not have. Tracked \
-     as DEP-233 🔒.\n\n\
+     The gateway can pull provider metrics, and the Infrastructure Cloud Provider dashboard reads \
+     them for the metadata database and the buckets, but load balancers are not among the \
+     resources it pulls. Tracked as DEP-233 🔒.\n\n\
      Until then: an unreachable endpoint whose Service *does* appear above is usually a target \
      health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster \
      substitute — a Service with no endpoints has nothing for the load balancer to send to.";

@@ -48,4 +48,10 @@ pub mod content {
     /// else. A dashboard carrying this is one whose subject can take its own
     /// instrumentation down with it.
     pub const META: &str = "meta-monitoring";
+
+    /// Covers a service Materialize depends on and does not run itself: the
+    /// metadata database or object storage. Carried across both scopes, since
+    /// the client's view is `env-*` and the provider's is `infra-*`, and an
+    /// operator chasing a dependency wants all three in one search.
+    pub const DEPENDENCIES: &str = "external-dependencies";
 }

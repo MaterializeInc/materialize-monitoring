@@ -1,0 +1,694 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Object storage, as Materialize experiences it.
+
+description: |
+  Object storage (the persist bucket), from the vantage point of the
+  Materialize processes that use it.
+
+  Persist is Materialize's storage layer. Every durable collection — a table, a
+  source, a materialized view, the catalog itself — is a persist *shard*: data
+  files in object storage, plus a small record of the shard's current state in
+  the metadata database. That second half is `materialize-consensus.yaml`; this
+  file is the first. Writers upload new data as immutable parts, compaction
+  merges small parts into larger ones and deletes what it replaced, and readers
+  fetch parts — through an in-memory cache — to hydrate and to serve queries.
+
+  Everything here is the **client's** measurement: what a Materialize process
+  experienced, including the network between it and the store. It is identical
+  on S3, GCS (which Materialize reaches through GCS's S3-compatible API), Azure
+  Blob and any S3-compatible on-premise store, and needs no cloud credentials.
+  What the bucket itself reports — its size, its object count, reclaimable
+  waste — is on `infra-cloud`.
+
+  ## Label families
+
+  `op` on `mz_persist_external_*` is the operation: `blob_get`, `blob_set`,
+  `blob_delete`, `blob_list_keys` and `restore`. The `consensus_*` values of
+  the same label are the metadata database. `mz_persist_external_op_latency` is
+  a histogram for `blob_get` and `blob_set` only; the rest have a mean from
+  `_seconds / _started_count`.
+
+  `mz_persist_s3_*` is the S3 client beneath persist, used on S3, GCS and
+  S3-compatible stores but not on Azure Blob, which Materialize reaches with
+  Azure's own client. The counters are registered on every install, though, so
+  on Azure they exist and read zero; queries on them gate on the client making
+  calls. It is the only family carrying the store's error *code* (created on
+  first error, so absent until then), and its `op` values are raw API calls
+  (`get_part`, `set_single`, `delete_object`, …) rather than persist
+  operations.
+
+  `op` on `mz_persist_retry_*` is a retry loop named after the work. The ones
+  in `materialize.persist.retries.by_operation` wrap object-storage calls; the
+  consensus file owns the rest, and `next_listen_batch` and `snapshot` are
+  polling loops that must never be drawn as retries.
+
+  The `mz_persist_shard_usage_*` families are per shard, and each process
+  reports every shard it has open, so any total over them takes a `max by
+  (shard)` first. environmentd has every shard open, so the deduplicated total
+  is the environment's.
+
+  Every mean and share here is a ratio of two rates wrapped in `(…) >= 0`, for
+  the reason `materialize-consensus.yaml` gives: a window with no calls divides
+  zero by zero.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- Overview: verdict ------------------------------------------------------
+  - id: materialize.persist.health.failed_ops
+    stability: experimental
+    description:
+      summary: |
+        Object storage calls that failed, per second, across every Materialize
+        process in this environment.
+      nominal: |
+        Zero. An occasional failure that a retry absorbs is harmless; a
+        sustained rate is not.
+      degraded: |
+        Failed writes stall ingestion and materialized views; failed reads
+        stall hydration and any query that has to fetch data. Credentials,
+        bucket permissions and throttling are the usual causes, and
+        _Retrying Object Storage Operations_ below has the store's own error
+        text.
+    promQL: |
+      sum(rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval}))
+
+  - id: materialize.persist.health.read_latency_p99
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of reads from object storage take.
+      nominal: |
+        Around 100 ms on S3 and GCS, less on Azure Premium block blobs.
+      degraded: |
+        Reads are what hydration and cold queries wait on. A sustained rise
+        is the store, or the network path to it; compare the bucket's own
+        latency on the Infrastructure Cloud Provider dashboard where the
+        provider publishes one.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval})
+        )
+      )
+
+  - id: materialize.persist.health.write_latency_p99
+    stability: experimental
+    description:
+      summary: |
+        How long the slowest 1% of writes to object storage take.
+      nominal: |
+        Around 100 ms on S3 and GCS, less on Azure Premium block blobs.
+      degraded: |
+        Every write — ingestion, table inserts, materialized view updates —
+        uploads its data before it commits, so slow writes are slow freshness.
+        A rise with _Write Stalls_ is writes queueing behind each other.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (
+          rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_set"}%%{interval})
+        )
+      )
+
+  - id: materialize.persist.health.write_stalls
+    stability: experimental
+    description:
+      summary: |
+        Writes that had to wait because too many uploads were already in
+        flight, per second.
+      nominal: |
+        Zero, or close to it.
+      degraded: |
+        Uploads are not finishing as fast as data arrives, so writers are
+        waiting on object storage. Rising write latency beside it confirms the
+        store is the bottleneck; flat latency with stalls means more data is
+        arriving than the configured number of concurrent uploads can carry.
+      notes: |
+        Counts both new data and compaction's rewrites.
+    promQL: |
+      sum(rate(mz_persist_user_write_stall_count{%%{mzEnvironmentFilter}}%%{interval}))
+      + sum(rate(mz_persist_compaction_write_stall_count{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.persist.health.compaction_failures
+    stability: experimental
+    description:
+      summary: |
+        Compactions that failed or timed out, per second.
+      nominal: Zero.
+      degraded: |
+        Compaction merges small data files into large ones and deletes what
+        they replaced. When it fails, reads get slower as the files pile up,
+        and storage grows because nothing is deleted. Failures usually follow
+        object storage or metadata database errors, so check those first.
+    promQL: |
+      sum(rate(mz_persist_compaction_failed{%%{mzEnvironmentFilter}}%%{interval}))
+      + sum(rate(mz_persist_compaction_timed_out{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.persist.health.stored
+    stability: experimental
+    description:
+      summary: |
+        Data this environment's current state refers to in object storage.
+      nominal: |
+        Grows with the data you keep, and falls when you drop objects or
+        compaction consolidates updates.
+      notes: |
+        This is what Materialize needs, not what the bucket holds. The bucket
+        also holds data kept only for readers, uploads in flight, anything
+        leaked, and whatever the provider retains for versioning or soft
+        delete — _Storage_ breaks down the first three, and the Infrastructure
+        Cloud Provider dashboard has the bucket's own size.
+    promQL: |
+      sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
+      + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
+
+  # --- Overview: latency and failures -----------------------------------------
+  - id: materialize.persist.latency.read_write
+    stability: experimental
+    description:
+      summary: |
+        Read and write latency to object storage: the median and the slowest
+        1% of each.
+      nominal: |
+        Flat, with medians in the tens of milliseconds.
+      degraded: |
+        Medians rising is the store, or the network to it, getting slower for
+        everyone. The p99 rising alone is a tail — large parts, throttling, or
+        a few slow requests that retries hide.
+      notes: |
+        Object storage latency depends on object size, so a workload writing
+        larger batches reads higher here without anything being wrong.
+    promQL:
+      - |
+        histogram_quantile(0.50,
+          sum by (le) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval})
+          )
+        )
+      - |
+        histogram_quantile(0.99,
+          sum by (le) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval})
+          )
+        )
+      - |
+        histogram_quantile(0.50,
+          sum by (le) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_set"}%%{interval})
+          )
+        )
+      - |
+        histogram_quantile(0.99,
+          sum by (le) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_set"}%%{interval})
+          )
+        )
+
+  - id: materialize.persist.latency.round_trip
+    stability: experimental
+    description:
+      summary: |
+        The round trip from each Materialize process to object storage, as
+        that process last measured it.
+      nominal: |
+        Tens of milliseconds, and about the same for every process.
+      degraded: |
+        One process well above the rest is that process's network path — its
+        node, its zone, or a NAT gateway. Every process high at once is the
+        store, or a bucket in a different region from the cluster.
+    promQL:
+      template: |
+        max by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+          mz_persist_external_rtt_latency{%%{mzEnvironmentFilter}, external="blob"}
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.persist.failures.by_operation
+    stability: experimental
+    description:
+      summary: |
+        Failed object storage calls per second, by operation.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        `blob_set` failing is writes failing. `blob_get` failing blocks
+        hydration and queries that fetch data. `blob_delete` failing alone is
+        cleanup falling behind, which costs storage rather than availability.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
+      )
+
+  - id: materialize.persist.failures.store_errors
+    stability: experimental
+    description:
+      summary: |
+        Errors the object store returned, per second, by API call and error
+        code.
+      nominal: |
+        A trickle of `NoSuchKey` on `DeleteObject`, which is a delete of
+        something already deleted and is harmless.
+      degraded: |
+        `AccessDenied` or `Forbidden` is credentials or bucket policy.
+        `SlowDown` or `503` is the store throttling this bucket's request rate.
+        `NoSuchBucket` is the persist backend URL naming the wrong bucket.
+      notes: |
+        S3, GCS and S3-compatible stores only. Azure Blob is reached through
+        Azure's own client, which reports no error codes here; its failures
+        still appear in _Failed Operations by Type_.
+    promQL: |
+      sum by (op, code) (
+        rate(mz_persist_s3_errors{%%{mzEnvironmentFilter}}%%{interval})
+      )
+
+  - id: materialize.persist.failures.timeouts
+    stability: experimental
+    description:
+      summary: |
+        Object storage requests that timed out, per second, by where they
+        timed out.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        Connection timeouts are the network path to the store. Timeouts
+        waiting for the first byte, or for a whole attempt, are the store
+        being slow to answer. Operation timeouts are the worst: every retry
+        within the operation timed out.
+      notes: |
+        S3, GCS and S3-compatible stores only.
+    # Materialize registers the S3 client's counters whatever the store, so on
+    # Azure Blob they exist and read zero forever -- which would draw as "no
+    # timeouts". The `and on ()` keeps each series only while the S3 client is
+    # actually making calls, so Azure gets the panel's empty state instead.
+    promQL:
+      - |
+        sum(rate(mz_persist_s3_connect_timeouts{%%{mzEnvironmentFilter}}%%{interval}))
+          and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+      - |
+        sum(rate(mz_persist_s3_read_timeouts{%%{mzEnvironmentFilter}}%%{interval}))
+          and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+      - |
+        sum(rate(mz_persist_s3_operation_attempt_timeouts{%%{mzEnvironmentFilter}}%%{interval}))
+          and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+      - |
+        sum(rate(mz_persist_s3_operation_timeouts{%%{mzEnvironmentFilter}}%%{interval}))
+          and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+
+  - id: materialize.persist.logs.retries
+    stability: experimental
+    description:
+      summary: |
+        What Materialize logged while retrying calls to object storage, with
+        the store's own error text.
+      nominal: |
+        Empty. A healthy store needs no retries worth logging.
+      degraded: |
+        The error text is the diagnosis: an access-denied or signature error
+        is credentials or bucket policy, a missing bucket is the persist
+        backend URL, throttling is request rate, and a DNS or connection
+        error is the network path from the cluster.
+      notes: |
+        A retry is logged once it has failed a few times, so a single blip
+        does not appear here. If the environment picker is empty, Materialize
+        never started far enough to report metrics; its logs are still on
+        Materialize Logs and Events under _Logs -> All Logs_.
+    logQL: |
+      {%%{mzEnvironmentNamespaceFilter}}
+        |= "external operation"
+        |~ "external operation (batch::set|batch::delete|fetch_batch::get|rollup::get|rollup::set|rollup::delete|hollow_run::get|hollow_run::set|blob::open|compaction_noop::delete|storage_usage::shard_size) "
+
+  # --- Operations -------------------------------------------------------------
+  - id: materialize.persist.ops.by_type
+    stability: experimental
+    description:
+      summary: |
+        Object storage calls per second, by operation.
+      nominal: |
+        Writes and deletes roughly equal — compaction deletes about as many
+        parts as are written — and reads depending on how much hydration and
+        querying is going on.
+      degraded: |
+        Deletes falling well behind writes for a long time means storage is
+        growing faster than the data is.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
+      )
+
+  - id: materialize.persist.ops.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second read from and written to object storage, by
+        operation.
+      nominal: |
+        Writes track ingestion. Reads spike on hydration — a replica
+        restarting reads back everything it maintains — and are otherwise low.
+      notes: |
+        Reads served from the in-memory cache are not counted here; see
+        _Reads Served from Cache_.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_external_bytes_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
+      )
+
+  - id: materialize.persist.ops.requests
+    stability: experimental
+    description:
+      summary: |
+        Requests sent to the object store's API per second, by call — the
+        count a cloud provider bills.
+      nominal: |
+        Close to _Operations by Type_: most operations are one request, and a
+        delete is two (a check, then the delete).
+      degraded: |
+        Multipart uploads (`set_multi_*`) appear for large parts. A sustained
+        rise without more data arriving is worth tracing to the operation
+        driving it, since each request is billed.
+      notes: |
+        S3, GCS and S3-compatible stores only.
+    # Zero on Azure Blob rather than absent; see the timeouts query.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})
+      )
+        and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+
+  - id: materialize.persist.latency.mean_by_operation
+    stability: experimental
+    description:
+      summary: |
+        Average time per object storage call, by operation.
+      nominal: |
+        Tens of milliseconds for reads, writes and deletes.
+      degraded: |
+        Deletes slowing on their own is a store under pressure from cleanup;
+        a listing appearing at all is a process scanning the bucket, which
+        happens at startup and is slow on large buckets.
+      notes: |
+        A mean hides the tail; reads and writes have real percentiles on
+        _Read and Write Latency_.
+    promQL: |
+      (
+        sum by (op) (
+          rate(mz_persist_external_seconds{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
+        )
+        /
+        sum by (op) (
+          rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
+        )
+      ) >= 0
+
+  - id: materialize.persist.latency.read_by_process
+    stability: experimental
+    description:
+      summary: |
+        Slowest 1% of reads from object storage, by the process making them.
+      nominal: |
+        Every process close to the others.
+      degraded: |
+        One process well above the rest is local to it — its network path or
+        its node. All of them rising together is the store.
+    promQL:
+      template: |
+        histogram_quantile(0.99,
+          sum by (le, app, cluster_environmentd_materialize_cloud_cluster_id) (
+            rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval})
+          )
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.persist.retries.by_operation
+    stability: experimental
+    description:
+      summary: |
+        Object storage calls retried after a failure, per second, by the work
+        that was retrying.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        Retries on writes (`batch::set`) slow ingestion; retries on reads
+        (`fetch_batch::get`) slow hydration and queries; retries on deletes
+        slow cleanup only.
+      notes: |
+        Excludes persist's polling loops, which are named like retries but are
+        waiting for new data rather than recovering from an error.
+    promQL: |
+      sum by (op) (
+        rate(mz_persist_retry_retries_count{%%{mzEnvironmentFilter}, op=~"batch::set|batch::delete|fetch_batch::get|rollup::get|rollup::set|rollup::delete|hollow_run::get|hollow_run::set|blob::open|compaction_noop::delete|storage_usage::shard_size"}%%{interval})
+      )
+
+  - id: materialize.persist.cache.hits
+    stability: experimental
+    description:
+      summary: |
+        Share of bytes read that the in-memory cache served, rather than
+        object storage.
+      nominal: |
+        Most of them. Recently written data is read back soon after, and the
+        cache catches it.
+      degraded: |
+        A falling share during a steady workload means the cache is too small
+        for the working set, so more reads go to the store — more latency and
+        more billed requests.
+      notes: |
+        Empty for a window in which nothing was read at all.
+    promQL: |
+      (
+        sum(rate(mz_persist_blob_cache_hits_bytes{%%{mzEnvironmentFilter}}%%{interval}))
+        /
+        (
+          sum(rate(mz_persist_blob_cache_hits_bytes{%%{mzEnvironmentFilter}}%%{interval}))
+          + sum(rate(mz_persist_external_bytes_count{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval}))
+        )
+      ) >= 0
+
+  - id: materialize.persist.hedging
+    stability: experimental
+    description:
+      summary: |
+        Reads that were slow enough to send a second, duplicate request, and
+        how many of those the duplicate won, per second.
+      nominal: |
+        Zero or close to it, and only when hedged reads are enabled.
+      degraded: |
+        Hedges firing constantly means the store's tail latency is regularly
+        past the hedge threshold. Hedges winning most of the time means the
+        tail is individual slow requests, which hedging is working around —
+        at the cost of extra billed requests.
+    promQL:
+      - |
+        sum(rate(mz_persist_blob_hedges_fired{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_blob_hedges_won{%%{mzEnvironmentFilter}}%%{interval}))
+
+  # --- Compaction -------------------------------------------------------------
+  - id: materialize.persist.compaction.outcomes
+    stability: experimental
+    description:
+      summary: |
+        What happened to compaction requests, per second.
+      nominal: |
+        Requested, started and applied on top of each other; failed, timed
+        out and dropped at zero.
+      degraded: |
+        Dropped means the queue was full and work was abandoned — compaction
+        is not keeping up with writes. Applied falling behind started means
+        compactions are finishing too late to be used, usually because the
+        data changed underneath them.
+      notes: |
+        Compaction merges the small data files that every write produces into
+        larger ones, which keeps reads fast and lets the replaced files be
+        deleted.
+    promQL:
+      - |
+        sum(rate(mz_persist_compaction_requested{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_compaction_started{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_compaction_applied{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_compaction_failed{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_compaction_timed_out{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_compaction_dropped{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.persist.compaction.queue_wait
+    stability: experimental
+    description:
+      summary: |
+        Average time a compaction request waits in the queue before it starts.
+      nominal: |
+        Effectively zero.
+      degraded: |
+        Rising wait is compaction running out of capacity. Reads slow as
+        uncompacted files accumulate, and dropped requests on
+        _Compaction Outcomes_ follow if it keeps up.
+    promQL: |
+      (
+        sum(rate(mz_persist_compaction_queued_seconds{%%{mzEnvironmentFilter}}%%{interval}))
+        /
+        sum(rate(mz_persist_compaction_started{%%{mzEnvironmentFilter}}%%{interval}))
+      ) >= 0
+
+  - id: materialize.persist.compaction.busy
+    stability: experimental
+    description:
+      summary: |
+        Compactions running at once, on average, by process.
+      nominal: |
+        Well under one. Compaction is background work and usually idle.
+      degraded: |
+        A process pinned at its limit is compacting continuously, which
+        competes with its real work for CPU and object storage bandwidth.
+      notes: |
+        Seconds spent compacting per second, which is the average number in
+        flight.
+    promQL:
+      template: |
+        sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+          rate(mz_persist_compaction_seconds{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  - id: materialize.persist.writes.amplification
+    stability: experimental
+    description:
+      summary: |
+        Bytes per second of new data written to object storage, beside the
+        bytes compaction rewrites.
+      nominal: |
+        Compaction rewriting a small multiple of what is written: every
+        update is rewritten a few times as files are merged.
+      degraded: |
+        Compaction far above new data for a long time is a workload whose
+        updates are being rewritten repeatedly — each one billed as storage
+        writes.
+    promQL:
+      - |
+        sum(rate(mz_persist_user_bytes{%%{mzEnvironmentFilter}}%%{interval}))
+      - |
+        sum(rate(mz_persist_compaction_bytes{%%{mzEnvironmentFilter}}%%{interval}))
+
+  - id: materialize.persist.writes.stalls_by_process
+    stability: experimental
+    description:
+      summary: |
+        Writes that waited for in-flight uploads to finish, per second, by
+        process.
+      nominal: Nothing drawn above zero.
+      degraded: |
+        The process at the top is the one whose writes object storage is not
+        keeping up with.
+    promQL:
+      template: |
+        sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (
+          rate(mz_persist_user_write_stall_count{%%{mzEnvironmentFilter}}%%{interval})
+          + rate(mz_persist_compaction_write_stall_count{%%{mzEnvironmentFilter}}%%{interval})
+        )
+      functions:
+        - name: mzClusterName
+          args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+
+  # --- Storage ----------------------------------------------------------------
+  - id: materialize.persist.usage.by_state
+    stability: experimental
+    description:
+      summary: |
+        What this environment's data in object storage is for.
+      nominal: |
+        Almost all of it is current data: files the latest state of each
+        collection refers to, and the rollups that summarize that state.
+      degraded: |
+        _Held for readers_ is data a reader still needs from an older state;
+        growth there points at a stuck reader, named on _Data Held for
+        Readers by Collection_. _Uploads in flight_ is written but not yet
+        committed. _Leaked_ is data nothing refers to that cleanup missed,
+        which is billed and does nothing.
+      notes: |
+        Materialize's own accounting, recomputed periodically rather than on
+        every write.
+    promQL:
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}}))
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}}))
+      - |
+        sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
+
+  - id: materialize.persist.usage.leaked
+    stability: experimental
+    description:
+      summary: |
+        Data in object storage that nothing refers to and that cleanup did not
+        remove.
+      nominal: Zero, or close to it.
+      degraded: |
+        Leaked data is billed and never read. A little accumulates when a
+        process is killed mid-write; a steadily growing amount is worth
+        raising with Materialize support.
+    promQL: |
+      sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
+
+  - id: materialize.persist.usage.largest
+    stability: experimental
+    description:
+      summary: |
+        The ten collections using the most object storage, now.
+      nominal: |
+        Your largest sources and materialized views.
+      notes: |
+        Translate a shard id to an object with
+        `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN
+        mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`,
+        or list sizes by object with
+        `SELECT * FROM mz_catalog.mz_recent_storage_usage ORDER BY size_bytes DESC`.
+    instant: true
+    promQL: |
+      topk(10,
+        max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}})
+        + max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}})
+      )
+
+  - id: materialize.persist.usage.held
+    stability: experimental
+    description:
+      summary: |
+        The ten collections keeping the most data only because a reader still
+        needs an older version of it.
+      nominal: |
+        Small and changing: readers move forward and release what they held.
+      degraded: |
+        A collection whose held data only grows has a reader stuck in the
+        past, and its storage will keep growing until that reader moves or its
+        lease expires. The same reader holds old state in the metadata
+        database, on Materialize Consensus under
+        _State and Cleanup -> Versions Held by Collection_.
+      notes: |
+        Translate a shard id to an object with
+        `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN
+        mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
+    promQL: |
+      topk(10, max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}}))
+
+metricOverrides:
+  # The latency histogram is per operation, per process, per bucket — the bulk
+  # of the cardinality here.
+  - metricPattern: "mz_persist_external_op_latency_(bucket|sum|count)"
+    importance: extended
+    priority: 5
+  # Per-shard families scale with the number of collections. Named rather than
+  # `mz_persist_shard_.*`: an override sets importance outright, and that
+  # pattern would also demote `mz_persist_shard_unconsolidated_snapshot`, which
+  # the `persist-failures` alert reads at `essential`.
+  - metricPattern: "mz_persist_shard_usage_.*_bytes"
+    importance: extended
+    priority: 5

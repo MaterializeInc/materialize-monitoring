@@ -179,7 +179,7 @@ spec:
                 - **GCP** — the `loadbalancing.googleapis.com` metrics in Cloud Monitoring.
                 - **Azure** — the Load Balancer and Application Gateway metric namespaces in Azure Monitor.
 
-                Collecting these needs a cloud-provider scrape path, which this stack does not have. Tracked as DEP-233 🔒.
+                The gateway can pull provider metrics, and the Infrastructure Cloud Provider dashboard reads them for the metadata database and the buckets, but load balancers are not among the resources it pulls. Tracked as DEP-233 🔒.
 
                 Until then: an unreachable endpoint whose Service *does* appear above is usually a target health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster substitute — a Service with no endpoints has nothing for the load balancer to send to.
               mode: markdown
@@ -3703,7 +3703,6 @@ spec:
       skipUrlSync: false
   - kind: QueryVariable
     spec:
-      allValue: .+
       allowCustomValue: true
       current:
         text: ''
