@@ -733,6 +733,52 @@ Usage:
     {{- end }}
   {{- end }}
 
+  {{- /*
+  A read-only root filesystem is safe only with the writable paths and the
+  plugin setting `grafana.containerSecurityContext` in values.yaml describes.
+  Each gap below breaks Grafana outright rather than degrading it, so they are
+  errors, not warnings. Two of them leave the pod Ready with every panel empty.
+
+  The preinstall setting is read from the environment first, because Grafana
+  does: a `GF_` variable overrides `grafana.ini`.
+  */}}
+  {{- $csc := include "mzmon.grafana.section" ( dict "root" $ "name" "containerSecurityContext" ) | fromYaml }}
+  {{- $env := include "mzmon.grafana.section" ( dict "root" $ "name" "env" ) | fromYaml }}
+  {{- if $csc.readOnlyRootFilesystem }}
+    {{- $mounted := list }}
+    {{- range $m := concat ( $values.extraEmptyDirMounts | default list ) ( $values.extraVolumeMounts | default list ) }}
+      {{- if kindIs "map" $m }}
+        {{- $mounted = append $mounted ( trimSuffix "/" ( toString $m.mountPath ) ) }}
+      {{- end }}
+    {{- end }}
+    {{- if not ( has "/tmp" $mounted ) }}
+      {{- $errors = append $errors "grafana.containerSecurityContext.readOnlyRootFilesystem is true but nothing is mounted at /tmp. Grafana starts each backend plugin, Prometheus and Loki included, on a Unix socket under /tmp, so every one fails to start and every panel reports \"Unable to find datasource plugin\" while the pod stays Ready. A values file that sets grafana.extraEmptyDirMounts replaces the chart's list; keep its /tmp entry." }}
+    {{- end }}
+
+    {{- /*
+    The image's entrypoint writes these profiles into the image itself, under
+    `set -e`, so the container exits before Grafana starts.
+    */}}
+    {{- if and ( hasKey $env "GF_AWS_PROFILES" ) ( not ( has "/usr/share/grafana/.aws" $mounted ) ) }}
+      {{- $errors = append $errors "grafana.env.GF_AWS_PROFILES is set on a read-only root filesystem. The Grafana image's entrypoint writes those profiles to /usr/share/grafana/.aws/credentials before starting Grafana and exits when it cannot, so the pod crash-loops. Mount an emptyDir there through grafana.extraEmptyDirMounts, keeping the /tmp entry, or authenticate CloudWatch with the pod's own identity instead." }}
+    {{- end }}
+
+    {{- $plugins := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "plugins" ) | fromYaml }}
+    {{- $autoUpdate := dig "preinstall_auto_update" true $plugins }}
+    {{- if hasKey $env "GF_PLUGINS_PREINSTALL_AUTO_UPDATE" }}
+      {{- $autoUpdate = index $env "GF_PLUGINS_PREINSTALL_AUTO_UPDATE" }}
+    {{- end }}
+    {{- $disabled := dig "preinstall_disabled" false $plugins }}
+    {{- if hasKey $env "GF_PLUGINS_PREINSTALL_DISABLED" }}
+      {{- $disabled = index $env "GF_PLUGINS_PREINSTALL_DISABLED" }}
+    {{- end }}
+    {{- if and ( ne ( toString $autoUpdate ) "false" ) ( ne ( toString $disabled ) "true" ) }}
+      {{- $errors = append $errors "grafana.containerSecurityContext.readOnlyRootFilesystem is true but grafana.ini.plugins.preinstall_auto_update is not false. At every start Grafana tries to update each bundled datasource, Prometheus and Loki included, to the newest release on grafana.com. It unloads the bundled copy, fails to delete it from the read-only image, and leaves that datasource unloaded until the next restart. Set preinstall_auto_update: false, as the chart does, or preinstall_disabled: true." }}
+    {{- end }}
+  {{- else }}
+    {{- $warnings = append $warnings "grafana.containerSecurityContext.readOnlyRootFilesystem is not true. Grafana needs to write only to its storage and search volumes and to /tmp, which the chart mounts, so a writable root filesystem is attack surface with no use." }}
+  {{- end }}
+
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}

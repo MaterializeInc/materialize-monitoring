@@ -1019,6 +1019,8 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` Grafana-managed **unified alerting is not HA out of the box** — each replica evaluates every rule independently and notifies separately. The `grafana-postgres` profile enables gossip (`headlessService: true` plus `unified_alerting.ha_peers`), and validators warn both on several replicas with no gossip and on `ha_peers` pointing at a headless Service that was never created. Gossip is *not* a chart default: at one replica it is inert and costs a `ha_peer_timeout` settle on every start. The Prometheus rules this chart ships are unaffected either way.
 - [x] `[chart]` Gossip needs pod-to-pod **9094 on TCP and UDP**, and the Grafana subchart's own NetworkPolicy closes it — that template emits one ingress rule, on `service.targetPort`, and takes no second port. The chart renders the missing rule itself as `networkPolicies.grafanaGossip`, which appears when `unified_alerting.ha_peers` is set **and** `grafana.networkPolicy` is on. Turn the supplement off on its own and notifications duplicate rather than fail, because the replicas never find each other; a validator warns on that combination. Turning the main policy off takes the supplement with it, deliberately — a lone gossip policy would isolate the pods and leave only `9094` reachable.
 - [x] `[chart]` `priorityClassName` on Grafana and grafana-operator (`monitoring-scalable`), so neither is evicted ahead of ordinary workloads — Grafana is where an incident starts. See [Scheduling priority](#scheduling-priority).
+- [x] `[chart]` grafana-operator **requests 10m / 64Mi**, with a 512Mi memory limit.
+  The subchart sets none, and a BestEffort pod is evicted under node pressure ahead of every pod within its requests, whatever its priority class.
 
 #### 5. Images & supply chain
 
@@ -1026,6 +1028,17 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` **Hardened base images** are a values change: the three overlays under `profiles/registry/` repoint Grafana along with the rest of the stack, so this is no longer a per-image swap to work out by hand. See [Images and registries](#images-and-registries) for the vendors, the pull-secret wiring, and the UID hazard that makes a swap crash-loop rather than fail cleanly.
 - [ ] `[operator]` **A hardened Grafana cannot install plugins at start.** These images ship no shell and no package manager — which is the point — so `grafana.plugins` silently gets you a Grafana without those plugins rather than an error. Bake them into a derived image instead.
 - [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
+- [x] `[chart]` **Read-only root filesystem**, with an `emptyDir` at `/tmp` for the Unix sockets Grafana's backend plugins listen on.
+  A validator errors when nothing is mounted there, since every datasource then fails while the pod stays Ready.
+  A values file that sets `grafana.extraEmptyDirMounts` replaces the chart's list, so it has to keep the `/tmp` entry.
+- [x] `[chart]` **Bundled datasource plugins stay at the image's versions** (`grafana.ini.plugins.preinstall_auto_update: false`).
+  Grafana otherwise updates the Prometheus and Loki plugins it bundles to the newest release on grafana.com at every start, so a pinned image would not pin them.
+  On a read-only root the update also fails halfway and leaves the datasource unloaded, and a validator errors when it is turned back on.
+- [ ] `[operator]` **Do not update a bundled datasource plugin from Grafana's plugin catalog.**
+  The catalog's update takes the same path as the startup auto-update, so on a read-only root it leaves the datasource unloaded until the pod restarts.
+- [ ] `[operator]` Set `grafana.ini.plugins.preinstall_disabled: true` where Grafana cannot reach grafana.com.
+  Grafana's built-in preinstall list also carries the Drilldown apps, which the image does not bundle, so they download at every start regardless of `grafana.plugins`.
+  Disabling preinstall removes that startup dependency, and the apps with it.
 - [x] `[chart]` **Image Renderer disabled**, and a validator warns when it is turned on. It is a headless Chromium that fetches URLs on Grafana's behalf — a large attack surface and a server-side request forgery pivot into the cluster network. It has no place in a production deployment.
 - [x] `[chart]` The subchart's `testFramework` hook is off; it pulls a `bats` image this chart does not otherwise use or pin.
 
@@ -1039,7 +1052,7 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 #### 7. Network & meta-monitoring
 
 - [x] `[chart]` ServiceMonitor for Grafana's own metrics.
-- [x] `[chart]` **NetworkPolicy** on by default: ingress on `3000` from any source, every other port on the pod closed. `allowExternal` stays on because every way a human reaches Grafana is unselectable from here — an ingress controller in another namespace, a load balancer's client ranges, `kubectl port-forward` arriving from the API server. Narrow it with `explicitNamespacesSelector` and `explicitIpBlocks` once you know your path in. Egress is left unrestricted: Grafana dials Thanos Query, the Loki query frontend, its database, its identity provider, and `grafana.com` if `plugins` is set, and a partial allowlist there fails as a dashboard that renders empty with no error. See [Network policies](#network-policies).
+- [x] `[chart]` **NetworkPolicy** on by default: ingress on `3000` from any source, every other port on the pod closed. `allowExternal` stays on because every way a human reaches Grafana is unselectable from here — an ingress controller in another namespace, a load balancer's client ranges, `kubectl port-forward` arriving from the API server. Narrow it with `explicitNamespacesSelector` and `explicitIpBlocks` once you know your path in. Egress is left unrestricted: Grafana dials Thanos Query, the Loki query frontend, its database, its identity provider, and `grafana.com` at every start for the plugins it preinstalls, and a partial allowlist there fails as a dashboard that renders empty with no error. See [Network policies](#network-policies).
 - [x] `[chart]` `analytics.reporting_enabled` and `check_for_updates` are off — egress a monitoring stack does not need, and update banners are noise when the version is pinned by the chart.
 - [ ] `[operator]` Alert on Grafana being down. It is not a data-loss incident, but it is the interface every other alert is investigated through.
 
