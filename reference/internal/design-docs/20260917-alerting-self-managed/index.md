@@ -873,7 +873,7 @@ Work in this repository, roughly in dependency order.
 | Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
 | Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
-| Terraform module surface for receivers and criticality, with `sensitive` credential variables | Where the Secret-creation ergonomics belong |
+| Terraform module surface for receivers and criticality, with `sensitive` credential variables | ✅ done in the common module ([DEP-339](https://linear.app/materializeinc/issue/DEP-339)): `alerting`, `alert_rules`, and `alerting_receiver_secrets`, which becomes the `alertmanager-receivers` Secret. The per-cloud wrappers have yet to mirror them |
 | Remove `config.rules.*` / `config.alerts.enabled` or make them load-bearing | ✅ removed; the render warns when a values file still sets them |
 
 ## Testing

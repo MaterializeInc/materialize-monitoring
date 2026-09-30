@@ -55,6 +55,7 @@ A deployment whose environments live elsewhere MUST set one of these, or those r
 The infrastructure rules grade a workload by its tier in `rules.infraWorkloads`: `core`, `important`, `nonessential`, and `daemonset` for what every node runs.
 The defaults cover the Kubernetes add-ons common on EKS and GKE and this chart's own collectors.
 A cluster with other add-ons SHOULD list them, since a workload in no tier is one the tiered rules never grade.
+None of the tiered rules is in the default set: they are the `deployment`, `file_descriptors`, `infra_memory`, `infra_pod_health` and `daemonset` groups, and a tier has an effect once one of them is selected.
 Each entry is a regex matched against the whole container or Deployment name.
 
 Every bundled rule carries an `audience` label saying who acts on it.
@@ -69,6 +70,8 @@ An [extra route](../channels/#extra-routes) on `audience="workload"` sends the s
 `rules.overrides` changes an installed rule's `for` and labels, and never its expression.
 A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.
 An override names an alert, and the render fails on an alert that does not exist.
+
+The Terraform module takes all of `rules.*` as its `alert_rules` input; see [Configuring Alerting through Terraform](../terraform/#tuning-the-bundled-rules).
 
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
 
