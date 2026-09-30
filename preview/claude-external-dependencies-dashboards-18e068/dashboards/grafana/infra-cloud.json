@@ -294,7 +294,7 @@
               "transformations": []
             }
           },
-          "description": "**Bytes stored in each bucket, as the provider bills them, beside the data Materialize accounts for.**\n\n**Nominal:** The persist bucket close to Materialize's line; the monitoring buckets growing with retention and then levelling off. S3 and Azure publish bucket size once a day, so on a growing environment the bucket can read below Materialize's line by up to a day's growth — compare over days, not hours.\n\n**Degraded:** The persist bucket far above Materialize's line is storage nothing is using: object versions or soft-deleted objects the bucket's policy retains, aborted multipart uploads, or data Materialize leaked. On GCS, _GCS: Reclaimable Data_ separates the first two. A bucket that only ever grows is a lifecycle rule that is missing or a compactor that has stopped.\n\nPublished once a day, so this moves in daily steps and a new bucket has nothing for its first day. Materialize's line sums every environment on this cluster. Drawn on a logarithmic axis, so buckets of very different sizes stay readable side by side; an empty bucket draws no line and reads 0 in the legend.",
+          "description": "**Bytes stored in each bucket, as the provider bills them, beside the data Materialize accounts for.**\n\n**Nominal:** The persist bucket close to Materialize's line; the monitoring buckets growing with retention and then levelling off. S3 and Azure publish bucket size once a day, so on a growing environment the bucket can read below Materialize's line by up to a day's growth — compare over days, not hours.\n\n**Degraded:** The persist bucket far above Materialize's line is storage nothing is using: object versions or soft-deleted objects the bucket's policy retains, aborted multipart uploads, or data Materialize leaked. On GCS, _GCS: Reclaimable Data_ separates the first two. A bucket that only ever grows is a lifecycle rule that is missing or a compactor that has stopped.\n\nPublished once a day, so this moves in daily steps and a new bucket has nothing for its first day. Materialize's line sums every environment on this cluster.",
           "id": 1022,
           "links": [],
           "title": "Bucket Size",
@@ -448,7 +448,7 @@
               "transformations": []
             }
           },
-          "description": "**Objects stored in each bucket.**\n\n**Nominal:** Tracks bucket size. Persist writes many small objects and compaction replaces them with fewer large ones.\n\n**Degraded:** Objects growing much faster than bytes is small files accumulating — compaction falling behind, which Materialize Persist shows under _Compaction_.\n\nPublished once a day. Drawn on a logarithmic axis, so buckets of very different sizes stay readable side by side; an empty bucket draws no line and reads 0 in the legend.",
+          "description": "**Objects stored in each bucket.**\n\n**Nominal:** Tracks bucket size. Persist writes many small objects and compaction replaces them with fewer large ones.\n\n**Degraded:** Objects growing much faster than bytes is small files accumulating — compaction falling behind, which Materialize Persist shows under _Compaction_.\n\nPublished once a day.",
           "id": 1023,
           "links": [],
           "title": "Object Count",
@@ -2467,7 +2467,7 @@
               "transformations": []
             }
           },
-          "description": "**Bytes in each GCS bucket, split into live objects, noncurrent versions and soft-deleted objects.**\n\n**Nominal:** Almost all live.\n\n**Degraded:** Soft-deleted or noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning enabled can hold many times its live size — a persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Disable soft delete, or shorten its retention, on buckets Materialize owns.\n\nDrawn on a logarithmic axis, so live data stays readable beside soft-deleted data a hundred times its size; a state with nothing in it draws no line.",
+          "description": "**Bytes in each GCS bucket, split into live objects, noncurrent versions and soft-deleted objects.**\n\n**Nominal:** Almost all live.\n\n**Degraded:** Soft-deleted or noncurrent bytes are billed like live ones and read by nothing. Persist deletes constantly, so a bucket with soft delete or object versioning enabled can hold many times its live size — a persist bucket holding over a hundred times its live data in soft-deleted objects has been seen on a default GCS bucket. Disable soft delete, or shorten its retention, on buckets Materialize owns.",
           "id": 1024,
           "links": [],
           "title": "Bytes by Object State",
@@ -2542,7 +2542,7 @@
               "transformations": []
             }
           },
-          "description": "**Objects in each GCS bucket, split into live, noncurrent and soft-deleted.**\n\n**Nominal:** Almost all live.\n\n**Degraded:** Many more soft-deleted objects than live ones is the retention policy keeping everything compaction deleted.\n\nDrawn on a logarithmic axis, so live data stays readable beside soft-deleted data a hundred times its size; a state with nothing in it draws no line.",
+          "description": "**Objects in each GCS bucket, split into live, noncurrent and soft-deleted.**\n\n**Nominal:** Almost all live.\n\n**Degraded:** Many more soft-deleted objects than live ones is the retention policy keeping everything compaction deleted.",
           "id": 1025,
           "links": [],
           "title": "Objects by Object State",
