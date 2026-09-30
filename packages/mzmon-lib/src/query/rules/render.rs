@@ -44,6 +44,11 @@ pub const COMMON_ALERTS_URL: &str = "https://materializeinc.github.io/materializ
 /// The severities the chart's routing presets know how to route.
 pub const SEVERITIES: &[&str] = &["critical", "warning", "notice"];
 
+/// Who an alert is for, as its `audience` label: `platform` is whoever runs the
+/// deployment, `workload` whoever runs what is on it. A route matches on it to
+/// send the two to different people.
+pub const AUDIENCES: &[&str] = &["platform", "workload"];
+
 /// One alert, rendered and validated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedRule {
@@ -173,6 +178,16 @@ fn render_one(
     }
     if alert.labels.get("component").is_none_or(String::is_empty) {
         problems.push("a `component` label is required".into());
+    }
+    match alert.labels.get("audience").map(String::as_str) {
+        Some(audience) if AUDIENCES.contains(&audience) => {}
+        Some(other) => problems.push(format!(
+            "audience `{other}` is not one of {}",
+            AUDIENCES.join(", ")
+        )),
+        None => problems.push(
+            "an `audience` label is required; set it for the whole file with `alertLabels`".into(),
+        ),
     }
     if alert.labels.contains_key("deploymentMode") {
         problems.push(
@@ -447,6 +462,7 @@ struct IndexRuleDoc<'a> {
     file: String,
     group: &'a str,
     severity: &'a str,
+    audience: &'a str,
     requires: Vec<&'static str>,
     enabled_by_default: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -515,6 +531,7 @@ impl RuleSet {
                             file: format!("{}.yaml", rule.source),
                             group: &rule.group,
                             severity: rule.labels.get("severity").map_or("", String::as_str),
+                            audience: rule.labels.get("audience").map_or("", String::as_str),
                             requires: rule.requires.iter().map(|c| c.as_str()).collect(),
                             enabled_by_default: rule.enabled_by_default,
                             min_importance: rule.min_importance.map(|i| i.to_string()),
@@ -540,8 +557,9 @@ mod tests {
     use crate::query::def::RegistryDoc;
 
     fn registry(alerts_yaml: &str) -> QueryRegistry {
-        let yaml =
-            format!("description: test\nmetricImportanceHint: essential\nalerts:\n{alerts_yaml}");
+        let yaml = format!(
+            "description: test\nmetricImportanceHint: essential\nalertLabels: {{audience: platform}}\nalerts:\n{alerts_yaml}"
+        );
         let doc = RegistryDoc::from_yaml_str(&yaml).expect("test registry parses");
         let mut registry = QueryRegistry::new();
         registry.load_from(doc, Some("test-alerts")).unwrap();
@@ -659,6 +677,48 @@ mod tests {
         assert!(has(&errs, "severity `urgent`"), "{errs:?}");
         assert!(has(&errs, "`component` label"), "{errs:?}");
         assert!(has(&errs, "`deploymentMode`"), "{errs:?}");
+    }
+
+    #[test]
+    fn audience_comes_from_the_file_unless_the_alert_sets_it() {
+        let yaml = format!(
+            "{}{}",
+            alert("from-file", LABELS, "mz_a > 0", ""),
+            alert(
+                "own-audience",
+                "{severity: warning, component: test, audience: workload}",
+                "mz_b > 0",
+                ""
+            )
+        );
+        let set = render_rules(&registry(&yaml)).unwrap();
+        assert_eq!(set.rules[0].labels["audience"], "platform");
+        assert_eq!(set.rules[1].labels["audience"], "workload");
+        assert!(set.index_yaml().unwrap().contains("audience: workload"));
+    }
+
+    #[test]
+    fn audience_is_required_and_checked() {
+        let doc = |labels: &str| {
+            let yaml = format!(
+                "description: test\nmetricImportanceHint: essential\nalerts:\n{}",
+                alert("x", labels, "mz_a > 0", "")
+            );
+            let mut registry = QueryRegistry::new();
+            registry
+                .load_from(RegistryDoc::from_yaml_str(&yaml).unwrap(), Some("t"))
+                .unwrap();
+            render_rules(&registry)
+                .expect_err("expected errors")
+                .into_iter()
+                .map(|e| e.message)
+                .collect::<Vec<_>>()
+        };
+        assert!(has(&doc(LABELS), "`audience` label is required"));
+        assert!(has(
+            &doc("{severity: warning, component: test, audience: everyone}"),
+            "audience `everyone`"
+        ));
     }
 
     #[test]

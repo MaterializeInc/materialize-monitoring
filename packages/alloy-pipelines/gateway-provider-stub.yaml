@@ -59,3 +59,25 @@ blocks:
         forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
         scrape_interval: 5m
         scrape_timeout: 2m
+
+  - custom:
+      component: provider_azure_postgres
+      label: provider
+      attributes:
+        subscription_id: 00000000-0000-0000-0000-000000000000
+        servers: ["example-pg"]
+        cloud_environment: azurecloud
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_azure_blob
+      label: provider
+      attributes:
+        subscription_id: 00000000-0000-0000-0000-000000000000
+        storage_accounts: ["examplestorage"]
+        cloud_environment: azurecloud
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m

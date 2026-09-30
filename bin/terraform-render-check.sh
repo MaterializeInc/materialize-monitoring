@@ -145,6 +145,28 @@ for example_dir in "${EXAMPLES_DIR}"/*/; do
         continue
     fi
 
+    # Azure workload identity has the same shape again: the label the webhook
+    # needs reaches each subchart through a different value path, and one written
+    # to a path the subchart does not read leaves an annotated pod unmutated, on
+    # the node's identity, with nothing failing until the first call to Azure.
+    # Same exit-code discipline as the scheduling check.
+    wi_rc=0
+    ${PY_RUN} python "${REPO_ROOT}/bin/check_workload_identity_labels.py" "${rendered}" || wi_rc=$?
+
+    if [ "${wi_rc}" -eq 1 ]; then
+        echo "  !! ${example}: Azure workload identity labelling is incomplete." >&2
+        echo "     See terraform/modules/materialize-monitoring/azure.tf." >&2
+        status=1
+        continue
+    elif [ "${wi_rc}" -ne 0 ]; then
+        echo "  !! could not run the workload identity check: '${PY_RUN} python' exited ${wi_rc}." >&2
+        echo "     This is a tooling problem, not a labelling failure. Install uv" >&2
+        echo "     (https://docs.astral.sh/uv/), or set PY_RUN to something that" >&2
+        echo "     can run bin/check_workload_identity_labels.py with pyyaml available." >&2
+        status=1
+        continue
+    fi
+
     # node-exporter's toggle writes the chart's circuit breaker rather than a
     # tag, because tags are OR'd and the chart carries it under `default`. That
     # makes the failure mode specific: `tags.node-exporter = false` is valid

@@ -91,12 +91,15 @@ essential:
 - loki_write_sent_entries_total
 - mz_adapter_commands
 - mz_auth_request_count
+- mz_cluster_info
 - mz_cluster_server_last_command_received
 - mz_dataflow_replica_expiration_remaining_seconds
+- mz_dataflow_wallclock_lag_seconds
 - mz_external_calls_count
 - mz_external_envd_up
 - mz_memory_limiter_memory_limit_bytes
 - mz_memory_limiter_memory_usage_bytes
+- mz_metrics_resource_usage
 - mz_parameter_frontend_last_cse_time_seconds
 - mz_parameter_frontend_last_sse_time_seconds
 - mz_persist_blob_failures
@@ -115,6 +118,8 @@ essential:
 - mz_persist_shard_unconsolidated_snapshot
 - mz_persist_state_update_state_slow_path
 - mz_shard_finalization_outstanding
+- mz_source_offset_committed
+- mz_source_offset_known
 - mz_time_to_first_row_seconds_bucket
 - mz_txn_placeholder_schema_apply
 - node_boot_time_seconds
@@ -234,7 +239,6 @@ recommended:
 - mz_compute_controller_hydration_queue_size
 - mz_compute_peek_duration_seconds_bucket
 - mz_compute_replica_history_dataflow_count
-- mz_dataflow_wallclock_lag_seconds
 - mz_persist_blob_cache_hits_bytes
 - mz_persist_blob_hedges_fired
 - mz_persist_blob_hedges_won
@@ -288,8 +292,6 @@ recommended:
 - mz_source_bytes_received
 - mz_source_messages_received
 - mz_source_offset_commit_failures
-- mz_source_offset_committed
-- mz_source_offset_known
 - mz_ts_oracle_failed_count
 - mz_ts_oracle_postgres_connpool_acquire_seconds
 - mz_ts_oracle_postgres_connpool_acquires

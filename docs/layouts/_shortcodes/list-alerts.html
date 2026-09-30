@@ -32,7 +32,8 @@
 {{ .description.summary | markdownify }}
 Labels:
 <ul>
-      {{- range $key, $value := .labels }}
+      {{- /* The file's `alertLabels` apply to every alert that does not set its own. */}}
+      {{- range $key, $value := merge ( $queryRegistry.alertLabels | default dict ) ( .labels | default dict ) }}
         <li><strong>{{ $key }}:</strong> {{ $value }}</li>
       {{- end }}
 </ul>

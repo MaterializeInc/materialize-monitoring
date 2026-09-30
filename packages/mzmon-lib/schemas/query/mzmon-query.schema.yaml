@@ -35,6 +35,13 @@ $defs:
           A human-friendly description of the current Query Registry.
       metricImportanceHint:
         $ref: "#/$defs/metricImportance"
+      alertLabels:
+        description: |
+          Labels every alert in this file carries unless it sets the same label
+          itself. The file-level home for `audience`: which people an alert is
+          for, `platform` (whoever runs the deployment) or `workload` (whoever
+          runs what is on it), so a route can send each to the right place.
+        $ref: "#/$defs/labelMap"
     anyOf:
       - type: object
         properties:

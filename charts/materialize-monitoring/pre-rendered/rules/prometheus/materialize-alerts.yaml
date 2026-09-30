@@ -45,6 +45,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not accepting basic connections and may be unreachable.
       description: |-
@@ -91,6 +92,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not accepting basic connections and may be unreachable.
       description: |-
@@ -130,6 +132,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not responding to a SELECT 1 and may be unhealthy.
       description: |-
@@ -169,6 +172,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not answering a simple query that reads from object storage.
       description: |-
@@ -209,6 +213,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: environmentd is not answering a simple query that reads from object storage.
       description: |-
@@ -260,6 +265,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A clusterd has not received commands from environmentd for 5m — the replica may be stalled or disconnected.
       description: |-
@@ -299,12 +305,50 @@ groups:
     labels:
       severity: notice
       component: storage
+      audience: platform
     annotations:
       summary: Storage shards have been stuck finalizing for 8h.
       description: |-
         Shard finalization is a background cleanup step; a sustained outstanding
         count suggests it is not making progress. Check storage controller logs.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#storage-collection-finalization-stuck
+  - alert: environmentd-down
+    expr: |-
+      max by (namespace, materialize_cloud_organization_name, pod) (
+        up{job=~".*/.*materialize-environmentd", namespace!~"__mzmon_excluded_namespaces__"}
+      ) == 0
+    for: 5m
+    labels:
+      severity: critical
+      component: environmentd
+      audience: platform
+    annotations:
+      summary: environmentd has not answered its scrape for 5m, so the environment is likely down.
+      description: |-
+        environmentd is the environment: with it down nothing serves, neither
+        SQL nor the console. Check the environmentd pod's status, events and
+        logs. A pod that is running but not answering is usually wedged or
+        starved of CPU.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-down
+  - alert: environmentd-not-scraped
+    expr: absent(up{job=~".*/.*materialize-environmentd"})
+    for: 10m
+    labels:
+      severity: critical
+      component: monitoring
+      audience: platform
+    annotations:
+      summary: No environmentd is being scraped at all.
+      description: |-
+        Distinct from environmentd being down: the monitoring has lost sight
+        of it, so environmentd-down cannot fire. The pod may be gone, or its
+        PodMonitor no longer selects it, or the gateway has stopped scraping.
+        Check that the environmentd pod exists and that the gateway's
+        Materialize scrape targets are healthy.
+
+        Fires only when no environmentd is scraped anywhere. With several
+        environments, one of them vanishing is not covered.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-not-scraped
   - alert: envd-terminated
     expr: |-
       (
@@ -338,6 +382,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd was unexpectedly terminated — this should not happen.
       description: |-
@@ -387,6 +432,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd has been above 80% CPU usage for 90m.
       description: |-
@@ -436,6 +482,7 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd has been above 80% memory usage for 30m.
       description: |-
@@ -478,6 +525,7 @@ groups:
     labels:
       severity: notice
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd container is being CPU throttled more than 50% of the time.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-cpu-throttled
@@ -524,6 +572,7 @@ groups:
     labels:
       severity: notice
       component: environmentd
+      audience: platform
     annotations:
       summary: An environmentd is above 80% memory usage (lower-severity companion to environmentd-high-memory).
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-memory-elevated
@@ -562,6 +611,7 @@ groups:
     labels:
       severity: warning
       component: auth
+      audience: platform
     annotations:
       summary: An elevated rate of unexpected authentication errors.
       description: |-
@@ -578,6 +628,7 @@ groups:
     labels:
       severity: warning
       component: auth
+      audience: platform
     annotations:
       summary: An elevated rate of failed auth-token refreshes.
       description: |-
@@ -611,6 +662,7 @@ groups:
     labels:
       severity: warning
       component: console
+      audience: platform
     annotations:
       summary: The web console has returned an error for 2% or more of commands for 30m, across more than one environment.
       description: |-
@@ -642,6 +694,7 @@ groups:
     labels:
       severity: notice
       component: persist
+      audience: platform
     annotations:
       summary: Failures in Persist that should be rare are happening frequently.
       description: |-
@@ -692,6 +745,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A clusterd was terminated with an unexpected exit code — this should not happen.
       description: |-
@@ -731,6 +785,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A system cluster was unexpectedly terminated — this should not happen.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-terminated
@@ -777,6 +832,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A system cluster is above 80% memory usage — this should not happen for system clusters.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-high-memory
@@ -811,6 +867,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A cluster replica will expire in less than a week.
       description: |-
@@ -846,6 +903,7 @@ groups:
     labels:
       severity: notice
       component: clusterd
+      audience: platform
     annotations:
       summary: A swap-enabled cluster was OOMKilled while below 80% swap usage.
       description: |-
@@ -891,6 +949,7 @@ groups:
     labels:
       severity: critical
       component: environmentd
+      audience: platform
     annotations:
       summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
       description: |-
@@ -930,9 +989,136 @@ groups:
     labels:
       severity: warning
       component: environmentd
+      audience: platform
     annotations:
       summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environment-pod-pending
+  - alert: cluster-replica-not-ready
+    expr: |-
+      (
+      (
+      (
+      (
+      max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+        label_replace(
+          avg_over_time(kube_pod_status_ready{condition="true", pod=~".*-cluster-[a-z0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}[10m]),
+          "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+        )
+      ) < 0.5
+      and on (namespace, pod) (time() - kube_pod_created > 20 * 60)
+      )
+      * on (namespace, cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)
+      (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      count by (namespace, cluster_environmentd_materialize_cloud_cluster_id) (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+        label_replace(
+          avg_over_time(kube_pod_status_ready{condition="true", pod=~".*-cluster-[a-z0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}[10m]),
+          "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+        )
+      ) < 0.5
+      and on (namespace, pod) (time() - kube_pod_created > 20 * 60)
+      )
+      )
+      * on (namespace) group_left(materialize_cloud_organization_name)
+      (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      and on (namespace)
+      (
+      count by (namespace) (
+      group by (namespace, materialize_cloud_organization_name) (
+      last_over_time(up{job=~".*/.*materialize-(environmentd|clusterd)", materialize_cloud_organization_name!=""}[1h])
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace)
+      (
+      (
+      (
+      max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+        label_replace(
+          avg_over_time(kube_pod_status_ready{condition="true", pod=~".*-cluster-[a-z0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}[10m]),
+          "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+        )
+      ) < 0.5
+      and on (namespace, pod) (time() - kube_pod_created > 20 * 60)
+      )
+      * on (namespace, cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)
+      (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      count by (namespace, cluster_environmentd_materialize_cloud_cluster_id) (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+        label_replace(
+          avg_over_time(kube_pod_status_ready{condition="true", pod=~".*-cluster-[a-z0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}[10m]),
+          "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+        )
+      ) < 0.5
+      and on (namespace, pod) (time() - kube_pod_created > 20 * 60)
+      )
+      )
+    for: 5m
+    labels:
+      severity: warning
+      component: clusterd
+      audience: platform
+    annotations:
+      summary: A cluster replica's pod has been ready for less than half of the last 10m.
+      description: |-
+        The replica is Pending, crash-looping, or failing its readiness probe.
+        Replicas are replaced routinely during upgrades and resizes, which is
+        why this warns rather than pages. Check the pod's events and restart
+        history; a replica left with nothing hydrated also raises the cluster's
+        hydration alert.
+
+        Ready for less than half the window, rather than not ready now: a
+        crash-looping pod passes its probe briefly on every start, and a plain
+        not-ready condition would reset `for` each time it did. A pod under 20m
+        old is left out, because a new replica waiting on a node is the
+        pending-pod alerts' to report, and on a busy fleet it is nearly every
+        not-ready window there is.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-replica-not-ready
   - alert: certificate-not-ready
     expr: |-
       (
@@ -966,6 +1152,7 @@ groups:
     labels:
       severity: notice
       component: environmentd
+      audience: platform
     annotations:
       summary: A certificate has not become ready in 20m, which can prevent an environment from coming up.
       description: |-
@@ -1013,12 +1200,256 @@ groups:
     labels:
       severity: warning
       component: console
+      audience: platform
     annotations:
       summary: Web-console query p95 latency has exceeded 10s for 15m.
       description: |-
         The catalog cluster (s2) is answering console queries slowly. Check the
         catalog cluster's load and health.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#console-query-latency
+- name: system_clusters
+  rules:
+  - alert: system-cluster-falling-behind
+    expr: |-
+      (
+      (
+      max by (namespace, materialize_cloud_organization_name, instance_id) (
+        avg_over_time(
+          (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}
+            ) < 1e18
+          )[15m:1m]
+        )
+      ) > 60
+      )
+      * on (namespace, instance_id) group_left(cluster_name)
+      (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, instance_id)
+      (
+      count by (namespace, instance_id) (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, instance_id)
+      (
+      max by (namespace, materialize_cloud_organization_name, instance_id) (
+        avg_over_time(
+          (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}
+            ) < 1e18
+          )[15m:1m]
+        )
+      ) > 60
+      )
+    for: 10m
+    labels:
+      severity: warning
+      component: clusterd
+      audience: platform
+    annotations:
+      summary: A system cluster has averaged over 60s of lag for 15m.
+      description: |-
+        Catalog and introspection answers are behind, so the console and `SHOW`
+        commands show a stale picture. Check the cluster's replica for CPU or
+        memory pressure, and environmentd's logs for slow catalog transactions.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-falling-behind
+  - alert: system-cluster-stale
+    expr: |-
+      (
+      (
+      max by (namespace, materialize_cloud_organization_name, instance_id) (
+        avg_over_time(
+          (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}
+            ) < 1e18
+          )[15m:1m]
+        )
+      ) > 600
+      )
+      * on (namespace, instance_id) group_left(cluster_name)
+      (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, instance_id)
+      (
+      count by (namespace, instance_id) (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, instance_id)
+      (
+      max by (namespace, materialize_cloud_organization_name, instance_id) (
+        avg_over_time(
+          (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}
+            ) < 1e18
+          )[15m:1m]
+        )
+      ) > 600
+      )
+    for: 5m
+    labels:
+      severity: critical
+      component: clusterd
+      audience: platform
+    annotations:
+      summary: A system cluster has averaged over 10m of lag for 15m.
+      description: |-
+        The catalog and introspection data the console reads is far behind.
+        Check the replica's CPU and memory, whether it is restarting, and
+        environmentd's logs.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-stale
+  - alert: system-cluster-hydration-stuck
+    expr: |-
+      (
+      (
+      count by (namespace, materialize_cloud_organization_name, instance_id) (
+        min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+          mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}
+        ) >= 1e18
+      ) > 0
+      )
+      * on (namespace, instance_id) group_left(cluster_name)
+      (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, instance_id)
+      (
+      count by (namespace, instance_id) (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, instance_id)
+      (
+      count by (namespace, materialize_cloud_organization_name, instance_id) (
+        min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+          mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}
+        ) >= 1e18
+      ) > 0
+      )
+    for: 15m
+    labels:
+      severity: warning
+      component: clusterd
+      audience: platform
+    annotations:
+      summary: A system cluster has had collections with no hydrated replica for 15m.
+      description: |-
+        Reads of those collections block rather than return stale data, so the
+        console and introspection queries hang. Check for a crash-looping or
+        undersized replica, and the cluster's clusterd logs.
+
+        Counts only collections that no replica has hydrated, so a restart of
+        one replica of several does not fire it.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-hydration-stuck
+  - alert: system-cluster-memory-near-limit
+    expr: |-
+      (
+      (
+      100 * (
+        max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+          max_over_time(mz_metrics_resource_usage{metric="heap", cluster_environmentd_materialize_cloud_cluster_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}[15m])
+        )
+        / on (namespace, pod) group_left ()
+        (
+          max by (namespace, pod) (mz_metrics_resource_usage{metric="memory_max"})
+          + on (namespace, pod)
+          max by (namespace, pod) (mz_metrics_resource_usage{metric="swap_max"})
+        )
+      ) > 90
+      )
+      * on (namespace, cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)
+      (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      count by (namespace, cluster_environmentd_materialize_cloud_cluster_id) (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      100 * (
+        max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+          max_over_time(mz_metrics_resource_usage{metric="heap", cluster_environmentd_materialize_cloud_cluster_id=~"s.*", namespace!~"__mzmon_excluded_namespaces__"}[15m])
+        )
+        / on (namespace, pod) group_left ()
+        (
+          max by (namespace, pod) (mz_metrics_resource_usage{metric="memory_max"})
+          + on (namespace, pod)
+          max by (namespace, pod) (mz_metrics_resource_usage{metric="swap_max"})
+        )
+      ) > 90
+      )
+    for: 1m
+    labels:
+      severity: critical
+      component: clusterd
+      audience: platform
+    annotations:
+      summary: A system cluster replica's heap has reached 90% of the point where the kernel OOM-kills it.
+      description: |-
+        At the limit the replica is killed and rehydrates from scratch, taking
+        the catalog and introspection with it. Size the system cluster up, or
+        find what is holding the memory in `mz_internal.mz_dataflow_arrangement_sizes`.
+
+        Heap is RAM and swap in use, against the replica's cgroup memory plus
+        swap limits. With swap enabled, container memory normally reads close to
+        its limit, because spilling to swap is the design, so it cannot be used
+        here. Measured as the maximum over 15m: heap can climb fast enough that
+        an average stays under the threshold until the kill.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-memory-near-limit
 - name: release_health
   rules:
   - alert: new-clusterd-restarts
@@ -1041,6 +1472,7 @@ groups:
     labels:
       severity: warning
       component: clusterd
+      audience: platform
     annotations:
       summary: A previously healthy clusterd is restarting during a release.
       description: |-
@@ -1083,6 +1515,7 @@ groups:
     labels:
       severity: critical
       component: external-uptime
+      audience: platform
     annotations:
       summary: environmentd is unreachable from outside the network by the external uptime checker.
       description: |-
@@ -1122,6 +1555,7 @@ groups:
     labels:
       severity: warning
       component: external-uptime
+      audience: platform
     annotations:
       summary: New external connections to environmentd are failing, per the external uptime checker.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-env-uptime-failed
@@ -1134,6 +1568,7 @@ groups:
     labels:
       severity: warning
       component: external-uptime
+      audience: platform
     annotations:
       summary: The external uptime checker has stopped making calls — the checker itself may be down.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-uptime-checker-not-calling
@@ -1174,6 +1609,7 @@ groups:
     labels:
       severity: warning
       component: launchdarkly
+      audience: platform
     annotations:
       summary: The last LaunchDarkly server-side event is more than 40 minutes old — flag updates may not be reaching environmentd.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#launchdarkly-stale-sse
@@ -1212,6 +1648,7 @@ groups:
     labels:
       severity: notice
       component: launchdarkly
+      audience: platform
     annotations:
       summary: The last LaunchDarkly client-side event is more than 40 minutes old — client analytics may be stale.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#launchdarkly-stale-cse

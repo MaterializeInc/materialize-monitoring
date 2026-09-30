@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
-# Alerting rules for Materialize itself (environmentd, clusterd, persist,
-# console, auth). Alerts for the surrounding infrastructure live in
-# infra-alerts.yaml.
+# Alerting rules for the Materialize deployment itself (environmentd, system
+# clusters, clusterd, persist, console, auth): what whoever runs the deployment
+# acts on. What runs on it, such as a user cluster falling behind or running
+# out of memory, is materialize-workload-alerts.yaml. Alerts for the
+# surrounding infrastructure live in infra-alerts.yaml.
 
 description: |
   Alerting rules for Materialize.
@@ -19,6 +21,9 @@ description: |
   in the internal docs for how these render into rules.
 
 metricImportanceHint: essential
+
+alertLabels:
+  audience: platform
 
 alerts:
   # --- environmentd availability -------------------------------------------
@@ -257,6 +262,67 @@ alerts:
         min(last_8h):(
           max:mz_shard_finalization_outstanding{%%{excludeEnvironmentFilter}} by {namespace,materialize_cloud_organization_name}
         ) > 0
+  - alert: environmentd-down
+    group: environmentd
+    stability: best-effort
+    enabledByDefault: true
+    for: 5m
+    # Reads only `up`, which every target exposes.
+    requires: [materialize]
+    labels:
+      severity: critical
+      component: environmentd
+    description:
+      summary: environmentd has not answered its scrape for 5m, so the environment is likely down.
+      unhealthy: |
+        environmentd is the environment: with it down nothing serves, neither
+        SQL nor the console. Check the environmentd pod's status, events and
+        logs. A pod that is running but not answering is usually wedged or
+        starved of CPU.
+    query:
+      id: materialize.environmentd.down
+      stability: best-effort
+      description:
+        summary: environmentd scrape targets reporting down.
+      promQL:
+        template: |
+          max by (namespace, materialize_cloud_organization_name, pod) (
+            up{job=~".*/.*materialize-environmentd", %%{excludeEnvironmentFilter}}
+          ) == 0
+      datadogQuery: |
+        max(last_5m):(
+          max:up{job:*/*materialize-environmentd, %%{excludeEnvironmentFilter}} by {namespace,materialize_cloud_organization_name,pod}
+        ) <= 0
+  - alert: environmentd-not-scraped
+    group: environmentd
+    stability: best-effort
+    enabledByDefault: true
+    for: 10m
+    requires: [materialize]
+    labels:
+      severity: critical
+      component: monitoring
+    description:
+      summary: No environmentd is being scraped at all.
+      unhealthy: |
+        Distinct from environmentd being down: the monitoring has lost sight
+        of it, so environmentd-down cannot fire. The pod may be gone, or its
+        PodMonitor no longer selects it, or the gateway has stopped scraping.
+        Check that the environmentd pod exists and that the gateway's
+        Materialize scrape targets are healthy.
+      notes: |
+        Fires only when no environmentd is scraped anywhere. With several
+        environments, one of them vanishing is not covered.
+    query:
+      id: materialize.environmentd.not_scraped
+      stability: best-effort
+      description:
+        summary: Whether no environmentd scrape target exists.
+      promQL: |
+        absent(up{job=~".*/.*materialize-environmentd"})
+      # A Datadog no-data notification on the metric, not a query.
+      datadogQuery: |
+        avg:up{job:*/*materialize-environmentd}
 
   # --- auth ----------------------------------------------------------------
   - alert: auth-errors
@@ -716,7 +782,7 @@ alerts:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        min(last_10m):min:mz_dataflow_replica_expiration_remaining_seconds{pod:*cluster*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+        max(last_10m):min:mz_dataflow_replica_expiration_remaining_seconds{pod:*cluster*, %%{excludeEnvironmentFilter}} by {namespace,pod}
         < 604800
   - alert: swap-cluster-oom
     group: environment_health
@@ -768,6 +834,185 @@ alerts:
         max(last_10m):(
           max:kube_pod_container_status_last_terminated_reason{reason:OOMKilled, %%{mzEnvironmentNamespaceFilter}} by {namespace,pod}
         ) > 0
+
+  # --- system clusters -----------------------------------------------------
+  # The system clusters (`s*`) hold the catalog and introspection that the
+  # console and `SHOW` commands read, and belong to whoever runs the deployment.
+  # The same conditions on a user cluster are in materialize-workload-alerts.yaml.
+  - alert: system-cluster-falling-behind
+    group: system_clusters
+    stability: best-effort
+    enabledByDefault: true
+    # A generation upgrade holds the catalog server's average at about 60s for
+    # nine minutes around the cutover (measured on a reference install), so 5m
+    # would warn on every upgrade. A slow upgrade still fires.
+    for: 10m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A system cluster has averaged over 60s of lag for 15m.
+      degraded: |
+        Catalog and introspection answers are behind, so the console and `SHOW`
+        commands show a stale picture. Check the cluster's replica for CPU or
+        memory pressure, and environmentd's logs for slow catalog transactions.
+    query:
+      id: materialize.system_clusters.falling_behind
+      stability: best-effort
+      description:
+        summary: Per system cluster, the worst 15m average lag of any collection, on its freshest replica.
+      promQL:
+        # Per collection, the lag of its freshest replica, which is the one
+        # serving reads. A collection no replica has hydrated is exported as
+        # u64::MAX seconds, and one such sample would drag the average past any
+        # threshold after every restart, so `< 1e18` drops it: that case is
+        # system-cluster-hydration-stuck's.
+        template: |
+          max by (namespace, materialize_cloud_organization_name, instance_id) (
+            avg_over_time(
+              (
+                min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+                  mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", %%{excludeEnvironmentFilter}}
+                ) < 1e18
+              )[15m:1m]
+            )
+          ) > 60
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # Datadog aggregates once and cannot drop the unhydrated sentinel, so this
+      # reads the worst replica rather than the freshest, and a hydrating replica
+      # reads as stale.
+      datadogQuery: |
+        avg(last_15m):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:s*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) > 60
+  - alert: system-cluster-stale
+    group: system_clusters
+    stability: best-effort
+    enabledByDefault: true
+    for: 5m
+    labels:
+      severity: critical
+      component: clusterd
+    description:
+      summary: A system cluster has averaged over 10m of lag for 15m.
+      unhealthy: |
+        The catalog and introspection data the console reads is far behind.
+        Check the replica's CPU and memory, whether it is restarting, and
+        environmentd's logs.
+    query:
+      id: materialize.system_clusters.stale
+      stability: best-effort
+      description:
+        summary: Per system cluster, the worst 15m average lag of any collection, on its freshest replica.
+      promQL:
+        template: |
+          max by (namespace, materialize_cloud_organization_name, instance_id) (
+            avg_over_time(
+              (
+                min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+                  mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", %%{excludeEnvironmentFilter}}
+                ) < 1e18
+              )[15m:1m]
+            )
+          ) > 600
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # Datadog aggregates once and cannot drop the unhydrated sentinel, so this
+      # reads the worst replica rather than the freshest, and a hydrating replica
+      # reads as stale.
+      datadogQuery: |
+        avg(last_15m):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:s*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) > 600
+  - alert: system-cluster-hydration-stuck
+    group: system_clusters
+    stability: best-effort
+    enabledByDefault: true
+    # The system clusters are small, and on a healthy install they hydrate in
+    # about a minute. Tune per deployment with `rules.overrides`.
+    for: 15m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A system cluster has had collections with no hydrated replica for 15m.
+      degraded: |
+        Reads of those collections block rather than return stale data, so the
+        console and introspection queries hang. Check for a crash-looping or
+        undersized replica, and the cluster's clusterd logs.
+      notes: |
+        Counts only collections that no replica has hydrated, so a restart of
+        one replica of several does not fire it.
+    query:
+      id: materialize.system_clusters.hydration_stuck
+      stability: best-effort
+      description:
+        summary: Per system cluster, collections that no replica has hydrated.
+      promQL:
+        template: |
+          count by (namespace, materialize_cloud_organization_name, instance_id) (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"s.*", %%{excludeEnvironmentFilter}}
+            ) >= 1e18
+          ) > 0
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # Datadog aggregates once, so this counts collections unhydrated on any
+      # replica rather than on every one.
+      datadogQuery: |
+        min(last_15m):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:s*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) >= 1000000000000000000
+  - alert: system-cluster-memory-near-limit
+    group: system_clusters
+    stability: best-effort
+    enabledByDefault: true
+    for: 1m
+    labels:
+      severity: critical
+      component: clusterd
+    description:
+      summary: A system cluster replica's heap has reached 90% of the point where the kernel OOM-kills it.
+      unhealthy: |
+        At the limit the replica is killed and rehydrates from scratch, taking
+        the catalog and introspection with it. Size the system cluster up, or
+        find what is holding the memory in `mz_internal.mz_dataflow_arrangement_sizes`.
+      notes: |
+        Heap is RAM and swap in use, against the replica's cgroup memory plus
+        swap limits. With swap enabled, container memory normally reads close to
+        its limit, because spilling to swap is the design, so it cannot be used
+        here. Measured as the maximum over 15m: heap can climb fast enough that
+        an average stays under the threshold until the kill.
+    query:
+      id: materialize.system_clusters.memory_near_limit
+      stability: best-effort
+      description:
+        summary: Per system cluster replica, peak heap as a percentage of memory plus swap limits.
+      promQL:
+        template: |
+          100 * (
+            max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+              max_over_time(mz_metrics_resource_usage{metric="heap", cluster_environmentd_materialize_cloud_cluster_id=~"s.*", %%{excludeEnvironmentFilter}}[15m])
+            )
+            / on (namespace, pod) group_left ()
+            (
+              max by (namespace, pod) (mz_metrics_resource_usage{metric="memory_max"})
+              + on (namespace, pod)
+              max by (namespace, pod) (mz_metrics_resource_usage{metric="swap_max"})
+            )
+          ) > 90
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      datadogQuery: |
+        max(last_15m):100 * (
+          max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:s*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
+        ) > 90
 
   # --- environment scheduling / readiness ----------------------------------
   - alert: environment-pod-pending-critical
@@ -827,9 +1072,57 @@ alerts:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        max(last_15m):(
+        min(last_15m):(
           max:kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter}, phase:Pending, %%{excludeEnvironmentFilter}} by {namespace,pod}
         ) > 0
+  - alert: cluster-replica-not-ready
+    group: environment_health
+    stability: best-effort
+    enabledByDefault: true
+    for: 5m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster replica's pod has been ready for less than half of the last 10m.
+      degraded: |
+        The replica is Pending, crash-looping, or failing its readiness probe.
+        Replicas are replaced routinely during upgrades and resizes, which is
+        why this warns rather than pages. Check the pod's events and restart
+        history; a replica left with nothing hydrated also raises the cluster's
+        hydration alert.
+      notes: |
+        Ready for less than half the window, rather than not ready now: a
+        crash-looping pod passes its probe briefly on every start, and a plain
+        not-ready condition would reset `for` each time it did. A pod under 20m
+        old is left out, because a new replica waiting on a node is the
+        pending-pod alerts' to report, and on a busy fleet it is nearly every
+        not-ready window there is.
+    query:
+      id: materialize.cluster_replicas.not_ready
+      stability: best-effort
+      description:
+        summary: Per replica pod, the fraction of the last 10m it was ready.
+      promQL:
+        template: |
+          max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
+            label_replace(
+              avg_over_time(kube_pod_status_ready{condition="true", pod=~".*-cluster-[a-z0-9]+-replica-.*", %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}}[10m]),
+              "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
+            )
+          ) < 0.5
+          and on (namespace, pod) (time() - kube_pod_created > 20 * 60)
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+          - name: mzEnvironmentName
+            args: ["namespace"]
+      # The pod-age guard has no Datadog equivalent; use the monitor's own
+      # new-group delay instead.
+      datadogQuery: |
+        avg(last_10m):(
+          max:kube_pod_status_ready{condition:true, pod:*-cluster-*-replica-*, %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}} by {namespace,pod}
+        ) < 0.5
   - alert: certificate-not-ready
     group: environment_health
     stability: best-effort
@@ -856,7 +1149,7 @@ alerts:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        max(last_20m):(
+        min(last_20m):(
           max:certmanager_certificate_ready_status{!condition:True, %%{excludeEnvironmentFilter}} by {name,namespace,condition}
         ) >= 1
   - alert: console-query-latency

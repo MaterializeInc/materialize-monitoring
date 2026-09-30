@@ -50,6 +50,10 @@ pub struct RegistryDoc {
     pub rules: Vec<RuleDef>,
     #[serde(default)]
     pub alerts: Vec<AlertDef>,
+    /// Labels every alert in the file carries unless it sets its own, such as
+    /// the `audience` the whole file is for.
+    #[serde(default, rename = "alertLabels")]
+    pub alert_labels: indexmap::IndexMap<String, String>,
     #[serde(default, rename = "metricOverrides")]
     pub metric_overrides: Vec<MetricOverrideDef>,
 }

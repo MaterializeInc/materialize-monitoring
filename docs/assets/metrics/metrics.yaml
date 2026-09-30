@@ -72,6 +72,7 @@
   - infra.alloy.resources.cpu
   - infra.kubernetes.pods_high_cpu_ratio
   - infra.kubernetes.vector_high_cpu_ratio
+  - materialize.clusters.cpu_high
   - materialize.environmentd.high_cpu
   - materialize.generations.cpu
   - materialize.kubernetes.cpu.usage.absolute
@@ -417,6 +418,7 @@
   - infra.alloy.resources.cpu
   - infra.alloy.resources.memory
   - infra.nodes.pods.budgets
+  - materialize.clusters.cpu_high
   - materialize.kubernetes.cpu.usage.percent
   - materialize.kubernetes.pods.cpu_usage
 - importance: essential
@@ -450,6 +452,7 @@
   labels:
   - container
   - namespace
+  - pod
   - reason
   name: kube_pod_container_status_last_terminated_reason
   usage:
@@ -458,6 +461,7 @@
   - infra.kubernetes.oomkill_important_systems
   - infra.kubernetes.oomkill_nonessential_systems
   - materialize.clusterd.swap_cluster_oom
+  - materialize.clusters.replica_oomkilled
 - importance: essential
   labels:
   - container
@@ -478,6 +482,7 @@
   - materialize.clusterd.not_receiving_commands
   - materialize.clusterd.swap_cluster_oom
   - materialize.clusterd.system_cluster_terminated
+  - materialize.clusters.replica_oomkilled
   - materialize.environmentd.terminated
 - importance: essential
   labels: []
@@ -488,6 +493,7 @@
   labels: []
   name: kube_pod_created
   usage:
+  - materialize.cluster_replicas.not_ready
   - materialize.clusterd.new_restarts_during_release
 - importance: essential
   labels:
@@ -526,9 +532,12 @@
 - importance: essential
   labels:
   - condition
+  - namespace
+  - pod
   name: kube_pod_status_ready
   usage:
   - infra.nodes.pods.not_ready
+  - materialize.cluster_replicas.not_ready
 - importance: essential
   labels:
   - namespace
@@ -664,6 +673,12 @@
   - materialize.environmentd.uptime_slo
 - importance: essential
   labels:
+  - materialize_cloud_organization_name
+  name: mz_cluster_info
+  usage:
+  - materialize.clusters.names
+- importance: essential
+  labels:
   - cluster_environmentd_materialize_cloud_cluster_id
   - pod
   - server_name
@@ -676,6 +691,31 @@
   name: mz_dataflow_replica_expiration_remaining_seconds
   usage:
   - materialize.clusterd.expiration_7d
+- importance: essential
+  labels:
+  - instance_id
+  - materialize_cloud_organization_name
+  - pod
+  - quantile
+  - replica_id
+  name: mz_dataflow_wallclock_lag_seconds
+  usage:
+  - materialize.clusters.falling_behind
+  - materialize.clusters.hydration_stuck
+  - materialize.clusters.stale
+  - materialize.compute.freshness.lag_by_cluster
+  - materialize.compute.freshness.lag_total_by_cluster
+  - materialize.compute.freshness.top_collections
+  - materialize.compute.hydration.currently_hydrating
+  - materialize.generations.collections
+  - materialize.generations.hydrating
+  - materialize.generations.lag.max
+  - materialize.generations.lag.total
+  - materialize.generations.lag.total_by_cluster
+  - materialize.info.max_lag
+  - materialize.system_clusters.falling_behind
+  - materialize.system_clusters.hydration_stuck
+  - materialize.system_clusters.stale
 - importance: essential
   labels: []
   name: mz_envd_up
@@ -705,6 +745,15 @@
   name: mz_memory_limiter_memory_usage_bytes
   usage:
   - materialize.clusterd.system_cluster_high_memory
+- importance: essential
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - metric
+  name: mz_metrics_resource_usage
+  usage:
+  - materialize.clusters.memory_high
+  - materialize.clusters.memory_near_limit
+  - materialize.system_clusters.memory_near_limit
 - importance: essential
   labels: []
   name: mz_parameter_frontend_last_cse_time_seconds
@@ -811,6 +860,24 @@
   name: mz_shard_finalization_outstanding
   usage:
   - materialize.storage.collection_finalization_stuck
+- importance: essential
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_committed
+  usage:
+  - materialize.sources.disconnected
+  - materialize.storage.sources.upstream_errors
+- importance: essential
+  labels:
+  - cluster_environmentd_materialize_cloud_cluster_id
+  - cluster_environmentd_materialize_cloud_replica_id
+  - materialize_cloud_organization_name
+  name: mz_source_offset_known
+  usage:
+  - materialize.sources.disconnected
+  - materialize.storage.sources.upstream_errors
 - importance: essential
   labels:
   - application_name
@@ -1091,6 +1158,8 @@
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
   - infra.net.overview.dataplane
+  - materialize.environmentd.down
+  - materialize.environmentd.not_scraped
   - materialize.scraper.mzmon.clusterd
   - materialize.scraper.mzmon.environmentd
   - materialize.scraper.mzmon.orchestratord
@@ -1651,25 +1720,6 @@
   - materialize.compute.dataflows.elapsed_rate
 - importance: recommended
   labels:
-  - instance_id
-  - materialize_cloud_organization_name
-  - pod
-  - quantile
-  - replica_id
-  name: mz_dataflow_wallclock_lag_seconds
-  usage:
-  - materialize.compute.freshness.lag_by_cluster
-  - materialize.compute.freshness.lag_total_by_cluster
-  - materialize.compute.freshness.top_collections
-  - materialize.compute.hydration.currently_hydrating
-  - materialize.generations.collections
-  - materialize.generations.hydrating
-  - materialize.generations.lag.max
-  - materialize.generations.lag.total
-  - materialize.generations.lag.total_by_cluster
-  - materialize.info.max_lag
-- importance: recommended
-  labels:
   - materialize_cloud_organization_name
   name: mz_indexes_count
   usage:
@@ -2057,22 +2107,6 @@
   - cluster_environmentd_materialize_cloud_replica_id
   - materialize_cloud_organization_name
   name: mz_source_offset_commit_failures
-  usage:
-  - materialize.storage.sources.upstream_errors
-- importance: recommended
-  labels:
-  - cluster_environmentd_materialize_cloud_cluster_id
-  - cluster_environmentd_materialize_cloud_replica_id
-  - materialize_cloud_organization_name
-  name: mz_source_offset_committed
-  usage:
-  - materialize.storage.sources.upstream_errors
-- importance: recommended
-  labels:
-  - cluster_environmentd_materialize_cloud_cluster_id
-  - cluster_environmentd_materialize_cloud_replica_id
-  - materialize_cloud_organization_name
-  name: mz_source_offset_known
   usage:
   - materialize.storage.sources.upstream_errors
 - importance: recommended

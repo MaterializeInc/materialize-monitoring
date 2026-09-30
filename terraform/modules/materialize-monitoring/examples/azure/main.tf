@@ -6,8 +6,9 @@
 # separately from the container, and neither can derive it.
 #
 # It also exercises the Workload Identity labelling, which reaches Thanos through
-# `global.commonLabels` rather than a `podLabels` the chart does not have. See
-# azure.tf.
+# `global.commonLabels` rather than a `podLabels` the chart does not have, and
+# the gateway through `controller.podLabels`. See azure.tf.
+# bin/check_workload_identity_labels.py asserts every annotated pod is labelled.
 
 terraform {
   required_version = ">= 1.3.0"
@@ -65,6 +66,10 @@ module "monitoring" {
     }
     thanos_service_account_annotations = {
       "azure.workload.identity/client-id" = "00000000-0000-0000-0000-000000000002"
+    }
+    # The gateway's own, for what it reads from Azure Monitor.
+    gateway_service_account_annotations = {
+      "azure.workload.identity/client-id" = "00000000-0000-0000-0000-000000000003"
     }
   }
 

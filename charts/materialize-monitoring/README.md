@@ -1906,7 +1906,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -1921,6 +1921,7 @@ records why this is a pull rather than a Grafana datasource.
 | --- | --- | --- |
 | `cloudwatch` | RDS instances, S3 buckets | `prometheus.exporter.cloudwatch` |
 | `gcp` | Cloud SQL instances, GCS buckets | `prometheus.exporter.gcp` |
+| `azure` | PostgreSQL Flexible Servers, Blob Storage accounts | `prometheus.exporter.azure` |
 
 Every provider is off by default. Provider collection is an addition to
 what the clients already report about the same dependencies, not a
@@ -1939,12 +1940,15 @@ pod's own cloud identity, bound through
 | --- | --- | --- |
 | `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`; `iam:ListAccountAliases` to fill the `account_alias` label, without which every pull logs a warning |
 | `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
+| `azure` | Workload identity (`azure.workload.identity/client-id`, plus the `azure.workload.identity/use: "true"` label in `alloy-gateway.controller.podLabels`), or a service principal as `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named resource |
 
 **The data is minutes old when it arrives.** CloudWatch publishes RDS
 metrics a few minutes late and S3 storage metrics once a day. Cloud
 Monitoring stamps each sample with its own time: Cloud SQL samples arrive
-about three minutes old, and GCS storage samples over ten. Query these
-families with `last_over_time(...[15m])` or wider, and do not page on them.
+about three minutes old, and GCS storage samples over ten. Azure Monitor
+values are a minute or two behind, and blob capacity is refreshed daily.
+Query these families with `last_over_time(...[15m])` or wider, and do not
+page on them.
 
 **Each pull is billed by the provider.** The cost is a function of the
 interval and of how many resources and metrics are listed, not of how many
@@ -1956,8 +1960,9 @@ gateway replicas there are.
 
 **The metric sets are fixed, and live in the pipeline, not here.** Each
 pull is a custom component in the chart's `gateway-provider` pipeline,
-instantiated once per resource listed below. Changing what is pulled is
-a change to that pipeline.
+instantiated per resource (CloudWatch) or per service (GCP and Azure) for
+what is listed below. Changing what is pulled is a change to that
+pipeline.
 </td>
     </tr>
     <tr>
@@ -2088,6 +2093,79 @@ per-minute DELTA, and the exporter counts only the newest point of
 each pull, so at a five-minute interval they read about a fifth of
 the truth. The Loki, Thanos and persist clients report the same
 requests exactly.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Pull Azure Monitor metrics for the resources listed below.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.subscriptionId</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Subscription that holds the resources, as its ID. Required when enabled.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.cloudEnvironment</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"azurecloud"</code></td>
+      <td class="helm-value-desc">Azure cloud the subscription lives in: `azurecloud`, `azurechinacloud` or `azureusgovernmentcloud`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.scrapeInterval</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"5m"</code></td>
+      <td class="helm-value-desc">How often the gateway pulls. Every pull is one Resource Graph query per service, then one metrics call per resource.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.scrapeTimeout</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"2m"</code></td>
+      <td class="helm-value-desc">Scrape timeout. Must not exceed `scrapeInterval`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.metricImportance</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"extended"</code></td>
+      <td class="helm-value-desc">Importance tier assigned to every Azure Monitor family, for destinations that filter by `minMetricImportance`. One of `essential`, `recommended`, `extended`, `diagnostic`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.postgres<wbr>.servers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">PostgreSQL Flexible Server names to watch — the name, not the FQDN or resource ID.
+Each is pulled for a fixed set: CPU, and the credits of a Burstable
+tier; memory, storage and connection headroom, and failed
+connections; disk queue depth, and how much of the disk's
+provisioned IOPS and throughput is in use, which at 100% throttles
+every write while every in-database metric stays flat;
+transaction-ID consumption; and whether Azure can reach the server.
+A metric Azure does not publish for a server is absent, never zero.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.blob<wbr>.storageAccounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Storage account names to watch, for their blob service.
+Each is pulled for its stored bytes and blob count, which Azure
+refreshes about once a day, and for request availability and
+latency, at the service and end to end. Transaction counts are
+deliberately not pulled: the exporter reads the newest five-minute
+bucket as the scrape ends it, which is a minute or so short. The
+Loki, Thanos and persist clients report the same requests exactly.
 </td>
     </tr>
     <tr>
@@ -3370,6 +3448,35 @@ capabilities are missing is still not installed, and the render warns.
 []</pre>
 </td>
       <td class="helm-value-desc">Alert names never to install, even when they apply and are in the default set.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.overrides</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Per-alert changes to a bundled rule: how long its condition must hold (`for`), and labels to add or replace.
+
+An override never changes a rule's expression. The usual reason for one is
+a workload whose normal behaviour a default does not fit: a large cluster
+can take hours to hydrate when nothing is wrong.
+
+```yaml
+rules:
+  overrides:
+    cluster-hydration-stuck:
+      for: 6h
+    cluster-cpu-high:
+      labels:
+        severity: notice
+        team: analytics
+```
+
+`severity` must stay one of `critical`, `warning` and `notice`, and
+`audience` one of `platform` and `workload`, so the routes still match. An
+unknown alert name fails the render, and an override for a rule that is
+not installed renders with a warning.
 </td>
     </tr>
     <tr>

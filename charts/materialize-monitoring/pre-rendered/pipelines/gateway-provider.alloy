@@ -359,3 +359,149 @@ declare "provider_gcp_gcs" {
 		scrape_timeout  = argument.scrape_timeout.value
 	}
 }
+
+declare "provider_azure_postgres" {
+	argument "subscription_id" { }
+
+	argument "servers" {
+		comment = "Flexible Server names, not FQDNs or resource IDs."
+	}
+
+	argument "cloud_environment" {
+		comment = "azurecloud, azurechinacloud or azureusgovernmentcloud."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.azure "postgres" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.DBforPostgreSQL/flexibleServers"
+		metrics = [
+			"cpu_percent",
+			"cpu_credits_remaining",
+			"memory_percent",
+			"storage_percent",
+			"active_connections",
+			"connections_failed",
+			"disk_queue_depth",
+			"disk_iops_consumed_percentage",
+			"disk_bandwidth_consumed_percentage",
+			"maximum_used_transactionIDs",
+			"is_db_alive",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('%s')", string.join(argument.servers.value, "','"))
+		metric_aggregations = [
+			"average",
+			"maximum",
+			"minimum",
+			"total",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	provider_scrape "postgres" {
+		targets         = prometheus.exporter.azure.postgres.targets
+		instance        = "postgres"
+		forward_to      = prometheus.relabel.postgres.receiver
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	prometheus.relabel "postgres" {
+		forward_to = [
+			argument.forward_to.value,
+		]
+
+		rule {
+			action = "keep"
+			source_labels = [
+				"__name__",
+			]
+			regex = "azure_microsoft_dbforpostgresql_flexibleservers_(cpu_percent_(average|maximum)|cpu_credits_remaining_minimum|memory_percent_maximum|storage_percent_maximum|active_connections_maximum|connections_failed_total|disk_queue_depth_average|disk_(iops|bandwidth)_consumed_percentage_maximum|maximum_used_transactionids_maximum|is_db_alive_minimum)_[a-z]+|up|scrape_.+"
+		}
+	}
+}
+
+declare "provider_azure_blob" {
+	argument "subscription_id" { }
+
+	argument "storage_accounts" {
+		comment = "Storage account names."
+	}
+
+	argument "cloud_environment" {
+		comment = "azurecloud, azurechinacloud or azureusgovernmentcloud."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.azure "capacity" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Storage/storageAccounts"
+		metrics = [
+			"BlobCapacity",
+			"BlobCount",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('%s')", string.join(argument.storage_accounts.value, "','"))
+		metric_aggregations = [
+			"average",
+		]
+		timespan = "P1D"
+		interval = "PT1H"
+		metric_namespace = "Microsoft.Storage/storageAccounts/blobServices"
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	prometheus.exporter.azure "requests" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Storage/storageAccounts"
+		metrics = [
+			"Availability",
+			"SuccessServerLatency",
+			"SuccessE2ELatency",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('%s')", string.join(argument.storage_accounts.value, "','"))
+		metric_aggregations = [
+			"average",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		metric_namespace = "Microsoft.Storage/storageAccounts/blobServices"
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	provider_scrape "capacity" {
+		targets         = prometheus.exporter.azure.capacity.targets
+		instance        = "blob_capacity"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	provider_scrape "requests" {
+		targets         = prometheus.exporter.azure.requests.targets
+		instance        = "blob_requests"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
