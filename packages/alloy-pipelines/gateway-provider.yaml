@@ -45,6 +45,13 @@ blocks:
         - argument:
             label: scrape_timeout
             comment: Must not exceed scrape_interval, or the gateway fails to start.
+        - argument:
+            label: honor_timestamps
+            optional: true
+            default: true
+            comment: >-
+              False stamps every sample at the scrape, for a pull whose newest
+              point can be hours old and would otherwise be refused as stale.
 
         - discovery.relabel:
             label: pin
@@ -60,6 +67,7 @@ blocks:
             forward_to: ["argument.forward_to.value"]
             scrape_interval: {ref: argument.scrape_interval.value}
             scrape_timeout: {ref: argument.scrape_timeout.value}
+            honor_timestamps: {ref: argument.honor_timestamps.value}
             blocks:
               - clustering:
                   enabled: true
@@ -182,6 +190,115 @@ blocks:
               scrape_interval: {ref: argument.scrape_interval.value}
               scrape_timeout: {ref: argument.scrape_timeout.value}
 
+  # Every listed EKS cluster's nodes in one region, and the region's On-Demand
+  # vCPU usage: whether the provider can supply the instances an autoscaler
+  # asks for, and whether the ones it supplied are healthy. One instance per
+  # service, as with Cloud Monitoring, since the tag filters name every cluster.
+  #
+  # Nodes are found by tag rather than named, because Karpenter and the node
+  # groups replace them. EKS tags every node it or Karpenter launches with
+  # `aws:eks:cluster-name`, and every managed node group's Auto Scaling group
+  # with `eks:cluster-name`. Each value is an unanchored regex, so the names
+  # are anchored and joined here; the chart refuses names with other
+  # characters. Without `dimension_name_requirements`, each EC2 metric would
+  # also pull the per-group aggregate of every Auto Scaling group in the
+  # region, whoever owns it.
+  #
+  # Status checks: `System` is the host, which only AWS can repair, `Instance`
+  # is the node's own OS, and `AttachedEBS` is an EBS volume the node cannot
+  # reach. Group sizes: desired capacity above in-service instances for more
+  # than a launch is the provider not supplying instances. Karpenter's pools
+  # have no group; its own metrics cover them.
+  #
+  # Usage: the vCPUs of running On-Demand instances in the standard families
+  # (A, C, D, H, I, M, R, T, Z), account-wide, which is what the quota counts.
+  # CloudWatch does not publish the quota itself; that is the Service Quotas
+  # console's `L-1216C47A`.
+  #
+  # Every discovery job also writes an `aws_<service>_info` series with ALL of
+  # a resource's tags, whatever `discovery_exported_tags` says. Tags are free
+  # text that can name anyone, so the relabel below drops them. The two kept
+  # tags are set by EKS and Karpenter.
+  - declare:
+      label: provider_cloudwatch_eks
+      blocks:
+        - argument:
+            label: clusters
+            comment: EKS cluster names.
+        - argument: *region
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.cloudwatch:
+            label: eks
+            sts_region: {ref: argument.region.value}
+            discovery_exported_tags:
+              AWS/EC2: [karpenter.sh/nodepool, eks:nodegroup-name]
+              AWS/AutoScaling: [eks:nodegroup-name]
+            blocks:
+              - discovery:
+                  type: AWS/EC2
+                  regions: [{ref: argument.region.value}]
+                  search_tags:
+                    aws:eks:cluster-name: &eks_cluster_names
+                      function: string.format
+                      arguments:
+                        - "^(%s)$"
+                        - function: string.join
+                          arguments:
+                            - {ref: argument.clusters.value}
+                            - "|"
+                  dimension_name_requirements: [InstanceId]
+                  nil_to_zero: false
+                  blocks:
+                    - metric: {name: StatusCheckFailed_System, statistics: [Maximum], period: 5m, length: 10m}
+                    - metric: {name: StatusCheckFailed_Instance, statistics: [Maximum], period: 5m, length: 10m}
+                    - metric: {name: StatusCheckFailed_AttachedEBS, statistics: [Maximum], period: 5m, length: 10m}
+              - discovery:
+                  type: AWS/AutoScaling
+                  regions: [{ref: argument.region.value}]
+                  search_tags:
+                    eks:cluster-name: *eks_cluster_names
+                  dimension_name_requirements: [AutoScalingGroupName]
+                  nil_to_zero: false
+                  blocks:
+                    - metric: {name: GroupDesiredCapacity, statistics: [Average], period: 5m, length: 10m}
+                    - metric: {name: GroupInServiceInstances, statistics: [Average], period: 5m, length: 10m}
+                    - metric: {name: GroupPendingInstances, statistics: [Average], period: 5m, length: 10m}
+                    - metric: {name: GroupMaxSize, statistics: [Average], period: 5m, length: 10m}
+              - static:
+                  label: vcpu
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/Usage
+                  nil_to_zero: false
+                  dimensions:
+                    Service: EC2
+                    Type: Resource
+                    Resource: vCPU
+                    Class: Standard/OnDemand
+                  blocks:
+                    - metric: {name: ResourceCount, statistics: [Maximum], period: 5m, length: 10m}
+
+        - custom:
+            component: provider_scrape
+            label: eks
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.eks.targets}
+              instance: eks
+              forward_to: {ref: prometheus.relabel.eks.receiver}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - prometheus.relabel:
+            label: eks
+            forward_to: ["argument.forward_to.value"]
+            blocks:
+              - rule:
+                  action: drop
+                  source_labels: [__name__]
+                  regex: "aws_[a-z0-9]+_info"
+
   # --- Cloud Monitoring -----------------------------------------------------------
 
   # Every listed Cloud SQL instance in one project. One instance per service
@@ -277,6 +394,87 @@ blocks:
             attributes:
               targets: {ref: prometheus.exporter.gcp.gcs.targets}
               instance: gcs
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # Compute Engine quota in every listed region and its zones: the CPUs and
+  # local SSD each machine family may use, against its limit, and each refusal
+  # for want of either. A node pool that cannot grow for quota fails exactly
+  # like one that cannot grow for capacity, and only this says which.
+  #
+  # Families such as C4 and C4A have quotas of their own, which these are; the
+  # regional `CPUS` quota covers only the older families, and reads zero on a
+  # cluster that uses none. A family appears only once something in the project
+  # uses it. Zonal limits read 2^63 − 1 where no zonal quota applies.
+  #
+  # Usage and limit are published hours apart, not every minute: measured on
+  # 2026-09-30, three points a day. So the state pull reaches back a day, and
+  # is stamped at the scrape, as a daily S3 datapoint is; a sample stamped
+  # hours back is older than the bundled Thanos Receive accepts. `exceeded` is
+  # a DELTA written only when a request is refused, so it keeps its own
+  # timestamps and the usual window, and becomes a counter.
+  #
+  # Each location is matched whole, so `europe-west1` does not match
+  # `europe-west10`.
+  - declare:
+      label: provider_gcp_compute_quota
+      blocks:
+        - argument: *project_id
+        - argument:
+            label: regions
+            comment: Compute Engine regions, such as us-east1.
+        - argument: *request_interval
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.gcp:
+            label: quota
+            project_ids: [{ref: argument.project_id.value}]
+            metrics_prefixes:
+              - compute.googleapis.com/quota/cpus_per_vm_family/usage
+              - compute.googleapis.com/quota/cpus_per_vm_family/limit
+              - compute.googleapis.com/quota/local_ssd_total_storage_per_vm_family/usage
+              - compute.googleapis.com/quota/local_ssd_total_storage_per_vm_family/limit
+            extra_filters: &compute_quota_locations
+              - function: string.format
+                arguments:
+                  - 'compute.googleapis.com/quota:resource.labels.location=monitoring.regex.full_match("(%s)(-[a-z])?")'
+                  - function: string.join
+                    arguments:
+                      - {ref: argument.regions.value}
+                      - "|"
+            request_interval: 24h
+            ingest_delay: true
+
+        - prometheus.exporter.gcp:
+            label: quota_exceeded
+            project_ids: [{ref: argument.project_id.value}]
+            metrics_prefixes:
+              - compute.googleapis.com/quota/cpus_per_vm_family/exceeded
+              - compute.googleapis.com/quota/local_ssd_total_storage_per_vm_family/exceeded
+            extra_filters: *compute_quota_locations
+            request_interval: {ref: argument.request_interval.value}
+            ingest_delay: true
+
+        - custom:
+            component: provider_scrape
+            label: quota
+            attributes:
+              targets: {ref: prometheus.exporter.gcp.quota.targets}
+              instance: compute_quota
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+              honor_timestamps: false
+
+        - custom:
+            component: provider_scrape
+            label: quota_exceeded
+            attributes:
+              targets: {ref: prometheus.exporter.gcp.quota_exceeded.targets}
+              instance: compute_quota_exceeded
               forward_to: {ref: argument.forward_to.value}
               scrape_interval: {ref: argument.scrape_interval.value}
               scrape_timeout: {ref: argument.scrape_timeout.value}
@@ -451,3 +649,110 @@ blocks:
               forward_to: {ref: argument.forward_to.value}
               scrape_interval: {ref: argument.scrape_interval.value}
               scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # Every listed AKS cluster in one subscription: its cluster autoscaler, and
+  # the node VMs under it. Names are unique within a resource group, not across
+  # Azure, so two clusters of one name in a subscription are both pulled.
+  #
+  # AKS runs the cluster autoscaler in its own control plane, where nothing in
+  # the cluster can scrape it, and publishes these four gauges instead: pods it
+  # cannot place, whether it considers the cluster healthy enough to scale,
+  # whether scale-down is paused after a scale-up, and nodes it would remove.
+  # Pods that stay unschedulable while it is allowed to scale are the provider
+  # not supplying nodes, for capacity or quota. Each keeps the aggregation
+  # that shows the worst of its five minutes.
+  #
+  # `VmAvailabilityMetric` is Azure's own view of each node VM: 1 while it
+  # runs, 0 while it is down, whatever Kubernetes says. `Context` says whether
+  # the platform or the owner took it down. The node pools are scale sets in
+  # the cluster's node resource group, which the Resource Graph query finds
+  # through the cluster, since AKS tags them with the pool's name but not the
+  # cluster's. Both sides are lowercased, because Kusto compares case.
+  - declare:
+      label: provider_azure_aks
+      blocks:
+        - argument: *subscription_id
+        - argument:
+            label: clusters
+            comment: AKS cluster names, not resource IDs.
+        - argument: *cloud_environment
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.azure:
+            label: autoscaler
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.ContainerService/managedClusters
+            resource_graph_query_filter:
+              function: string.format
+              arguments:
+                - "where name in~ ('%s')"
+                - &aks_cluster_names
+                  function: string.join
+                  arguments:
+                    - {ref: argument.clusters.value}
+                    - "','"
+            metrics:
+              - cluster_autoscaler_unschedulable_pods_count
+              - cluster_autoscaler_cluster_safe_to_autoscale
+              - cluster_autoscaler_scale_down_in_cooldown
+              - cluster_autoscaler_unneeded_nodes_count
+            metric_aggregations: [maximum, minimum]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - prometheus.exporter.azure:
+            label: nodes
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Compute/virtualMachineScaleSets
+            resource_graph_query_filter:
+              function: string.format
+              arguments:
+                - >-
+                  extend nodeResourceGroup = tolower(resourceGroup)
+                  | join kind=inner (Resources
+                  | where type =~ 'microsoft.containerservice/managedclusters' and name in~ ('%s')
+                  | project nodeResourceGroup = tolower(tostring(properties.nodeResourceGroup)))
+                  on nodeResourceGroup
+                - *aks_cluster_names
+            metrics: [VmAvailabilityMetric]
+            metric_aggregations: [minimum]
+            included_dimensions: [VMName, Context]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - custom:
+            component: provider_scrape
+            label: autoscaler
+            attributes:
+              targets: {ref: prometheus.exporter.azure.autoscaler.targets}
+              instance: aks_autoscaler
+              forward_to: {ref: prometheus.relabel.autoscaler.receiver}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - custom:
+            component: provider_scrape
+            label: nodes
+            attributes:
+              targets: {ref: prometheus.exporter.azure.nodes.targets}
+              instance: aks_nodes
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        # The worst of each five minutes: the most pods waiting, cooldown or
+        # unneeded nodes at any point, and any moment it was unsafe to scale.
+        - prometheus.relabel:
+            label: autoscaler
+            forward_to: ["argument.forward_to.value"]
+            blocks:
+              - rule:
+                  action: keep
+                  source_labels: [__name__]
+                  regex: "azure_microsoft_containerservice_managedclusters_cluster_autoscaler_((unschedulable_pods_count|scale_down_in_cooldown|unneeded_nodes_count)_maximum|cluster_safe_to_autoscale_minimum)_[a-z]+|up|scrape_.+"

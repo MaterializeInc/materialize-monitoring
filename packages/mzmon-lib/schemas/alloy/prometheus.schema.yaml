@@ -264,7 +264,10 @@ $defs:
       honor_timestamps:
         description: |
           When true (default), timestamps present in the scraped data are kept.
-        type: boolean
+          Accepts an expression, so a `declare` body can take it as an argument.
+        anyOf:
+          - type: boolean
+          - $ref: "./common/expression.schema.yaml"
       follow_redirects:
         description: |
           When true (default), HTTP 3xx redirects are followed.
@@ -908,9 +911,9 @@ $defs:
         * `nil_to_zero` defaults to TRUE in Alloy, which reports a value-less
           datapoint as zero. Set it false on each job.
 
-      `discovery`, `custom_namespace` and `decoupled_scraping` are deferred to
-      the `raw:` escape. The deprecated no-op `debug` and `aws_sdk_version_v2`
-      are not modelled.
+      `custom_namespace` and `decoupled_scraping` are deferred to the `raw:`
+      escape. The deprecated no-op `debug` and `aws_sdk_version_v2` are not
+      modelled.
 
       See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/
     type: object
@@ -927,8 +930,19 @@ $defs:
       labels_snake_case:
         description: Snake-case the `dimension_*` label names.
         type: boolean
+      discovery_exported_tags:
+        description: |
+          Per discovery namespace, the resource tags to copy onto every series
+          of that namespace, as `tag_<key>`. Every `discovery` job also emits an
+          `aws_<service>_info` series carrying ALL of a resource's tags, whatever
+          this says; drop it downstream if tags are free text.
+        type: object
+        additionalProperties:
+          type: array
+          items:
+            type: string
       blocks:
-        description: "`static` jobs, plus anything else through `raw:`."
+        description: "`static` and `discovery` jobs, plus anything else through `raw:`."
         type: array
         items:
           $ref: "#/$defs/cloudwatchSubBlock"
@@ -939,13 +953,19 @@ $defs:
     description: |
       One sub-block in a `prometheus.exporter.cloudwatch` body.
       The final `raw` branch is the escape hatch, and the way to reach
-      `discovery`, `custom_namespace` and `decoupled_scraping`.
+      `custom_namespace` and `decoupled_scraping`.
     oneOf:
       - type: object
         properties:
           static:
             $ref: "#/$defs/cloudwatchStatic"
         required: [static]
+        additionalProperties: false
+      - type: object
+        properties:
+          discovery:
+            $ref: "#/$defs/cloudwatchDiscovery"
+        required: [discovery]
         additionalProperties: false
       - $ref: "./common/raw.schema.yaml"
 
@@ -996,6 +1016,71 @@ $defs:
         items:
           $ref: "#/$defs/cloudwatchJobSubBlock"
     required: [label, regions, namespace, dimensions]
+    additionalProperties: false
+
+  cloudwatchDiscovery:
+    description: |
+      A `discovery` job: every resource of a namespace whose tags match, read
+      through `GetMetricData`.
+
+      Resources are found through the Resource Groups Tagging API
+      (`tag:GetResources`), or `autoscaling:DescribeAutoScalingGroups` for
+      `AWS/AutoScaling`, and their metrics through `ListMetrics`. Each
+      `search_tags` value is an unanchored regular expression, and all must
+      match.
+
+      A metric whose dimensions name no discovered resource is kept too, as a
+      series with `name="global"`: for `AWS/EC2` that is the per-group
+      aggregate of every Auto Scaling group in the region, whoever owns it.
+      `dimension_name_requirements` is what keeps them out.
+
+      Unlike a `static` job, a discovery job has no label, and its series carry
+      the resource ARN as `name`.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#discovery-block
+    type: object
+    properties:
+      type:
+        description: The namespace to discover, such as `AWS/EC2`.
+        type: string
+      regions:
+        description: Regions to search. Members may be expressions.
+        $ref: "#/$defs/expressionOrStringList"
+      search_tags:
+        description: |
+          Tag key to value regular expression, all of which must match. Keys may
+          contain `:` and `/`; values may be expressions.
+        type: object
+        additionalProperties:
+          anyOf:
+            - type: string
+            - $ref: "./common/expression.schema.yaml"
+      custom_tags:
+        description: Extra labels, written as `custom_tag_<key>`.
+        type: object
+        additionalProperties:
+          type: string
+      dimension_name_requirements:
+        description: |
+          Keep only metrics whose dimension names are exactly these. Without it
+          a namespace's aggregate series are pulled and billed as well.
+        type: array
+        items:
+          type: string
+      recently_active_only:
+        description: Only list metrics with a datapoint in the last three hours.
+        type: boolean
+      nil_to_zero:
+        description: |
+          Report a value-less datapoint as zero. Defaults to TRUE in Alloy;
+          false keeps absence distinguishable from zero.
+        type: boolean
+      blocks:
+        description: "`metric` and `role` blocks."
+        type: array
+        items:
+          $ref: "#/$defs/cloudwatchJobSubBlock"
+    required: [type, regions]
     additionalProperties: false
 
   cloudwatchJobSubBlock:

@@ -51,6 +51,15 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'declare "provider_azure_blob"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_cloudwatch_eks"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_gcp_compute_quota"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_azure_aks"'
 
   # --- the module's contract ---------------------------------------------------
 
@@ -79,6 +88,15 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'namespace = "AWS/S3"\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'namespace = "AWS/Usage"\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'type = "AWS/EC2"[\s\S]*?dimension_name_requirements = \[[^\]]*\]\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'type = "AWS/AutoScaling"[\s\S]*?dimension_name_requirements = \[[^\]]*\]\s+nil_to_zero = false'
       - notMatchRegex:
           path: data["config.alloy"]
           pattern: 'nil_to_zero\s+= true'
@@ -90,6 +108,61 @@ tests:
       - notMatchRegex:
           path: data["config.alloy"]
           pattern: 'decoupled_scraping'
+
+  # Without the requirement, every EC2 metric also pulls the per-group
+  # aggregate of every Auto Scaling group in the region, whoever owns it, and
+  # bills for each. The tag values are regexes, so the names are anchored.
+  - it: should discover only the named clusters' own nodes and groups
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'type = "AWS/EC2"\s+regions = \[[^\]]*\]\s+search_tags = \{\s+"aws:eks:cluster-name" = string\.format\("\^\(%s\)\$", string\.join\(argument\.clusters\.value, "\|"\)\),\s+\}\s+dimension_name_requirements = \[\s+"InstanceId",\s+\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'type = "AWS/AutoScaling"\s+regions = \[[^\]]*\]\s+search_tags = \{\s+"eks:cluster-name" = string\.format\("\^\(%s\)\$", string\.join\(argument\.clusters\.value, "\|"\)\),\s+\}\s+dimension_name_requirements = \[\s+"AutoScalingGroupName",\s+\]'
+
+  # Every discovery job writes an `aws_<service>_info` series with all of a
+  # resource's tags, which are free text. `ec2` has a digit in it.
+  - it: should drop the discovery info series, which carry every tag
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "eks" \{[^}]*forward_to\s+= prometheus\.relabel\.eks\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "eks" \{[\s\S]*?action\s+= "drop"[\s\S]*?regex\s+= "aws_\[a-z0-9\]\+_info"'
+
+  # Quota usage and limits are published hours apart. Stamped with their own
+  # time they would be older than Thanos Receive accepts; refusals are written
+  # as they happen, so they keep theirs.
+  - it: should stamp quota state at the scrape, and keep refusals' own time
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_scrape" \{[\s\S]*?argument "honor_timestamps" \{\s+optional = true\s+default\s+= true'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.gcp "quota" \{[^}]*request_interval = "24h"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "quota" \{[^}]*honor_timestamps = false'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "quota_exceeded" \{[^}]*honor_timestamps'
+
+  # `starts_with("europe-west1")` would also match `europe-west10`.
+  - it: should match each quota region whole, with its zones
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.gcp "quota" \{[^}]*compute\.googleapis\.com/quota:resource\.labels\.location=monitoring\.regex\.full_match\(\\"\(%s\)\(-\[a-z\]\)\?\\"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.gcp "quota_exceeded" \{[^}]*monitoring\.regex\.full_match'
 
   # Per-minute DELTA; the exporter counts only the newest point per pull.
   - it: should not pull GCS request counts
@@ -113,6 +186,14 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'prometheus\.exporter\.azure "requests" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.storage_accounts\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "autoscaler" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.clusters\.value'
+      # The scale sets are found through the named clusters' node resource
+      # groups, compared lowercase on both sides.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "nodes" \{[^}]*resource_graph_query_filter = string\.format\("extend nodeResourceGroup = tolower\(resourceGroup\) \| join kind=inner \(Resources \| where type =~ ''microsoft\.containerservice/managedclusters'' and name in~ \(''%s''\) \| project nodeResourceGroup = tolower\(tostring\(properties\.nodeResourceGroup\)\)\) on nodeResourceGroup", string\.join\(argument\.clusters\.value'
 
   # The exporter copies the `owner` tag onto every series by default, and tags
   # are free text.
@@ -128,6 +209,12 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'prometheus\.exporter\.azure "requests" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "autoscaler" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "nodes" \{[^}]*included_resource_tags = \[\]'
 
   # Every aggregation is requested for every metric, so the keep is what holds
   # the Postgres pull to one or two series per metric. It must also pass the
@@ -142,6 +229,16 @@ tests:
           path: data["config.alloy"]
           pattern: 'prometheus\.relabel "postgres" \{[\s\S]*?action = "keep"[\s\S]*?regex = "azure_microsoft_dbforpostgresql_flexibleservers_\([^"]*\)_\[a-z\]\+\|up\|scrape_\.\+"'
 
+  - it: should keep only the chosen autoscaler aggregations, and the scrape health
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "autoscaler" \{[^}]*forward_to\s+= prometheus\.relabel\.autoscaler\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "autoscaler" \{[\s\S]*?action = "keep"[\s\S]*?regex = "azure_microsoft_containerservice_managedclusters_cluster_autoscaler_\([^"]*\)_\[a-z\]\+\|up\|scrape_\.\+"'
+
   # Two targets from one component, so each needs its own `instance`, or their
   # `up` series collide.
   - it: should give each blob pull its own instance
@@ -153,6 +250,22 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'provider_scrape "requests" \{[^}]*instance\s+= "blob_requests"'
+
+  - it: should give each AKS and quota pull its own instance
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "autoscaler" \{[^}]*instance\s+= "aks_autoscaler"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "nodes" \{[^}]*instance\s+= "aks_nodes"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "quota" \{[^}]*instance\s+= "compute_quota"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "quota_exceeded" \{[^}]*instance\s+= "compute_quota_exceeded"'
 
   # --- CloudWatch instances ------------------------------------------------------
 
@@ -188,6 +301,30 @@ tests:
       - notMatchRegex:
           path: data["config.alloy"]
           pattern: 'forward_to\s+= \[otelcol\.receiver\.prometheus\.inputBridge\.receiver'
+
+  # One instance for every cluster: the tag filters name them all.
+  - it: should instantiate one EKS pull naming every cluster
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &eks
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.eks.clusters: [mz-eks, other_eks]
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_eks "provider" \{\s+clusters\s+= \["mz-eks","other_eks"\]\s+region\s+= "us-east-1"\s+scrape_interval = "5m"\s+scrape_timeout\s+= "2m"\s+forward_to\s+= otelcol\.receiver\.prometheus\.inputBridge\.receiver\s+\}'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_cloudwatch_(rds|s3) "'
+
+  - it: should not instantiate EKS when no cluster is listed
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: *cloudwatch
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_cloudwatch_eks "'
 
   - it: should carry the interval through to every instance
     template: templates/pipelines/cm-alloy-gateway.yaml
@@ -233,6 +370,21 @@ tests:
           path: data["config.alloy"]
           pattern: '(?m)^provider_gcp_gcs "provider"'
 
+  - it: should instantiate one quota pull naming every region
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &gcpCompute
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.compute.regions: [us-east1, europe-west10]
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_compute_quota "provider" \{\s+project_id\s+= "my-project"\s+regions\s+= \["us-east1","europe-west10"\]\s+request_interval = "10m"'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_gcp_(cloudsql|gcs) "'
+
   # --- Azure instances ---------------------------------------------------------
 
   - it: should instantiate one pull per Azure service, naming its resources
@@ -267,6 +419,30 @@ tests:
           path: data["config.alloy"]
           pattern: '(?m)^provider_azure_blob "provider"'
 
+  - it: should instantiate one AKS pull naming every cluster
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &aks
+      <<: *azure
+      pipeline.metrics.provider.azure.postgres.servers: []
+      pipeline.metrics.provider.azure.blob.storageAccounts: []
+      pipeline.metrics.provider.azure.aks.clusters: [mz-aks, Other_AKS]
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_aks "provider" \{\s+subscription_id\s+= "00000000-0000-0000-0000-000000000000"\s+clusters\s+= \["mz-aks","Other_AKS"\]\s+cloud_environment = "azurecloud"'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_azure_(postgres|blob) "'
+
+  - it: should not instantiate AKS when no cluster is listed
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: *azure
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_azure_aks "'
+
   - it: should carry a sovereign cloud through to every Azure instance
     template: templates/pipelines/cm-alloy-gateway.yaml
     set:
@@ -280,6 +456,16 @@ tests:
           path: data["config.alloy"]
           pattern: 'provider_azure_blob "provider" \{[^}]*cloud_environment = "azureusgovernmentcloud"'
 
+  - it: should carry a sovereign cloud through to the AKS instance
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      <<: *aks
+      pipeline.metrics.provider.azure.cloudEnvironment: azurechinacloud
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_aks "provider" \{[^}]*cloud_environment = "azurechinacloud"'
+
   # --- importance tiers --------------------------------------------------------
 
   - it: should admit provider families to a destination at their tier
@@ -292,7 +478,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*$'
+          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*\|stackdriver_compute_googleapis_com_location_\.\*$'
 
   - it: should admit Azure families to a destination at their tier
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -304,7 +490,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: '\|azure_microsoft_dbforpostgresql_flexibleservers_\.\*\|azure_microsoft_storage_storageaccounts_blobservices_\.\*$'
+          pattern: '\|azure_microsoft_dbforpostgresql_flexibleservers_\.\*\|azure_microsoft_storage_storageaccounts_blobservices_\.\*\|azure_microsoft_containerservice_managedclusters_\.\*\|azure_microsoft_compute_virtualmachinescalesets_\.\*$'
 
   - it: should keep provider families out of a stricter destination
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -316,7 +502,7 @@ tests:
     asserts:
       - notMatchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
-          pattern: 'aws_rds_|aws_s3_'
+          pattern: 'aws_rds_|aws_s3_|aws_ec2_|aws_autoscaling_|aws_usage_'
 
   - it: should follow a raised importance into the stricter destination
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -329,7 +515,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
-          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*$'
+          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*$'
 
   # A disabled provider must not widen any allowlist with its families.
   #
@@ -348,7 +534,7 @@ tests:
     asserts:
       - notMatchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: 'aws_rds_\.\*|aws_s3_\.\*|stackdriver_[a-z_]+\.\*|azure_[a-z_]+\.\*'
+          pattern: 'aws_[a-z0-9]+_\.\*|stackdriver_[a-z_]+\.\*|azure_[a-z_]+\.\*'
 
   # --- validation --------------------------------------------------------------
 
@@ -372,6 +558,24 @@ tests:
       - failedTemplate:
           errorPattern: "gcp.enabled is true but lists no resources"
 
+  # The names become an anchored regex in the tag filters; an ARN would match
+  # nothing, and a regex character would change what matches.
+  - it: should refuse an EKS cluster ARN in place of its name
+    set:
+      <<: *eks
+      pipeline.metrics.provider.cloudwatch.eks.clusters: ["arn:aws:eks:us-east-1:123456789012:cluster/mz-eks"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'eks.clusters entry "arn:aws:eks:us-east-1:123456789012:cluster/mz-eks" is not an EKS cluster name'
+
+  - it: should refuse an EKS cluster name that would widen the tag filter
+    set:
+      <<: *eks
+      pipeline.metrics.provider.cloudwatch.eks.clusters: ["mz-.*"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'eks.clusters entry "mz-\.\*" is not an EKS cluster name'
+
   - it: should refuse GCP without a project
     set:
       pipeline.metrics.provider.gcp.enabled: true
@@ -387,6 +591,15 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'entry "my-project:us-east1:mz-pg" contains a colon'
+
+  # A zone inside the region regex would match nothing at all.
+  - it: should refuse a zone in place of a region
+    set:
+      <<: *gcpCompute
+      pipeline.metrics.provider.gcp.compute.regions: [us-east1-b]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'compute.regions entry "us-east1-b" is not a Compute Engine region'
 
   - it: should refuse Azure without a subscription
     set:
@@ -430,6 +643,14 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'postgres.servers entry "mz-pg.postgres.database.azure.com" is not a Flexible Server name'
+
+  - it: should refuse an AKS resource ID in place of its name
+    set:
+      <<: *aks
+      pipeline.metrics.provider.azure.aks.clusters: [/subscriptions/0/resourceGroups/mz/providers/Microsoft.ContainerService/managedClusters/mz-aks]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'aks.clusters entry "/subscriptions/0/resourceGroups/mz/providers/Microsoft.ContainerService/managedClusters/mz-aks" is not an AKS cluster name'
 
   - it: should refuse a blob endpoint in place of an account name
     set:

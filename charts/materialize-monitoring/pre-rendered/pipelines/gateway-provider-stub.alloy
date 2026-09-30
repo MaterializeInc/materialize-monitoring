@@ -28,6 +28,16 @@ provider_cloudwatch_s3 "s3_example_bucket" {
 	scrape_timeout  = "2m"
 }
 
+provider_cloudwatch_eks "provider" {
+	clusters = [
+		"example-eks",
+	]
+	region = "us-east-1"
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout = "2m"
+}
+
 provider_gcp_cloudsql "provider" {
 	project_id = "example-project"
 	database_ids = [
@@ -50,6 +60,17 @@ provider_gcp_gcs "provider" {
 	scrape_timeout = "2m"
 }
 
+provider_gcp_compute_quota "provider" {
+	project_id = "example-project"
+	regions = [
+		"us-east1",
+	]
+	request_interval = "10m"
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout = "2m"
+}
+
 provider_azure_postgres "provider" {
 	subscription_id = "00000000-0000-0000-0000-000000000000"
 	servers = [
@@ -65,6 +86,17 @@ provider_azure_blob "provider" {
 	subscription_id = "00000000-0000-0000-0000-000000000000"
 	storage_accounts = [
 		"examplestorage",
+	]
+	cloud_environment = "azurecloud"
+	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
+	scrape_interval = "5m"
+	scrape_timeout = "2m"
+}
+
+provider_azure_aks "provider" {
+	subscription_id = "00000000-0000-0000-0000-000000000000"
+	clusters = [
+		"example-aks",
 	]
 	cloud_environment = "azurecloud"
 	forward_to = otelcol.receiver.prometheus.inputBridge.receiver

@@ -1198,7 +1198,7 @@ pipeline:
     # what is listed below. Changing what is pulled is a change to that
     # pipeline.
     provider:
-      # CloudWatch: RDS and S3.
+      # CloudWatch: RDS, S3 and EKS nodes.
       cloudwatch:
         # -- Pull CloudWatch metrics for the resources listed below.
         enabled: false
@@ -1229,7 +1229,22 @@ pipeline:
           # -- S3 bucket names to watch, for their size in standard storage and
           # their object count, which S3 publishes daily.
           buckets: []
-      # Cloud Monitoring: Cloud SQL and GCS.
+        eks:
+          # -- EKS cluster names whose nodes to watch.
+          # @raw
+          # Each cluster's nodes are found by the `aws:eks:cluster-name` tag
+          # EKS and Karpenter put on them, since the nodes themselves come and
+          # go, and pulled for AWS's status checks: the host, the instance and
+          # its attached EBS volumes. Its managed node groups are pulled for
+          # desired, in-service and pending instances against their maximum.
+          # Listing any cluster also pulls the region's On-Demand vCPU usage,
+          # account-wide, which is what the vCPU quota counts; CloudWatch does
+          # not publish the quota itself. Needs `cloudwatch:GetMetricData`,
+          # `cloudwatch:ListMetrics`, `tag:GetResources` and
+          # `autoscaling:DescribeAutoScalingGroups` beside the grant the other
+          # services need.
+          clusters: []
+      # Cloud Monitoring: Cloud SQL, GCS and Compute Engine quota.
       gcp:
         # -- Pull Cloud Monitoring metrics for the resources listed below.
         enabled: false
@@ -1267,7 +1282,18 @@ pipeline:
           # the truth. The Loki, Thanos and persist clients report the same
           # requests exactly.
           buckets: []
-      # Azure Monitor: PostgreSQL Flexible Server and Blob Storage.
+        compute:
+          # -- Compute Engine regions whose quota to watch, such as `us-east1`
+          # — the regions the GKE node pools run in.
+          # @raw
+          # Each region and its zones are pulled for the CPUs and local SSD
+          # each machine family uses against its quota, and for every request
+          # a quota refused. A node pool that cannot grow for quota looks
+          # exactly like one that cannot grow for capacity until this says
+          # which. Usage and limit are published a few times a day, so each
+          # pull reaches back a day.
+          regions: []
+      # Azure Monitor: PostgreSQL Flexible Server, Blob Storage and AKS.
       azure:
         # -- Pull Azure Monitor metrics for the resources listed below.
         enabled: false
@@ -1308,6 +1334,18 @@ pipeline:
           # bucket as the scrape ends it, which is a minute or so short. The
           # Loki, Thanos and persist clients report the same requests exactly.
           storageAccounts: []
+        aks:
+          # -- AKS cluster names to watch — the name, not the resource ID.
+          # @raw
+          # Each is pulled for its managed cluster autoscaler, which AKS runs
+          # in its control plane where nothing can scrape it: pods it cannot
+          # place, whether it considers the cluster safe to scale, whether
+          # scale-down is cooling down, and nodes it would remove. Its node
+          # pools' scale sets, found through the cluster's node resource group,
+          # are pulled for Azure's own view of whether each node VM is up. The
+          # identity needs Monitoring Reader on the cluster and on its node
+          # resource group.
+          clusters: []
 
     gateway:
       # -- Denylist of metrics that are excluded from being exported

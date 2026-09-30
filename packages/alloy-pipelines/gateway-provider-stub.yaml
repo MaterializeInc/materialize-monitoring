@@ -39,6 +39,16 @@ blocks:
         scrape_timeout: 2m
 
   - custom:
+      component: provider_cloudwatch_eks
+      label: provider
+      attributes:
+        clusters: ["example-eks"]
+        region: us-east-1
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
       component: provider_gcp_cloudsql
       label: provider
       attributes:
@@ -61,6 +71,17 @@ blocks:
         scrape_timeout: 2m
 
   - custom:
+      component: provider_gcp_compute_quota
+      label: provider
+      attributes:
+        project_id: example-project
+        regions: ["us-east1"]
+        request_interval: 10m
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
       component: provider_azure_postgres
       label: provider
       attributes:
@@ -77,6 +98,17 @@ blocks:
       attributes:
         subscription_id: 00000000-0000-0000-0000-000000000000
         storage_accounts: ["examplestorage"]
+        cloud_environment: azurecloud
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_azure_aks
+      label: provider
+      attributes:
+        subscription_id: 00000000-0000-0000-0000-000000000000
+        clusters: ["example-aks"]
         cloud_environment: azurecloud
         forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
         scrape_interval: 5m
