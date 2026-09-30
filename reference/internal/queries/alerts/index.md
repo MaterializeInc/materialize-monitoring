@@ -28,7 +28,7 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 
 | Stage | Where | What happens |
 |---|---|---|
-| Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose |
+| Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose; the file's `alertLabels` supply its `audience` |
 | Validate | `bin/mz-monitoring-check check-queries` (pre-commit) | Schema validation, including every `%%{…}` placeholder name |
 | Render | `make rules` (`mz-monitoring-build gen-rules`) | Renders through the alerting context, infers capabilities, and fails on any problem |
 | Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | One `groups:` file per registry file, and `_index.yaml` |
@@ -36,6 +36,30 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 | Check | `make rules-check` | `promtool check rules` on several rendered scenarios, then `promtool test rules` |
 
 The generated files are committed, and CI fails when they are stale.
+
+## Where an alert goes
+
+An alert belongs in the file for the people who act on it.
+
+| File | `audience` | Holds |
+|---|---|---|
+| `materialize-alerts.yaml` | `platform` | The Materialize deployment: environmentd, the system clusters, clusterd crashes, persist, auth and the console |
+| `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+| `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
+
+Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
+`gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
+A route matches on the label to send the two to different people.
+
+Who acts on a signal can depend on the cluster it comes from.
+A user cluster falling behind is the workload owner's to fix, and a system cluster falling behind is the platform's.
+Such a signal MUST be two alerts, one in each file, each scoped by cluster id.
+
+| Series | Scoped by |
+|---|---|
+| environmentd's per-collection series, such as `mz_dataflow_wallclock_lag_seconds` | `instance_id=~"u.*"` or `"s.*"` |
+| clusterd's own series, such as `mz_metrics_resource_usage` | `cluster_environmentd_materialize_cloud_cluster_id=~"u.*"` or `"s.*"` |
+| kube-state-metrics and cAdvisor series | the replica pod name, `pod=~".*-cluster-u[0-9]+-replica-.*"`, lifted into the cluster-id label with `label_replace` where the alert names the cluster |
 
 ## The alerting context
 
@@ -72,7 +96,9 @@ An alert that needs a window MUST write it out, since the window is a decision a
 
 The `mzEnvironmentName` function attaches `materialize_cloud_organization_name` to a series by joining on the given label, normally `namespace`, against the Materialize scrape targets.
 A namespace holding two environments stays unlabelled instead of failing the evaluation, and a series with no match passes through unchanged.
-`mzClusterName` and `mzObjectName` are not available to rules, because their catalog joins are not safe across several environments.
+The `mzClusterName` function attaches `cluster_name` from `mz_cluster_info`, joining on the namespace and the cluster-id label it is given.
+A cluster id is unique only within one environment, so the dashboard join, which keys on the id alone, is not used here.
+`mzObjectName` is not available to rules, because nothing yet scopes its catalog join to one environment.
 
 ## Capabilities
 
@@ -106,6 +132,13 @@ An alert MUST NOT enter the default set until its expression has been evaluated 
 It SHOULD also have a unit test (see below), and it SHOULD have evidence that the condition matters, such as incident history or a Cloud counterpart that pages.
 Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and, after 1.0, a deprecation cycle.
 
+An alert whose normal duration depends on the workload SHOULD carry that duration in `for`, and its notes SHOULD say so.
+`rules.overrides` changes a rule's `for` and labels per deployment, and never its expression.
+Hydration is the standing example: most clusters hydrate in minutes, and a large one can take hours with nothing wrong.
+
+An alert that fires on workloads behind by design MUST stay out of the default set, however useful it is where it applies.
+A materialized view on a refresh schedule lags by up to its interval between refreshes, so an absolute freshness threshold on every user cluster pages on those clusters permanently.
+
 ## What `gen-rules` rejects
 
 `gen-rules` reports every problem it finds and writes nothing until there are none.
@@ -114,6 +147,7 @@ Entering the default set commits the alert's name; renaming it afterwards owes a
 |---|---|
 | The name is kebab-case, and the group snake_case | Names become a committed surface |
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
+| `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
 | The query exists and has exactly one PromQL expression | A rule is one expression; LogQL rules are not rendered yet |
 | The expression renders and parses | A group with one bad rule is dropped whole |

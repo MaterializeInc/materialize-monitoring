@@ -5977,6 +5977,19 @@ The defaults cover the Kubernetes add-ons common on EKS and GKE and this chart's
 A cluster with other add-ons SHOULD list them, since a workload in no tier is one the tiered rules never grade.
 Each entry is a regex matched against the whole container or Deployment name.
 
+Every bundled rule carries an `audience` label saying who acts on it.
+
+| `audience` | Covers |
+|---|---|
+| `platform` | The Materialize deployment, its system clusters, and the Kubernetes platform under it |
+| `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+
+An [extra route](../channels/#extra-routes) on `audience="workload"` sends the second group to the people who own the clusters.
+
+`rules.overrides` changes an installed rule's `for` and labels, and never its expression.
+A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.
+An override names an alert, and the render fails on an alert that does not exist.
+
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
 
 ## Two evaluators, one notifier
@@ -6065,6 +6078,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `rules.enabled` | `true` | Installs the bundled rules that apply |
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
+| `rules.overrides` | `{}` | Per-alert `for` and labels |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
@@ -6518,7 +6532,7 @@ alerting:
             api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/data-team-slack-url
   routes:
     extra:
-      - matchers: ['component="storage"']
+      - matchers: ['audience="workload"']
         receiver: data-team
         continue: true
 ```
@@ -6531,7 +6545,9 @@ alerting:
 Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
 A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
 
-Storage alerts reach `data-team`, and, because the route continues, also whichever receivers the preset names for their severity.
+Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it.
+Here the workload alerts, such as a user cluster falling behind or running out of memory, reach `data-team`.
+Because the route continues, they also reach whichever receivers the preset names for their severity.
 
 This is where deployment-specific routing lives, including routing that names a particular customer or environment.
 It belongs in that deployment's own values, reviewed by the people who run it.
@@ -10130,7 +10146,7 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 
 | Stage | Where | What happens |
 |---|---|---|
-| Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose |
+| Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose; the file's `alertLabels` supply its `audience` |
 | Validate | `bin/mz-monitoring-check check-queries` (pre-commit) | Schema validation, including every `%%{…}` placeholder name |
 | Render | `make rules` (`mz-monitoring-build gen-rules`) | Renders through the alerting context, infers capabilities, and fails on any problem |
 | Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | One `groups:` file per registry file, and `_index.yaml` |
@@ -10138,6 +10154,30 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 | Check | `make rules-check` | `promtool check rules` on several rendered scenarios, then `promtool test rules` |
 
 The generated files are committed, and CI fails when they are stale.
+
+## Where an alert goes
+
+An alert belongs in the file for the people who act on it.
+
+| File | `audience` | Holds |
+|---|---|---|
+| `materialize-alerts.yaml` | `platform` | The Materialize deployment: environmentd, the system clusters, clusterd crashes, persist, auth and the console |
+| `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+| `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
+
+Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
+`gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
+A route matches on the label to send the two to different people.
+
+Who acts on a signal can depend on the cluster it comes from.
+A user cluster falling behind is the workload owner's to fix, and a system cluster falling behind is the platform's.
+Such a signal MUST be two alerts, one in each file, each scoped by cluster id.
+
+| Series | Scoped by |
+|---|---|
+| environmentd's per-collection series, such as `mz_dataflow_wallclock_lag_seconds` | `instance_id=~"u.*"` or `"s.*"` |
+| clusterd's own series, such as `mz_metrics_resource_usage` | `cluster_environmentd_materialize_cloud_cluster_id=~"u.*"` or `"s.*"` |
+| kube-state-metrics and cAdvisor series | the replica pod name, `pod=~".*-cluster-u[0-9]+-replica-.*"`, lifted into the cluster-id label with `label_replace` where the alert names the cluster |
 
 ## The alerting context
 
@@ -10174,7 +10214,9 @@ An alert that needs a window MUST write it out, since the window is a decision a
 
 The `mzEnvironmentName` function attaches `materialize_cloud_organization_name` to a series by joining on the given label, normally `namespace`, against the Materialize scrape targets.
 A namespace holding two environments stays unlabelled instead of failing the evaluation, and a series with no match passes through unchanged.
-`mzClusterName` and `mzObjectName` are not available to rules, because their catalog joins are not safe across several environments.
+The `mzClusterName` function attaches `cluster_name` from `mz_cluster_info`, joining on the namespace and the cluster-id label it is given.
+A cluster id is unique only within one environment, so the dashboard join, which keys on the id alone, is not used here.
+`mzObjectName` is not available to rules, because nothing yet scopes its catalog join to one environment.
 
 ## Capabilities
 
@@ -10208,6 +10250,13 @@ An alert MUST NOT enter the default set until its expression has been evaluated 
 It SHOULD also have a unit test (see below), and it SHOULD have evidence that the condition matters, such as incident history or a Cloud counterpart that pages.
 Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and, after 1.0, a deprecation cycle.
 
+An alert whose normal duration depends on the workload SHOULD carry that duration in `for`, and its notes SHOULD say so.
+`rules.overrides` changes a rule's `for` and labels per deployment, and never its expression.
+Hydration is the standing example: most clusters hydrate in minutes, and a large one can take hours with nothing wrong.
+
+An alert that fires on workloads behind by design MUST stay out of the default set, however useful it is where it applies.
+A materialized view on a refresh schedule lags by up to its interval between refreshes, so an absolute freshness threshold on every user cluster pages on those clusters permanently.
+
 ## What `gen-rules` rejects
 
 `gen-rules` reports every problem it finds and writes nothing until there are none.
@@ -10216,6 +10265,7 @@ Entering the default set commits the alert's name; renaming it afterwards owes a
 |---|---|
 | The name is kebab-case, and the group snake_case | Names become a committed surface |
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
+| `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
 | The query exists and has exactly one PromQL expression | A rule is one expression; LogQL rules are not rendered yet |
 | The expression renders and parses | A group with one bad rule is dropped whole |
@@ -13668,6 +13718,35 @@ capabilities are missing is still not installed, and the render warns.
 []</pre>
 </td>
       <td class="helm-value-desc">Alert names never to install, even when they apply and are in the default set.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.overrides</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{}</pre>
+</td>
+      <td class="helm-value-desc">Per-alert changes to a bundled rule: how long its condition must hold (`for`), and labels to add or replace.
+
+An override never changes a rule's expression. The usual reason for one is
+a workload whose normal behaviour a default does not fit: a large cluster
+can take hours to hydrate when nothing is wrong.
+
+```yaml
+rules:
+  overrides:
+    cluster-hydration-stuck:
+      for: 6h
+    cluster-cpu-high:
+      labels:
+        severity: notice
+        team: analytics
+```
+
+`severity` must stay one of `critical`, `warning` and `notice`, and
+`audience` one of `platform` and `workload`, so the routes still match. An
+unknown alert name fails the render, and an override for a rule that is
+not installed renders with a warning.
 </td>
     </tr>
     <tr>
@@ -20503,6 +20582,17 @@ A `datadogQuery` is laid out like the `promQL` beside it, so the two read side b
 - **The threshold follows the closing parenthesis**: `) > 80`.
 - **A line past 100 characters wraps before `by {…}`**, indented two more spaces.
 
+## The monitor window
+
+A monitor's window usually stands for the alert's `for:`, so its time aggregator has to demand the condition for the whole window.
+
+| The condition | Aggregator | Why |
+|---|---|---|
+| Must stay above a threshold (`>`, `>=`) | `min(last_…)` | `max` would fire on one sample and stay true after recovery |
+| Must stay below a threshold (`<`, `<=`) | `max(last_…)` | The mirror case |
+| Is an event in a window, such as a restart in the last 10m | `max` or `sum` | The window is the event's, not a duration the condition holds for |
+| Reads the PromQL's own range, such as `avg_over_time(…[15m])` | That range's aggregator | The window is the range, and `for:` is left to the monitor's evaluation delay |
+
 ## How metrics reach Datadog
 
 The gateway scrapes Prometheus, bridges to OTLP through `otelcol.receiver.prometheus`, and exports through the Datadog exporter.
@@ -23227,23 +23317,24 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Item | Milestone | Status |
 |---|---|---|
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
-| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry — `packages/queries/materialize-alerts.yaml` and `infra-alerts.yaml` — and now **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. **Eighteen are in the default set**, each evaluated against both self-managed test installs without firing falsely, and one of them, `clusterd-error-kill`, replayed against a real crash loop it had missed while it matched only Cloud's namespaces. The other 71 install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
+| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Twenty-eight are in the default set**, each evaluated against both self-managed test installs without firing falsely. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL only. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
-| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | ⬜ (the evaluators are wired; the rules they would evaluate are not written) |
+| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. No LogQL rule and no recording rule is written yet) |
 | Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
 | Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ✅ (twenty capabilities, **mostly inferred** from the metrics a rule reads through an ordered table, with `requires` for what names cannot show. Eight are derived from what the chart deploys; twelve are listed in `rules.capabilities`. A rule installs only where all of its capabilities are present, and a metric the table does not claim fails the build — the design doc's applicability check, with something to check against) |
 | Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | 🔨 (every rule carries `runbook_url`, pointing at its anchored entry on Common Alerts; the runbooks themselves are not written) |
 | Alert and recording-rule names added to the committed surface | OO-M2 | ✅ (`pre-rendered/rules/prometheus/_index.yaml` joins the committed-surface table and CODEOWNERS, and the `code-review` skill treats a default-set name as committed) |
-| Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | 🔨 (`rules.selected`, `rules.disabled` and `rules.capabilities` exist, as do extra receivers and routes under `alerting`; `rules.extra` and `rules.overrides` do not) |
-| Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | 🔨 (the scrape is on; the switch and the meta-alerts are rules, and wait for the rule set) |
+| Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | 🔨 (`rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` exist, as do extra receivers and routes under `alerting`. An override sets one rule's `for` and labels, never its expression. `rules.extra` does not exist) |
+| Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | 🔨 (the scrape is on; the switch and the meta-alerts are rules, and are not written yet. `environmentd-not-scraped` covers one silence, a Materialize that has disappeared from the scrape) |
 | Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ✅ (two gossiping replicas by default, PDB of one, hard zone and soft host spread, read-only root filesystem, no ServiceAccount token, requests and a memory limit, health-endpoint probes, `cluster.label`. Both rulers now address the headless Service by DNS discovery, because gossip replicates silences and the notification log but **not alerts**, and a replica a ruler never reached cannot notify when its peer is lost. The storage question the ticket deferred is settled: the 4Gi volume stays, because gossip covers losing one replica and only the volume covers losing both, and `volumeClaimTemplates` are immutable so removing it would fail every upgrade. Verified on a live GKE install, including the upgrade landing the replicas in separate zones. Resource names are pinned to `alertmanager`, so that upgrade replaces the StatefulSet rather than scaling it. See [Alert Architecture](../../../alerting/architecture/)) |
 
 Alertmanager is bundled, highly available, and routes whatever reaches it, and a default set of bundled rules now reaches it.
-What remains is breadth: most of the ported rules await triage, and the conditions incident history argues for most — freshness, source and sink health, the metadata database, correctness logs — have no rule yet.
+What remains is breadth: most of the ported rules await triage.
+Freshness and source rules exist but are opt-in until a workload can say which of its clusters matter, and sink health, the metadata database and correctness logs have no rule yet.
 
 **The evaluators are now connected.**
 A default install runs the Thanos ruler stateless against Thanos Query, runs the Loki ruler against Loki, and points both at the bundled Alertmanager.
@@ -28100,7 +28191,7 @@ Work in this repository, roughly in dependency order.
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | 🔨 Every rule carries `runbook_url`, pointing for now at its entry on Common Alerts. The runbooks are not written |
 | Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/prometheus/_index.yaml` is in the committed-surface table and CODEOWNERS |
-| `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled` and `rules.capabilities` are done; `extra` and `overrides` are not |
+| `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` are done; `extra` is not. An override sets one rule's `for` and labels, never its expression |
 | `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
 | Log-alert registry files and the LogQL render path | The class that has never been code |
