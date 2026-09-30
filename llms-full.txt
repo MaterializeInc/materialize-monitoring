@@ -3267,7 +3267,8 @@ url: https://materializeinc.github.io/materialize-monitoring/metrics/collecting/
 
 # Cloud Provider Metrics
 
-The gateway can pull what a cloud provider's monitoring API publishes about the metadata database and the buckets a Materialize deployment depends on.
+The gateway can pull what a cloud provider's monitoring API publishes about the metadata database and the buckets a Materialize deployment depends on,
+and about whether the provider can supply the nodes its cluster asks for.
 The result is written beside every other metric, with the same retention, the same PromQL, and the same destinations.
 A provider series is therefore joinable with `mz_persist_*` in a single expression.
 A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
@@ -3277,6 +3278,8 @@ The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws them, with
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
+For the cluster's nodes it adds the provider's own view: host and instance health, node groups that cannot reach their desired size, compute quota,
+and on AKS the managed cluster autoscaler, which runs where nothing in the cluster can scrape it.
 The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
@@ -3289,7 +3292,10 @@ those follow, and a metric removed leaves a panel empty. The numbers on this pag
 GKE and EKS test installs, and on 2026-09-29 against the AKS one, with Alloy v1.20.0 locally and
 v1.19.2 in-cluster, and are the ones to re-measure if the exporters are bumped. The Azure call counts
 are read from the exporter's code (Alloy v1.19.2, azure-metrics-exporter 5092ac0), since it exports
-no counter of its own.
+no counter of its own. The EKS, Compute Engine quota and AKS pulls were measured on 2026-09-30 by
+running the rendered components under a local Alloy v1.20.0 against the same three installs' accounts,
+not in-cluster: the test installs' gateway identities hold none of the grants they need.
+No quota refusal has been observed, so `exceeded` is documented from Cloud Monitoring's descriptors.
 -->
 
 ## What is pulled
@@ -3303,6 +3309,12 @@ no counter of its own.
 | `azure` | PostgreSQL Flexible Server | `cpu_percent`, `cpu_credits_remaining`, `memory_percent`, `storage_percent`, `active_connections`, `connections_failed`, `disk_queue_depth`, `disk_iops_consumed_percentage`, `disk_bandwidth_consumed_percentage`, `maximum_used_transactionIDs`, `is_db_alive` | One minute, summarised per five-minute bucket |
 | `azure` | Blob Storage account | `BlobCapacity`, `BlobCount` | Hourly, refreshed about once a day |
 | `azure` | Blob Storage account | `Availability`, `SuccessServerLatency`, `SuccessE2ELatency` | One minute, summarised per five-minute bucket |
+| `cloudwatch` | EKS cluster's nodes | `StatusCheckFailed_System`, `StatusCheckFailed_Instance`, `StatusCheckFailed_AttachedEBS` per node | One minute, summarised per five-minute period |
+| `cloudwatch` | EKS cluster's managed node groups | `GroupDesiredCapacity`, `GroupInServiceInstances`, `GroupPendingInstances`, `GroupMaxSize` | One minute, summarised per five-minute period |
+| `cloudwatch` | The region, when any EKS cluster is listed | On-Demand vCPUs in use in the standard families, account-wide (`AWS/Usage` `ResourceCount`) | One minute, summarised per five-minute period |
+| `gcp` | Compute Engine region and its zones | `quota/cpus_per_vm_family` and `quota/local_ssd_total_storage_per_vm_family`: usage, limit and refusals | A few times a day; refusals as they happen |
+| `azure` | AKS cluster | `cluster_autoscaler_unschedulable_pods_count`, `cluster_autoscaler_cluster_safe_to_autoscale`, `cluster_autoscaler_scale_down_in_cooldown`, `cluster_autoscaler_unneeded_nodes_count` | One minute, summarised per five-minute bucket |
+| `azure` | AKS cluster's node scale sets | `VmAvailabilityMetric` per node VM | One minute, summarised per five-minute bucket |
 
 The metric sets are fixed, and values only name the resources.
 Each pull is a custom component in the gateway's `gateway-provider` pipeline, so changing what is pulled is a change to that pipeline.
@@ -3314,6 +3326,35 @@ The Flexible Server pull therefore asks for all four and keeps the one or two ea
 Those are the statistics the RDS pull asks CloudWatch for: average and maximum CPU, minimum credits, maximum connections, and so on.
 That is 11 series per server, and 12 on a Burstable tier, which also publishes `cpu_credits_remaining`.
 
+### The nodes and the quota behind them
+
+A node that cannot be had looks the same from inside the cluster whatever the reason: pods stay pending, and the autoscaler reports a failed launch.
+These pulls say which reason it is, as far as the provider publishes one.
+
+| Question | EKS | GKE | AKS |
+|---|---|---|---|
+| Is the host under a node failing | `StatusCheckFailed_System` | — | `VmAvailabilityMetric`, with `Context` saying whether the platform took it down |
+| Is a node group short of its desired size | Desired against in-service, for managed node groups | — | Unschedulable pods while the autoscaler is allowed to scale |
+| Is quota the limit | vCPUs in use, account-wide; the limit is not in CloudWatch | CPUs and local SSD per family, against the limit, and each refusal | — |
+
+EKS nodes are the one resource found by tag rather than named, because Karpenter and the node groups replace them.
+EKS and Karpenter tag every node they launch with `aws:eks:cluster-name`, and each managed node group's Auto Scaling group with `eks:cluster-name`,
+and the pull matches those tags to the listed cluster names exactly.
+Karpenter's node pools have no group of their own, so the group metrics cover only managed node groups; Karpenter's own metrics cover the rest.
+The vCPU usage counts every On-Demand instance in the account and region, not only the cluster's, because that is what the quota counts.
+Its limit is the Service Quotas console's `L-1216C47A`.
+
+The Compute Engine quotas are per machine family: C4 and C4A each have their own, and the regional `CPUS` quota covers only older families.
+A family appears only once something in the project uses it, so a project running only C4 and C4A has a handful of series per region.
+Zonal limits read 2^63 − 1 where no zonal quota applies.
+A region is matched with its zones and nothing else, so `europe-west1` does not also pull `europe-west10`.
+
+AKS runs its cluster autoscaler inside the managed control plane.
+Its metrics reach no scrape, and Azure Monitor publishes these four instead.
+Each keeps the aggregation that shows the worst of its five minutes:
+the most pods waiting and the most unneeded nodes, any cooldown, and any moment it was unsafe to scale.
+The node pools are scale sets in the cluster's node resource group, which the pull finds through the cluster.
+
 ### Metric names
 
 | Provider | Name shape | Example | Resource label |
@@ -3321,6 +3362,21 @@ That is 11 series per server, and 12 on a Burstable tier, which also publishes `
 | `cloudwatch` | `aws_<service>_<metric>_<statistic>` | `aws_rds_free_storage_space_minimum` | `dimension_DBInstanceIdentifier`, `dimension_BucketName` |
 | `gcp` | `stackdriver_<resource type>_<metric type>` | `stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization` | `database_id` (`project:instance`), `bucket_name` |
 | `azure` | `azure_<resource type>_<metric>_<aggregation>_<unit>`, lowercased | `azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent` | `resourceName`, and `resourceID` lowercased |
+
+The node and quota pulls follow the same shapes.
+
+| Provider | Families | Resource labels |
+|---|---|---|
+| `cloudwatch` | `aws_ec2_status_check_failed_{system,instance,attached_ebs}_maximum` | `dimension_InstanceId`, plus `tag_karpenter_sh_nodepool` or `tag_eks_nodegroup_name` |
+| `cloudwatch` | `aws_autoscaling_group_{desired_capacity,in_service_instances,pending_instances,max_size}_average` | `dimension_AutoScalingGroupName`, `tag_eks_nodegroup_name` |
+| `cloudwatch` | `aws_usage_resource_count_maximum` | `dimension_Class="Standard/OnDemand"`, `region` |
+| `gcp` | `stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_{cpus,local_ssd_total_storage}_per_vm_family_{usage,limit,exceeded}` | `location` (region or zone), `vm_family`, `limit_name` |
+| `azure` | `azure_microsoft_containerservice_managedclusters_cluster_autoscaler_*` | `resourceName` |
+| `azure` | `azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count` | `dimensionVmname` (`<scale set>_<index>`), `dimensionContext`, `resourceName` (the scale set) |
+
+A node joins to `kube_node_info` on its provider ID: the instance ID on EKS, and the scale set and index on AKS.
+The discovery pull also writes an `aws_<service>_info` series carrying every tag on the resource, which the pull drops, since tags are free text;
+the two tags it keeps are set by EKS and Karpenter.
 
 CloudWatch series also carry `region`, `account_id` and `account_alias`, and `name`, which is `rds` or `s3` on every series.
 Join on the `dimension_*` label.
@@ -3331,9 +3387,10 @@ The Blob Storage families are named for the blob service, as `azure_microsoft_st
 No resource tag is copied onto a series; the exporter copies `owner` by default, and the pull turns that off.
 
 Every provider series carries `job="integrations/cloudwatch"`, `job="integrations/gcp"` or `job="integrations/azure"`.
-`instance` is the resource on CloudWatch series, since each resource has its own pull.
-On Cloud Monitoring series it is `cloudsql` or `gcs`, since one pull covers every listed resource of a service.
-Azure series are the same, with `postgres`, `blob_capacity` or `blob_requests`.
+`instance` is the resource on RDS and S3 series, since each resource has its own pull, and `eks` on the EKS pull, which covers every listed cluster.
+On Cloud Monitoring series it is `cloudsql`, `gcs`, `compute_quota` or `compute_quota_exceeded`,
+since one pull covers every listed resource of a service.
+Azure series are the same, with `postgres`, `blob_capacity`, `blob_requests`, `aks_autoscaler` or `aks_nodes`.
 
 ## Configuring it
 
@@ -3351,6 +3408,8 @@ pipeline:
           instances: [mz-prod-db]
         s3:
           buckets: [mz-prod-storage-a1b2]
+        eks:
+          clusters: [mz-prod-eks]
       gcp:
         enabled: true
         projectId: my-project
@@ -3358,6 +3417,8 @@ pipeline:
           instances: [mz-prod-pg]
         gcs:
           buckets: [mz-prod-storage]
+        compute:
+          regions: [us-east1]
       azure:
         enabled: true
         subscriptionId: 00000000-0000-0000-0000-000000000000
@@ -3365,11 +3426,16 @@ pipeline:
           servers: [mz-prod-pg]
         blob:
           storageAccounts: [mzprodstorage]
+        aks:
+          clusters: [mz-prod-aks]
 ```
 
 A Cloud SQL entry is the instance name, not the `project:region:instance` connection name.
 A Flexible Server entry is the server name, not its FQDN, and a storage account entry is the account name, not its endpoint.
 Both kinds of Azure name are unique across Azure, so no resource group is needed.
+An EKS or AKS entry is the cluster's name, not its ARN or resource ID.
+AKS names are unique only within a resource group, so two clusters of one name in the subscription are both pulled, and told apart by `resourceGroup`.
+A Compute Engine entry is a region, such as `us-east1`; its zones are included, and a zone is refused.
 The chart refuses anything else at render, since the names sit inside the Resource Graph query's filter.
 `subscriptionId` is the subscription's GUID.
 On Azure Government or Azure China, set `cloudEnvironment` to `azureusgovernmentcloud` or `azurechinacloud`.
@@ -3386,9 +3452,9 @@ The pull runs as the gateway pod's own cloud identity, bound through `alloy-gate
 
 | Provider | Identity | Grant |
 |---|---|---|
-| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning |
-| `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project |
-| `azure` | Workload identity (`azure.workload.identity/client-id`, plus a pod label), or a service principal as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named server and storage account |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning. EKS clusters also need `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `tag:GetResources` and `autoscaling:DescribeAutoScalingGroups` |
+| `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project, which also reads its quota |
+| `azure` | Workload identity (`azure.workload.identity/client-id`, plus a pod label), or a service principal as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named server and storage account, and on each named AKS cluster and its node resource group |
 
 Azure workload identity needs two things on the gateway, not one.
 The annotation names the identity.
@@ -3426,9 +3492,16 @@ Provider data is minutes old when it arrives, and that decides how it can be use
 | GCS | Over ten minutes | Cloud Monitoring's |
 | Azure Flexible Server, Blob requests | About a minute | The scrape's |
 | Azure Blob capacity | Up to a day | The scrape's |
+| CloudWatch EC2, Auto Scaling, vCPU usage | A few minutes | The scrape's |
+| Compute Engine quota usage and limit | Up to a day; measured at three points a day | The scrape's |
+| Compute Engine quota refusals | A few minutes | Cloud Monitoring's |
+| Azure AKS autoscaler and node VMs | About a minute | The scrape's |
 
 CloudWatch and Azure samples are stamped at scrape time.
 Stamping a daily S3 datapoint with its own time would put it a day in the past, and the bundled Thanos Receive, which accepts no out-of-order samples, refuses samples that old.
+Compute Engine quota usage and limits are stamped at scrape time for the same reason,
+since each pull reads back a day to find a point that may be hours old.
+A usage point therefore reads as current until the next one lands, and a change can take hours to show.
 
 Cloud Monitoring samples keep their own timestamps.
 An instant query at "now" looks back five minutes by default and finds no GCS sample at all.
@@ -3452,6 +3525,9 @@ The provider bills each pull, and the bill depends on configuration, not on how 
 | `cloudwatch` | 12 `GetMetricStatistics` calls per RDS instance and 2 per bucket | 30 calls for two instances and three buckets, in-cluster |
 | `gcp` | One descriptor listing per metric prefix, and one time-series listing per matching metric type | 19 calls for two instances and two buckets, counted by `stackdriver_monitoring_api_calls_total` |
 | `azure` | One Resource Graph query per service, then one metrics call per resource, since each set is under Azure's twenty-per-call limit. Blob Storage is two pulls, capacity and requests | 9 calls for two servers and two accounts, counted from the exporter's code, since it exports no call counter |
+| `cloudwatch` EKS | One `tag:GetResources` and one `DescribeAutoScalingGroups`, one `ListMetrics` per metric, `GetMetricData` billed per metric requested, and one `GetMetricStatistics` for vCPU usage | 26 metrics requested for eight nodes and one node group, counted by `yace_cloudwatch_getmetricdata_metrics_requested_total` |
+| `gcp` quota | Four descriptor listings and four time-series listings for usage and limit, and two of each for refusals | 12 calls, counted by `stackdriver_monitoring_api_calls_total` |
+| `azure` AKS | Two Resource Graph queries, then one metrics call per cluster and one per node scale set | 5 calls for one cluster with two node pools |
 
 `scrapeInterval` is the main lever, and defaults to five minutes.
 Rates change, so current provider pricing is the reference for what a call costs.
@@ -3486,7 +3562,13 @@ The pull does not read those types back, so it does not loop.
 | S3 request metrics | Opt-in per bucket on the AWS side, and billed as custom metrics |
 | Azure Blob `Transactions` | The window each pull reads ends at the scrape, so its newest five-minute bucket is a minute or so short, and a count read from it under-counts. `Availability` already falls with throttling and server errors, and the clients report the same requests exactly |
 | Azure resource tags | The exporter copies the `owner` tag onto every series by default. Tags are free text, and the pull copies none |
-| Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each |
+| Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each. EKS nodes are the exception, found by the cluster tag EKS and Karpenter set, because they are replaced too often to name |
+| The EC2 vCPU quota's limit | CloudWatch publishes the usage but not the limit, which only CloudWatch metric math and the Service Quotas API return, and the exporter supports neither |
+| Capacity refusals | No provider publishes a metric for a launch it could not fulfil, such as `InsufficientInstanceCapacity`, `ZONE_RESOURCE_POOL_EXHAUSTED` or `AllocationFailed`. Karpenter and the cluster autoscaler report them |
+| Azure compute quota | Not an Azure Monitor metric; it is only in the Compute usage API |
+| GKE node pool instance groups | `instance_group/size` has no target size beside it, so it says no more than the node count, and the group names are truncated beyond reliable matching |
+| The GKE cluster autoscaler | GKE publishes no metrics for it, only its visibility log in Cloud Logging and Kubernetes events |
+| AKS `kube_*` and `node_*` platform metrics | kube-state-metrics and node-exporter already report the same, at full resolution |
 
 ## Checking it works
 
@@ -3508,12 +3590,17 @@ A resource the identity cannot read is never found at all.
 | Is CloudWatch returning data, per instance | `count by (dimension_DBInstanceIdentifier) (aws_rds_cpuutilization_average)` |
 | Is Cloud Monitoring returning data, per instance | `count by (database_id) (last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m]))` |
 | Is Azure returning data, per server | `count by (resourceName) (azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count)` |
+| Are EKS nodes being found | `count(aws_ec2_status_check_failed_system_maximum)`, against the cluster's node count |
+| Is Compute Engine quota arriving | `count by (location) (stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_usage)` |
+| Are AKS node VMs being found | `count by (resourceName) (azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count)` |
 
 CloudWatch publishes no equivalent of the GCP error series.
 Its `yace_cloudwatch_getmetricstatistics_requests_total` counts billed calls, but it is one counter per gateway replica, and every CloudWatch target a replica owns reports it.
 Measured with five targets across two replicas, the five series read 12, 14, 26, 28 and 2: running totals of 28 and 2 calls, not 82.
 It cannot be summed across `instance`, so the cost is best read from the configuration: 12 calls per RDS instance and 2 per bucket, each interval.
 A CloudWatch pull that fails for want of an identity or a grant is visible only as missing series and as errors in the gateway's logs, such as `Couldn't get account Id`.
+An EKS pull missing `tag:GetResources` finds no nodes, and one missing `autoscaling:DescribeAutoScalingGroups` finds no node groups,
+while the vCPU usage still arrives.
 
 The Collection tab of the Infrastructure Cloud Provider dashboard (`infra-cloud`) draws these checks for every provider it finds.
 
@@ -12398,7 +12485,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"azure":{"blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -12518,6 +12605,26 @@ never zero.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.eks<wbr>.clusters</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">EKS cluster names whose nodes to watch.
+Each cluster's nodes are found by the `aws:eks:cluster-name` tag
+EKS and Karpenter put on them, since the nodes themselves come and
+go, and pulled for AWS's status checks: the host, the instance and
+its attached EBS volumes. Its managed node groups are pulled for
+desired, in-service and pending instances against their maximum.
+Listing any cluster also pulls the region's On-Demand vCPU usage,
+account-wide, which is what the vCPU quota counts; CloudWatch does
+not publish the quota itself. Needs `cloudwatch:GetMetricData`,
+`cloudwatch:ListMetrics`, `tag:GetResources` and
+`autoscaling:DescribeAutoScalingGroups` beside the grant the other
+services need.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
@@ -12585,6 +12692,21 @@ per-minute DELTA, and the exporter counts only the newest point of
 each pull, so at a five-minute interval they read about a fifth of
 the truth. The Loki, Thanos and persist clients report the same
 requests exactly.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.compute<wbr>.regions</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Compute Engine regions whose quota to watch, such as `us-east1` — the regions the GKE node pools run in.
+Each region and its zones are pulled for the CPUs and local SSD
+each machine family uses against its quota, and for every request
+a quota refused. A node pool that cannot grow for quota looks
+exactly like one that cannot grow for capacity until this says
+which. Usage and limit are published a few times a day, so each
+pull reaches back a day.
 </td>
     </tr>
     <tr>
@@ -12658,6 +12780,23 @@ latency, at the service and end to end. Transaction counts are
 deliberately not pulled: the exporter reads the newest five-minute
 bucket as the scrape ends it, which is a minute or so short. The
 Loki, Thanos and persist clients report the same requests exactly.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.aks<wbr>.clusters</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">AKS cluster names to watch — the name, not the resource ID.
+Each is pulled for its managed cluster autoscaler, which AKS runs
+in its control plane where nothing can scrape it: pods it cannot
+place, whether it considers the cluster safe to scale, whether
+scale-down is cooling down, and nodes it would remove. Its node
+pools' scale sets, found through the cluster's node resource group,
+are pulled for Azure's own view of whether each node VM is up. The
+identity needs Monitoring Reader on the cluster and on its node
+resource group.
 </td>
     </tr>
     <tr>
@@ -23554,7 +23693,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M2 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
 | **Meta-monitoring** — every component of this stack | **Loki and Alloy shipped; Grafana, Thanos and Alertmanager outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (the Thanos Ruler now runs, but no rule set records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Alloy** is `infra-alloy` (`mz-mon-infra-alloy`, "Alloy Meta Monitoring"), the folder's second occupant, with **Overview**, **Log Pipeline**, **Metric Pipeline**, **Ingest**, **Components**, **Resources**, **Events** and **Logs** tabs, 90 panels over 86 queries in `packages/queries/infra-alloy.yaml`. It absorbs the six panel-less `infra.loki.pipeline.*` placeholders, which now have panels behind them. Its inversion is stronger than Loki's: the gateway scrapes Alloy's metrics and forwards Alloy's logs, so a gateway outage empties the dashboard and nothing inside the stack can say so. Counts that should be zero are built as `sum(A) or 0 * sum(B)` so zero and absent read differently. **Ingest** reads the gateway's three push listeners (log push, remote write, OTLP) from three vantage points, because no one of them sees everything: the gateway's own request counters by status, the remote-write senders' own queues (found by the `url` they write to, which is the only view that sees a sender that cannot connect), and the gateway's log for refused TLS handshakes, which fail before any request exists. **Events** matches Kubernetes events on the involved object's name, which reaches the DaemonSet, Deployment, ReplicaSets, autoscaler and pods alike, and the pre-install `validate-agent` / `validate-gateway` Jobs, whose failure stops an upgrade. The existing internal Alloy dashboards, mostly the upstream mixin, were read panel by panel and not ported: they compute success rates by summing `_bucket` series, scope scraped targets' `up` by the collector's own `job`, and read memory as RSS, which on a reference install put an agent at 95% of its limit while its working set was at 29%. Resources measures Go memory against `GOMEMLIMIT` instead of heap alone, which read the reference gateways at 93% rather than 62–71%. In passing, `infra-loki`'s level picker discovered from a variable that dashboard never defined, and offered nothing but "All"; it now discovers from Loki's own streams. Verified against a live install: all 111 rendered queries execute, 101 return data, and the 10 that do not are healthy-empty tables and feeds or unconfigured cases (no OTLP senders, no warning events). Every panel whose series Alloy creates only on failure draws a zero from a population that always exists, and reads no data only when nothing is collected. The dashboards release grows from 441,572 to 551,100 bytes, 53% of the 1 MiB Secret ceiling. Building it also found that the Thanos datasource declares no scrape interval, which breaks every cAdvisor `rate()` panel into points ([DEP-326](https://linear.app/materializeinc/issue/DEP-326)). **Outstanding:** Grafana (523 families), Thanos (220) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
-| **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
+| **Autoscaling** — utilization, controller status, compute cost proxy | **Events, and the provider's view of instance availability.** No `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families. The provider pull now supplies, per cloud, the half no in-cluster scrape can: EC2 status checks, managed node group sizes and On-Demand vCPU usage on EKS; per-family CPU and local-SSD quota with refusals on GKE; and on AKS the managed cluster autoscaler's own four `cluster_autoscaler_*` gauges, which exist nowhere else, and each node VM's availability. See the instance-availability row under [External dependencies](#external-dependencies) | OO-M3 | ⬜ |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M2 | ✅ |
 | **External components** — object store, consensus DB | **Yes, the client and provider halves shipped** as three dashboards rather than the one `infra-deps` the design proposed — see [External dependencies](#external-dependencies). **Materialize Persist (Storage)** (`env-persist`) and **Materialize Consensus (Metadata)** (`env-consensus`) read persist's own measurement of both dependencies and are filed under Materialize; **Infrastructure Cloud Provider** (`infra-cloud`) reads the provider pull and is filed under Infrastructure. **Still no exporter vantage point**: only 2 `postgres_exporter_*` *config* metrics land, no database statistics, and `thanos_objstore_*` is still read by nothing | OO-M2 | 🔨 |
 
@@ -23562,7 +23701,7 @@ Ordering follows what is buildable and what an operator reaches for first.
 **Nodes** and **Meta-monitoring** need no collection work and answer the two questions that block everything else — is
 the platform healthy, and is the telemetry itself trustworthy.
 **Pods** is the natural drilldown target from both, and from `env-logs`.
-**Autoscaling** is buildable now as an events dashboard and becomes a real one when the controller is scraped.
+**Autoscaling** is buildable now from events and the provider pull, and gains Karpenter's own view when its controller is scraped.
 **External components** is gated on the collection gap below.
 **Networking** was too, and stopped being: the gap turned out to be unscraped endpoints rather than absent ones, so the dashboard and the scrape configs landed together.
 
@@ -23574,7 +23713,7 @@ Found while surveying a live install; each is a scrape-side gap in *this* repo r
 |---|---|---|
 | ✅ **kube-state-metrics label collision** — fixed, and now asserted | *was:* Pods, Nodes, and five shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fixed by setting `honorLabels: true` on both ServiceMonitor endpoints (the vendored 8.4.0 subchart defaults them to `false`). Now asserted by `kube_state::labels_are_honored` and `kube_state::pods_are_distinguishable` in the e2e suite, which between them catch the collision's signature (`exported_*` labels) and its consequence (`kube_pod_info` collapsing to one identity). Verified against a live install *before* the fix: 15 families carrying `exported_*`, and 117 `kube_pod_info` series reporting a single pod. The three `materialize.kubernetes.*` readiness queries are `canonical` on the strength of that coverage |
 | ✅ **Alertmanager is not scraped** — fixed | *was:* Meta-monitoring | The subchart's own ServiceMonitor, on since [DEP-226](https://linear.app/materializeinc/issue/DEP-226). Both Services it renders carry identical labels, so the monitor drops the headless one's targets; without that every replica is scraped twice. Verified on a live install: one `up` series per replica, 145 families, `alertmanager_cluster_members` reading 2 |
-| No cluster-autoscaler / Karpenter scrape | Autoscaling | Distro-specific: GKE's autoscaler, Karpenter and Cluster Autoscaler each expose different endpoints, so this is a per-flavor scrape source rather than one config |
+| No cluster-autoscaler / Karpenter scrape — AKS covered by the provider pull | Autoscaling | Distro-specific. **AKS** runs its autoscaler in the managed control plane and publishes four gauges to Azure Monitor, which `pipeline.metrics.provider.azure.aks` now pulls. **GKE** publishes no autoscaler metrics anywhere, only a visibility log in Cloud Logging and events. **Karpenter** on EKS runs in-cluster and serves `/metrics`, so it is the one that still needs a scrape |
 | ✅ **No CNI / NetworkPolicy metrics** — fixed for the two CNIs with monitors | *was:* Networking (policy half) | Two PodMonitors ship, for the AWS VPC CNI and for Cilium, plus a kube-proxy ScrapeConfig. All three are **self-disabling**, which is what makes it safe to deploy every one to every cluster: the pod selector matches nothing on a cluster running another vendor, and the CNI endpoints name *container ports* rather than numbers, so a vendor built without metrics yields no target instead of a scrape failing on every node forever. Each stamps a `network_component` label, which is the dashboard's whole detection mechanism. Measured rather than assumed: EKS `aws-node` serves `awscni_*` on the `metrics` port and `network_policy_drop_count_total` on the nodeagent's, both verified landing in Thanos; GKE Dataplane V2 serves nothing on `:9962` and only Hubble's own health counters on `:9965`. **kube-proxy is collected too**, from the gateway pipeline rather than from its ScrapeConfig CR: the gateway has no `prometheus.operator.scrapeconfigs` component, so the CR is a Prometheus-consumer artifact exactly as the cAdvisor one is, and the pipeline carries the same relabeling. Discovery is a server-side pod selector, so a cluster running no kube-proxy returns no targets rather than a refused connection on every node. **Still uncovered:** Calico and Azure NPM, which no monitor ships for |
 | Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not. Nothing in this chart deploys one — the [external-dependency design](../design-docs/20260920-external-dependency-monitoring/) makes it a chart component with a documented grant |
 
@@ -23634,6 +23773,7 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | On-premise object-store adapter (MinIO / Garage / Ceph) ([DEP-299](https://linear.app/materializeinc/issue/DEP-299)) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter ([DEP-300](https://linear.app/materializeinc/issue/DEP-300)) | OO-M2 | ⬜ |
 | The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | ✅ (**CloudWatch, GCP and Azure built.** `pipeline.metrics.provider.{cloudwatch,gcp,azure}` pull RDS and S3, Cloud SQL and GCS, and Flexible Server and Blob Storage, for resources named in values, never discovered. Each pull is a custom component (`declare`) in a pre-rendered, schema-validated module that deploys as-is, the repository's first; the chart renders only flat instances, one per resource on CloudWatch and one per service on GCP and Azure, which `alloy validate` checks against the declared arguments, and the metric sets are fixed in the module rather than values. Clustering is on the scrape, not the exporter: all three exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The custom-component revision re-ran there too: five instances, each owned by exactly one replica and spread across both, and all 32 series in Thanos three minutes after the roll with `instance` naming the resource. **Azure** ran on an AKS test install with a workload identity holding Monitoring Reader on the four named resources only: 23 Flexible Server series from one call per server, after a relabel `keep` trims the exporter's every-aggregation output from 84 samples, and 10 Blob Storage series across two pulls, with each of the three targets owned by one replica. Without the `azure.workload.identity/use` pod label the pull fell through to the node's identity and Resource Graph refused it, so on Azure a missing identity does show as `up == 0`; the chart warns, and the Terraform module sets the label. The Terraform identities are DEP-302) |
+| **Instance availability** on the provider pull — can the cloud supply the nodes an autoscaler asks for, and are the ones it supplied healthy | OO-M3 | 🔨 (**Pipeline built; no dashboard draws it yet.** Three pulls beside DEP-301's, named by cluster or region in values. `pipeline.metrics.provider.cloudwatch.eks.clusters` finds each cluster's nodes by the `aws:eks:cluster-name` tag EKS and Karpenter set, since they are replaced too often to name, and pulls their three status checks, the managed node groups' desired, in-service, pending and maximum sizes, and the region's On-Demand vCPU usage. `gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and each refusal. `azure.aks.clusters` pulls the managed cluster autoscaler's four gauges and every node VM's `VmAvailabilityMetric`, finding the scale sets through the cluster's node resource group with a Resource Graph join. The generator gained a typed CloudWatch `discovery` job and an expression-valued `honor_timestamps`. Proven by running the rendered components under a local Alloy against the three test installs' accounts: 26 billed metrics per EKS pull for eight nodes and a node group, 12 Cloud Monitoring calls per quota pull, 5 Azure calls for a cluster with two pools, and no warnings. Four findings shaped it: an EC2 discovery job without `dimension_name_requirements` also pulled every Auto Scaling group's aggregate in the shared account, 302 billed metrics against 26; every discovery job writes an `aws_<service>_info` series carrying all of a resource's tags, which the pull now drops; GCP quota points arrive hours apart, so that pull is stamped at the scrape like a daily S3 datapoint; and GCP's per-family quotas replace the regional `CPUS` one for C4 and C4A, which reads zero on the test install. **Not measured in-cluster**, because the test installs' gateway identities hold none of the new grants; the Terraform wrappers' values and grants are [DEP-336](https://linear.app/materializeinc/issue/DEP-336). No provider publishes a capacity-refusal metric, so stockouts remain Karpenter's and the autoscaler's to report, and neither the EC2 vCPU quota's limit nor any Azure compute quota is in its provider's monitoring API) |
 | Terraform: read-only provider roles on the per-cloud monitoring modules ([DEP-302](https://linear.app/materializeinc/issue/DEP-302)) | OO-M2 | 🔨 (**AWS and GCP merged; Azure outstanding.** A `provider_metrics` input on each module grants the gateway read access and names the resources in the chart values: an IRSA role holding `cloudwatch:GetMetricStatistics` and `iam:ListAccountAliases`, and `roles/monitoring.viewer` on the gateway's Google service account. Azure needs a user-assigned identity for the gateway, federated to its ServiceAccount, with Monitoring Reader scoped to each named server and storage account) |
 | The `externalDependencies:` values block and a `dependency-monitoring` profile ([DEP-303](https://linear.app/materializeinc/issue/DEP-303)) | OO-M2 | ⬜ |
 | Persist bucket `AbortIncompleteMultipartUpload` lifecycle rule, in `materialize-terraform-self-managed` ([DEP-304](https://linear.app/materializeinc/issue/DEP-304)) | OO-M2 | ⬜ |

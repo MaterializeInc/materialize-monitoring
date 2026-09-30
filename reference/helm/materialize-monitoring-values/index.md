@@ -1900,7 +1900,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"azure":{"blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -2020,6 +2020,26 @@ never zero.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.eks<wbr>.clusters</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">EKS cluster names whose nodes to watch.
+Each cluster's nodes are found by the `aws:eks:cluster-name` tag
+EKS and Karpenter put on them, since the nodes themselves come and
+go, and pulled for AWS's status checks: the host, the instance and
+its attached EBS volumes. Its managed node groups are pulled for
+desired, in-service and pending instances against their maximum.
+Listing any cluster also pulls the region's On-Demand vCPU usage,
+account-wide, which is what the vCPU quota counts; CloudWatch does
+not publish the quota itself. Needs `cloudwatch:GetMetricData`,
+`cloudwatch:ListMetrics`, `tag:GetResources` and
+`autoscaling:DescribeAutoScalingGroups` beside the grant the other
+services need.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
@@ -2087,6 +2107,21 @@ per-minute DELTA, and the exporter counts only the newest point of
 each pull, so at a five-minute interval they read about a fifth of
 the truth. The Loki, Thanos and persist clients report the same
 requests exactly.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.compute<wbr>.regions</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Compute Engine regions whose quota to watch, such as `us-east1` — the regions the GKE node pools run in.
+Each region and its zones are pulled for the CPUs and local SSD
+each machine family uses against its quota, and for every request
+a quota refused. A node pool that cannot grow for quota looks
+exactly like one that cannot grow for capacity until this says
+which. Usage and limit are published a few times a day, so each
+pull reaches back a day.
 </td>
     </tr>
     <tr>
@@ -2160,6 +2195,23 @@ latency, at the service and end to end. Transaction counts are
 deliberately not pulled: the exporter reads the newest five-minute
 bucket as the scrape ends it, which is a minute or so short. The
 Loki, Thanos and persist clients report the same requests exactly.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.aks<wbr>.clusters</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">AKS cluster names to watch — the name, not the resource ID.
+Each is pulled for its managed cluster autoscaler, which AKS runs
+in its control plane where nothing can scrape it: pods it cannot
+place, whether it considers the cluster safe to scale, whether
+scale-down is cooling down, and nodes it would remove. Its node
+pools' scale sets, found through the cluster's node resource group,
+are pulled for Azure's own view of whether each node VM is up. The
+identity needs Monitoring Reader on the cluster and on its node
+resource group.
 </td>
     </tr>
     <tr>
