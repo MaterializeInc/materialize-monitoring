@@ -3272,6 +3272,8 @@ The result is written beside every other metric, with the same retention, the sa
 A provider series is therefore joinable with `mz_persist_*` in a single expression.
 A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
 
+The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws them, with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
@@ -3280,7 +3282,9 @@ The [external-dependency design](../../../reference/internal/design-docs/2026092
 <!--
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
 charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
-sets on this page are that file's; change them there, not here first. The numbers on this page
+sets on this page are that file's; change them there, not here first. packages/queries/infra-cloud.yaml and
+packages/dashboards/src/grafana/infra_cloud/ draw them, so a metric added to a pull reaches no panel until
+those follow, and a metric removed leaves a panel empty. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, and on 2026-09-29 against the AKS one, with Alloy v1.20.0 locally and
 v1.19.2 in-cluster, and are the ones to re-measure if the exporters are bumped. The Azure call counts
@@ -3457,8 +3461,9 @@ The scrape of it is clustered, so one replica owns it and each provider is calle
 
 ## Which destinations receive it
 
-Provider families have no dashboard or alert reading them yet, so they have no tier from the query registry.
-Each provider assigns its families one instead, through `metricImportance`, which defaults to `extended`.
+Each provider assigns its families a tier through `metricImportance`, which defaults to `extended`.
+The families `infra-cloud` draws are also named in the query registry, at `diagnostic`, the lowest tier.
+A registry tier admits a metric at that tier and above, so `metricImportance` decides for every destination floor above `diagnostic`.
 
 | Destination `minMetricImportance` | Receives provider families at the default |
 |---|---|
@@ -3509,6 +3514,8 @@ Its `yace_cloudwatch_getmetricstatistics_requests_total` counts billed calls, bu
 Measured with five targets across two replicas, the five series read 12, 14, 26, 28 and 2: running totals of 28 and 2 calls, not 82.
 It cannot be summed across `instance`, so the cost is best read from the configuration: 12 calls per RDS instance and 2 per bucket, each interval.
 A CloudWatch pull that fails for want of an identity or a grant is visible only as missing series and as errors in the gateway's logs, such as `Couldn't get account Id`.
+
+The Collection tab of the Infrastructure Cloud Provider dashboard (`infra-cloud`) draws these checks for every provider it finds.
 
 
 --------------------------------------------------------------------------------
@@ -4259,8 +4266,8 @@ url: https://materializeinc.github.io/materialize-monitoring/dashboards/all/inde
 
 # Available Dashboards
 
-Eight dashboards ship today: three scoped to a Materialize environment (`env-*`), and five to the platform underneath it (`infra-*`).
-Two of the five watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
+Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -4307,6 +4314,33 @@ It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-upgrade" >}}
 
+### Materialize Persist (Storage) (`env-persist`)
+
+Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
+Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
+
+The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
+The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
+The bucket's own size, as the provider bills it, is on `infra-cloud`.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="env-persist" >}}
+
+### Materialize Consensus (Metadata) (`env-consensus`)
+
+The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
+Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
+
+The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.
+The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
+State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
+Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
+It needs both a metrics and a logs datasource.
+
+{{< download-dashboards name="env-consensus" >}}
+
 ## Infrastructure (`infra-*`)
 
 ### Infrastructure Node Detail (`infra-nodes`)
@@ -4344,6 +4378,18 @@ Cloud Networking is partly stubbed.
 The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#collection-gaps-these-depend-on).
 
 {{< download-dashboards name="infra-net" >}}
+
+### Infrastructure Cloud Provider (`infra-cloud`)
+
+What the cloud provider reports about the metadata database and the buckets a Materialize deployment depends on, across three tabs: Metadata Database, Object Storage, and Collection.
+It reads the CloudWatch, Cloud Monitoring, and Azure Monitor metrics the gateway pulls when [cloud provider metrics]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}) are enabled, and renders rows only for the provider it finds.
+Provider collection is off by default; with none configured, each tab explains what enabling it adds.
+
+The Metadata Database tab leads with the headroom every provider publishes — CPU against the 60% steady-state target Materialize's sizing guidance sets, open connections beside the number Materialize holds, and transaction-ID consumption — followed by the provider's own storage, memory, and disk I/O rows.
+The Object Storage tab draws each bucket's billed size beside the data Materialize accounts for; on GCS it also splits live data from noncurrent versions and soft-deleted objects, which a persist bucket can accumulate in quantity.
+Provider data is minutes old, and bucket size a day old, so this dashboard says why a dependency is struggling rather than whether it is; `env-consensus` and `env-persist` answer the second question and are the ones to open first.
+
+{{< download-dashboards name="infra-cloud" >}}
 
 ## Meta monitoring (`infra-*`)
 
@@ -8354,13 +8400,19 @@ Ordered so the cheapest question that could explain everything comes first.
    *Infrastructure Node Detail* → Summary, for the node the pods are on.
    Memory pressure, disk pressure, a cordon, or requests at 100% will make Materialize look broken while nothing about
    Materialize is broken.
-4. **Is it lagging, or is it stuck?**
+4. **Is it the metadata database or object storage?**
+   *Materialize Consensus (Metadata)* → Overview, then *Materialize Persist (Storage)* → Overview.
+   Every write Materialize makes commits to the metadata database and uploads to the bucket, so a failing dependency
+   stalls every collection at once and looks like a Materialize problem.
+   Each Overview ends with the dependency's own error text from the logs, which separates a wrong URL or credential from
+   a database at `max_connections`.
+5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that
    have results and are behind.
    A collection is in exactly one of the two, which is what makes them readable together.
-5. **Only then, what is it saying?**
-   *Logs and Events*, filtered to warnings, over the window the first four steps identified.
+6. **Only then, what is it saying?**
+   *Logs and Events*, filtered to warnings, over the window the first five steps identified.
 
 Going to logs first is the common mistake.
 Logs are the most detailed and least structured evidence you have, and without a window to read them in they are noise.
@@ -8374,6 +8426,9 @@ Logs are the most detailed and least structured evidence you have, and without a
 | Did a rollout do this, and has the new generation caught up | Materialize Upgrade |
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
+| Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
+| Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
+| Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |
 
 The Environment Overview's Summary tab is built to be the first screen: every panel answers one question and names the
 tab that explains it.
@@ -19216,8 +19271,8 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `mz-monitoring-build` / `mz-monitoring-check`: thin wrappers over the Rust binaries
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
-    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment, `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+    * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, and `infra-cloud.yaml`, the cloud provider pull — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
@@ -21765,6 +21820,31 @@ Things that have surprised us during development; worth knowing before touching 
   `*_count` metrics) live *only* on a "legacy" job, so an exclusion list blanks real panels.
   Pick the dedup label-set carefully: `max without (job)` keeps every other label; if a metric is also multi-scraped per
   `instance`, add `instance` to the `without` set.
+- **Persist publishes latency for both dependencies.** `mz_persist_external_op_latency` is a histogram by `op`, covering
+  `blob_get`, `blob_set` and `consensus_cas`; every other operation has a mean from `mz_persist_external_seconds /
+  mz_persist_external_started_count`. `mz_persist_external_rtt_latency{external="blob"|"consensus"}` is a gauge each
+  process refreshes on its own schedule. `env-persist` and `env-consensus` are built on these.
+- **`mz_persist_retry_*` `op` is a retry loop, not a call.** Most loops wrap one dependency — `apply_unbatched_cmd::cas`,
+  `fetch_state::scan` and `gc::truncate` the metadata database; `batch::set`, `fetch_batch::get` and `rollup::*` object
+  storage — and the same names appear in the WARN log line `external operation <op> has failed N times, retrying`, which
+  carries the dependency's own error text. `next_listen_batch` and `snapshot` retry constantly while polling for new data
+  and must never be drawn as retries.
+- **`mz_persist_postgres_connpool_available` goes negative** by the number of callers waiting for a connection
+  (deadpool's `Status.available`), and is sampled at each acquire. `clamp_min(-available, 0)` is the queue. The pool's
+  maximum size is not published. The timestamp oracle has its own pool under `mz_ts_oracle_postgres_connpool_*`.
+- **`mz_persist_shard_*` is reported by every process that has the shard open**, so a total takes `max by (shard)`
+  first. environmentd has every shard open; on the reference installs a plain sum counted 100 shards as 180.
+- **`mz_persist_s3_*` exists on Azure Blob and reads zero.** Materialize registers the S3 client's counters on every
+  install, but reaches Azure Blob with Azure's own client. A panel on them keeps its series only while
+  `mz_persist_s3_operations` is non-zero, so Azure shows the empty state instead of a flat "no timeouts".
+  `mz_persist_s3_errors` is the exception: it is created on the first error, so it is absent until then everywhere.
+- **Thanos flags `rate()` over most persist counters.** Materialize names them without `_total`
+  (`mz_persist_postgres_connpool_connection_errors`, `mz_persist_compaction_failed`), and Thanos returns `PromQL info:
+  metric might not be a counter` for each, which Grafana draws as a warning icon on the panel. The query is correct; the
+  warning cannot be avoided short of a rename upstream.
+- **A ratio of two rates is `NaN` over a window with no calls**, and Grafana applies `noValue` per field, so the panel's
+  empty-state text lands in the legend beside the series. Mean latencies on the dependency dashboards are wrapped in
+  `(…) >= 0`, which drops the `NaN` points.
 
 ## Logs dashboard conventions
 
@@ -21881,8 +21961,8 @@ Two things worth keeping if this pattern spreads:
 
 ## Rendering a row on a discovered variable
 
-**New precedent, first used on `infra-net`'s CNI and Security tabs.** `Row::only_when_variable` and
-`Row::only_unless_variable` own it, beside the time-range pair.
+**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows.**
+`Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
 variant, or render conditionally.
@@ -21894,7 +21974,7 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Four rules, all of them learned from the one implementation:
+Five rules, the first four learned from `infra-net` and the fifth from its first shipped bug:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -21909,6 +21989,14 @@ Four rules, all of them learned from the one implementation:
 - **The fallback's job is the reason, not the absence.** "Nothing detected" leaves the reader hunting for a scrape to
   fix. It has to say which case applies, because the most common one is not a fault — GKE Dataplane V2 disables the
   Cilium agent's Prometheus endpoint, and no amount of configuration here changes that.
+- **Give the discovery variable no custom "All" value.** Grafana evaluates a row condition against the variable's
+  `getValue()`. For a multi-value variable on "All" with a custom `allValue`, that is a `CustomAllValue` object with no
+  `toString()`, so the condition's regex is tested against `[object Object]`: every `matches` row hides and the negated
+  fallback shows. Without a custom value, "All" is the array of discovered values, which the condition tests one by
+  one. Grafana also *defaults* a freshly loaded multi-value variable to "All", so this is the state every reader starts
+  in. `infra-net` shipped with `.+` as its dataplane's "All" and showed "No Dataplane Metrics" on every cluster until it
+  was removed; `test_support::assert_row_conditions_can_read_all` now guards both dashboards. A discovery variable no
+  query reads has no use for a custom value in the first place.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -21916,6 +22004,36 @@ for `cilium` still renders when the value is `cilium,kube-proxy`. Both direction
 offers the negative operator directly.
 
 Verified round-tripping: Grafana accepts all eight conditional rows and returns them unchanged on a read.
+Verified rendering, on Grafana 13.2.2 against a live EKS install: with "All" selected, `infra-net`'s CNI tab shows the
+VPC CNI rows, and `infra-cloud` shows its RDS rows over a window in which CloudWatch was pulled and its fallback over one
+in which nothing was.
+
+## Cloud provider families
+
+What `infra-cloud` is built on: the metrics the gateway pulls from CloudWatch, Cloud Monitoring and Azure Monitor.
+The pipeline side is on [Cloud Provider Metrics]({{< relref "../../../metrics/collecting/cloud-provider-metrics.md" >}});
+the conventions below are the ones a query against those families has to follow.
+
+| Convention | Why |
+|---|---|
+| Read every series through `last_over_time`: `[15m]` for CloudWatch, Azure and Cloud SQL, `[30m]` for GCS | A pull runs every five minutes, and Cloud Monitoring samples arrive minutes old with their own timestamps. A default five-minute lookback draws gaps; GCS data is over ten minutes old on arrival |
+| Never `rate()` a provider counter over `$__rate_interval` | That interval is sized from the datasource's scrape interval, which is far shorter than a pull, so the window holds one sample and draws nothing. Use a fixed `[30m]` |
+| One expression per provider in a cross-provider query, each with its own legend | Two of the three are empty on any install, which costs nothing. The alternative, a `label_replace` onto a common resource label, hides which provider a number came from |
+| Convert to 0–1 in the query | CloudWatch and Azure publish percent as 0–100; Cloud Monitoring publishes 0–1 with a unit label of `10^2.%`. Transaction-ID consumption is a fraction of 2^31 |
+| Tier the families at `diagnostic` in the registry | A registry tier admits a metric at that tier and above; `diagnostic` is the one level no `metricImportance` value can undercut, so the per-provider value stays in charge |
+
+Whether a pull *failed* is published differently by each provider, and by one of them not at all.
+
+| Provider | Failed-pull signal |
+|---|---|
+| Cloud Monitoring | `stackdriver_monitoring_last_scrape_error`, per pull |
+| Azure Monitor | `azurerm_api_request_count` by `statusCode`, which the Azure SDK counts on the gateway's own `/metrics` — so its `job` is `alloy-gateway`, not `integrations/azure`. POSTs are Resource Graph lookups and carry no `resourceProvider` |
+| CloudWatch | None. `yace_cloudwatch_getmetricstatistics_requests_total` counts calls, once per replica under every target it owns, and cannot be summed |
+
+Azure metric names come from the exporter's `azure_{type}_{metric}_{aggregation}_{unit}` template, lowercased, where
+`{type}` is the metric namespace when one is set.
+The blob families are therefore `azure_microsoft_storage_storageaccounts_blobservices_*`, not
+`…_storageaccounts_*`.
 
 ## Kubernetes events in Loki
 
@@ -22595,6 +22713,8 @@ A dashboard's own size is worth knowing when adding one: `infra-alloy` is 344 KB
 246 KB, `infra-loki` 167 KB, `env-logs` 37 KB.
 Adding `infra-alloy` took the dashboards release from 441,572 to 551,100 bytes, 53% of the ceiling, estimated the way
 Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzipped, then base64-encoded.
+The three external-dependency dashboards — `env-persist` (122 KB), `env-consensus` (137 KB) and `infra-cloud`
+(122 KB) — took it to 683,928 bytes, 65%, measured the same way.
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
@@ -23197,7 +23317,7 @@ Its ticket ([DEP-206](https://linear.app/materializeinc/issue/DEP-206)) was canc
 | [Troubleshooting](https://linear.app/materializeinc/issue/DEP-208) — symptom-first entry into the rest | OO-M2 | ⬜ |
 | [Logs & Events](https://linear.app/materializeinc/issue/DEP-209) (Loki + Alloy + logs now shipped) | OO-M2 | ✅ (`env-logs` dashboard ships, `mz-mon-env-logs`, with **Logs** and **Events** tabs. The repo's first Loki-only dashboard: it defines no metrics datasource and its namespace / app / level pickers are Loki-discovered, so it keeps working when the metrics pipeline is the thing being investigated. Materialize-first rather than Materialize-only — the namespace picker discovers every namespace and merely *defaults* to the Materialize ones, so the monitoring stack and `kube-system` are one selection away rather than behind a filter. That is where the answer lives when collection itself is what broke. Ports the shape of the internal cloud dashboards (namespace/app/level pickers, case-insensitive search box, ad-hoc filter) **without** their Snowflake org lookup, which does not exist on self-managed; `organization_name` structured metadata is the equivalent where one is needed. Its Kubernetes-event queries are deliberately separate definitions from `env-upgrade`'s rollout-scoped ones, which carry generation and reporting-controller filters a general browser must not inherit. Verified against a live self-managed install. **Later:** a per-pod drilldown, and log-derived alerting — neither blocks the dashboard, which is why this is done) |
 | [Upgrades](https://linear.app/materializeinc/issue/DEP-210) (Day 2 ops) — **customer-blocking**, see below | OO-M2 | ✅ (`env-upgrade` dashboard exists, `mz-mon-env-upgrade`, with three tabs: **Events**, **Generations**, and **Reconciliation**. This is the repo's first dashboard on Loki, and the first LogQL family in the query registry — Kubernetes events from the operator and environment namespaces, with orchestratord's own lifecycle transitions and reconciliation failures picked out by `reportingcontroller`. **Generations** splits a blue/green rollout into its two sides via a new `$mzGenerationList` selector, so the question the rollout actually poses — has the new generation caught up yet — can be asked at all; its centrepiece is the hydrating-collection count descending toward zero, beside a version-per-generation table that states what the rollout is changing. Verified against a live rollout: gen 2 on `v26.38.2` beside gen 3 on `v26.40.0-rc.1`, 116 of 191 collections hydrating. **Reconciliation** is the operator's control loop as metrics — pass outcomes, durations, and the per-step counters that turn "reconciliation is failing" into "reconciliation is failing *here*". The two tabs are scoped differently on purpose: events are per-resource and therefore per-environment, while the operator's metrics carry no organization label at all, because one operator reconciles every environment in the cluster. Together they answer *is it stuck* from the rollout's own account of itself rather than from version counts. **Installed by default**, since the stem matches the `["env-*"]` pattern `dashboards.selected` ships with. The operator-side events and metrics depend on unreleased Materialize changes ([CLO-188](https://linear.app/materializeinc/issue/CLO-188)), so against a current release it degrades unevenly rather than going dark: **Generations works fully** (its panels read metrics that predate the change, and the blue/green split comes from pod names), Events keeps its Kubernetes Activity row, and Reconciliation is empty but for its two pre-existing gauges. Requires `v26.41.0`, recorded in `compatibility.md`; narrow `dashboards.selected` to `["env-top"]` to hold it back. **Later:** *what do I do about it* beyond what the panel descriptions say, and a Day 2 change-operations view) |
-| [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ✅ (`infra-net` dashboard ships, `mz-mon-infra-net`, with six tabs: **Overview**, **Kubernetes**, **CNI**, **Node Networking**, **Cloud Networking** and **Security**. Filed under `infra-*` rather than `env-*`: the question is the cluster's, not one environment's, and the row below in the infrastructure table is the same deliverable. **The repo's first dashboard whose layout is not fixed.** A cluster's CNI is not knowable from here — EKS defaults to the AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium — and the metrics describing each share no names with the others, so a fixed layout would mean a dashboard per cloud. That was built once for GCP and retired. Instead the CNI monitors stamp every series with a `network_component` label, a `$networkComponentList` variable discovers it, and each vendor's rows render on a `ConditionalRenderingVariable` match — new machinery in `layout.rs`, which previously modelled only the time-range condition. A cluster with no dataplane metrics gets a single row on the complement of every vendor pattern, saying which case it is in: on GKE that is not a fault, since Google disables the Cilium agent's Prometheus endpoint outright. Detection reads `up` rather than a vendor metric, which is what tells a mute exporter apart from an absent one. **Verified against both live clusters:** all 51 rendered queries execute, 33 return data on the GKE cluster where no CNI is collectable, and the AWS VPC CNI rows return real IPAM, ENI and policy-drop data on EKS once the new monitor was applied. Grafana round-trips all eight conditional rows unchanged. Endpoint regeneration time and unreachable-node counts come from the internal cloud networking dashboards, which both lead with the former. **Outstanding:** the cloud-provider half, which is [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and ships as two stub rows naming the metrics that would fill them) |
+| [Networking](https://linear.app/materializeinc/issue/DEP-211) | OO-M2 | ✅ (`infra-net` dashboard ships, `mz-mon-infra-net`, with six tabs: **Overview**, **Kubernetes**, **CNI**, **Node Networking**, **Cloud Networking** and **Security**. Filed under `infra-*` rather than `env-*`: the question is the cluster's, not one environment's, and the row below in the infrastructure table is the same deliverable. **The repo's first dashboard whose layout is not fixed.** A cluster's CNI is not knowable from here — EKS defaults to the AWS VPC CNI, GKE to Dataplane V2, AKS to Azure CNI powered by Cilium — and the metrics describing each share no names with the others, so a fixed layout would mean a dashboard per cloud. That was built once for GCP and retired. Instead the CNI monitors stamp every series with a `network_component` label, a `$networkComponentList` variable discovers it, and each vendor's rows render on a `ConditionalRenderingVariable` match — new machinery in `layout.rs`, which previously modelled only the time-range condition. A cluster with no dataplane metrics gets a single row on the complement of every vendor pattern, saying which case it is in: on GKE that is not a fault, since Google disables the Cilium agent's Prometheus endpoint outright. Detection reads `up` rather than a vendor metric, which is what tells a mute exporter apart from an absent one. **Verified against both live clusters:** all 51 rendered queries execute, 33 return data on the GKE cluster where no CNI is collectable, and the AWS VPC CNI rows return real IPAM, ENI and policy-drop data on EKS once the new monitor was applied. Grafana round-trips all eight conditional rows unchanged. Endpoint regeneration time and unreachable-node counts come from the internal cloud networking dashboards, which both lead with the former. **Outstanding:** the cloud-provider half, which is [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and ships as two stub rows naming the metrics that would fill them. **Its CNI and Security vendor rows were hidden on every cluster until the external-dependency dashboards landed**: Grafana defaults a multi-value variable to "All", and the dataplane picker's custom `.+` "All" reaches a row condition as `[object Object]`, so the fallback showed instead. The custom value is gone, and a test guards the rule — see [Rendering a row on a discovered variable](../dashboard/style-guidelines/#rendering-a-row-on-a-discovered-variable)) |
 | [Hydration Drilldown](https://linear.app/materializeinc/issue/DEP-212) | OO-M2 | ⛓️ |
 | [Freshness Drilldown](https://linear.app/materializeinc/issue/DEP-213) | OO-M2 | ⛓️ |
 | [Sources Drilldown](https://linear.app/materializeinc/issue/DEP-214) | OO-M2 | ⛓️ |
@@ -23243,7 +23363,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Meta-monitoring** — every component of this stack | **Loki and Alloy shipped; Grafana, Thanos and Alertmanager outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (the Thanos Ruler now runs, but no rule set records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Alloy** is `infra-alloy` (`mz-mon-infra-alloy`, "Alloy Meta Monitoring"), the folder's second occupant, with **Overview**, **Log Pipeline**, **Metric Pipeline**, **Ingest**, **Components**, **Resources**, **Events** and **Logs** tabs, 90 panels over 86 queries in `packages/queries/infra-alloy.yaml`. It absorbs the six panel-less `infra.loki.pipeline.*` placeholders, which now have panels behind them. Its inversion is stronger than Loki's: the gateway scrapes Alloy's metrics and forwards Alloy's logs, so a gateway outage empties the dashboard and nothing inside the stack can say so. Counts that should be zero are built as `sum(A) or 0 * sum(B)` so zero and absent read differently. **Ingest** reads the gateway's three push listeners (log push, remote write, OTLP) from three vantage points, because no one of them sees everything: the gateway's own request counters by status, the remote-write senders' own queues (found by the `url` they write to, which is the only view that sees a sender that cannot connect), and the gateway's log for refused TLS handshakes, which fail before any request exists. **Events** matches Kubernetes events on the involved object's name, which reaches the DaemonSet, Deployment, ReplicaSets, autoscaler and pods alike, and the pre-install `validate-agent` / `validate-gateway` Jobs, whose failure stops an upgrade. The existing internal Alloy dashboards, mostly the upstream mixin, were read panel by panel and not ported: they compute success rates by summing `_bucket` series, scope scraped targets' `up` by the collector's own `job`, and read memory as RSS, which on a reference install put an agent at 95% of its limit while its working set was at 29%. Resources measures Go memory against `GOMEMLIMIT` instead of heap alone, which read the reference gateways at 93% rather than 62–71%. In passing, `infra-loki`'s level picker discovered from a variable that dashboard never defined, and offered nothing but "All"; it now discovers from Loki's own streams. Verified against a live install: all 111 rendered queries execute, 101 return data, and the 10 that do not are healthy-empty tables and feeds or unconfigured cases (no OTLP senders, no warning events). Every panel whose series Alloy creates only on failure draws a zero from a population that always exists, and reads no data only when nothing is collected. The dashboards release grows from 441,572 to 551,100 bytes, 53% of the 1 MiB Secret ceiling. Building it also found that the Thanos datasource declares no scrape interval, which breaks every cAdvisor `rate()` panel into points ([DEP-326](https://linear.app/materializeinc/issue/DEP-326)). **Outstanding:** Grafana (523 families), Thanos (220) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
 | **Autoscaling** — utilization, controller status, compute cost proxy | **Events only.** No `cluster_autoscaler_*` or `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families | OO-M3 | ⬜ |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M2 | ✅ |
-| **External components** — object store, consensus DB | **Object store yes** (24 `loki_objstore_*`, plus the Thanos equivalents), and **nothing in the registry reads any of them**. **Consensus DB effectively no** — only 2 `postgres_exporter_*` *config* metrics land, no database statistics. Now designed rather than only scoped: see [External dependencies](#external-dependencies) | OO-M2 | 🔨 |
+| **External components** — object store, consensus DB | **Yes, the client and provider halves shipped** as three dashboards rather than the one `infra-deps` the design proposed — see [External dependencies](#external-dependencies). **Materialize Persist (Storage)** (`env-persist`) and **Materialize Consensus (Metadata)** (`env-consensus`) read persist's own measurement of both dependencies and are filed under Materialize; **Infrastructure Cloud Provider** (`infra-cloud`) reads the provider pull and is filed under Infrastructure. **Still no exporter vantage point**: only 2 `postgres_exporter_*` *config* metrics land, no database statistics, and `thanos_objstore_*` is still read by nothing | OO-M2 | 🔨 |
 
 Ordering follows what is buildable and what an operator reaches for first.
 **Nodes** and **Meta-monitoring** need no collection work and answer the two questions that block everything else — is
@@ -23313,9 +23433,9 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | External dependency monitoring ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)) — design doc plus review | OO-M2 | ✅ ([design doc](../design-docs/20260920-external-dependency-monitoring/) ready) |
 | Split `persist-failures` into consensus, blob and persist-internal alerts ([DEP-292](https://linear.app/materializeinc/issue/DEP-292)) | OO-M2 | ⬜ |
 | Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe ([DEP-293](https://linear.app/materializeinc/issue/DEP-293)). Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
-| The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry ([DEP-294](https://linear.app/materializeinc/issue/DEP-294)) | OO-M2 | ⬜ |
+| The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry ([DEP-294](https://linear.app/materializeinc/issue/DEP-294)) | OO-M2 | 🔨 (**`mz_persist_*` done**: `materialize-persist.yaml` and `materialize-consensus.yaml`, 60 queries between them, every one run against the three reference installs. `loki_objstore_*` was already on `infra-loki`. `thanos_objstore_*` is still read by nothing) |
 | The normalized `ext:*` recording-rule layer ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)) | OO-M2 | ⬜ |
-| `infra-deps` dashboard, with discovered-flavor rows and a negated fallback ([DEP-296](https://linear.app/materializeinc/issue/DEP-296)) | OO-M2 | ⬜ |
+| ~~`infra-deps` dashboard~~ → `env-persist`, `env-consensus` and `infra-cloud`, with provider rows discovered from the pull's `up` and a negated fallback ([DEP-296](https://linear.app/materializeinc/issue/DEP-296)) | OO-M2 | ✅ (Split three ways by product direction: the client's view of each dependency is environment-scoped and belongs with Materialize, while the provider's view carries no environment label and belongs with the platform. Each is built around incidents in the reference installs' own logs — a Cloud SQL instance out of connection slots, an RDS instance refusing connections, and a GCS persist bucket holding over a hundred times its live data in soft-deleted objects. The client dashboards read no `ext:*` series, since none are recorded; `infra-cloud` draws one expression per provider instead of a normalized one. The dashboards release grows from 551,100 to 683,928 bytes, 65% of the Secret ceiling. Every query was run against the reference installs: the client dashboards against all three clouds live, and the provider rows live against each cloud's pull, where all 17 Azure families matched the names derived from the exporter's naming rules before any Azure data existed) |
 | The **exporter** vantage point — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant ([DEP-297](https://linear.app/materializeinc/issue/DEP-297)) | OO-M2 | ⬜ |
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters ([DEP-298](https://linear.app/materializeinc/issue/DEP-298)) | OO-M2 | ⬜ |
 | On-premise object-store adapter (MinIO / Garage / Ceph) ([DEP-299](https://linear.app/materializeinc/issue/DEP-299)) | OO-M2 | ⬜ |
@@ -23354,10 +23474,12 @@ Adapter applicability reuses that design's **capability tags** rather than a sec
 Its severity and window are set by its least serious member, its runbook cannot be written because it covers two dependencies with different ones, and its description names CockroachDB on deployments that run PostgreSQL.
 Splitting it needs no adapter, no exporter and no new collection — only the evaluated-rule path everything else here waits on.
 
-**Failure counters report that a dependency broke, never that one is degrading.**
-Neither persist's consensus path nor its blob path emits latency or retry-rate, so the slow-and-getting-slower case that precedes an outage has no signal at all.
-The exporter and the provider watch the database slow down and cannot attribute it to Materialize's traffic.
-That is an addition to the [Tier 2 upstream asks](#metrics-contract-upstream-dependency) rather than work that can land here, and it is the most important thing this design cannot do.
+**Persist does report degradation, for the operations that matter most.**
+Drafting the design concluded that neither persist path emitted latency or retry-rate; building the dashboards found otherwise.
+`mz_persist_external_op_latency` is a histogram for `blob_get`, `blob_set` and `consensus_cas`, `mz_persist_external_rtt_latency` is a per-process round trip to each dependency, and `mz_persist_retry_retries_count` counts retries by the work being retried.
+The remaining gap is narrower: every other operation — scans, truncation, deletes — has only a mean.
+The exporter and the provider watch the database slow down and cannot attribute it to Materialize's traffic; the client's latency can, which is why `env-consensus` and `env-persist` lead with it.
+Extending it to the other operations is a [Tier 2 upstream ask](#metrics-contract-upstream-dependency) rather than work that can land here.
 
 **The Materialize persist bucket has no `AbortIncompleteMultipartUpload` lifecycle rule**, while the monitoring stack's own telemetry buckets do, on both AWS and GCS.
 Aborted multipart uploads leave parts that are billed, do not appear in an object listing, and are not counted by any bucket-size metric.
@@ -23755,7 +23877,7 @@ High-leverage asks, in priority order:
 - ⬜ Native **source/sink status** metrics (no genuine source exists today).
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
-- ⬜ **Latency and retry-rate on persist's consensus and blob paths.** Today both publish failure counters only, so a dependency that is degrading rather than broken is invisible from the one vantage point that could attribute it to Materialize's own traffic. Asked for by [DEP-233](https://linear.app/materializeinc/issue/DEP-233); see [External dependencies](#external-dependencies).
+- ⬜ **Latency histograms for the rest of persist's dependency calls.** `blob_get`, `blob_set` and `consensus_cas` already publish one, which `env-persist` and `env-consensus` read; `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle have only a mean, which hides the tail. Narrowed from the original ask, which assumed no latency was published at all. See [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
   actually connects *through* are observable only as logs. Blocks the dashboards listed under
@@ -29107,8 +29229,8 @@ Four stakeholder classes consume this:
 
 | Capability | State | Where |
 |---|---|---|
-| Client-side consensus signals | ⚠️ Arriving, barely read | `mz_persist_consensus_failures` reaches Thanos and appears in one composite alert |
-| Client-side blob signals | ⚠️ Arriving, barely read | `mz_persist_blob_failures`, `mz_persist_external_failed_count` and 13 siblings, all in the same composite alert |
+| Client-side consensus signals | ✅ Read | `env-consensus` (`materialize-consensus.yaml`): operations, latency, failures, connection pools, the timestamp oracle, and state growth. The composite alert still reads `mz_persist_consensus_failures` |
+| Client-side blob signals | ✅ Read | `env-persist` (`materialize-persist.yaml`): operations, latency, failures and error codes, compaction, and storage by purpose. The composite alert still reads `mz_persist_blob_failures` and siblings |
 | Loki object-store signals | ⚠️ Arriving, unread | 24 `loki_objstore_*` families land; no query in `packages/queries/` references any of them |
 | Thanos object-store signals | ⚠️ Arriving, unread | `thanos_objstore_bucket_operation_*` lands; same |
 | CockroachDB alerts | ⚠️ 15 defined, right conditions, wrong metric names | `infra-alerts.yaml`, written against `crdb_dedicated_*` — CockroachDB Cloud's export prefix. Disk and CPU are among them, which are the two conditions the field has actually hit |
@@ -29565,14 +29687,15 @@ Three clients already measure the same bucket, and between them they cover every
 | Thanos | `thanos_objstore_bucket_operation_*`, `..._failures_total`, `..._duration_seconds` | Block upload, compaction, and store-gateway reads |
 
 The Loki and Thanos families follow the same `objstore` convention, which means one pair of recording rules covers both and the adapter is nearly free.
-The persist families are counters without a latency histogram, so `ext:objstore_request_duration_seconds` is recorded from Loki and Thanos and is absent for the persist bucket.
+Persist also publishes a latency histogram, `mz_persist_external_op_latency`, for `blob_get`, `blob_set` and `consensus_cas`, which an earlier draft of this section missed.
 
-**That gap is the same one on the consensus side, and it is the most important thing this design cannot do.**
-A failure counter reports that a dependency *broke*; it never reports that one is *degrading*.
-The slow-and-getting-slower case that precedes an outage — rising commit latency, rising retry rates on the compare-and-swap loop — has no signal in persist at all, on either dependency.
+**The gap is narrower than first drafted, and is still the most important thing this design cannot do in full.**
+A failure counter reports that a dependency *broke*; a latency histogram reports that one is *degrading*.
+Persist has the second for its three hottest operations, plus `mz_persist_retry_retries_count` for retries, and `env-persist` and `env-consensus` lead with them.
+Every other operation — scans, truncation, deletes, and the timestamp oracle — has only a mean.
 The exporter and the provider see the database slowing down and cannot attribute it to Materialize's traffic; only persist can say what it experienced.
 
-This belongs in the [Tier 2 upstream asks](https://linear.app/materializeinc/issue/DEP-207) rather than in any work item here, and DEP-233 says the same.
+Histograms for the remaining operations belong in the [Tier 2 upstream asks](https://linear.app/materializeinc/issue/DEP-207) rather than in any work item here.
 
 Two conventions apply to reading these.
 
@@ -29852,6 +29975,28 @@ The [style guide](../../dashboard/style-guidelines/#rendering-a-row-on-a-discove
 The fourth rule is the one that makes this better than the conditional rendering the earlier draft proposed, which would have made the tab simply absent.
 A tab that disappears teaches nobody that the capability exists, which is the failure the tenant-query-api doc names about empty results, one level up.
 
+### As built: three dashboards, not one
+
+<!-- Agent note: recorded as a decision rather than rewriting the section above, which is the reasoning that was reviewed. -->
+
+The shipped shape splits `infra-deps` three ways, by product direction.
+
+| Dashboard | Folder | Reads | Scope |
+|---|---|---|---|
+| **Materialize Persist (Storage)**, `env-persist` | Materialize | The client's view of object storage | One environment |
+| **Materialize Consensus (Metadata)**, `env-consensus` | Materialize | The client's view of the metadata database, including the timestamp oracle | One environment |
+| **Infrastructure Cloud Provider**, `infra-cloud` | Infrastructure | The provider pull, for both dependencies | The cluster |
+
+The split follows the scoping argument above rather than contradicting it.
+The client's series carry `materialize_cloud_organization_name`, so they are environment-scoped and belong with Materialize; the provider's carry only a resource name, so they belong with the platform.
+The Summary tab this section proposed is each client dashboard's Overview, and it reads client collection only, as proposed.
+
+Three departures from the design, each for want of something the design assumed would exist first:
+
+- **No `ext:*` series are read.** None are recorded yet, so each client panel reads persist's families directly, and `infra-cloud` draws one expression per provider in place of a normalized one.
+- **Provider rows are discovered from the pull's `up`**, as `$cloudProviderList`, rather than from a `flavor` label on a recorded series.
+- **There is no exporter row.** No exporter is deployed, so there is nothing to discover and nothing to fall back from.
+
 ## Deployment shapes
 
 | Shape | Client | Exporter | Provider |
@@ -29958,7 +30103,7 @@ Four questions from the first draft are settled and are recorded here rather tha
 - [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
 - [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.
-- [ ] **What does the persist blob path owe upstream?** Persist publishes failure counters and no latency histogram, which is the largest gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
+- [ ] **What does the persist blob path owe upstream?** Persist publishes a latency histogram for `blob_get`, `blob_set` and `consensus_cas` and only a mean for everything else, which is the remaining gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
 - [ ] **Is the Day 0 probe and the steady-state probe one component or two?** They answer the same question with the same credential and differ only in lifecycle — one runs as an install hook and fails the install, the other runs forever and feeds an alert. One component with two invocations is the obvious shape and couples an install-blocking check to a long-running workload.
 - [ ] **What is the version floor, and who owns it?** The version alert has no threshold this repository can set, and a values-supplied floor puts the policy on the operator, which is where it can be wrong quietly. A published support matrix is the real answer and does not exist in a form this can read.
 - [ ] **Does the shared-database signal generalize to object storage?** A bucket shared with another workload has the same attribution problem and no equivalent of `pg_database_size_bytes` — prefix-level size needs Storage Lens or an inventory report, which is a different mechanism at a different price.

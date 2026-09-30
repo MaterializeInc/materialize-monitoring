@@ -152,6 +152,8 @@ A dashboard's own size is worth knowing when adding one: `infra-alloy` is 344 KB
 246 KB, `infra-loki` 167 KB, `env-logs` 37 KB.
 Adding `infra-alloy` took the dashboards release from 441,572 to 551,100 bytes, 53% of the ceiling, estimated the way
 Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzipped, then base64-encoded.
+The three external-dependency dashboards — `env-persist` (122 KB), `env-consensus` (137 KB) and `infra-cloud`
+(122 KB) — took it to 683,928 bytes, 65%, measured the same way.
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
