@@ -432,6 +432,27 @@ tests:
       - failedTemplate:
           errorPattern: 'blob.storageAccounts entry "https://mzpersist.blob.core.windows.net" is not a storage account name'
 
+  # Unquoted, an all-digit name is a number, and Helm reads a leading zero as
+  # octal: `012345` would render as 5349 and pass the shape check.
+  - it: should refuse an unquoted numeric storage account name
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.blob.storageAccounts: [123456]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob.storageAccounts entry 123456 is a (int|int64|float64), not a string. Quote it'
+
+  - it: should accept a quoted numeric storage account name
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.blob.storageAccounts: ["012345"]
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'storage_accounts\s+= \["012345"\]'
+
   - it: should refuse an Azure scrape timeout longer than the interval
     set:
       <<: *azure
@@ -568,6 +589,16 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: 'has no azure.workload.identity/use: "true"'
+
+  - it: should treat an empty Azure client ID as no identity
+    template: NOTES.txt
+    set:
+      <<: *azure
+      alloy-gateway.serviceAccount.annotations:
+        azure.workload.identity/client-id: ""
+    asserts:
+      - matchRegexRaw:
+          pattern: "no azure.workload.identity/client-id annotation"
 
   - it: should warn when Azure has no identity to run as
     template: NOTES.txt

@@ -338,15 +338,24 @@ Usage:
     {{- /* The names go into a Kusto filter between single quotes, and a name the
            filter does not match is a pull that silently returns nothing. Both
            shapes are Azure's own naming rules, so anything else is a mistake:
-           usually an FQDN, an endpoint URL or a resource ID. */}}
+           usually an FQDN, an endpoint URL or a resource ID.
+
+           Each must also be a string. An all-digit name is valid on Azure, and
+           unquoted YAML reads it as a number, which does not round-trip: Helm
+           parses `012345` as octal and renders 5349, which then passes the
+           shape check. */}}
     {{- range $servers }}
-      {{- if not ( regexMatch "^[a-z0-9][a-z0-9-]*$" ( . | toString ) ) }}
-        {{- $errors = append $errors ( printf "%s.postgres.servers entry %q is not a Flexible Server name. List the name alone — lowercase letters, digits and hyphens — not its FQDN or resource ID." $path ( . | toString ) ) }}
+      {{- if not ( kindIs "string" . ) }}
+        {{- $errors = append $errors ( printf "%s.postgres.servers entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path . ( kindOf . ) ) }}
+      {{- else if not ( regexMatch "^[a-z0-9][a-z0-9-]*$" . ) }}
+        {{- $errors = append $errors ( printf "%s.postgres.servers entry %q is not a Flexible Server name. List the name alone — lowercase letters, digits and hyphens — not its FQDN or resource ID." $path . ) }}
       {{- end }}
     {{- end }}
     {{- range $accounts }}
-      {{- if not ( regexMatch "^[a-z0-9]+$" ( . | toString ) ) }}
-        {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %q is not a storage account name. List the name alone — lowercase letters and digits — not its endpoint or resource ID." $path ( . | toString ) ) }}
+      {{- if not ( kindIs "string" . ) }}
+        {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path . ( kindOf . ) ) }}
+      {{- else if not ( regexMatch "^[a-z0-9]+$" . ) }}
+        {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %q is not a storage account name. List the name alone — lowercase letters and digits — not its endpoint or resource ID." $path . ) }}
       {{- end }}
     {{- end }}
     {{- /* Like CloudWatch, and unlike GCP, the credential is resolved on the first
@@ -360,7 +369,8 @@ Usage:
     {{- $podLabels := dig "controller" "podLabels" dict ( index $.Values "alloy-gateway" | default dict ) | default dict }}
     {{- $clientIdSource := include "mzmon.alloy.envSource" ( dict
           "context" $ "role" "alloy-gateway" "env" "AZURE_CLIENT_ID" ) | trim }}
-    {{- if hasKey $saAnnotations "azure.workload.identity/client-id" }}
+    {{- /* An empty annotation names no identity, so it counts as absent. */}}
+    {{- if get $saAnnotations "azure.workload.identity/client-id" }}
       {{- if ne ( get $podLabels "azure.workload.identity/use" | toString ) "true" }}
         {{- $warnings = append $warnings ( printf "%s is enabled and alloy-gateway.serviceAccount carries an azure.workload.identity/client-id annotation, but alloy-gateway.controller.podLabels has no azure.workload.identity/use: \"true\". The Entra webhook injects the workload identity only into pods with that label, so without it the pull runs as the node's managed identity. That identity usually has no access to the subscription, so Resource Graph refuses every pull and up is 0." $path ) }}
       {{- end }}
