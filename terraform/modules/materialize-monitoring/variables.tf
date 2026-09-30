@@ -142,16 +142,9 @@ variable "enable_monitoring_crds" {
     platform team that owns CRDs centrally — since Terraform would otherwise fail trying to
     create objects it does not own.
 
-    Note the teardown blast radius: destroying this release deletes the CRDs, which cascades to
-    every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the cluster,
-    including ones this stack did not create. It is a separate `helm_release` so it can be
-    targeted independently (`-target=module.monitoring.helm_release.crds`).
-
-    The Grafana custom resources still have to go before grafana-operator does, or their
-    finalizers have no remover and the CRDs wedge in Terminating. The chart's `pre-delete` hook
-    handles that ordering now — but it lives in the *main* release, so destroying this one first
-    takes the resource types out from under it. Destroy in the module's own order, and see the
-    "Uninstalling" page in the docs.
+    Every CRD carries `helm.sh/resource-policy: keep`, so destroying this release, or turning
+    this off later, leaves the CRDs and every custom resource in the cluster in place. Removing
+    the CRDs is a deliberate step of its own; see the "Uninstalling" page in the docs.
   EOT
   type        = bool
   default     = true

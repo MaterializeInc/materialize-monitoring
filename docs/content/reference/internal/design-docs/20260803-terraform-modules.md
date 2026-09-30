@@ -161,12 +161,13 @@ module "monitoring" {
 ### CRDs are a flag
 
 Folded into the common module as `enable_monitoring_crds` (default `true`), driving a second `helm_release` installed ahead of the main one, which sets `skip_crds = true`.
-A separate module bought nothing: a resource inside a module is still addressable as `module.monitoring.helm_release.crds`, so the teardown blast radius stays targetable without a module boundary.
+A separate module bought nothing: a resource inside a module is still addressable as `module.monitoring.helm_release.crds`, so the release stays targetable without a module boundary.
 
 The flag exists for the one case that matters — a cluster where prometheus-operator or grafana-operator CRDs are already managed by someone else (kube-prometheus-stack, a platform team), where Terraform would otherwise fail trying to create objects it does not own.
 Per-group toggles pass through to the CRDs chart's own tags for the partial case.
 
-The teardown caveat still needs stating in the module README: destroying the CRDs release cascades to every `GrafanaDashboard`, `GrafanaDatasource`, `PrometheusRule`, and `PodMonitor` in the cluster, including customer-authored ones.
+This section once said destroying the CRDs release cascades to every `GrafanaDashboard`, `GrafanaDatasource`, `PrometheusRule`, and `PodMonitor` in the cluster.
+It does not: every CRD in the chart carries `helm.sh/resource-policy: keep`, so a destroy leaves them, and removing them is a deliberate `kubectl delete crd`.
 
 ## Cloud wrapper modules
 
