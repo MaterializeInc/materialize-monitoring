@@ -20,9 +20,9 @@ document are to be interpreted as described in
 
 
 <!--
-Agent note: the per-cloud wrappers do not forward these inputs yet (DEP-339).
-When a materialize-terraform-self-managed release does, rewrite "Through the
-per-cloud wrappers" below and the Alerting section of getting-started/terraform.md.
+Agent note: written for the per-cloud wrappers passing these four inputs
+through under the same names (DEP-339). Keep "Through the per-cloud wrappers"
+and the Alerting section of getting-started/terraform.md in step with them.
 -->
 
 ## The inputs
@@ -215,49 +215,7 @@ After apply, [Checking a configuration](../channels/#checking-a-configuration) s
 
 ## Through the per-cloud wrappers
 
-The per-cloud wrappers in `materialize-terraform-self-managed` do not forward these four inputs yet ([DEP-339](https://linear.app/materializeinc/issue/DEP-339)).
-Until a wrapper release does, a deployment built on them reaches the same configuration in two parts.
-The rules and routing go through the wrapper's `additional_values`, in the chart's own key names.
-The receiver Secret is created beside the wrapper.
-
-```hcl
-module "monitoring" {
-  source = "../../modules/monitoring"
-  # ...
-
-  additional_values = [
-    yamlencode({
-      alerting = {
-        preset = "critical-infrastructure"
-        receivers = {
-          oncall = {
-            class  = "page"
-            config = { pagerduty_configs = [{ routing_key_file = "/etc/alertmanager/secrets/alertmanager-receivers/pagerduty-key" }] }
-          }
-          platform = {
-            class  = ["high", "normal"]
-            config = { slack_configs = [{ channel = "#platform-alerts", api_url_file = "/etc/alertmanager/secrets/alertmanager-receivers/slack-url" }] }
-          }
-        }
-      }
-      rules = {
-        overrides = { cluster-hydration-stuck = { "for" = "6h" } }
-      }
-    }),
-  ]
-}
-
-resource "kubernetes_secret" "alertmanager_receivers" {
-  metadata {
-    name      = "alertmanager-receivers"
-    namespace = "monitoring"
-  }
-  data = {
-    "pagerduty-key" = var.pagerduty_routing_key
-    "slack-url"     = var.platform_slack_webhook
-  }
-}
-```
-
-Through `additional_values` the keys are the chart's, so an override's duration is `"for"`, quoted, and nothing checks the Secret's keys against the receivers.
+The per-cloud wrappers in `materialize-terraform-self-managed` pass all four inputs through under the same names.
+A deployment built from one of their example roots sets them on the wrapper's `monitoring` module block, written exactly as in the examples above.
+`alertmanager_namespace` defaults to the wrapper's `namespace`, and is set to `alertmanager` under the `split-namespace` profile, as described [above](#under-split-namespace).
 

@@ -190,9 +190,8 @@ alerting_receiver_secrets = {
 }
 ```
 
-The per-cloud wrappers do not forward these inputs yet ([DEP-339](https://linear.app/materializeinc/issue/DEP-339)).
-Until a wrapper release does, set the rules and routing through `additional_values` and create the receiver Secret beside the wrapper.
-[Configuring Alerting through Terraform](../../alerting/terraform/#through-the-per-cloud-wrappers) has both, and [Alert Channels](../../alerting/channels/) has the receiver configurations for PagerDuty, Slack, Opsgenie, email and the rest.
+Like the Datadog and OTLP inputs, they need no cloud resources and pass through the per-cloud wrappers under the same names; set them on the wrapper's `monitoring` module block.
+[Configuring Alerting through Terraform](../../alerting/terraform/) covers each in full, and [Alert Channels](../../alerting/channels/) has the receiver configurations for PagerDuty, Slack, Opsgenie, email and the rest.
 
 ### Integration
 
