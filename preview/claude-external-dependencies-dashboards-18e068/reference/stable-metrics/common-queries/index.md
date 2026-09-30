@@ -9367,6 +9367,35 @@ disconnects afterward.
   </div>
 </div>
 
+## materialize-workload-alerts
+
+<p>Alerting rules for the workloads running on Materialize.</p>
+<p>Every alert here carries <code>audience: workload</code>, so a route can send them to
+the people who own the clusters rather than to whoever runs the deployment.
+Each is scoped to user clusters (<code>u*</code>); the same condition on a system
+cluster is a platform alert.</p>
+
+<h4 id="materialize.clusters.names">materialize.clusters.names
+  <a class="anchor" href="#materialize.clusters.names">#</a>
+</h4>
+Each cluster&rsquo;s name, by namespace and cluster id; the map the alerts join through to name a cluster.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.clusters.names-tabs" id="materialize.clusters.names-tab-0" checked>
+  <label for="materialize.clusters.names-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">group</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, cluster_id, name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>mz_cluster_info{<span contenteditable='true' class='replaceable' data-replace='mzEnvironmentFilter' title='mzEnvironmentFilter'>materialize_cloud_organization_name=~".*"</span><span style="color:#960050;background-color:#1e0010">}</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+  <input type="radio" class="toggle" name="materialize.clusters.names-tabs" id="materialize.clusters.names-tab-1">
+  <label for="materialize.clusters.names-tab-1">Datadog</label>
+  <div class="book-tabs-content markdown-inner">
+            
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#960050;background-color:#1e0010">:</span>mz_cluster_info{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#66d9ef">by</span> {<span style="color:#960050;background-color:#1e0010">namespace</span>,<span style="color:#960050;background-color:#1e0010">cluster_id</span>,<span style="color:#960050;background-color:#1e0010">name</span>}
+</span></span></code></pre></div>
+  </div>
+</div>
+
 ## node-debug
 
 <p>The breakdowns you reach for once <code>node-health.yaml</code> has told you a node is in

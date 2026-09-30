@@ -142,6 +142,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
                 <li><a href="../common-queries#infra.kubernetes.pods_high_cpu_ratio">infra.kubernetes.pods_high_cpu_ratio</a></li>
                 <li><a href="../common-queries#infra.kubernetes.vector_high_cpu_ratio">infra.kubernetes.vector_high_cpu_ratio</a></li>
+                <li><a href="../common-queries#materialize.clusters.cpu_high">materialize.clusters.cpu_high</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_cpu">materialize.environmentd.high_cpu</a></li>
                 <li><a href="../common-queries#materialize.generations.cpu">materialize.generations.cpu</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.cpu.usage.absolute">materialize.kubernetes.cpu.usage.absolute</a></li>
@@ -630,6 +631,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
                 <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.budgets">infra.nodes.pods.budgets</a></li>
+                <li><a href="../common-queries#materialize.clusters.cpu_high">materialize.clusters.cpu_high</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.cpu.usage.percent">materialize.kubernetes.cpu.usage.percent</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.pods.cpu_usage">materialize.kubernetes.pods.cpu_usage</a></li>
             </ul>
@@ -666,7 +668,7 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_container_status_last_terminated_reason">kube_pod_container_status_last_terminated_reason
         <details>
-            Used labels: container, namespace, reason
+            Used labels: container, namespace, pod, reason
             <br />
             Example queries:
             <ul>
@@ -675,6 +677,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.kubernetes.oomkill_important_systems">infra.kubernetes.oomkill_important_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_nonessential_systems">infra.kubernetes.oomkill_nonessential_systems</a></li>
                 <li><a href="../common-queries#materialize.clusterd.swap_cluster_oom">materialize.clusterd.swap_cluster_oom</a></li>
+                <li><a href="../common-queries#materialize.clusters.replica_oomkilled">materialize.clusters.replica_oomkilled</a></li>
             </ul>
         </details>
     </li>
@@ -697,6 +700,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#materialize.clusterd.not_receiving_commands">materialize.clusterd.not_receiving_commands</a></li>
                 <li><a href="../common-queries#materialize.clusterd.swap_cluster_oom">materialize.clusterd.swap_cluster_oom</a></li>
                 <li><a href="../common-queries#materialize.clusterd.system_cluster_terminated">materialize.clusterd.system_cluster_terminated</a></li>
+                <li><a href="../common-queries#materialize.clusters.replica_oomkilled">materialize.clusters.replica_oomkilled</a></li>
                 <li><a href="../common-queries#materialize.environmentd.terminated">materialize.environmentd.terminated</a></li>
             </ul>
         </details>
@@ -715,6 +719,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.cluster_replicas.not_ready">materialize.cluster_replicas.not_ready</a></li>
                 <li><a href="../common-queries#materialize.clusterd.new_restarts_during_release">materialize.clusterd.new_restarts_during_release</a></li>
             </ul>
         </details>
@@ -765,11 +770,12 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_status_ready">kube_pod_status_ready
         <details>
-            Used labels: condition
+            Used labels: condition, namespace, pod
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.nodes.pods.not_ready">infra.nodes.pods.not_ready</a></li>
+                <li><a href="../common-queries#materialize.cluster_replicas.not_ready">materialize.cluster_replicas.not_ready</a></li>
             </ul>
         </details>
     </li>
@@ -957,6 +963,16 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="mz_cluster_info">mz_cluster_info
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.clusters.names">materialize.clusters.names</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="mz_cluster_server_last_command_received">mz_cluster_server_last_command_received
         <details>
             Used labels: cluster_environmentd_materialize_cloud_cluster_id, pod, server_name
@@ -974,6 +990,31 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.clusterd.expiration_7d">materialize.clusterd.expiration_7d</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_dataflow_wallclock_lag_seconds">mz_dataflow_wallclock_lag_seconds
+        <details>
+            Used labels: instance_id, materialize_cloud_organization_name, pod, quantile, replica_id
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.clusters.falling_behind">materialize.clusters.falling_behind</a></li>
+                <li><a href="../common-queries#materialize.clusters.hydration_stuck">materialize.clusters.hydration_stuck</a></li>
+                <li><a href="../common-queries#materialize.clusters.stale">materialize.clusters.stale</a></li>
+                <li><a href="../common-queries#materialize.compute.freshness.lag_by_cluster">materialize.compute.freshness.lag_by_cluster</a></li>
+                <li><a href="../common-queries#materialize.compute.freshness.lag_total_by_cluster">materialize.compute.freshness.lag_total_by_cluster</a></li>
+                <li><a href="../common-queries#materialize.compute.freshness.top_collections">materialize.compute.freshness.top_collections</a></li>
+                <li><a href="../common-queries#materialize.compute.hydration.currently_hydrating">materialize.compute.hydration.currently_hydrating</a></li>
+                <li><a href="../common-queries#materialize.generations.collections">materialize.generations.collections</a></li>
+                <li><a href="../common-queries#materialize.generations.hydrating">materialize.generations.hydrating</a></li>
+                <li><a href="../common-queries#materialize.generations.lag.max">materialize.generations.lag.max</a></li>
+                <li><a href="../common-queries#materialize.generations.lag.total">materialize.generations.lag.total</a></li>
+                <li><a href="../common-queries#materialize.generations.lag.total_by_cluster">materialize.generations.lag.total_by_cluster</a></li>
+                <li><a href="../common-queries#materialize.info.max_lag">materialize.info.max_lag</a></li>
+                <li><a href="../common-queries#materialize.system_clusters.falling_behind">materialize.system_clusters.falling_behind</a></li>
+                <li><a href="../common-queries#materialize.system_clusters.hydration_stuck">materialize.system_clusters.hydration_stuck</a></li>
+                <li><a href="../common-queries#materialize.system_clusters.stale">materialize.system_clusters.stale</a></li>
             </ul>
         </details>
     </li>
@@ -1023,6 +1064,18 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.clusterd.system_cluster_high_memory">materialize.clusterd.system_cluster_high_memory</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_metrics_resource_usage">mz_metrics_resource_usage
+        <details>
+            Used labels: cluster_environmentd_materialize_cloud_cluster_id, metric
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.clusters.memory_high">materialize.clusters.memory_high</a></li>
+                <li><a href="../common-queries#materialize.clusters.memory_near_limit">materialize.clusters.memory_near_limit</a></li>
+                <li><a href="../common-queries#materialize.system_clusters.memory_near_limit">materialize.system_clusters.memory_near_limit</a></li>
             </ul>
         </details>
     </li>
@@ -1199,6 +1252,28 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.storage.collection_finalization_stuck">materialize.storage.collection_finalization_stuck</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_source_offset_committed">mz_source_offset_committed
+        <details>
+            Used labels: cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.sources.disconnected">materialize.sources.disconnected</a></li>
+                <li><a href="../common-queries#materialize.storage.sources.upstream_errors">materialize.storage.sources.upstream_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_source_offset_known">mz_source_offset_known
+        <details>
+            Used labels: cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.sources.disconnected">materialize.sources.disconnected</a></li>
+                <li><a href="../common-queries#materialize.storage.sources.upstream_errors">materialize.storage.sources.upstream_errors</a></li>
             </ul>
         </details>
     </li>
@@ -1603,6 +1678,8 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.net.overview.dataplane">infra.net.overview.dataplane</a></li>
+                <li><a href="../common-queries#materialize.environmentd.down">materialize.environmentd.down</a></li>
+                <li><a href="../common-queries#materialize.environmentd.not_scraped">materialize.environmentd.not_scraped</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.clusterd">materialize.scraper.mzmon.clusterd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.environmentd">materialize.scraper.mzmon.environmentd</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.orchestratord">materialize.scraper.mzmon.orchestratord</a></li>
@@ -2392,25 +2469,6 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="mz_dataflow_wallclock_lag_seconds">mz_dataflow_wallclock_lag_seconds
-        <details>
-            Used labels: instance_id, materialize_cloud_organization_name, pod, quantile, replica_id
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.compute.freshness.lag_by_cluster">materialize.compute.freshness.lag_by_cluster</a></li>
-                <li><a href="../common-queries#materialize.compute.freshness.lag_total_by_cluster">materialize.compute.freshness.lag_total_by_cluster</a></li>
-                <li><a href="../common-queries#materialize.compute.freshness.top_collections">materialize.compute.freshness.top_collections</a></li>
-                <li><a href="../common-queries#materialize.compute.hydration.currently_hydrating">materialize.compute.hydration.currently_hydrating</a></li>
-                <li><a href="../common-queries#materialize.generations.collections">materialize.generations.collections</a></li>
-                <li><a href="../common-queries#materialize.generations.hydrating">materialize.generations.hydrating</a></li>
-                <li><a href="../common-queries#materialize.generations.lag.max">materialize.generations.lag.max</a></li>
-                <li><a href="../common-queries#materialize.generations.lag.total">materialize.generations.lag.total</a></li>
-                <li><a href="../common-queries#materialize.generations.lag.total_by_cluster">materialize.generations.lag.total_by_cluster</a></li>
-                <li><a href="../common-queries#materialize.info.max_lag">materialize.info.max_lag</a></li>
-            </ul>
-        </details>
-    </li>
     <li id="mz_indexes_count">mz_indexes_count
         <details>
             Used labels: materialize_cloud_organization_name
@@ -2977,26 +3035,6 @@ like our bundled Thanos provider.
         </details>
     </li>
     <li id="mz_source_offset_commit_failures">mz_source_offset_commit_failures
-        <details>
-            Used labels: cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, materialize_cloud_organization_name
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.storage.sources.upstream_errors">materialize.storage.sources.upstream_errors</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="mz_source_offset_committed">mz_source_offset_committed
-        <details>
-            Used labels: cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, materialize_cloud_organization_name
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.storage.sources.upstream_errors">materialize.storage.sources.upstream_errors</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="mz_source_offset_known">mz_source_offset_known
         <details>
             Used labels: cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, materialize_cloud_organization_name
             <br />

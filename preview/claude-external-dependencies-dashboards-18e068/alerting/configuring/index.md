@@ -57,6 +57,19 @@ The defaults cover the Kubernetes add-ons common on EKS and GKE and this chart's
 A cluster with other add-ons SHOULD list them, since a workload in no tier is one the tiered rules never grade.
 Each entry is a regex matched against the whole container or Deployment name.
 
+Every bundled rule carries an `audience` label saying who acts on it.
+
+| `audience` | Covers |
+|---|---|
+| `platform` | The Materialize deployment, its system clusters, and the Kubernetes platform under it |
+| `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+
+An [extra route](../channels/#extra-routes) on `audience="workload"` sends the second group to the people who own the clusters.
+
+`rules.overrides` changes an installed rule's `for` and labels, and never its expression.
+A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.
+An override names an alert, and the render fails on an alert that does not exist.
+
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
 
 ## Two evaluators, one notifier
@@ -145,6 +158,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `rules.enabled` | `true` | Installs the bundled rules that apply |
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
+| `rules.overrides` | `{}` | Per-alert `for` and labels |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |

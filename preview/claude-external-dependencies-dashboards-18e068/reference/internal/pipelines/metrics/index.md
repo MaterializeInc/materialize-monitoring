@@ -93,12 +93,13 @@ See the user-facing [Storing](../../../../metrics/storing/) page for the values.
 
 ## Cloud provider pulls
 
-`pipeline.metrics.provider.{cloudwatch,gcp}` pull provider metrics into the gateway, feeding `otelcol.receiver.prometheus "inputBridge"`.
+`pipeline.metrics.provider.{cloudwatch,gcp,azure}` pull provider metrics into the gateway, feeding `otelcol.receiver.prometheus "inputBridge"`.
 The operator-facing page is [Cloud Provider Metrics](../../../../metrics/collecting/cloud-provider-metrics/).
 
 **The pulls are custom components, and the first use of the pattern** described in [Authoring](/materialize-monitoring/preview/claude-external-dependencies-dashboards-18e068/reference/internal/pipelines/authoring/#custom-components-declare).
 `packages/alloy-pipelines/gateway-provider.yaml` declares them, and it deploys: the chart includes the rendered `gateway-provider.alloy` in every gateway config, where it is inert until instantiated.
-The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, one per resource named in values, each a flat block of arguments.
+The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, each a flat block of arguments.
+There is one per resource named in values on CloudWatch, and one per service on GCP and Azure.
 
 | Component | Instances | Pulls |
 |---|---|---|
@@ -107,12 +108,15 @@ The chart's `mzmon.alloyGateway.pipeline.provider` renders only instances, one p
 | `provider_cloudwatch_s3` | One per bucket | `BucketSizeBytes` in standard storage and `NumberOfObjects`, daily |
 | `provider_gcp_cloudsql` | One per project | CPU, memory, disk, backends, transaction-ID use and `up`, for every listed instance through one filter |
 | `provider_gcp_gcs` | One per project | `storage/v2/total_bytes` and `total_count`, for every listed bucket through one filter |
+| `provider_azure_postgres` | One per subscription | 11 Flexible Server metrics, 11 series per server and 12 on a Burstable tier, for every listed server through one Resource Graph filter |
+| `provider_azure_blob` | One per subscription | Two pulls, as two exporters and two scrapes: `BlobCapacity` and `BlobCount` over a day at hourly grain, and `Availability` and both latencies over ten minutes at five-minute grain |
 
 A `declare` body cannot repeat a block, so the metric sets are fixed in the module rather than values, and CloudWatch takes one instance, and one exporter, per resource.
-Cloud Monitoring takes one per service, because a single filter names every resource.
+Cloud Monitoring and Azure Monitor take one per service, because a single filter names every resource.
 `gateway-provider-stub.yaml` instantiates each component once so `make pipelines` checks the argument names the chart passes; keep it in step with the helper's instances.
 
-Behaviours that decide the shape, all measured against Alloy v1.19.2 source and a v1.20.0 run:
+Behaviours that decide the shape, all measured against Alloy v1.19.2 source and a v1.20.0 run.
+The Azure rows also come from the `azure-metrics-exporter` revision Alloy vendors, 5092ac0:
 
 | Behaviour | Consequence |
 |---|---|
@@ -125,7 +129,13 @@ Behaviours that decide the shape, all measured against Alloy v1.19.2 source and 
 | GCP `metrics_prefixes` are prefixes; `extra_filters` split on the **first** colon | One `one_of(...)` filter per service, rendered only beside that service's prefixes. `database_id` keeps its `project:instance` colon |
 | GCP samples carry Cloud Monitoring's timestamps; DELTA metrics count only the newest point per pull | `api/request_count` is left out; queries use `last_over_time` |
 | Remote write's WAL watcher forwards only samples with `T > startTimestamp` (Prometheus `tsdb/wlog/watcher.go`, vendored at v0.313.2 by Alloy v1.19.2) | A sample stamped before the gateway started is never sent, so each restart leaves a gap as long as the provider's lag: minutes for Cloud SQL, over ten for GCS. Measured on the first rollout |
-| A failed provider call still answers the scrape with HTTP 200 | `up` does not report pull health |
+| A failed CloudWatch or GCP provider call still answers the scrape with HTTP 200 | `up` does not report pull health on those two |
+| Azure runs one Resource Graph query per scrape, then one metrics call per resource per twenty metrics. A failed query answers HTTP 500; a failed metrics call only logs a warning and drops that resource | `up` is 0 when the identity is missing or has no access to the subscription, and says nothing about a single resource. Resource Graph returns only what the identity can read, so an ungranted resource is silently absent |
+| Azure `metric_aggregations` applies to every metric in the call | `provider_azure_postgres` asks for all four and ends in a `prometheus.relabel` `keep` naming the one or two series each metric needs, plus `up` and `scrape_*` |
+| Azure keeps the newest datapoint with a value in `timespan`, whose window ends at the scrape, and stamps samples at scrape time | The newest bucket is a minute or so short, fine for averages and extremes and a lower bound for counts, so blob `Transactions` is left out. No post-restart gap, as on CloudWatch |
+| The Azure exporter copies the `owner` resource tag onto every series by default | `included_resource_tags = []` on every exporter |
+| Azure resolves its credential on the first pull, through `DefaultAzureCredential` | The gateway never fails to start for want of one. Without the `azure.workload.identity/use` pod label the webhook injects nothing and the chain reaches the node's managed identity through IMDS, which Resource Graph refused with a 403 on the AKS test install. The render warns |
+| One component with two exporters exports two targets | Each gets its own `instance` (`blob_capacity`, `blob_requests`), or their `up` series would collide |
 | YACE's request counters are process-wide and only appear in exporter output | With one exporter per resource, every target a replica owns reports that replica's running total, so the series cannot be summed across `instance`, and no pod-labelled copy exists on Alloy's own `/metrics`. Cost comes from the configuration: 12 calls per RDS instance and 2 per bucket per interval |
 | The GCP exporter resolves Application Default Credentials when it is **built**; CloudWatch resolves on each pull | With no ADC source at all (no `GOOGLE_APPLICATION_CREDENTIALS`, no metadata server) the GCP exporter fails to build and the gateway fails its initial load. On GKE the metadata server always answers, so it only degrades there. The render warns, since it cannot tell a direct Workload Identity principal from an install outside Google Cloud |
 | `alloy validate` type-checks and never builds a component, so it passes an argument that `alloy run` then refuses (a `scrape_timeout` longer than the interval, two components with the same label) | The initial load fails and the gateway exits, taking every log and metric with it. The pre-validate job cannot see this, so `mzmon.alloy.validate.provider` checks both at render |

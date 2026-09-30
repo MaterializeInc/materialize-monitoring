@@ -249,6 +249,10 @@ What a custom component can and cannot vary:
 - **An argument is only ever a value.** A `declare` body cannot repeat, add or omit a block because of an argument. Anything that varies in block structure stays with the caller, which is why the provider pull takes one CloudWatch instance per resource and fixes its metric set in the body.
 - **Fields a body passes arguments into have to accept expressions.** Typed fields are widened as bodies need them: a scalar becomes `Expressable`, a list becomes `ExpressableList` (whose `Items` variant holds a literal list with expression members, `[{ref: argument.region.value}]`), and a map's values become `Expressable<String>`. Widen the schema in the same change, per the lockstep invariant.
 - **A receiver passes as a single value, not a list.** The body writes `forward_to: ["argument.forward_to.value"]`, which renders as a one-element list of the argument, and the caller passes one receiver. A caller passing a list would give the scrape a list of lists.
+- **A body can process its own output before the caller's receiver.**
+  `provider_azure_postgres` passes a nested `provider_scrape` the receiver of a `prometheus.relabel` declared in the same body.
+  Only that relabel forwards to `argument.forward_to.value`.
+  Order does not matter inside a body, any more than at top level.
 - **Instances are top-level components, so their labels are identifiers and unique.** Whatever derives a label from a resource name maps other characters to `_` and prefixes a letter, and something has to refuse two names that collide: Alloy refuses a duplicate label at load, which `alloy validate` does not catch.
 - **`alloy validate` checks the body's shape, not its values.** Component validation runs only when Alloy builds the component, so a body can pass validation and still fail to load when an instance supplies, say, a scrape timeout longer than its interval. Whatever renders the instances validates those values itself.
 
