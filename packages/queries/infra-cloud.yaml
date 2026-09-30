@@ -514,7 +514,7 @@ queries:
       notes: |
         Published once a day, so this moves in daily steps and a new bucket
         has nothing for its first day. Materialize's line sums every
-        environment on this cluster. Drawn on a logarithmic axis, so buckets of very different sizes stay readable side by side; an empty bucket draws no line and reads 0 in the legend.
+        environment on this cluster.
     promQL:
       - |
         max by (dimension_BucketName) (
@@ -547,8 +547,7 @@ queries:
         Objects growing much faster than bytes is small files accumulating —
         compaction falling behind, which Materialize Persist shows under
         _Compaction_.
-      notes: |
-        Published once a day. Drawn on a logarithmic axis, so buckets of very different sizes stay readable side by side; an empty bucket draws no line and reads 0 in the legend.
+      notes: Published once a day.
     promQL:
       - |
         max by (dimension_BucketName) (
@@ -579,10 +578,6 @@ queries:
         persist bucket holding over a hundred times its live data in
         soft-deleted objects has been seen on a default GCS bucket. Disable
         soft delete, or shorten its retention, on buckets Materialize owns.
-      notes: |
-        Drawn on a logarithmic axis, so live data stays readable beside
-        soft-deleted data a hundred times its size; a state with nothing in
-        it draws no line.
     promQL: |
       sum by (bucket_name, type) (
         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
@@ -598,10 +593,6 @@ queries:
       degraded: |
         Many more soft-deleted objects than live ones is the retention policy
         keeping everything compaction deleted.
-      notes: |
-        Drawn on a logarithmic axis, so live data stays readable beside
-        soft-deleted data a hundred times its size; a state with nothing in
-        it draws no line.
     promQL: |
       sum by (bucket_name, type) (
         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
