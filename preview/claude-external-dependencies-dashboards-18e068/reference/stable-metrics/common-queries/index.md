@@ -3017,6 +3017,43 @@ billed.
 </span></span></code></pre></div>
   </div>
 </div>
+<h4 id="infra.cloud.collection.azure_failures">infra.cloud.collection.azure_failures
+  <a class="anchor" href="#infra.cloud.collection.azure_failures">#</a>
+</h4>
+Azure Monitor API calls that failed, per minute, by HTTP status.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cloud.collection.azure_failures-tabs" id="infra.cloud.collection.azure_failures-tab-0" checked>
+  <label for="infra.cloud.collection.azure_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>statusCode<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>azurerm_api_request_count{statusCode<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..</span>&#34;}[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cloud.collection.azure_calls">infra.cloud.collection.azure_calls
+  <a class="anchor" href="#infra.cloud.collection.azure_calls">#</a>
+</h4>
+Azure API calls per minute, by what they were for — the calls that
+count against the subscription&rsquo;s API limits.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cloud.collection.azure_calls-tabs" id="infra.cloud.collection.azure_calls-tab-0" checked>
+  <label for="infra.cloud.collection.azure_calls-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceProvider, method<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>azurerm_api_request_count[<span style="color:#e6db74">30m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;<span style="color:#e6db74">resource graph</span>&#34;, &#34;<span style="color:#e6db74">method</span>&#34;, &#34;<span style="color:#e6db74">post</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;<span style="color:#e6db74">other</span>&#34;, &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;&#34;
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
 
 ## infra-logs
 

@@ -404,7 +404,7 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-external-dependencies-dashboards-18e068/dashboards/grafana/infra-cloud.json?xxhash=cc0e749354973c12" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-external-dependencies-dashboards-18e068/dashboards/grafana/infra-cloud.json?xxhash=947dc8712039a483" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
         <br /><small>UID <code>mz-mon-infra-cloud</code></small>
       </td>
       <td>

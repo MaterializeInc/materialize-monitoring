@@ -186,8 +186,6 @@ An exporter whose provider call fails still answers its scrape, with no provider
 Measured with credentials missing — for CloudWatch anywhere, and for GCP where a metadata server exists — both exporters return HTTP 200 and report healthy, so `up` stays 1.
 `up` only says the exporter exists and is being scraped.
 
-The Collection tab of `infra-cloud` draws the checks below.
-
 | Question | Query |
 |---|---|
 | Is the exporter running and scraped | `up{job=~"integrations/(cloudwatch\|gcp)"}` |
@@ -200,4 +198,6 @@ Its `yace_cloudwatch_getmetricstatistics_requests_total` counts billed calls, bu
 Measured with five targets across two replicas, the five series read 12, 14, 26, 28 and 2: running totals of 28 and 2 calls, not 82.
 It cannot be summed across `instance`, so the cost is best read from the configuration: 12 calls per RDS instance and 2 per bucket, each interval.
 A CloudWatch pull that fails for want of an identity or a grant is visible only as missing series and as errors in the gateway's logs, such as `Couldn't get account Id`.
+
+The Collection tab of the Infrastructure Cloud Provider dashboard (`infra-cloud`) draws these checks for every provider it finds.
 
