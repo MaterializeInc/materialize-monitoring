@@ -280,3 +280,174 @@ blocks:
               forward_to: {ref: argument.forward_to.value}
               scrape_interval: {ref: argument.scrape_interval.value}
               scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # --- Azure Monitor --------------------------------------------------------------
+
+  # Every listed PostgreSQL Flexible Server in one subscription. One instance
+  # per service, as with Cloud Monitoring: each scrape is one Resource Graph
+  # query that the filter narrows to the named servers, then one metrics call
+  # per server, since the set is under Azure's twenty-per-call limit. Names are
+  # unique across Azure, so no resource group is needed.
+  #
+  # `metric_aggregations` applies to every metric in the call, so the call asks
+  # for all four and the `keep` below drops what no metric here uses. The result
+  # is one or two series per metric, as on CloudWatch.
+  #
+  # A five-minute interval summarises the whole default scrape interval rather
+  # than sampling one minute of it. The window ends at the scrape, so the newest
+  # bucket is a minute or so short: fine for the averages and extremes, and a
+  # lower bound for `connections_failed`, where any value above zero is the
+  # signal. Resource tags are not copied, since they are free text that could
+  # name anyone.
+  - declare:
+      label: provider_azure_postgres
+      blocks:
+        - argument: &subscription_id
+            label: subscription_id
+        - argument:
+            label: servers
+            comment: Flexible Server names, not FQDNs or resource IDs.
+        - argument: &cloud_environment
+            label: cloud_environment
+            comment: azurecloud, azurechinacloud or azureusgovernmentcloud.
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.azure:
+            label: postgres
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.DBforPostgreSQL/flexibleServers
+            resource_graph_query_filter:
+              function: string.format
+              arguments:
+                - "where name in~ ('%s')"
+                - function: string.join
+                  arguments:
+                    - {ref: argument.servers.value}
+                    - "','"
+            metrics:
+              # CPU, and the credit balance that throttles a Burstable tier.
+              # Absent on other tiers.
+              - cpu_percent
+              - cpu_credits_remaining
+              # Memory, storage and connection headroom, and refused connections.
+              - memory_percent
+              - storage_percent
+              - active_connections
+              - connections_failed
+              # Queueing, and how much of the disk's provisioned IOPS and
+              # throughput is in use. At 100% the disk throttles every write
+              # while every in-database metric stays flat.
+              - disk_queue_depth
+              - disk_iops_consumed_percentage
+              - disk_bandwidth_consumed_percentage
+              # Transaction-ID consumption, the wraparound signal.
+              - maximum_used_transactionIDs
+              # Whether Azure could reach the server.
+              - is_db_alive
+            metric_aggregations: [average, maximum, minimum, total]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - custom:
+            component: provider_scrape
+            label: postgres
+            attributes:
+              targets: {ref: prometheus.exporter.azure.postgres.targets}
+              instance: postgres
+              forward_to: {ref: prometheus.relabel.postgres.receiver}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        # The series each metric keeps, and the scrape's own `up` and
+        # `scrape_*`. Names are the exporter's
+        # `azure_{type}_{metric}_{aggregation}_{unit}`, lowercased.
+        - prometheus.relabel:
+            label: postgres
+            forward_to: ["argument.forward_to.value"]
+            blocks:
+              - rule:
+                  action: keep
+                  source_labels: [__name__]
+                  regex: "azure_microsoft_dbforpostgresql_flexibleservers_(cpu_percent_(average|maximum)|cpu_credits_remaining_minimum|memory_percent_maximum|storage_percent_maximum|active_connections_maximum|connections_failed_total|disk_queue_depth_average|disk_(iops|bandwidth)_consumed_percentage_maximum|maximum_used_transactionids_maximum|is_db_alive_minimum)_[a-z]+|up|scrape_.+"
+
+  # Every listed storage account's blob service in one subscription, as two
+  # pulls with different windows. Names are unique across Azure.
+  #
+  # Capacity: stored bytes and blob count, which Azure refreshes about once a
+  # day and publishes at hourly granularity. The one-day window keeps the
+  # latest value in reach. A new account has none for its first day.
+  #
+  # Requests: availability, which throttling and server errors lower, and
+  # latency measured at the service and end to end. The gap between the two
+  # latencies is the network and the client. Transaction counts are left out:
+  # the window ends at the scrape, so a count reads its newest bucket a minute
+  # or so short. The Loki, Thanos and persist clients report the same requests
+  # exactly.
+  - declare:
+      label: provider_azure_blob
+      blocks:
+        - argument: *subscription_id
+        - argument:
+            label: storage_accounts
+            comment: Storage account names.
+        - argument: *cloud_environment
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.azure:
+            label: capacity
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Storage/storageAccounts
+            metric_namespace: Microsoft.Storage/storageAccounts/blobServices
+            resource_graph_query_filter: &storage_account_filter
+              function: string.format
+              arguments:
+                - "where name in~ ('%s')"
+                - function: string.join
+                  arguments:
+                    - {ref: argument.storage_accounts.value}
+                    - "','"
+            metrics: [BlobCapacity, BlobCount]
+            metric_aggregations: [average]
+            interval: PT1H
+            timespan: P1D
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - prometheus.exporter.azure:
+            label: requests
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Storage/storageAccounts
+            metric_namespace: Microsoft.Storage/storageAccounts/blobServices
+            resource_graph_query_filter: *storage_account_filter
+            metrics: [Availability, SuccessServerLatency, SuccessE2ELatency]
+            metric_aggregations: [average]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - custom:
+            component: provider_scrape
+            label: capacity
+            attributes:
+              targets: {ref: prometheus.exporter.azure.capacity.targets}
+              instance: blob_capacity
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - custom:
+            component: provider_scrape
+            label: requests
+            attributes:
+              targets: {ref: prometheus.exporter.azure.requests.targets}
+              instance: blob_requests
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}

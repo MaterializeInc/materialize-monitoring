@@ -1241,6 +1241,136 @@ impl ToBlock for PrometheusExporterGcpBlock {
 }
 
 // ============================================================
+// prometheus.exporter.azure
+// ============================================================
+
+/// A `prometheus.exporter.azure` block — pulls Azure Monitor metrics through
+/// the embedded `azure-metrics-exporter` and exports them as a scrape target.
+///
+/// Four behaviours decide how this is used:
+///
+/// * Each scrape runs one Resource Graph query for `resource_type`, narrowed by
+///   `resource_graph_query_filter`, then one metrics call per resource per
+///   twenty metrics. Without a filter it pulls every resource of that type the
+///   identity can read.
+/// * `metric_aggregations` applies to every metric in the block. A metric that
+///   needs a different aggregation from the others gets it by asking for both
+///   and dropping the unwanted series downstream.
+/// * Only the newest datapoint of `timespan` with a value is kept, at
+///   `interval` granularity. The window ends at the scrape, so that datapoint
+///   is usually a partial bucket. Samples carry the scrape's timestamp.
+/// * `included_resource_tags` defaults to `["owner"]`, which turns a resource
+///   tag into a label on every series.
+///
+/// Calls happen on scrape, like the CloudWatch exporter's. The credential is
+/// resolved on the first call, not when the component is built.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.azure/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrometheusExporterAzureBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Identifier>,
+    /// Subscriptions to query. Required by the schema.
+    pub subscriptions: ExpressableList,
+    /// The Resource Graph resource type, such as
+    /// `Microsoft.DBforPostgreSQL/flexibleServers`. Required by the schema.
+    pub resource_type: String,
+    /// Azure Monitor metric names, up to twenty per call. Required by the schema.
+    pub metrics: ExpressableList,
+    /// A Kusto clause appended to the Resource Graph query after a `|`.
+    /// `Expressable`, so a `declare` body can build it from an argument.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_graph_query_filter: Option<Expressable<String>>,
+    /// Aggregations to request for every metric: `average`, `minimum`,
+    /// `maximum`, `total` or `count`. Defaults to each metric's primary one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metric_aggregations: Option<ExpressableList>,
+    /// ISO 8601 window each pull reads, ending at the scrape. Defaults to `PT5M`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timespan: Option<String>,
+    /// ISO 8601 datapoint granularity. Defaults to `PT1M`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<String>,
+    /// Sub-namespace for resource types with several, such as
+    /// `Microsoft.Storage/storageAccounts/blobServices`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metric_namespace: Option<String>,
+    /// Dimensions to split each metric by. Every one applies to every metric.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub included_dimensions: Option<ExpressableList>,
+    /// Resource tags to copy onto every series. Defaults to `["owner"]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub included_resource_tags: Option<ExpressableList>,
+    /// Regions to read at subscription scope. Cannot be combined with
+    /// `resource_graph_query_filter`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regions: Option<ExpressableList>,
+    /// `azurecloud`, `azurechinacloud` or `azureusgovernmentcloud`. Defaults to
+    /// `azurecloud`. `Expressable`, so a `declare` body can take it as an
+    /// argument.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub azure_cloud_environment: Option<Expressable<String>>,
+    /// Refuse a dimension a metric does not have. Defaults to false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validate_dimensions: Option<bool>,
+}
+
+impl ToBlock for PrometheusExporterAzureBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert(
+            "subscriptions".into(),
+            self.subscriptions.to_attribute_value()?,
+        );
+        attributes.insert(
+            "resource_type".into(),
+            AttributeValue::String(self.resource_type.clone()),
+        );
+        attributes.insert("metrics".into(), self.metrics.to_attribute_value()?);
+        if let Some(v) = &self.resource_graph_query_filter {
+            attributes.insert(
+                "resource_graph_query_filter".into(),
+                v.to_attribute_value()?,
+            );
+        }
+        if let Some(v) = &self.metric_aggregations {
+            attributes.insert("metric_aggregations".into(), v.to_attribute_value()?);
+        }
+        for (name, value) in [
+            ("timespan", &self.timespan),
+            ("interval", &self.interval),
+            ("metric_namespace", &self.metric_namespace),
+        ] {
+            if let Some(v) = value {
+                attributes.insert(name.into(), AttributeValue::String(v.clone()));
+            }
+        }
+        for (name, value) in [
+            ("included_dimensions", &self.included_dimensions),
+            ("included_resource_tags", &self.included_resource_tags),
+            ("regions", &self.regions),
+        ] {
+            if let Some(v) = value {
+                attributes.insert(name.into(), v.to_attribute_value()?);
+            }
+        }
+        if let Some(v) = &self.azure_cloud_environment {
+            attributes.insert("azure_cloud_environment".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = self.validate_dimensions {
+            attributes.insert("validate_dimensions".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "prometheus.exporter.azure".into(),
+            label: self.label.clone(),
+            attributes,
+            blocks: Vec::new(),
+        })
+    }
+}
+
+// ============================================================
 // tests
 // ============================================================
 
@@ -1860,6 +1990,76 @@ mod tests {
                 "\tingest_delay = true\n",
                 "}\n",
             ),
+        );
+    }
+
+    /// The Kusto filter keeps its single quotes, and an empty tag list renders
+    /// as one rather than being dropped, since the default is not empty.
+    #[test]
+    fn azure_exporter_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.azure:
+                  label: postgres
+                  subscriptions: [00000000-0000-0000-0000-000000000000]
+                  resource_type: Microsoft.DBforPostgreSQL/flexibleServers
+                  metrics: [cpu_percent, is_db_alive]
+                  resource_graph_query_filter: "where name in~ ('example-pg')"
+                  metric_aggregations: [average, minimum]
+                  timespan: PT10M
+                  interval: PT5M
+                  included_resource_tags: []
+                  azure_cloud_environment: azurecloud
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "prometheus.exporter.azure \"postgres\" {\n",
+                "\tsubscriptions = [\n",
+                "\t\t\"00000000-0000-0000-0000-000000000000\",\n",
+                "\t]\n",
+                "\tresource_type = \"Microsoft.DBforPostgreSQL/flexibleServers\"\n",
+                "\tmetrics = [\n",
+                "\t\t\"cpu_percent\",\n",
+                "\t\t\"is_db_alive\",\n",
+                "\t]\n",
+                "\tresource_graph_query_filter = \"where name in~ ('example-pg')\"\n",
+                "\tmetric_aggregations = [\n",
+                "\t\t\"average\",\n",
+                "\t\t\"minimum\",\n",
+                "\t]\n",
+                "\ttimespan = \"PT10M\"\n",
+                "\tinterval = \"PT5M\"\n",
+                "\tincluded_resource_tags = []\n",
+                "\tazure_cloud_environment = \"azurecloud\"\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// `regions` switches the exporter to subscription scope, where the
+    /// Resource Graph filter does not apply; the exporter refuses both.
+    #[test]
+    fn azure_exporter_refuses_regions_with_a_filter() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.azure:
+                  subscriptions: [example]
+                  resource_type: Microsoft.Storage/storageAccounts
+                  metrics: [UsedCapacity]
+                  regions: [eastus2]
+                  resource_graph_query_filter: "where name == 'x'"
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            schema_violation_paths(err)
+                .iter()
+                .any(|p| p.starts_with("/blocks/0")),
         );
     }
 

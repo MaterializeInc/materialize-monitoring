@@ -476,6 +476,7 @@ locals {
     local.grafana_database_documents,
     local.storage_documents,
     local.azure_identity_document,
+    local.azure_gateway_identity_document,
     local.storage_class_document,
     local.google_cloud_metrics_document,
     local.datadog_metrics_document,

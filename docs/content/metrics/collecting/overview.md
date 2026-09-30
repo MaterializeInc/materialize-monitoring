@@ -13,7 +13,7 @@ There are five ways metrics reach `materialize-monitoring`, and most deployments
 | [Prometheus Remote Write](../prometheus-remote-write/) | You already run Prometheus and want it to ship into this stack | Something **pushes** |
 | [OpenTelemetry Endpoint](../opentelemetry-endpoint/) | You run an OpenTelemetry Collector, or an application that emits OTLP directly | Something **pushes** |
 | [Prometheus Scraper](../prometheus-scraper/) | You run your own Prometheus and this stack is not in the path at all | Your Prometheus **pulls** |
-| [Cloud Provider Metrics](../cloud-provider-metrics/) | The metadata database or the buckets are managed by AWS or Google Cloud, and their CPU, storage or burst headroom is wanted beside the rest | The gateway **pulls** from the provider's API |
+| [Cloud Provider Metrics](../cloud-provider-metrics/) | The metadata database or the buckets are managed by AWS, Google Cloud or Azure, and their CPU, storage or burst headroom is wanted beside the rest | The gateway **pulls** from the provider's API |
 
 All but the Prometheus Scraper land in the same place: the `alloy-gateway` pipeline, which processes and enriches everything uniformly before writing it to [storage](../../storing/).
 How it got in makes no difference downstream.

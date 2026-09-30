@@ -655,7 +655,10 @@ variable "prometheus_remote_write_credentials" {
 variable "gateway_service_account_annotations" {
   description = <<-EOT
     Annotations for the Alloy gateway's ServiceAccount, for binding it to a cloud identity —
-    `eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity.
+    `eks.amazonaws.com/role-arn` for IRSA, `iam.gke.io/gcp-service-account` for Workload Identity,
+    `azure.workload.identity/client-id` for Azure workload identity. The last also labels the
+    gateway pods `azure.workload.identity/use: "true"`, without which the Entra webhook injects
+    nothing.
 
     Required by a `sigv4` remote-write destination, which has no other source of credentials.
     Merged with any annotations `object_storage` contributes, so both can be present.

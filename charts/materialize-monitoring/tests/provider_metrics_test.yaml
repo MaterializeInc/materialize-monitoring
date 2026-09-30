@@ -45,6 +45,12 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'declare "provider_gcp_gcs"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_azure_postgres"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_azure_blob"'
 
   # --- the module's contract ---------------------------------------------------
 
@@ -92,6 +98,61 @@ tests:
       - notMatchRegex:
           path: data["config.alloy"]
           pattern: 'api/request_count'
+
+  # Without a filter the Resource Graph query returns every resource of the
+  # type that the identity can read.
+  - it: should narrow every Azure query to the named resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "postgres" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.servers\.value, "'',''"\)\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "capacity" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.storage_accounts\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "requests" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.storage_accounts\.value'
+
+  # The exporter copies the `owner` tag onto every series by default, and tags
+  # are free text.
+  - it: should copy no Azure resource tag onto a series
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "postgres" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "capacity" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "requests" \{[^}]*included_resource_tags = \[\]'
+
+  # Every aggregation is requested for every metric, so the keep is what holds
+  # the Postgres pull to one or two series per metric. It must also pass the
+  # scrape's own `up`, or a failing pull would look like a missing one.
+  - it: should keep only the chosen Postgres aggregations, and the scrape health
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "postgres" \{[^}]*forward_to\s+= prometheus\.relabel\.postgres\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "postgres" \{[\s\S]*?action = "keep"[\s\S]*?regex = "azure_microsoft_dbforpostgresql_flexibleservers_\([^"]*\)_\[a-z\]\+\|up\|scrape_\.\+"'
+
+  # Two targets from one component, so each needs its own `instance`, or their
+  # `up` series collide.
+  - it: should give each blob pull its own instance
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "capacity" \{[^}]*instance\s+= "blob_capacity"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "requests" \{[^}]*instance\s+= "blob_requests"'
 
   # --- CloudWatch instances ------------------------------------------------------
 
@@ -172,6 +233,53 @@ tests:
           path: data["config.alloy"]
           pattern: '(?m)^provider_gcp_gcs "provider"'
 
+  # --- Azure instances ---------------------------------------------------------
+
+  - it: should instantiate one pull per Azure service, naming its resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &azure
+      pipeline.metrics.provider.azure.enabled: true
+      pipeline.metrics.provider.azure.subscriptionId: 00000000-0000-0000-0000-000000000000
+      pipeline.metrics.provider.azure.postgres.servers: [mz-pg, grafana-pg]
+      pipeline.metrics.provider.azure.blob.storageAccounts: [mzpersist]
+      alloy-gateway.serviceAccount.annotations:
+        azure.workload.identity/client-id: 11111111-1111-1111-1111-111111111111
+      alloy-gateway.controller.podLabels:
+        azure.workload.identity/use: "true"
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_postgres "provider" \{\s+subscription_id\s+= "00000000-0000-0000-0000-000000000000"\s+servers\s+= \["mz-pg","grafana-pg"\]\s+cloud_environment = "azurecloud"\s+scrape_interval\s+= "5m"\s+scrape_timeout\s+= "2m"\s+forward_to\s+= otelcol\.receiver\.prometheus\.inputBridge\.receiver\s+\}'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_blob "provider" \{\s+subscription_id\s+= "00000000-0000-0000-0000-000000000000"\s+storage_accounts\s+= \["mzpersist"\]'
+
+  - it: should not instantiate an Azure service that lists no resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.postgres.servers: []
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_azure_postgres "'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '(?m)^provider_azure_blob "provider"'
+
+  - it: should carry a sovereign cloud through to every Azure instance
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.cloudEnvironment: azureusgovernmentcloud
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_postgres "provider" \{[^}]*cloud_environment = "azureusgovernmentcloud"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_blob "provider" \{[^}]*cloud_environment = "azureusgovernmentcloud"'
+
   # --- importance tiers --------------------------------------------------------
 
   - it: should admit provider families to a destination at their tier
@@ -185,6 +293,18 @@ tests:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
           pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*$'
+
+  - it: should admit Azure families to a destination at their tier
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    set:
+      <<: *azure
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.extended:
+        url: https://extended.example.com/api/v1/write
+        minMetricImportance: extended
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
+          pattern: '\|azure_microsoft_dbforpostgresql_flexibleservers_\.\*\|azure_microsoft_storage_storageaccounts_blobservices_\.\*$'
 
   - it: should keep provider families out of a stricter destination
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -221,7 +341,7 @@ tests:
     asserts:
       - notMatchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: 'aws_rds_|aws_s3_|stackdriver_'
+          pattern: 'aws_rds_|aws_s3_|stackdriver_|azure_'
 
   # --- validation --------------------------------------------------------------
 
@@ -260,6 +380,86 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'entry "my-project:us-east1:mz-pg" contains a colon'
+
+  - it: should refuse Azure without a subscription
+    set:
+      pipeline.metrics.provider.azure.enabled: true
+      pipeline.metrics.provider.azure.blob.storageAccounts: [mzpersist]
+    asserts:
+      - failedTemplate:
+          errorPattern: "azure.enabled is true but subscriptionId is empty"
+
+  - it: should refuse a subscription name in place of its ID
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.subscriptionId: mz-production
+    asserts:
+      - failedTemplate:
+          errorPattern: 'azure.subscriptionId is "mz-production". Use the subscription ID'
+
+  - it: should refuse an Azure cloud the exporter does not know
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.cloudEnvironment: AzurePublic
+    asserts:
+      - failedTemplate:
+          errorPattern: 'azure.cloudEnvironment is "AzurePublic"'
+
+  - it: should refuse Azure with nothing to watch
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.postgres.servers: []
+      pipeline.metrics.provider.azure.blob.storageAccounts: []
+    asserts:
+      - failedTemplate:
+          errorPattern: "azure.enabled is true but lists no resources"
+
+  # The name sits between single quotes in a Kusto filter; an FQDN matches
+  # nothing, and a quote would break the query.
+  - it: should refuse a Flexible Server FQDN in place of its name
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.postgres.servers: [mz-pg.postgres.database.azure.com]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres.servers entry "mz-pg.postgres.database.azure.com" is not a Flexible Server name'
+
+  - it: should refuse a blob endpoint in place of an account name
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.blob.storageAccounts: [https://mzpersist.blob.core.windows.net]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob.storageAccounts entry "https://mzpersist.blob.core.windows.net" is not a storage account name'
+
+  # Unquoted, an all-digit name is a number, and Helm reads a leading zero as
+  # octal: `012345` would render as 5349 and pass the shape check.
+  - it: should refuse an unquoted numeric storage account name
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.blob.storageAccounts: [123456]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'blob.storageAccounts entry 123456 is a (int|int64|float64), not a string. Quote it'
+
+  - it: should accept a quoted numeric storage account name
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.blob.storageAccounts: ["012345"]
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'storage_accounts\s+= \["012345"\]'
+
+  - it: should refuse an Azure scrape timeout longer than the interval
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.scrapeInterval: 1m
+    asserts:
+      - failedTemplate:
+          errorPattern: 'azure.scrapeTimeout \(2m\) is longer than scrapeInterval \(1m\)'
 
   # Two components cannot share a label, and Alloy refuses the whole config at
   # load when they do.
@@ -377,4 +577,55 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "iam.gke.io/gcp-service-account annotation"
+        not: true
+
+  # The webhook injects nothing into an unlabelled pod, so the annotation alone
+  # leaves the pull on the node's managed identity.
+  - it: should warn when the Azure identity annotation has no pod label
+    template: NOTES.txt
+    set:
+      <<: *azure
+      alloy-gateway.controller.podLabels: {}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'has no azure.workload.identity/use: "true"'
+
+  - it: should treat an empty Azure client ID as no identity
+    template: NOTES.txt
+    set:
+      <<: *azure
+      alloy-gateway.serviceAccount.annotations:
+        azure.workload.identity/client-id: ""
+    asserts:
+      - matchRegexRaw:
+          pattern: "no azure.workload.identity/client-id annotation"
+
+  - it: should warn when Azure has no identity to run as
+    template: NOTES.txt
+    set:
+      <<: *azure
+      alloy-gateway.serviceAccount.annotations: {}
+    asserts:
+      - matchRegexRaw:
+          pattern: "no azure.workload.identity/client-id annotation"
+
+  - it: should stay quiet when the gateway has a labelled workload identity
+    template: NOTES.txt
+    set: *azure
+    asserts:
+      - matchRegexRaw:
+          pattern: "azure.workload.identity"
+        not: true
+
+  - it: should stay quiet when a service principal is supplied through extraEnv
+    template: NOTES.txt
+    set:
+      <<: *azure
+      alloy-gateway.serviceAccount.annotations: {}
+      alloy-gateway.alloy.extraEnv:
+        - name: AZURE_CLIENT_ID
+          value: 11111111-1111-1111-1111-111111111111
+    asserts:
+      - matchRegexRaw:
+          pattern: "azure.workload.identity"
         not: true
