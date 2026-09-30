@@ -11,7 +11,8 @@
 #                  to code scanning. Findings baselined in the ignore file are
 #                  excluded here as well as at the gate.
 #   images-gate    fail on fixable HIGH/CRITICAL OS-package vulnerabilities in
-#                  the images we build ourselves. Blocks a pull request.
+#                  the images we build ourselves. CI runs it weekly, not
+#                  on pull requests -- see below.
 #   images-report  write SARIF for every image the chart references, ours and
 #                  upstream, at every severity, then merge and deduplicate them
 #                  into one uploadable file ($MERGED_IMAGE_SARIF).
@@ -29,6 +30,12 @@
 # module graph) we cannot fix at all without Grafana cutting a release. So the
 # image gate is `--pkg-types os --ignore-unfixed`: the base layer, and only
 # where a fixed package version exists. The Go side reports.
+#
+# That scoping still fell short, so since 2026-09-30 images-gate runs weekly in
+# CI rather than on pull requests. It scans the image the chart pins, not the
+# change under review, so a fix that Debian publishes before the distroless base
+# picks it up turned every pull request red at once -- the dashboard-change
+# failure above, one step removed.
 #
 # Images are scanned with `--image-src remote`, so what gets scanned is the
 # published artifact rather than whatever a local Docker daemon happens to hold.

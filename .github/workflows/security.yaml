@@ -14,11 +14,19 @@ name: security
 #                   baselined in .trivyignore.yaml are excluded: the file is
 #                   the record, and re-reporting them produces alerts that can
 #                   only be closed by hand.
-#   image-gate      blocks on fixable HIGH/CRITICAL OS-package vulnerabilities
-#                   in the images we publish. A rebuild is the fix.
 #   image-report    uploads SARIF for every image the chart references. The
 #                   upstream images and the upstream Go binaries inside our own
 #                   image both land here, because neither is ours to patch.
+#   image-weekly    fails on fixable HIGH/CRITICAL OS-package vulnerabilities
+#                   in the images we publish, on the weekly schedule only. A
+#                   red run means our base is behind and a rebuild is due. It
+#                   is informational: nothing waits on it.
+#
+# image-weekly was a pull-request gate until 2026-09-30. It scans the image the
+# chart *pins* rather than anything a pull request changed, so when Debian
+# published a fix ahead of the distroless base we build on, every open pull
+# request went red with nothing any of them could do about it. A gate should
+# come back only once it fails just the change that can act on the finding.
 
 on:
   push:
@@ -26,7 +34,7 @@ on:
   pull_request:
   # The report half is worth running on a schedule: the checks Trivy ships
   # change without this repository changing, and a finding that appears on a
-  # quiet week should still surface.
+  # quiet week should still surface. image-weekly runs on this trigger alone.
   schedule:
     - cron: "17 6 * * 1"
 
@@ -85,9 +93,12 @@ jobs:
           sarif_file: trivy-misconfig.sarif
           category: trivy-misconfig
 
-  image-gate:
-    name: trivy image (gate)
-    if: ${{ github.event_name != 'schedule' }}
+  image-weekly:
+    name: trivy image (weekly)
+    # Schedule only, and deliberately absent from security-gate's needs. The
+    # images it scans are the chart's pins, which a pull request usually does
+    # not touch, so failing a pull request here blocks work that cannot fix it.
+    if: ${{ github.event_name == 'schedule' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -165,7 +176,7 @@ jobs:
   # cancellation fails it. (lint/test/pipelines/dashboards carry the same gate.)
   security-gate:
     name: security-gate
-    needs: [misconfig-gate, misconfig-report, image-gate, image-report]
+    needs: [misconfig-gate, misconfig-report, image-report]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
