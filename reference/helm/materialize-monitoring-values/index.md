@@ -1359,7 +1359,10 @@ release instances.
 {
   "fsGroup": 473,
   "runAsGroup": 473,
-  "runAsUser": 473
+  "runAsUser": 473,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Security context for the pre-validate job pod. This is the hardened recommendation with the alloy user.
@@ -4285,7 +4288,10 @@ the `tls.*File` carriers are preferred over the inline PEMs.
   "readOnlyRootFilesystem": true,
   "runAsGroup": 473,
   "runAsNonRoot": false,
-  "runAsUser": 0
+  "runAsUser": 0,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs. No capabilities are added and none are needed: everything it reads is reachable by uid 0 under ordinary DAC.
@@ -4604,10 +4610,13 @@ the `tls.*File` carriers are preferred over the inline PEMs.
   "readOnlyRootFilesystem": true,
   "runAsGroup": 473,
   "runAsNonRoot": true,
-  "runAsUser": 473
+  "runAsUser": 473,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the alloy gateway containers.
+      <td class="helm-value-desc">Security context for the alloy gateway containers. The locked-down context the `mzmon-alloy` image documents, `RuntimeDefault` seccomp included. No pipeline component here needs a syscall that profile blocks; the eBPF-based ones, such as `beyla` and `pyroscope.ebpf`, would.
 </td>
     </tr>
     <tr>
@@ -5821,6 +5830,29 @@ your own policy layered on top.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context for Query, Query Frontend and Bucketweb.
+
+The subchart ships this empty. Its container context is already read-only,
+non-root and drops every capability; this adds `RuntimeDefault` seccomp.
+
+It reaches only the components whose own `podSecurityContext` is empty.
+The subchart picks the first non-empty of component, parent and global
+without merging them, and Compactor, Store Gateway, Receive and Ruler each
+ship an `fsGroup` of their own. Those four carry the same two keys in
+their own blocks below, which merge over the subchart's `fsGroup`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.query</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -6207,6 +6239,12 @@ window stays at two copies instead of three until the next block ships.
   "persistence": {
     "enabled": true,
     "size": "10Gi"
+  },
+  "podSecurityContext": {
+    "runAsNonRoot": true,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
   },
   "resources": {
     "requests": {
@@ -6668,6 +6706,12 @@ validator warns when the two disagree.
   "persistence": {
     "enabled": false
   },
+  "podSecurityContext": {
+    "runAsNonRoot": true,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
+  },
   "query": {
     "urls": [
       "http://thanos-query:9090"
@@ -7082,6 +7126,37 @@ Upstream references:
       <td class="helm-value-desc">CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context. The subchart ships an empty one. Its container context is already read-only, non-root and drops every capability; this adds `RuntimeDefault` seccomp, and keeps the whole pod non-root. No UID is set, so the image's own non-root user stands, which is what a registry profile swap needs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "512Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests and limits for the operator. The subchart sets none, which makes the operator BestEffort. Under node pressure the kubelet evicts it ahead of every pod still within its requests, whatever `priorityClassName` says. The operator idles at a few millicores and a few tens of MiB. The memory limit leaves room for many more dashboards than this chart ships; raise it if a cluster declares far more of its own.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -7238,6 +7313,48 @@ check warns when it is missing.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "readOnlyRootFilesystem": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Container security context for Grafana.
+Only the delta over the subchart's own, which already drops every
+capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+
+A read-only root filesystem needs two things from the rest of this block,
+and Grafana breaks quietly without either:
+
+| Needs | Supplied by | Without it |
+|---|---|---|
+| A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+| `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
+
+Everything else Grafana writes lands on the `storage` and `search` volumes
+the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
+The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
+profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
+Validators fail the render on each of these gaps, and warn when this is
+turned off.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.extraEmptyDirMounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "mountPath": "/tmp",
+    "name": "tmp"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana<wbr>.persistence</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -7331,6 +7448,9 @@ three break silently when it disagrees with the Ingress host.
   },
   "date_formats": {
     "default_timezone": "UTC"
+  },
+  "plugins": {
+    "preinstall_auto_update": false
   }
 }</pre>
 </td>
@@ -7430,10 +7550,12 @@ policy would isolate the pods and leave only `9094` open.
 **Egress is left unrestricted** (`egress.enabled: false` renders a policy with
 no `Egress` policy type at all, rather than an empty allow). Grafana dials the
 things it is configured to dial: Loki and Thanos in-namespace, a PostgreSQL
-state database wherever it lives, an OIDC provider on the internet, `grafana.com`
-if `plugins` is non-empty. The first two are knowable here and the rest are
-not, and a partial allowlist would fail as a dashboard that renders empty with
-no error — the worst failure mode this stack has.
+state database wherever it lives, an OIDC provider on the internet, and
+`grafana.com` on every start, for the plugins it preinstalls (see
+`grafana.ini.plugins`) and any listed in `plugins`. The first two are
+knowable here and the rest are not, and a partial allowlist would fail as a
+dashboard that renders empty with no error — the worst failure mode this
+stack has.
 </td>
     </tr>
     <tr>
@@ -8325,6 +8447,35 @@ is the better trade, and `monitoring-critical` covers the ordering.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">node-exporter<wbr>.securityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context, merged over the subchart's non-root UID 65534.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">node-exporter<wbr>.kubeRBACProxy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -8540,6 +8691,20 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context. The subchart ships an empty one beside an already locked-down container context; this makes the pod-level half say the same thing.
 </td>
     </tr>
   </tbody>

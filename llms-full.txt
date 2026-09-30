@@ -7919,6 +7919,8 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` Grafana-managed **unified alerting is not HA out of the box** — each replica evaluates every rule independently and notifies separately. The `grafana-postgres` profile enables gossip (`headlessService: true` plus `unified_alerting.ha_peers`), and validators warn both on several replicas with no gossip and on `ha_peers` pointing at a headless Service that was never created. Gossip is *not* a chart default: at one replica it is inert and costs a `ha_peer_timeout` settle on every start. The Prometheus rules this chart ships are unaffected either way.
 - [x] `[chart]` Gossip needs pod-to-pod **9094 on TCP and UDP**, and the Grafana subchart's own NetworkPolicy closes it — that template emits one ingress rule, on `service.targetPort`, and takes no second port. The chart renders the missing rule itself as `networkPolicies.grafanaGossip`, which appears when `unified_alerting.ha_peers` is set **and** `grafana.networkPolicy` is on. Turn the supplement off on its own and notifications duplicate rather than fail, because the replicas never find each other; a validator warns on that combination. Turning the main policy off takes the supplement with it, deliberately — a lone gossip policy would isolate the pods and leave only `9094` reachable.
 - [x] `[chart]` `priorityClassName` on Grafana and grafana-operator (`monitoring-scalable`), so neither is evicted ahead of ordinary workloads — Grafana is where an incident starts. See [Scheduling priority](#scheduling-priority).
+- [x] `[chart]` grafana-operator **requests 10m / 64Mi**, with a 512Mi memory limit.
+  The subchart sets none, and a BestEffort pod is evicted under node pressure ahead of every pod within its requests, whatever its priority class.
 
 #### 5. Images & supply chain
 
@@ -7926,6 +7928,17 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [x] `[chart]` **Hardened base images** are a values change: the three overlays under `profiles/registry/` repoint Grafana along with the rest of the stack, so this is no longer a per-image swap to work out by hand. See [Images and registries](#images-and-registries) for the vendors, the pull-secret wiring, and the UID hazard that makes a swap crash-loop rather than fail cleanly.
 - [ ] `[operator]` **A hardened Grafana cannot install plugins at start.** These images ship no shell and no package manager — which is the point — so `grafana.plugins` silently gets you a Grafana without those plugins rather than an error. Bake them into a derived image instead.
 - [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
+- [x] `[chart]` **Read-only root filesystem**, with an `emptyDir` at `/tmp` for the Unix sockets Grafana's backend plugins listen on.
+  A validator errors when nothing is mounted there, since every datasource then fails while the pod stays Ready.
+  A values file that sets `grafana.extraEmptyDirMounts` replaces the chart's list, so it has to keep the `/tmp` entry.
+- [x] `[chart]` **Bundled datasource plugins stay at the image's versions** (`grafana.ini.plugins.preinstall_auto_update: false`).
+  Grafana otherwise updates the Prometheus and Loki plugins it bundles to the newest release on grafana.com at every start, so a pinned image would not pin them.
+  On a read-only root the update also fails halfway and leaves the datasource unloaded, and a validator errors when it is turned back on.
+- [ ] `[operator]` **Do not update a bundled datasource plugin from Grafana's plugin catalog.**
+  The catalog's update takes the same path as the startup auto-update, so on a read-only root it leaves the datasource unloaded until the pod restarts.
+- [ ] `[operator]` Set `grafana.ini.plugins.preinstall_disabled: true` where Grafana cannot reach grafana.com.
+  Grafana's built-in preinstall list also carries the Drilldown apps, which the image does not bundle, so they download at every start regardless of `grafana.plugins`.
+  Disabling preinstall removes that startup dependency, and the apps with it.
 - [x] `[chart]` **Image Renderer disabled**, and a validator warns when it is turned on. It is a headless Chromium that fetches URLs on Grafana's behalf — a large attack surface and a server-side request forgery pivot into the cluster network. It has no place in a production deployment.
 - [x] `[chart]` The subchart's `testFramework` hook is off; it pulls a `bats` image this chart does not otherwise use or pin.
 
@@ -7939,7 +7952,7 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 #### 7. Network & meta-monitoring
 
 - [x] `[chart]` ServiceMonitor for Grafana's own metrics.
-- [x] `[chart]` **NetworkPolicy** on by default: ingress on `3000` from any source, every other port on the pod closed. `allowExternal` stays on because every way a human reaches Grafana is unselectable from here — an ingress controller in another namespace, a load balancer's client ranges, `kubectl port-forward` arriving from the API server. Narrow it with `explicitNamespacesSelector` and `explicitIpBlocks` once you know your path in. Egress is left unrestricted: Grafana dials Thanos Query, the Loki query frontend, its database, its identity provider, and `grafana.com` if `plugins` is set, and a partial allowlist there fails as a dashboard that renders empty with no error. See [Network policies](#network-policies).
+- [x] `[chart]` **NetworkPolicy** on by default: ingress on `3000` from any source, every other port on the pod closed. `allowExternal` stays on because every way a human reaches Grafana is unselectable from here — an ingress controller in another namespace, a load balancer's client ranges, `kubectl port-forward` arriving from the API server. Narrow it with `explicitNamespacesSelector` and `explicitIpBlocks` once you know your path in. Egress is left unrestricted: Grafana dials Thanos Query, the Loki query frontend, its database, its identity provider, and `grafana.com` at every start for the plugins it preinstalls, and a partial allowlist there fails as a dashboard that renders empty with no error. See [Network policies](#network-policies).
 - [x] `[chart]` `analytics.reporting_enabled` and `check_for_updates` are off — egress a monitoring stack does not need, and update banners are noise when the version is pinned by the chart.
 - [ ] `[operator]` Alert on Grafana being down. It is not a data-loss incident, but it is the interface every other alert is investigated through.
 
@@ -9007,8 +9020,8 @@ Credentials](../../alerting/channels/#credentials).
 
 ## Workload hardening
 
-Most of the stack runs non-root with a read-only root filesystem and all capabilities dropped.
-Two workloads cannot, and both are deliberate:
+Every workload runs with a read-only root filesystem, every capability dropped, privilege escalation forbidden, and `RuntimeDefault` seccomp.
+Two workloads deviate in other ways, and both are deliberate:
 
 | Workload | Deviation | Why |
 |---|---|---|
@@ -9023,7 +9036,15 @@ Two consequences follow from those deviations, and the second is the one that su
 2. **The release namespace cannot run under Pod Security Admission `baseline` or `restricted` as shipped.** Baseline forbids `hostPath` volumes and host namespaces, and the two DaemonSets need both, so the namespace has to be labelled `privileged`. Nothing else in the stack needs it.
 
 - [ ] `[operator]` **Give the DaemonSets their own namespace if you want PSA above `privileged` for the rest.** [`split-namespace`](../production-best-practices/#namespace-layout) is the mechanism; the backends, Grafana and the gateway are all `baseline`-clean today. Note that support for that layout is best-effort, and that it changes the workload-identity subject and the NetworkPolicy selectors along with it.
-- [ ] `[operator]` **`seccompProfile` is not set on every workload** — Alloy, Thanos and grafana-operator leave it unset, so they inherit the container runtime's default rather than declaring `RuntimeDefault`. Set it through each subchart's `podSecurityContext` if you are targeting `restricted`.
+- [x] `[chart]` **`RuntimeDefault` seccomp on every workload.**
+  Several subcharts ship an empty pod `securityContext`.
+  The chart sets one for grafana-operator, Thanos, metrics-server, node-exporter and the Alloy pre-validate job, and sets seccomp on the Alloy containers directly.
+  Thanos takes it per component, because Compactor, Store Gateway, Receive and Ruler each ship a context of their own that `thanos.global.podSecurityContext` never overrides.
+- [x] `[chart]` **Grafana runs on a read-only root filesystem.**
+  It needs a writable `/tmp`, which the chart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
+  Without either, the pod stays Ready while its datasources fail.
+  A validator errors on both.
+  See `grafana.containerSecurityContext` in the [values reference](../../reference/helm/materialize-monitoring-values/).
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
 ## Supply chain
@@ -9033,6 +9054,13 @@ Repointing at a mirror or a hardened rebuild is a values change: four overlays u
 See [Images and registries](../production-best-practices/#images-and-registries) for the vendors and the UID hazard that makes a careless swap crash-loop.
 
 - [ ] `[operator]` **Pin Grafana plugin versions (`name@version`), or bake them into an image.** `grafana.plugins` downloads from `grafana.com` at every pod start — a startup dependency on a third party, and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
+- [x] `[chart]` **Bundled datasource plugins stay at the image's versions.**
+  Grafana preinstalls a built-in plugin list at every start, whatever `grafana.plugins` says.
+  By default it also updates each bundled datasource on that list to the newest release on `grafana.com`.
+  The chart turns the update off, so pinning the Grafana image pins the Prometheus and Loki datasources the dashboards query through.
+- [ ] `[operator]` **Set `grafana.ini.plugins.preinstall_disabled: true` where Grafana has no route to `grafana.com`.**
+  The built-in list also carries the Drilldown apps, which the image does not bundle, so Grafana still downloads them at every start.
+  Disabling preinstall removes that startup dependency, and the Drilldown apps with it.
 - [ ] `[operator]` **The Grafana Image Renderer stays off.** It is a headless Chromium that fetches URLs on Grafana's behalf: a large attack surface and a server-side request forgery pivot into the cluster network. A validator warns when it is enabled.
 
 ## The telemetry itself
@@ -11829,7 +11857,10 @@ release instances.
 {
   "fsGroup": 473,
   "runAsGroup": 473,
-  "runAsUser": 473
+  "runAsUser": 473,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Security context for the pre-validate job pod. This is the hardened recommendation with the alloy user.
@@ -14755,7 +14786,10 @@ the `tls.*File` carriers are preferred over the inline PEMs.
   "readOnlyRootFilesystem": true,
   "runAsGroup": 473,
   "runAsNonRoot": false,
-  "runAsUser": 0
+  "runAsUser": 0,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs. No capabilities are added and none are needed: everything it reads is reachable by uid 0 under ordinary DAC.
@@ -15074,10 +15108,13 @@ the `tls.*File` carriers are preferred over the inline PEMs.
   "readOnlyRootFilesystem": true,
   "runAsGroup": 473,
   "runAsNonRoot": true,
-  "runAsUser": 473
+  "runAsUser": 473,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre>
 </td>
-      <td class="helm-value-desc">Security context for the alloy gateway containers.
+      <td class="helm-value-desc">Security context for the alloy gateway containers. The locked-down context the `mzmon-alloy` image documents, `RuntimeDefault` seccomp included. No pipeline component here needs a syscall that profile blocks; the eBPF-based ones, such as `beyla` and `pyroscope.ebpf`, would.
 </td>
     </tr>
     <tr>
@@ -16291,6 +16328,29 @@ your own policy layered on top.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context for Query, Query Frontend and Bucketweb.
+
+The subchart ships this empty. Its container context is already read-only,
+non-root and drops every capability; this adds `RuntimeDefault` seccomp.
+
+It reaches only the components whose own `podSecurityContext` is empty.
+The subchart picks the first non-empty of component, parent and global
+without merging them, and Compactor, Store Gateway, Receive and Ruler each
+ship an `fsGroup` of their own. Those four carry the same two keys in
+their own blocks below, which merge over the subchart's `fsGroup`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.query</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -16677,6 +16737,12 @@ window stays at two copies instead of three until the next block ships.
   "persistence": {
     "enabled": true,
     "size": "10Gi"
+  },
+  "podSecurityContext": {
+    "runAsNonRoot": true,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
   },
   "resources": {
     "requests": {
@@ -17138,6 +17204,12 @@ validator warns when the two disagree.
   "persistence": {
     "enabled": false
   },
+  "podSecurityContext": {
+    "runAsNonRoot": true,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
+  },
   "query": {
     "urls": [
       "http://thanos-query:9090"
@@ -17552,6 +17624,37 @@ Upstream references:
       <td class="helm-value-desc">CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.
 </td>
     </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context. The subchart ships an empty one. Its container context is already read-only, non-root and drops every capability; this adds `RuntimeDefault` seccomp, and keeps the whole pod non-root. No UID is set, so the image's own non-root user stands, which is what a registry profile swap needs.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "512Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests and limits for the operator. The subchart sets none, which makes the operator BestEffort. Under node pressure the kubelet evicts it ahead of every pod still within its requests, whatever `priorityClassName` says. The operator idles at a few millicores and a few tens of MiB. The memory limit leaves room for many more dashboards than this chart ships; raise it if a cluster declares far more of its own.
+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -17708,6 +17811,48 @@ check warns when it is missing.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "readOnlyRootFilesystem": true
+}</pre>
+</td>
+      <td class="helm-value-desc">Container security context for Grafana.
+Only the delta over the subchart's own, which already drops every
+capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+
+A read-only root filesystem needs two things from the rest of this block,
+and Grafana breaks quietly without either:
+
+| Needs | Supplied by | Without it |
+|---|---|---|
+| A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+| `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
+
+Everything else Grafana writes lands on the `storage` and `search` volumes
+the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
+The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
+profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
+Validators fail the render on each of these gaps, and warn when this is
+turned off.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.extraEmptyDirMounts</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "mountPath": "/tmp",
+    "name": "tmp"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana<wbr>.persistence</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -17801,6 +17946,9 @@ three break silently when it disagrees with the Ingress host.
   },
   "date_formats": {
     "default_timezone": "UTC"
+  },
+  "plugins": {
+    "preinstall_auto_update": false
   }
 }</pre>
 </td>
@@ -17900,10 +18048,12 @@ policy would isolate the pods and leave only `9094` open.
 **Egress is left unrestricted** (`egress.enabled: false` renders a policy with
 no `Egress` policy type at all, rather than an empty allow). Grafana dials the
 things it is configured to dial: Loki and Thanos in-namespace, a PostgreSQL
-state database wherever it lives, an OIDC provider on the internet, `grafana.com`
-if `plugins` is non-empty. The first two are knowable here and the rest are
-not, and a partial allowlist would fail as a dashboard that renders empty with
-no error — the worst failure mode this stack has.
+state database wherever it lives, an OIDC provider on the internet, and
+`grafana.com` on every start, for the plugins it preinstalls (see
+`grafana.ini.plugins`) and any listed in `plugins`. The first two are
+knowable here and the rest are not, and a partial allowlist would fail as a
+dashboard that renders empty with no error — the worst failure mode this
+stack has.
 </td>
     </tr>
     <tr>
@@ -18795,6 +18945,35 @@ is the better trade, and `monitoring-critical` covers the ordering.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">node-exporter<wbr>.securityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context, merged over the subchart's non-root UID 65534.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">node-exporter<wbr>.containerSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">node-exporter<wbr>.kubeRBACProxy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -19010,6 +19189,20 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.podSecurityContext</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod security context. The subchart ships an empty one beside an already locked-down container context; this makes the pod-level half say the same thing.
 </td>
     </tr>
   </tbody>
@@ -23694,9 +23887,10 @@ The upstream population is large and moves on someone else's release schedule, s
 The image gate reached that failure through our own image instead, and runs weekly rather than on pull requests until it can be scoped to the change under review.
 Three follow-ups came out of building them: the suppressions are per-check rather than per-resource, so they also mask a
 finding if one of our own templates grows it ([DEP-249](https://linear.app/materializeinc/issue/DEP-249));
-`readOnlyRootFilesystem` on grafana and alertmanager is probably fixable through values rather than permanently
-baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250); the Alertmanager half landed with DEP-226, so the
-KSV-0014 baseline entry now covers Grafana alone); and SARIF findings point at temp render paths, so code scanning
+`readOnlyRootFilesystem` on grafana and alertmanager turned out to be fixable through values rather than permanently
+baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250), ✅ — Alertmanager with DEP-226, then Grafana
+along with a pod-level `securityContext` everywhere, so the KSV-0014 and KSV-0118 entries are gone); and SARIF findings
+point at temp render paths, so code scanning
 cannot map them back to a source line ([DEP-251](https://linear.app/materializeinc/issue/DEP-251)).
 
 The E2E suite subsumes what was previously tracked as a synthetic-data smoke test ([DEP-119](https://linear.app/materializeinc/issue/DEP-119), now closed as a duplicate).

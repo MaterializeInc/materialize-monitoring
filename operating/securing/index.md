@@ -145,8 +145,8 @@ Credentials](../../alerting/channels/#credentials).
 
 ## Workload hardening
 
-Most of the stack runs non-root with a read-only root filesystem and all capabilities dropped.
-Two workloads cannot, and both are deliberate:
+Every workload runs with a read-only root filesystem, every capability dropped, privilege escalation forbidden, and `RuntimeDefault` seccomp.
+Two workloads deviate in other ways, and both are deliberate:
 
 | Workload | Deviation | Why |
 |---|---|---|
@@ -161,7 +161,15 @@ Two consequences follow from those deviations, and the second is the one that su
 2. **The release namespace cannot run under Pod Security Admission `baseline` or `restricted` as shipped.** Baseline forbids `hostPath` volumes and host namespaces, and the two DaemonSets need both, so the namespace has to be labelled `privileged`. Nothing else in the stack needs it.
 
 - [ ] `[operator]` **Give the DaemonSets their own namespace if you want PSA above `privileged` for the rest.** [`split-namespace`](../production-best-practices/#namespace-layout) is the mechanism; the backends, Grafana and the gateway are all `baseline`-clean today. Note that support for that layout is best-effort, and that it changes the workload-identity subject and the NetworkPolicy selectors along with it.
-- [ ] `[operator]` **`seccompProfile` is not set on every workload** — Alloy, Thanos and grafana-operator leave it unset, so they inherit the container runtime's default rather than declaring `RuntimeDefault`. Set it through each subchart's `podSecurityContext` if you are targeting `restricted`.
+- [x] `[chart]` **`RuntimeDefault` seccomp on every workload.**
+  Several subcharts ship an empty pod `securityContext`.
+  The chart sets one for grafana-operator, Thanos, metrics-server, node-exporter and the Alloy pre-validate job, and sets seccomp on the Alloy containers directly.
+  Thanos takes it per component, because Compactor, Store Gateway, Receive and Ruler each ship a context of their own that `thanos.global.podSecurityContext` never overrides.
+- [x] `[chart]` **Grafana runs on a read-only root filesystem.**
+  It needs a writable `/tmp`, which the chart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
+  Without either, the pod stays Ready while its datasources fail.
+  A validator errors on both.
+  See `grafana.containerSecurityContext` in the [values reference](../../reference/helm/materialize-monitoring-values/).
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
 ## Supply chain
@@ -171,6 +179,13 @@ Repointing at a mirror or a hardened rebuild is a values change: four overlays u
 See [Images and registries](../production-best-practices/#images-and-registries) for the vendors and the UID hazard that makes a careless swap crash-loop.
 
 - [ ] `[operator]` **Pin Grafana plugin versions (`name@version`), or bake them into an image.** `grafana.plugins` downloads from `grafana.com` at every pod start — a startup dependency on a third party, and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
+- [x] `[chart]` **Bundled datasource plugins stay at the image's versions.**
+  Grafana preinstalls a built-in plugin list at every start, whatever `grafana.plugins` says.
+  By default it also updates each bundled datasource on that list to the newest release on `grafana.com`.
+  The chart turns the update off, so pinning the Grafana image pins the Prometheus and Loki datasources the dashboards query through.
+- [ ] `[operator]` **Set `grafana.ini.plugins.preinstall_disabled: true` where Grafana has no route to `grafana.com`.**
+  The built-in list also carries the Drilldown apps, which the image does not bundle, so Grafana still downloads them at every start.
+  Disabling preinstall removes that startup dependency, and the Drilldown apps with it.
 - [ ] `[operator]` **The Grafana Image Renderer stays off.** It is a headless Chromium that fetches URLs on Grafana's behalf: a large attack surface and a server-side request forgery pivot into the cluster network. A validator warns when it is enabled.
 
 ## The telemetry itself

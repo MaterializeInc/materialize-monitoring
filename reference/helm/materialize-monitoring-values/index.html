@@ -5,7 +5,7 @@ Storage Requirements# Using Thanos or Loki (both enabled by default) requires ob
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
 Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta property="og:locale" content="en_us"><meta property="og:type" content="article"><meta property="article:section" content="reference"><meta itemprop=name content="materialize-monitoring values"><meta itemprop=description content="materialize-monitoring Helm Reference# Unified observability stack for Materialize: Alloy-based pipeline, optional bundled backends (Loki / Thanos / Grafana / Alertmanager), and the dashboards / alerts / rules that consume the Materialize metrics surface.
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
-Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="31648"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/favicon.png><link rel=manifest href=/materialize-monitoring/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/book.min.0e69cfa099664e75ec44ee4fedb3c13923120915dbc4cd611d48d113b36143f2.css integrity="sha256-DmnPoJlmTnXsRO5P7bPBOSMSCRXbxM1hHUjRE7NhQ/I=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/en.search.min.6b0d25e932ae09ad64afde810174abe7d1ed719aa9196fcc5f9af21e7d695314.js integrity="sha256-aw0l6TKuCa1kr96BAXSr59HtcZqpGW/MX5ryHn1pUxQ=" crossorigin=anonymous></script><link rel=alternate type=application/rss+xml href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/index.xml title="materialize-monitoring Documentation"><link rel=alternate type=text/markdown href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/index.md title="Markdown version"><link rel=describedby type=text/plain href=https://materializeinc.github.io/materialize-monitoring/llms.txt title=llms.txt></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
+Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="32288"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/favicon.png><link rel=manifest href=/materialize-monitoring/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/book.min.0e69cfa099664e75ec44ee4fedb3c13923120915dbc4cd611d48d113b36143f2.css integrity="sha256-DmnPoJlmTnXsRO5P7bPBOSMSCRXbxM1hHUjRE7NhQ/I=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/en.search.min.455489c4f863ea34a4c851d9bc12c86873e0eef57950a3df1436c409305ce4c8.js integrity="sha256-RVSJxPhj6jSkyFHZvBLIaHPg7vV5UKPfFDbECTBc5Mg=" crossorigin=anonymous></script><link rel=alternate type=application/rss+xml href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/index.xml title="materialize-monitoring Documentation"><link rel=alternate type=text/markdown href=https://materializeinc.github.io/materialize-monitoring/reference/helm/materialize-monitoring-values/index.md title="Markdown version"><link rel=describedby type=text/plain href=https://materializeinc.github.io/materialize-monitoring/llms.txt title=llms.txt></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><header class=site-header role=banner><div class=site-header-inner><a class=site-header-logo href=https://materialize.com/ aria-label=Materialize><svg class="logo-link svelte-ju9vo9" width="161" height="29" viewBox="0 0 161 29" fill="none"><g><path d="M54.0797 6.44507V21.2633h2.5758V11.0613H56.793l4.0953 10.1585h1.9246L66.9081 11.083H67.0456V21.2633h2.5758V6.44507H66.3365L61.9374 17.1825H61.7637L57.3646 6.44507H54.0797z" fill="var(--important)"/><path d="M75.6269 21.4875C77.3706 21.4875 78.4125 20.6699 78.89 19.7366h.0869v1.5267h2.5179V13.8252c0-2.9376-2.39489999999999-3.8203-4.5149-3.8203-2.33710000000001.0-4.1315 1.0419-4.7103 3.0678L74.7152 13.42C74.9757 12.6603 75.7137 12.0091 76.9944 12.0091 78.2099 12.0091 78.8756 12.6314 78.8756 13.7239V13.7673C78.8756 14.5198 78.0869 14.556 76.1261 14.7658 73.9699 14.9974 71.9078 15.6413 71.9078 18.1448 71.9078 20.3299 73.5069 21.4875 75.6269 21.4875zM76.307 19.5629C75.2144 19.5629 74.433 19.0637 74.433 18.1014 74.433 17.0956 75.3085 16.676 76.4806 16.5096 77.168 16.4155 78.5427 16.2419 78.8828 15.9669v1.3096C78.8828 18.5138 77.8843 19.5629 76.307 19.5629z" fill="var(--important)"/><path d="M89.6781 10.1496H87.4857V7.48697H84.8665V10.1496H83.2892v2.0259H84.8665v6.1791C84.852 20.4456 86.3715 21.4731 88.3395 21.4152 89.0848 21.3935 89.5985 21.2488 89.8807 21.1547L89.4393 19.1071C89.2946 19.1433 88.9979 19.2084 88.6724 19.2084c-.658499999999989.0-1.1867-.2315-1.1867-1.2879v-5.745H89.6781V10.1496z" fill="var(--important)"/><path d="M96.6693 21.4803C99.2596 21.4803 101.04 20.2141 101.503 18.2822L99.057 18.0073C98.7025 18.9479 97.8342 19.4399 96.7055 19.4399 95.0124 19.4399 93.8909 18.3257 93.8692 16.4227h7.7418V15.6196c0-3.8999-2.3442-5.6147-5.0792-5.6147C93.3483 10.0049 91.2717 12.342 91.2717 15.7716 91.2717 19.259 93.3193 21.4803 96.6693 21.4803zm-2.7929-6.823C93.956 13.2391 95.0052 12.0453 96.568 12.0453c1.505.0 2.518 1.0998 2.5324 2.612H93.8764z" fill="var(--important)"/><path d="M103.827 21.2633h2.619V14.7296C106.446 13.3187 107.51 12.3202 108.95 12.3202 109.391 12.3202 109.941 12.3998 110.165 12.4722V10.0628C109.926 10.0194 109.514 9.99043 109.225 9.99043 107.951 9.99043 106.888 10.714 106.482 12.0019H106.367V10.1496H103.827V21.2633z" fill="var(--important)"/><path d="M111.905 21.2633h2.62V10.1496h-2.62V21.2633zM113.222 8.57229c.832000000000008.0 1.512-.63672 1.512-1.41815C114.734 6.36548 114.054 5.72876 113.222 5.72876 112.383 5.72876 111.703 6.36548 111.703 7.15414 111.703 7.93557 112.383 8.57229 113.222 8.57229z" fill="var(--important)"/><path d="M120.416 21.4875C122.16 21.4875 123.202 20.6699 123.679 19.7366H123.766v1.5267h2.518V13.8252c0-2.9376-2.39500000000001-3.8203-4.515-3.8203-2.337.0-4.131 1.0419-4.71000000000001 3.0678L119.504 13.42C119.765 12.6603 120.503 12.0091 121.784 12.0091 122.999 12.0091 123.665 12.6314 123.665 13.7239V13.7673C123.665 14.5198 122.876 14.556 120.915 14.7658 118.759 14.9974 116.697 15.6413 116.697 18.1448c0 2.1851 1.599 3.3427 3.71899999999999 3.3427zM121.096 19.5629C120.004 19.5629 119.222 19.0637 119.222 18.1014c0-1.0058.876000000000005-1.4254 2.048-1.5918C121.957 16.4155 123.332 16.2419 123.672 15.9669v1.3096C123.672 18.5138 122.674 19.5629 121.096 19.5629z" fill="var(--important)"/><path d="M131.537 6.44507h-2.619V21.2633h2.619V6.44507z" fill="var(--important)"/><path d="M134.23 21.2633h2.62V10.1496h-2.62V21.2633zM135.547 8.57229c.831999999999994.0 1.512-.63672 1.512-1.41815C137.059 6.36548 136.379 5.72876 135.547 5.72876 134.708 5.72876 134.028 6.36548 134.028 7.15414 134.028 7.93557 134.708 8.57229 135.547 8.57229z" fill="var(--important)"/><path d="M139.398 21.2633h9.124V19.0926H142.878V18.9986L148.334 11.9368V10.1496H139.586v2.1706H145.129V12.4143L139.398 19.5991v1.6642z" fill="var(--important)"/><path d="M155.586 21.4803C158.176 21.4803 159.956 20.2141 160.419 18.2822L157.973 18.0073C157.619 18.9479 156.751 19.4399 155.622 19.4399 153.929 19.4399 152.807 18.3257 152.786 16.4227H160.528V15.6196c0-3.8999-2.345-5.6147-5.07999999999998-5.6147C152.265 10.0049 150.188 12.342 150.188 15.7716c0 3.4874 2.048 5.7087 5.39800000000003 5.7087zM152.793 14.6573C152.872 13.2391 153.922 12.0453 155.484 12.0453c1.505.0 2.518 1.0998 2.53299999999999 2.612H152.793z" fill="var(--important)"/></g><path class="bar1 svelte-ju9vo9" d="M8.52478 28.5217c-2.74376.0-5.48752.0-8.231282.0C.0489163 28.5217.0 28.4728.0 28.2327c0-2.7304.0-5.4653.0-8.2046C.182324 20.0281.257922 20.2015.369096 20.3082 2.99872 22.9201 5.62389 25.5393 8.24462 28.166 8.35135 28.2594 8.51589 28.335 8.52478 28.5217z" fill="var(--important)"/><path class="bar3 svelte-ju9vo9" d="M25.0894 20.4296C25.7698 21.1766 26.4857 21.8837 27.2284 22.5641 27.3218 22.6708 27.4107 22.7864 27.513 22.8887c1.2674 1.2674 2.5436 2.5214 3.8066 3.7933C31.9199 27.2912 32.5691 27.8559 33.0983 28.523H23.8932C23.7998 28.4118 23.7108 28.2962 23.6086 28.1939c-1.509-1.5001-3.0195-3.0046-4.5315-4.5136C13.9276 18.5455 8.77655 13.4108 3.62403 8.27608 2.42335 7.07985 1.25826 5.8525.00866699 4.71853V.685153c1.60534301.0 3.21513301.0 4.82492301.0C4.9615.680522 5.0889.703552 5.20709.75267 5.32528.801787 5.43147.875836 5.51842.969757 9.76673 5.20324 14.018 9.43673 18.2722 13.6702 18.3555 13.7519 18.4431 13.8291 18.5346 13.9015c1.2496 1.2584 2.4947 2.5258 3.7532 3.7799C23.2128 18.6063 24.1555 19.5135 25.0894 20.4296z" fill="var(--important)"/><path class="bar5 svelte-ju9vo9" d="M33.1117 28.5223C32.5691 27.8552 31.9199 27.2904 31.3329 26.6812c-1.2629-1.2718-2.5392-2.5258-3.8066-3.7932C27.424 22.7857 27.3351 22.6701 27.2417 22.5634c0-.191300000000002.0-.378.0-.569300000000002.0-6.4866.0-12.97612.0-19.46866C27.236 2.18135 27.3634 1.84836 27.5975 1.59603 27.8461 1.25748 28.1812.99211 28.5678.82779 28.9543.66347 29.378.606263 29.7942.662177 30.9727.751116 32.1645.697753 33.3518.662177 33.7164.662177 33.7965.76001 33.7965 1.10687c0 6.51032.0 13.01023.0 19.49983.0 2.4636.0 4.9287.0 7.3953C33.7965 28.1754 33.7965 28.3488 33.8232 28.5223H33.1117z" fill="var(--important)" fill-opacity=".7"/><path class="bar2 svelte-ju9vo9" d="M0 16.9643V7.77246C.137855 7.80359.209006 7.92366.297945 8.01704L3.13954 10.8231C8.37507 16.0438 13.6106 21.2645 18.8461 26.4852 19.5132 27.1522 20.2202 27.7881 20.8206 28.5219h-9.223C11.5976 28.3885 11.4687 28.3307 11.3886 28.2506c-3.22254-3.2196-6.45102-6.4362-9.68542-9.6498C1.16656 18.0238.597942 17.4774.0 16.9643H0z" fill="var(--important)"/><path class="bar4 svelte-ju9vo9" d="M25.089 20.4288C24.1551 19.5127 23.2124 18.6055 22.2874 17.6806c-1.2585-1.2541-2.5036-2.5214-3.7532-3.7799.0-.978300000000001.0-1.9522.0-2.9306C18.5244 10.8702 18.5369 10.7693 18.5707 10.6747 18.6045 10.5802 18.6589 10.4942 18.7298 10.4232l6.1235-6.09233C24.9022 4.28195 24.9645 4.24193 25.0089 4.2019 25.1468 4.25082 25.1068 4.3531 25.1068 4.4287c0 5.26221.0 10.5229.0 15.7822C25.1054 20.2838 25.0995 20.3566 25.089 20.4288v0z" fill="var(--important)" fill-opacity=".7"/></svg></a><nav class=site-header-nav aria-label=Primary><a href=https://materialize.com/docs/>Main Docs</a>
 <a class=active href=https://materializeinc.github.io/materialize-monitoring/ aria-current=page>o11y</a></nav></div></header><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/materialize-monitoring/><span>materialize-monitoring Documentation</span></a></h2><div class="book-search hidden"><input id=book-search-input type=text placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><script>document.querySelector(".book-search").classList.remove("hidden")</script><ul><li><a href=/materialize-monitoring/vision/>Vision</a></li><li><input type=checkbox id=section-d8603fc439af14929dcab7034cbdf060 class=toggle>
 <label for=section-d8603fc439af14929dcab7034cbdf060 class=flex><a role=button>Getting Started</a>
@@ -527,7 +527,10 @@ release instances.</p><table class=helm-values><thead><th>Key</th><th>Type</th><
 {
   "fsGroup": 473,
   "runAsGroup": 473,
-  "runAsUser": 473
+  "runAsUser": 473,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre></td><td class=helm-value-desc>Security context for the pre-validate job pod. This is the hardened recommendation with the alloy user.</td></tr><tr><td class=helm-value-key>pipeline<wbr>.preValidateJob<wbr>.containerSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "allowPrivilegeEscalation": false,
@@ -1415,7 +1418,10 @@ the <code>tls.*File</code> carriers are preferred over the inline PEMs.</p></td>
   "readOnlyRootFilesystem": true,
   "runAsGroup": 473,
   "runAsNonRoot": false,
-  "runAsUser": 0
+  "runAsUser": 0,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
 }</pre></td><td class=helm-value-desc>Security context for the alloy agent containers. The agent MUST run as root in order to be able to read container logs. No capabilities are added and none are needed: everything it reads is reachable by uid 0 under ordinary DAC.</td></tr><tr><td class=helm-value-key>alloy-agent<wbr>.alloy<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "limits": {
@@ -1574,8 +1580,11 @@ the <code>tls.*File</code> carriers are preferred over the inline PEMs.</p></td>
   "readOnlyRootFilesystem": true,
   "runAsGroup": 473,
   "runAsNonRoot": true,
-  "runAsUser": 473
-}</pre></td><td class=helm-value-desc>Security context for the alloy gateway containers.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.alloy<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+  "runAsUser": 473,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre></td><td class=helm-value-desc>Security context for the alloy gateway containers. The locked-down context the `mzmon-alloy` image documents, `RuntimeDefault` seccomp included. No pipeline component here needs a syscall that profile blocks; the eBPF-based ones, such as `beyla` and `pyroscope.ebpf`, would.</td></tr><tr><td class=helm-value-key>alloy-gateway<wbr>.alloy<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "limits": {
     "cpu": "500m",
@@ -2028,7 +2037,18 @@ working install: Receive&rsquo;s <code>grpc</code>, <code>http</code> and <code>
 its own ingress list, so hashring replication between Receive pods and the
 gateway&rsquo;s writes both keep working, and unrestricted egress leaves the object
 store reachable. Narrowing the ingress sources needs an upstream change, or
-your own policy layered on top.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.query</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+your own policy layered on top.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre></td><td class=helm-value-desc>Pod security context for Query, Query Frontend and Bucketweb.<p>The subchart ships this empty. Its container context is already read-only,
+non-root and drops every capability; this adds <code>RuntimeDefault</code> seccomp.</p><p>It reaches only the components whose own <code>podSecurityContext</code> is empty.
+The subchart picks the first non-empty of component, parent and global
+without merging them, and Compactor, Store Gateway, Receive and Ruler each
+ship an <code>fsGroup</code> of their own. Those four carry the same two keys in
+their own blocks below, which merge over the subchart&rsquo;s <code>fsGroup</code>.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.query</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "autoscaling": {
     "enabled": true,
@@ -2272,6 +2292,12 @@ window stays at two copies instead of three until the next block ships.</p></td>
   "persistence": {
     "enabled": true,
     "size": "10Gi"
+  },
+  "podSecurityContext": {
+    "runAsNonRoot": true,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
   },
   "resources": {
     "requests": {
@@ -2599,6 +2625,12 @@ validator warns when the two disagree.</p></td></tr><tr><td class=helm-value-key
   "persistence": {
     "enabled": false
   },
+  "podSecurityContext": {
+    "runAsNonRoot": true,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
+  },
   "query": {
     "urls": [
       "http://thanos-query:9090"
@@ -2829,7 +2861,22 @@ Ruler that is not evaluating, which is the worse outcome.</p><p><code>controller
 this file use <code>pod-template-hash</code>.</p></td></tr></tbody></table><h4 id=grafana-operator>Grafana Operator<a class=anchor href=#grafana-operator>#</a></h4><p>Bundled Grafana-operator for managing Grafana instances.</p><p>Upstream references:</p><ul><li><a href=https://grafana.github.io/grafana-operator/docs/installation/helm/#values rel=external class=external-link>https://grafana.github.io/grafana-operator/docs/installation/helm/#values</a></li><li><a href=https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml rel=external class=external-link>https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>grafana-operator<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Scalable tier: while the operator is down, dashboard and datasource reconciliation stops, but Grafana keeps serving what it already has.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"grafana-operator"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.crds</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "immutable": true
-}</pre></td><td class=helm-value-desc>CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.</td></tr></tbody></table><h4 id=grafana-instance>Grafana Instance<a class=anchor href=#grafana-instance>#</a></h4><p>Bundled Grafana for dashboard rendering.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml rel=external class=external-link>https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml</a></li></ul><p>The defaults here are the <em>safe</em> shape, not the <em>production</em> shape, and the
+}</pre></td><td class=helm-value-desc>CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre></td><td class=helm-value-desc>Pod security context. The subchart ships an empty one. Its container context is already read-only, non-root and drops every capability; this adds `RuntimeDefault` seccomp, and keeps the whole pod non-root. No UID is set, so the image's own non-root user stands, which is what a registry profile swap needs.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.resources</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "limits": {
+    "memory": "512Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "64Mi"
+  }
+}</pre></td><td class=helm-value-desc>Resource requests and limits for the operator. The subchart sets none, which makes the operator BestEffort. Under node pressure the kubelet evicts it ahead of every pod still within its requests, whatever `priorityClassName` says. The operator idles at a few millicores and a few tens of MiB. The memory limit leaves room for many more dashboards than this chart ships; raise it if a cluster declares far more of its own.</td></tr></tbody></table><h4 id=grafana-instance>Grafana Instance<a class=anchor href=#grafana-instance>#</a></h4><p>Bundled Grafana for dashboard rendering.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml rel=external class=external-link>https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml</a></li></ul><p>The defaults here are the <em>safe</em> shape, not the <em>production</em> shape, and the
 two differ in three places you have to close yourself:</p><ol><li><strong>State.</strong> Grafana stores users, service accounts and tokens, annotations,
 dashboard versions and permissions, preferences, and alert-rule state in a
 database of its own. The default is SQLite on an <code>emptyDir</code>, so all of it
@@ -2887,7 +2934,24 @@ check warns when it is missing.</p></td></tr><tr><td class=helm-value-key>grafan
     "cpu": "100m",
     "memory": "256Mi"
   }
-}</pre></td><td class=helm-value-desc>Resource requests and limits for the Grafana container. Requests are what the scheduler and the HPA both read — without a CPU request, `autoscaling.targetCPU` has no denominator and the HPA never scales. No CPU limit: query rendering is bursty and throttling it makes the UI feel broken. Raise the memory limit if you run many large dashboards or heavy plugins.</td></tr><tr><td class=helm-value-key>grafana<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Resource requests and limits for the Grafana container. Requests are what the scheduler and the HPA both read — without a CPU request, `autoscaling.targetCPU` has no denominator and the HPA never scales. No CPU limit: query rendering is bursty and throttling it makes the UI feel broken. Raise the memory limit if you run many large dashboards or heavy plugins.</td></tr><tr><td class=helm-value-key>grafana<wbr>.containerSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "readOnlyRootFilesystem": true
+}</pre></td><td class=helm-value-desc>Container security context for Grafana.
+Only the delta over the subchart's own, which already drops every
+capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.<p>A read-only root filesystem needs two things from the rest of this block,
+and Grafana breaks quietly without either:</p><table><thead><tr><th>Needs</th><th>Supplied by</th><th>Without it</th></tr></thead><tbody><tr><td>A writable <code>/tmp</code></td><td><code>extraEmptyDirMounts</code></td><td>Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under <code>/tmp</code>. The pod stays Ready and every panel fails with <code>Unable to find datasource plugin</code>.</td></tr><tr><td><code>grafana.ini.plugins.preinstall_auto_update: false</code></td><td><code>grafana.ini</code></td><td>Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart.</td></tr></tbody></table><p>Everything else Grafana writes lands on the <code>storage</code> and <code>search</code> volumes
+the subchart mounts at <code>/var/lib/grafana</code> and <code>/var/lib/grafana-search</code>.
+The one exception is <code>GF_AWS_PROFILES</code>: the image&rsquo;s entrypoint writes those
+profiles to <code>/usr/share/grafana/.aws</code>, which then needs a mount of its own.
+Validators fail the render on each of these gaps, and warn when this is
+turned off.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.extraEmptyDirMounts</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  {
+    "mountPath": "/tmp",
+    "name": "tmp"
+  }
+]</pre></td><td class=helm-value-desc>Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.</td></tr><tr><td class=helm-value-key>grafana<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "accessModes": [
     "ReadWriteOnce"
@@ -2940,6 +3004,9 @@ three break silently when it disagrees with the Ingress host.</p></td></tr><tr><
   },
   "date_formats": {
     "default_timezone": "UTC"
+  },
+  "plugins": {
+    "preinstall_auto_update": false
   }
 }</pre></td><td class=helm-value-desc>Grafana's own configuration file, as YAML.
 Rendered verbatim into `grafana.ini`, so any section Grafana understands can
@@ -3009,10 +3076,12 @@ about; turning this one off takes the supplement with it, since a lone gossip
 policy would isolate the pods and leave only <code>9094</code> open.</p><p><strong>Egress is left unrestricted</strong> (<code>egress.enabled: false</code> renders a policy with
 no <code>Egress</code> policy type at all, rather than an empty allow). Grafana dials the
 things it is configured to dial: Loki and Thanos in-namespace, a PostgreSQL
-state database wherever it lives, an OIDC provider on the internet, <code>grafana.com</code>
-if <code>plugins</code> is non-empty. The first two are knowable here and the rest are
-not, and a partial allowlist would fail as a dashboard that renders empty with
-no error — the worst failure mode this stack has.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.ingress</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Emit the ingress rule. False renders a policy with no rules at all, which — with egress off too — is an empty spec, not a deny.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.allowExternal</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Accept from any source. See the note above before turning this off.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.explicitNamespacesSelector</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+state database wherever it lives, an OIDC provider on the internet, and
+<code>grafana.com</code> on every start, for the plugins it preinstalls (see
+<code>grafana.ini.plugins</code>) and any listed in <code>plugins</code>. The first two are
+knowable here and the rest are not, and a partial allowlist would fail as a
+dashboard that renders empty with no error — the worst failure mode this
+stack has.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.ingress</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Emit the ingress rule. False renders a policy with no rules at all, which — with egress off too — is an empty spec, not a deny.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.allowExternal</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Accept from any source. See the note above before turning this off.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.explicitNamespacesSelector</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {}</pre></td><td class=helm-value-desc>Namespaces allowed in when `allowExternal` is false. The ingress controller's namespace goes here.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.explicitIpBlocks</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>CIDRs allowed in when `allowExternal` is false. Load-balancer client and health-check ranges go here.</td></tr><tr><td class=helm-value-key>grafana<wbr>.networkPolicy<wbr>.egress<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>false</code></td><td class=helm-value-desc>Leave off. See the note above: a partial egress allowlist for Grafana fails as empty panels rather than as an error.</td></tr><tr><td class=helm-value-key>grafana<wbr>.plugins</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Grafana plugins to install at container start.
@@ -3440,7 +3509,20 @@ is the better trade, and <code>monitoring-critical</code> covers the ordering.</
   "rollingUpdate": {
     "maxUnavailable": "10%"
   }
-}</pre></td><td class=helm-value-desc>Rolling update budget for the DaemonSet. Upstream's `maxUnavailable: 1` walks a large fleet one node at a time, which makes an image bump take hours. Metrics are gap-tolerant and the pod restarts in seconds, so a percentage keeps rollout time flat as the fleet grows.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.kubeRBACProxy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Rolling update budget for the DaemonSet. Upstream's `maxUnavailable: 1` walks a large fleet one node at a time, which makes an image bump take hours. Metrics are gap-tolerant and the pod restarts in seconds, so a percentage keeps rollout time flat as the fleet grows.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.securityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre></td><td class=helm-value-desc>Pod security context, merged over the subchart's non-root UID 65534.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.containerSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  }
+}</pre></td><td class=helm-value-desc>Container security context, merged over the subchart's read-only root. The exporter runs as UID 65534 and needs no capability to read the host's `/proc`, `/sys` and `/`.</td></tr><tr><td class=helm-value-key>node-exporter<wbr>.kubeRBACProxy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": false
 }</pre></td><td class=helm-value-desc>kube-rbac-proxy sidecar, which would put the exporter behind TokenReview/SubjectAccessReview over HTTPS.<p><strong>Off deliberately.</strong> It is a second container on <em>every</em> node, and DaemonSet
@@ -3568,7 +3650,13 @@ apply to a cloud node running ext4/xfs on network block storage with
 Cilium replacing kube-proxy. <code>ipvs</code> matters if you run kube-proxy in IPVS
 mode; <code>nfs</code> if you mount EFS/Filestore.</li><li><code>sysctl</code> — no default set, but <code>--collector.sysctl.include=vm.swappiness, vm.overcommit_memory,vm.overcommit_ratio</code> is a cheap guard against AMI
 drift changing swap behaviour underneath a swap-dependent workload.</li><li><code>textfile</code> — the node-local extension point, but it needs a hostPath mount
-this chart does not create.</li></ul></td></tr></tbody></table><h4 id=metrics-server>Metrics Server<a class=anchor href=#metrics-server>#</a></h4><p>metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml rel=external class=external-link>https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>metrics-server<wbr>.replicas</td><td class=helm-value-type>int</td><td class=helm-value-default><code>1</code></td><td class=helm-value-desc>Number of replicas for metrics-server.</td></tr></tbody></table></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div></div><div></div></div><div class="flex flex-wrap justify-between"><span><a href=/materialize-monitoring/operating/tuning/ class="flex align-center"><img src=/materialize-monitoring/icons/backward.svg class=book-icon alt=Backward>
+this chart does not create.</li></ul></td></tr></tbody></table><h4 id=metrics-server>Metrics Server<a class=anchor href=#metrics-server>#</a></h4><p>metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml rel=external class=external-link>https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>metrics-server<wbr>.replicas</td><td class=helm-value-type>int</td><td class=helm-value-default><code>1</code></td><td class=helm-value-desc>Number of replicas for metrics-server.</td></tr><tr><td class=helm-value-key>metrics-server<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "runAsNonRoot": true,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}</pre></td><td class=helm-value-desc>Pod security context. The subchart ships an empty one beside an already locked-down container context; this makes the pod-level half say the same thing.</td></tr></tbody></table></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div></div><div></div></div><div class="flex flex-wrap justify-between"><span><a href=/materialize-monitoring/operating/tuning/ class="flex align-center"><img src=/materialize-monitoring/icons/backward.svg class=book-icon alt=Backward>
 <span>Tuning</span>
 </a></span><span><a href=/materialize-monitoring/reference/terraform/materialize-monitoring-variables/ class="flex align-center"><span>Terraform variables</span>
 <img src=/materialize-monitoring/icons/forward.svg class=book-icon alt=Forward></a></span></div><div class=book-comments></div><script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script></footer><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#source-code>Source Code</a></li><li><a href=#requirements>Requirements</a><ul><li><a href=#storage-requirements>Storage Requirements</a></li></ul></li><li><a href=#included-subcharts>Included Subcharts</a></li><li><a href=#values>Values</a><ul><li><a href=#globals>Globals</a></li><li><a href=#main-chart-configuration>Main chart configuration</a></li><li><a href=#subchart-enablement-helm-tags>Subchart enablement (Helm tags)</a></li><li><a href=#priority-classes>Priority classes</a></li><li><a href=#network-policies>Network policies</a></li><li><a href=#certificates>Certificates</a></li></ul></li><li><a href=#two-issuers-because-they-cannot-be-one>Two issuers, because they cannot be one</a><ul><li><a href=#materialize-integration>Materialize Integration</a></li><li><a href=#networking-collection>Networking collection</a></li><li><a href=#pipeline-configuration>Pipeline configuration</a><ul><li><a href=#log-configuration>Log configuration</a></li><li><a href=#metrics-configuration>Metrics configuration</a></li></ul></li><li><a href=#dashboards>Dashboards</a><ul><li></li><li><a href=#scraper-configuration>Scraper configuration</a></li><li><a href=#grafana-connection-configuration>Grafana connection configuration</a></li><li><a href=#datasource-configuration>Datasource configuration</a></li><li><a href=#alerting-rules>Alerting rules</a></li><li><a href=#alert-routing>Alert routing</a></li><li><a href=#uninstall-cleanup>Uninstall cleanup</a></li></ul></li><li><a href=#bundled-subchart-configurations>Bundled subchart configurations</a><ul><li><a href=#alloy-agent>Alloy Agent</a></li><li><a href=#alloy-gateway>Alloy Gateway</a></li><li><a href=#loki>Loki</a></li><li><a href=#thanos>Thanos</a></li><li><a href=#grafana-operator>Grafana Operator</a></li><li><a href=#grafana-instance>Grafana Instance</a></li><li><a href=#alertmanager>Alertmanager</a></li><li><a href=#kube-state-metrics>Kube State Metrics</a></li><li><a href=#node-exporter>Node Exporter</a></li><li><a href=#metrics-server>Metrics Server</a></li></ul></li></ul></li></ul></nav></div></aside></main></body></html>

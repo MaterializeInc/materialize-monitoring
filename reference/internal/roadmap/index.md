@@ -497,9 +497,10 @@ The upstream population is large and moves on someone else's release schedule, s
 The image gate reached that failure through our own image instead, and runs weekly rather than on pull requests until it can be scoped to the change under review.
 Three follow-ups came out of building them: the suppressions are per-check rather than per-resource, so they also mask a
 finding if one of our own templates grows it ([DEP-249](https://linear.app/materializeinc/issue/DEP-249));
-`readOnlyRootFilesystem` on grafana and alertmanager is probably fixable through values rather than permanently
-baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250); the Alertmanager half landed with DEP-226, so the
-KSV-0014 baseline entry now covers Grafana alone); and SARIF findings point at temp render paths, so code scanning
+`readOnlyRootFilesystem` on grafana and alertmanager turned out to be fixable through values rather than permanently
+baselined ([DEP-250](https://linear.app/materializeinc/issue/DEP-250), ✅ — Alertmanager with DEP-226, then Grafana
+along with a pod-level `securityContext` everywhere, so the KSV-0014 and KSV-0118 entries are gone); and SARIF findings
+point at temp render paths, so code scanning
 cannot map them back to a source line ([DEP-251](https://linear.app/materializeinc/issue/DEP-251)).
 
 The E2E suite subsumes what was previously tracked as a synthetic-data smoke test ([DEP-119](https://linear.app/materializeinc/issue/DEP-119), now closed as a duplicate).
