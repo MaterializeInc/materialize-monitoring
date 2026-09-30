@@ -37,6 +37,12 @@ declare "provider_scrape" {
 		comment = "Must not exceed scrape_interval, or the gateway fails to start."
 	}
 
+	argument "honor_timestamps" {
+		optional = true
+		default  = true
+		comment  = "False stamps every sample at the scrape, for a pull whose newest point can be hours old and would otherwise be refused as stale."
+	}
+
 	discovery.relabel "pin" {
 		targets = argument.targets.value
 
@@ -53,6 +59,7 @@ declare "provider_scrape" {
 		]
 		scrape_interval = argument.scrape_interval.value
 		scrape_timeout = argument.scrape_timeout.value
+		honor_timestamps = argument.honor_timestamps.value
 
 		clustering {
 			enabled = true
@@ -274,6 +281,169 @@ declare "provider_cloudwatch_s3" {
 	}
 }
 
+declare "provider_cloudwatch_eks" {
+	argument "clusters" {
+		comment = "EKS cluster names."
+	}
+
+	argument "region" { }
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.cloudwatch "eks" {
+		sts_region = argument.region.value
+		discovery_exported_tags = {
+			"AWS/EC2"         = [
+				"karpenter.sh/nodepool",
+				"eks:nodegroup-name",
+			],
+			"AWS/AutoScaling" = [
+				"eks:nodegroup-name",
+			],
+		}
+
+		discovery {
+			type = "AWS/EC2"
+			regions = [
+				argument.region.value,
+			]
+			search_tags = {
+				"aws:eks:cluster-name" = string.format("^(%s)$", string.join(argument.clusters.value, "|")),
+			}
+			dimension_name_requirements = [
+				"InstanceId",
+			]
+			nil_to_zero = false
+
+			metric {
+				name = "StatusCheckFailed_System"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "StatusCheckFailed_Instance"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "StatusCheckFailed_AttachedEBS"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+
+		discovery {
+			type = "AWS/AutoScaling"
+			regions = [
+				argument.region.value,
+			]
+			search_tags = {
+				"eks:cluster-name" = string.format("^(%s)$", string.join(argument.clusters.value, "|")),
+			}
+			dimension_name_requirements = [
+				"AutoScalingGroupName",
+			]
+			nil_to_zero = false
+
+			metric {
+				name = "GroupDesiredCapacity"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "GroupInServiceInstances"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "GroupPendingInstances"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "GroupMaxSize"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+
+		static "vcpu" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/Usage"
+			nil_to_zero = false
+			dimensions = {
+				Service  = "EC2",
+				Type     = "Resource",
+				Resource = "vCPU",
+				Class    = "Standard/OnDemand",
+			}
+
+			metric {
+				name = "ResourceCount"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+	}
+
+	provider_scrape "eks" {
+		targets         = prometheus.exporter.cloudwatch.eks.targets
+		instance        = "eks"
+		forward_to      = prometheus.relabel.eks.receiver
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	prometheus.relabel "eks" {
+		forward_to = [
+			argument.forward_to.value,
+		]
+
+		rule {
+			action = "drop"
+			source_labels = [
+				"__name__",
+			]
+			regex = "aws_[a-z0-9]+_info"
+		}
+	}
+}
+
 declare "provider_gcp_cloudsql" {
 	argument "project_id" { }
 
@@ -354,6 +524,73 @@ declare "provider_gcp_gcs" {
 	provider_scrape "gcs" {
 		targets         = prometheus.exporter.gcp.gcs.targets
 		instance        = "gcs"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_gcp_compute_quota" {
+	argument "project_id" { }
+
+	argument "regions" {
+		comment = "Compute Engine regions, such as us-east1."
+	}
+
+	argument "request_interval" {
+		comment = "How far back each pull reaches. Only the newest point per series is kept."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.gcp "quota" {
+		project_ids = [
+			argument.project_id.value,
+		]
+		metrics_prefixes = [
+			"compute.googleapis.com/quota/cpus_per_vm_family/usage",
+			"compute.googleapis.com/quota/cpus_per_vm_family/limit",
+			"compute.googleapis.com/quota/local_ssd_total_storage_per_vm_family/usage",
+			"compute.googleapis.com/quota/local_ssd_total_storage_per_vm_family/limit",
+		]
+		extra_filters = [
+			string.format("compute.googleapis.com/quota:resource.labels.location=monitoring.regex.full_match(\"(%s)(-[a-z])?\")", string.join(argument.regions.value, "|")),
+		]
+		request_interval = "24h"
+		ingest_delay = true
+	}
+
+	prometheus.exporter.gcp "quota_exceeded" {
+		project_ids = [
+			argument.project_id.value,
+		]
+		metrics_prefixes = [
+			"compute.googleapis.com/quota/cpus_per_vm_family/exceeded",
+			"compute.googleapis.com/quota/local_ssd_total_storage_per_vm_family/exceeded",
+		]
+		extra_filters = [
+			string.format("compute.googleapis.com/quota:resource.labels.location=monitoring.regex.full_match(\"(%s)(-[a-z])?\")", string.join(argument.regions.value, "|")),
+		]
+		request_interval = argument.request_interval.value
+		ingest_delay = true
+	}
+
+	provider_scrape "quota" {
+		targets          = prometheus.exporter.gcp.quota.targets
+		instance         = "compute_quota"
+		forward_to       = argument.forward_to.value
+		scrape_interval  = argument.scrape_interval.value
+		scrape_timeout   = argument.scrape_timeout.value
+		honor_timestamps = false
+	}
+
+	provider_scrape "quota_exceeded" {
+		targets         = prometheus.exporter.gcp.quota_exceeded.targets
+		instance        = "compute_quota_exceeded"
 		forward_to      = argument.forward_to.value
 		scrape_interval = argument.scrape_interval.value
 		scrape_timeout  = argument.scrape_timeout.value
@@ -503,5 +740,97 @@ declare "provider_azure_blob" {
 		forward_to      = argument.forward_to.value
 		scrape_interval = argument.scrape_interval.value
 		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_azure_aks" {
+	argument "subscription_id" { }
+
+	argument "clusters" {
+		comment = "AKS cluster names, not resource IDs."
+	}
+
+	argument "cloud_environment" {
+		comment = "azurecloud, azurechinacloud or azureusgovernmentcloud."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.azure "autoscaler" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.ContainerService/managedClusters"
+		metrics = [
+			"cluster_autoscaler_unschedulable_pods_count",
+			"cluster_autoscaler_cluster_safe_to_autoscale",
+			"cluster_autoscaler_scale_down_in_cooldown",
+			"cluster_autoscaler_unneeded_nodes_count",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('%s')", string.join(argument.clusters.value, "','"))
+		metric_aggregations = [
+			"maximum",
+			"minimum",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	prometheus.exporter.azure "nodes" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Compute/virtualMachineScaleSets"
+		metrics = [
+			"VmAvailabilityMetric",
+		]
+		resource_graph_query_filter = string.format("extend nodeResourceGroup = tolower(resourceGroup) | join kind=inner (Resources | where type =~ 'microsoft.containerservice/managedclusters' and name in~ ('%s') | project nodeResourceGroup = tolower(tostring(properties.nodeResourceGroup))) on nodeResourceGroup", string.join(argument.clusters.value, "','"))
+		metric_aggregations = [
+			"minimum",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_dimensions = [
+			"VMName",
+			"Context",
+		]
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	provider_scrape "autoscaler" {
+		targets         = prometheus.exporter.azure.autoscaler.targets
+		instance        = "aks_autoscaler"
+		forward_to      = prometheus.relabel.autoscaler.receiver
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	provider_scrape "nodes" {
+		targets         = prometheus.exporter.azure.nodes.targets
+		instance        = "aks_nodes"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	prometheus.relabel "autoscaler" {
+		forward_to = [
+			argument.forward_to.value,
+		]
+
+		rule {
+			action = "keep"
+			source_labels = [
+				"__name__",
+			]
+			regex = "azure_microsoft_containerservice_managedclusters_cluster_autoscaler_((unschedulable_pods_count|scale_down_in_cooldown|unneeded_nodes_count)_maximum|cluster_safe_to_autoscale_minimum)_[a-z]+|up|scrape_.+"
+		}
 	}
 }

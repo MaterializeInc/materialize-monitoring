@@ -143,8 +143,10 @@ pub struct PrometheusScrapeBlock {
     pub job_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub honor_labels: Option<bool>,
+    /// `Expressable` so a `declare` body can take it as an argument: a pull
+    /// whose points are hours apart is stamped at the scrape instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub honor_timestamps: Option<bool>,
+    pub honor_timestamps: Option<Expressable<bool>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub follow_redirects: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -185,8 +187,8 @@ impl ToBlock for PrometheusScrapeBlock {
         if let Some(v) = self.honor_labels {
             attributes.insert("honor_labels".into(), AttributeValue::Bool(v));
         }
-        if let Some(v) = self.honor_timestamps {
-            attributes.insert("honor_timestamps".into(), AttributeValue::Bool(v));
+        if let Some(v) = &self.honor_timestamps {
+            attributes.insert("honor_timestamps".into(), v.to_attribute_value()?);
         }
         if let Some(v) = self.follow_redirects {
             attributes.insert("follow_redirects".into(), AttributeValue::Bool(v));
@@ -940,8 +942,8 @@ impl ToBlock for PrometheusExporterCadvisorBlock {
 /// * `nil_to_zero` defaults to **true** in Alloy, which reports a value-less
 ///   datapoint as zero.
 ///
-/// `discovery`, `custom_namespace` and `decoupled_scraping` are deferred to the
-/// `raw:` escape.
+/// `custom_namespace` and `decoupled_scraping` are deferred to the `raw:`
+/// escape.
 ///
 /// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -958,7 +960,12 @@ pub struct PrometheusExporterCloudwatchBlock {
     /// Snake-case the `dimension_*` label names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub labels_snake_case: Option<bool>,
-    /// `static` jobs, plus anything else via `raw:`.
+    /// Per discovery namespace, the tags copied onto that namespace's series as
+    /// `tag_<key>`. Every discovery job also emits an `aws_<service>_info`
+    /// series with all of a resource's tags, whatever this says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery_exported_tags: Option<IndexMap<String, Vec<String>>>,
+    /// `static` and `discovery` jobs, plus anything else via `raw:`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocks: Vec<CloudwatchSubBlock>,
 }
@@ -973,6 +980,16 @@ impl ToBlock for PrometheusExporterCloudwatchBlock {
         if let Some(v) = self.labels_snake_case {
             attributes.insert("labels_snake_case".into(), AttributeValue::Bool(v));
         }
+        if let Some(tags) = &self.discovery_exported_tags {
+            attributes.insert(
+                "discovery_exported_tags".into(),
+                AttributeValue::Object(
+                    tags.iter()
+                        .map(|(namespace, keys)| (namespace.clone(), string_array(keys)))
+                        .collect(),
+                ),
+            );
+        }
         Ok(Block {
             component: "prometheus.exporter.cloudwatch".into(),
             label: self.label.clone(),
@@ -983,7 +1000,7 @@ impl ToBlock for PrometheusExporterCloudwatchBlock {
 }
 
 /// Sub-block under a `prometheus.exporter.cloudwatch` body. `Raw` is the
-/// escape hatch, and the way to reach `discovery`, `custom_namespace` and
+/// escape hatch, and the way to reach `custom_namespace` and
 /// `decoupled_scraping`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CloudwatchSubBlock {
@@ -991,10 +1008,16 @@ pub enum CloudwatchSubBlock {
     // Boxed: expression-capable `regions` and `dimensions` make it far wider
     // than `raw` (clippy::large_enum_variant).
     Static(Box<CloudwatchStaticBlock>),
+    #[serde(rename = "discovery")]
+    Discovery(Box<CloudwatchDiscoveryBlock>),
     #[serde(rename = "raw")]
     Raw(Block),
 }
-impl_to_block_dispatch!(CloudwatchSubBlock { Static, Raw });
+impl_to_block_dispatch!(CloudwatchSubBlock {
+    Static,
+    Discovery,
+    Raw
+});
 
 /// A `static "<name>"` job — one resource, addressed by its exact dimensions.
 ///
@@ -1048,6 +1071,76 @@ impl ToBlock for CloudwatchStaticBlock {
         Ok(Block {
             component: "static".into(),
             label: Some(self.label.clone()),
+            attributes,
+            blocks: to_blocks(&self.blocks)?,
+        })
+    }
+}
+
+/// A `discovery` job — every resource of a namespace whose tags match.
+///
+/// Resources come from the Resource Groups Tagging API, or from
+/// `DescribeAutoScalingGroups` for `AWS/AutoScaling`, and their metrics from
+/// `ListMetrics` and `GetMetricData`. A metric whose dimensions name no
+/// discovered resource is kept as a `name="global"` series, which for
+/// `AWS/EC2` is every Auto Scaling group's aggregate in the region;
+/// `dimension_name_requirements` keeps those out.
+///
+/// See: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cloudwatch/#discovery-block
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloudwatchDiscoveryBlock {
+    /// The namespace to discover, such as `AWS/EC2`. Required by the schema.
+    #[serde(rename = "type")]
+    pub namespace: String,
+    /// Regions to search. Required by the schema.
+    pub regions: ExpressableList,
+    /// Tag key to unanchored value regex, all of which must match. Values may
+    /// be expressions, which is how a `declare` body names its resources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_tags: Option<IndexMap<String, Expressable<String>>>,
+    /// Extra labels, written as `custom_tag_<key>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_tags: Option<IndexMap<String, String>>,
+    /// Keep only metrics whose dimension names are exactly these.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dimension_name_requirements: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recently_active_only: Option<bool>,
+    /// Report a value-less datapoint as zero. Defaults to true in Alloy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nil_to_zero: Option<bool>,
+    /// `metric` and `role` blocks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<CloudwatchJobSubBlock>,
+}
+
+impl ToBlock for CloudwatchDiscoveryBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert(
+            "type".into(),
+            AttributeValue::String(self.namespace.clone()),
+        );
+        attributes.insert("regions".into(), self.regions.to_attribute_value()?);
+        if let Some(v) = &self.search_tags {
+            attributes.insert("search_tags".into(), expressable_string_map(v)?);
+        }
+        if let Some(v) = &self.custom_tags {
+            attributes.insert("custom_tags".into(), string_map(v));
+        }
+        if let Some(v) = &self.dimension_name_requirements {
+            attributes.insert("dimension_name_requirements".into(), string_array(v));
+        }
+        if let Some(v) = self.recently_active_only {
+            attributes.insert("recently_active_only".into(), AttributeValue::Bool(v));
+        }
+        if let Some(v) = self.nil_to_zero {
+            attributes.insert("nil_to_zero".into(), AttributeValue::Bool(v));
+        }
+        Ok(Block {
+            component: "discovery".into(),
+            label: None,
             attributes,
             blocks: to_blocks(&self.blocks)?,
         })
@@ -1671,6 +1764,28 @@ mod tests {
     }
 
     #[test]
+    fn scrape_honor_timestamps_accepts_an_expression() {
+        // Inside a `declare` body the choice is an argument: a pull whose points
+        // are hours apart is stamped at the scrape rather than refused as stale.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.scrape:
+                  targets: ["discovery.relabel.pin.output"]
+                  forward_to: ["argument.forward_to.value"]
+                  honor_timestamps: {ref: argument.honor_timestamps.value}
+            "#,
+        )
+        .unwrap();
+        assert!(
+            pipeline
+                .render()
+                .unwrap()
+                .contains("honor_timestamps = argument.honor_timestamps.value\n"),
+        );
+    }
+
+    #[test]
     fn prometheus_operator_servicemonitors_round_trips() {
         let pipeline = Pipeline::from_yaml_str(
             r#"
@@ -1851,8 +1966,98 @@ mod tests {
         );
     }
 
-    /// `decoupled_scraping` and `discovery` are reachable through `raw:`, and
-    /// only through it.
+    /// A discovery job is unlabelled. A tag key full of `:` and `/` is quoted,
+    /// and a tag value can be an expression. The exported tags sit on the
+    /// exporter, keyed by namespace.
+    #[test]
+    fn cloudwatch_discovery_job_round_trips() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  label: eks
+                  sts_region: us-east-1
+                  discovery_exported_tags:
+                    AWS/EC2: [karpenter.sh/nodepool]
+                  blocks:
+                    - discovery:
+                        type: AWS/EC2
+                        regions: [us-east-1]
+                        search_tags:
+                          aws:eks:cluster-name: {raw: 'string.format("^(%s)$", "example")'}
+                        dimension_name_requirements: [InstanceId]
+                        nil_to_zero: false
+                        blocks:
+                          - metric:
+                              name: StatusCheckFailed_System
+                              statistics: [Maximum]
+                              period: 5m
+                              length: 10m
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "prometheus.exporter.cloudwatch \"eks\" {\n",
+                "\tsts_region = \"us-east-1\"\n",
+                "\tdiscovery_exported_tags = {\n",
+                "\t\t\"AWS/EC2\" = [\n",
+                "\t\t\t\"karpenter.sh/nodepool\",\n",
+                "\t\t],\n",
+                "\t}\n",
+                "\n",
+                "\tdiscovery {\n",
+                "\t\ttype = \"AWS/EC2\"\n",
+                "\t\tregions = [\n",
+                "\t\t\t\"us-east-1\",\n",
+                "\t\t]\n",
+                "\t\tsearch_tags = {\n",
+                "\t\t\t\"aws:eks:cluster-name\" = string.format(\"^(%s)$\", \"example\"),\n",
+                "\t\t}\n",
+                "\t\tdimension_name_requirements = [\n",
+                "\t\t\t\"InstanceId\",\n",
+                "\t\t]\n",
+                "\t\tnil_to_zero = false\n",
+                "\n",
+                "\t\tmetric {\n",
+                "\t\t\tname = \"StatusCheckFailed_System\"\n",
+                "\t\t\tstatistics = [\n",
+                "\t\t\t\t\"Maximum\",\n",
+                "\t\t\t]\n",
+                "\t\t\tperiod = \"5m\"\n",
+                "\t\t\tlength = \"10m\"\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    /// A discovery job cannot be labelled: Alloy's block is unlabelled.
+    #[test]
+    fn cloudwatch_discovery_job_takes_no_label() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.exporter.cloudwatch:
+                  sts_region: us-east-1
+                  blocks:
+                    - discovery:
+                        label: ec2
+                        type: AWS/EC2
+                        regions: [us-east-1]
+            "#,
+        )
+        .unwrap_err();
+        assert!(
+            schema_violation_paths(err)
+                .iter()
+                .any(|p| p.starts_with("/blocks/0")),
+        );
+    }
+
+    /// `decoupled_scraping` is reachable through `raw:`, and only through it.
     #[test]
     fn cloudwatch_untyped_blocks_use_the_raw_escape() {
         let pipeline = Pipeline::from_yaml_str(

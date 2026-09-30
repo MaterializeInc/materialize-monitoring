@@ -9,8 +9,8 @@ named in `pipeline.metrics.provider.*`: the shape is the pipeline's, and the
 count is the chart's.
 
 A `declare` body cannot repeat a block, so a component takes one resource
-(CloudWatch) or one service's worth of resources (GCP and Azure, whose filters
-name them all). Each instance is a flat block of arguments, and `alloy validate` rejects
+(CloudWatch RDS and S3) or one service's worth of resources (EKS, GCP and
+Azure, whose filters name them all). Each instance is a flat block of arguments, and `alloy validate` rejects
 an argument the component does not declare, so these instances are checked
 against the module's contract at install by the pre-validate job, and at build
 by `gateway-provider-stub.yaml`.
@@ -67,6 +67,17 @@ provider_cloudwatch_s3 {{ include "mzmon.alloyGateway.provider.label" ( list "s3
     forward_to      = {{ $forwardTo }}
 }
     {{- end }}
+    {{- $clusters := dig "eks" "clusters" list $cw }}
+    {{- if $clusters }}
+
+provider_cloudwatch_eks "provider" {
+    clusters        = {{ $clusters | toJson }}
+    region          = {{ $cw.region | default "" | quote }}
+    scrape_interval = {{ $cw.scrapeInterval | quote }}
+    scrape_timeout  = {{ $cw.scrapeTimeout | quote }}
+    forward_to      = {{ $forwardTo }}
+}
+    {{- end }}
   {{- end }}
 
   {{- $gcp := $provider.gcp | default dict }}
@@ -95,6 +106,18 @@ provider_gcp_cloudsql "provider" {
 provider_gcp_gcs "provider" {
     project_id       = {{ $project | quote }}
     buckets          = {{ $buckets | toJson }}
+    request_interval = {{ $gcp.requestInterval | quote }}
+    scrape_interval  = {{ $gcp.scrapeInterval | quote }}
+    scrape_timeout   = {{ $gcp.scrapeTimeout | quote }}
+    forward_to       = {{ $forwardTo }}
+}
+    {{- end }}
+    {{- $regions := dig "compute" "regions" list $gcp }}
+    {{- if $regions }}
+
+provider_gcp_compute_quota "provider" {
+    project_id       = {{ $project | quote }}
+    regions          = {{ $regions | toJson }}
     request_interval = {{ $gcp.requestInterval | quote }}
     scrape_interval  = {{ $gcp.scrapeInterval | quote }}
     scrape_timeout   = {{ $gcp.scrapeTimeout | quote }}
@@ -130,6 +153,18 @@ provider_azure_blob "provider" {
     forward_to        = {{ $forwardTo }}
 }
     {{- end }}
+    {{- $clusters := dig "aks" "clusters" list $az }}
+    {{- if $clusters }}
+
+provider_azure_aks "provider" {
+    subscription_id   = {{ $subscription | quote }}
+    clusters          = {{ $clusters | toJson }}
+    cloud_environment = {{ $az.cloudEnvironment | quote }}
+    scrape_interval   = {{ $az.scrapeInterval | quote }}
+    scrape_timeout    = {{ $az.scrapeTimeout | quote }}
+    forward_to        = {{ $forwardTo }}
+}
+    {{- end }}
   {{- end }}
 {{- end }}
 
@@ -157,9 +192,9 @@ Usage:
 
   {{- /* Which families each provider produces, by its Prometheus name prefix. */}}
   {{- $families := dict
-        "cloudwatch" ( list "aws_rds_.*" "aws_s3_.*" )
-        "gcp" ( list "stackdriver_cloudsql_database_.*" "stackdriver_gcs_bucket_.*" )
-        "azure" ( list "azure_microsoft_dbforpostgresql_flexibleservers_.*" "azure_microsoft_storage_storageaccounts_blobservices_.*" ) }}
+        "cloudwatch" ( list "aws_rds_.*" "aws_s3_.*" "aws_ec2_.*" "aws_autoscaling_.*" "aws_usage_.*" )
+        "gcp" ( list "stackdriver_cloudsql_database_.*" "stackdriver_gcs_bucket_.*" "stackdriver_compute_googleapis_com_location_.*" )
+        "azure" ( list "azure_microsoft_dbforpostgresql_flexibleservers_.*" "azure_microsoft_storage_storageaccounts_blobservices_.*" "azure_microsoft_containerservice_managedclusters_.*" "azure_microsoft_compute_virtualmachinescalesets_.*" ) }}
 
   {{- if has $floor $levels }}
     {{- $floorRank := 0 }}
@@ -266,8 +301,19 @@ Usage:
     {{- end }}
     {{- $instances := dig "rds" "instances" list $cw }}
     {{- $buckets := dig "s3" "buckets" list $cw }}
-    {{- if and ( not $instances ) ( not $buckets ) }}
-      {{- $errors = append $errors "pipeline.metrics.provider.cloudwatch.enabled is true but lists no resources. Set rds.instances or s3.buckets; resources are named, never discovered." }}
+    {{- $clusters := dig "eks" "clusters" list $cw }}
+    {{- if and ( not $instances ) ( not $buckets ) ( not $clusters ) }}
+      {{- $errors = append $errors "pipeline.metrics.provider.cloudwatch.enabled is true but lists no resources. Set rds.instances, s3.buckets or eks.clusters; resources are named, never discovered." }}
+    {{- end }}
+    {{- /* The names are joined into an anchored regex for the tag filters, so
+           a character outside EKS's own naming rule would change what it
+           matches rather than fail. */}}
+    {{- range $clusters }}
+      {{- if not ( kindIs "string" . ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.eks.clusters entry %v is a %s, not a string. Quote it." . ( kindOf . ) ) }}
+      {{- else if not ( regexMatch "^[0-9A-Za-z][A-Za-z0-9_-]{0,99}$" . ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.eks.clusters entry %q is not an EKS cluster name. List the name alone — letters, digits, hyphens and underscores — not its ARN or endpoint." . ) }}
+      {{- end }}
     {{- end }}
     {{- /* Each resource becomes a component, and two components cannot share a
            label: the gateway would refuse its whole config at load. */}}
@@ -292,8 +338,16 @@ Usage:
       {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but projectId is empty." }}
     {{- end }}
     {{- $instances := dig "cloudSql" "instances" list $gcp }}
-    {{- if and ( not $instances ) ( not ( dig "gcs" "buckets" list $gcp ) ) }}
-      {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but lists no resources. Set cloudSql.instances or gcs.buckets; resources are named, never discovered." }}
+    {{- $regions := dig "compute" "regions" list $gcp }}
+    {{- if and ( not $instances ) ( not ( dig "gcs" "buckets" list $gcp ) ) ( not $regions ) }}
+      {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but lists no resources. Set cloudSql.instances, gcs.buckets or compute.regions; resources are named, never discovered." }}
+    {{- end }}
+    {{- /* A region goes into a Cloud Monitoring regex that also matches its
+           zones, so a zone would match nothing and silently pull nothing. */}}
+    {{- range $regions }}
+      {{- if not ( regexMatch "^[a-z]+-[a-z]+[0-9]+$" ( . | toString ) ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.gcp.compute.regions entry %q is not a Compute Engine region. List the region, such as us-east1; its zones are included." ( . | toString ) ) }}
+      {{- end }}
     {{- end }}
     {{- range $instances }}
       {{- if contains ":" . }}
@@ -332,8 +386,9 @@ Usage:
     {{- end }}
     {{- $servers := dig "postgres" "servers" list $az }}
     {{- $accounts := dig "blob" "storageAccounts" list $az }}
-    {{- if and ( not $servers ) ( not $accounts ) }}
-      {{- $errors = append $errors ( printf "%s.enabled is true but lists no resources. Set postgres.servers or blob.storageAccounts; resources are named, never discovered." $path ) }}
+    {{- $clusters := dig "aks" "clusters" list $az }}
+    {{- if and ( not $servers ) ( not $accounts ) ( not $clusters ) }}
+      {{- $errors = append $errors ( printf "%s.enabled is true but lists no resources. Set postgres.servers, blob.storageAccounts or aks.clusters; resources are named, never discovered." $path ) }}
     {{- end }}
     {{- /* The names go into a Kusto filter between single quotes, and a name the
            filter does not match is a pull that silently returns nothing. Both
@@ -356,6 +411,13 @@ Usage:
         {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path . ( kindOf . ) ) }}
       {{- else if not ( regexMatch "^[a-z0-9]+$" . ) }}
         {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %q is not a storage account name. List the name alone — lowercase letters and digits — not its endpoint or resource ID." $path . ) }}
+      {{- end }}
+    {{- end }}
+    {{- range $clusters }}
+      {{- if not ( kindIs "string" . ) }}
+        {{- $errors = append $errors ( printf "%s.aks.clusters entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path . ( kindOf . ) ) }}
+      {{- else if not ( regexMatch "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$" . ) }}
+        {{- $errors = append $errors ( printf "%s.aks.clusters entry %q is not an AKS cluster name. List the name alone — letters, digits, hyphens and underscores — not its resource ID." $path . ) }}
       {{- end }}
     {{- end }}
     {{- /* Like CloudWatch, and unlike GCP, the credential is resolved on the first
