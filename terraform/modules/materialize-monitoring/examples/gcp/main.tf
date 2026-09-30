@@ -115,6 +115,33 @@ module "monitoring" {
   # terminates at the pod. An L7 balancer holding a cloud-managed certificate
   # needs none of this — see the variable's documentation.
   grafana_external_dns_names = ["grafana.monitoring.example.com"]
+
+  # Alerting with the receiver Secret owned elsewhere, by External Secrets
+  # Operator say: no `alerting_receiver_secrets`, so the module creates no
+  # Secret and leaves `alertmanager-receivers` to its owner. The aws example
+  # covers the module-owned shape.
+  alerting = {
+    preset = "evaluation"
+    receivers = {
+      chat = {
+        class = ["normal"]
+        config = { slack_configs = [{
+          channel      = "#materialize-alerts"
+          api_url_file = "/etc/alertmanager/secrets/alertmanager-receivers/slack-url"
+        }] }
+      }
+    }
+  }
+
+  # Two environments, a default rule turned off, and the core infrastructure
+  # tier replaced with this cluster's own. `infra-memory-high` reads the core
+  # tier, so it is selected to give the replacement a rule to land in.
+  alert_rules = {
+    environment_namespaces = ["materialize-environment", "materialize-staging"]
+    selected               = ["infra-memory-high"]
+    disabled               = ["pods-stuck-in-waiting"]
+    infra_workloads        = { core = ["coredns", "kube-dns", "netd", "konnectivity-agent"] }
+  }
 }
 
 output "grafana_url" {

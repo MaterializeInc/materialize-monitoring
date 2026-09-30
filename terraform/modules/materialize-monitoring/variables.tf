@@ -669,6 +669,157 @@ variable "gateway_service_account_annotations" {
 }
 
 # ==============================================================================
+# Alerting
+# ==============================================================================
+# Two halves, as in the chart: which bundled rules install (`rules.*`), and where
+# the alerts they raise are sent (`alerting.*`). Every attribute is optional and
+# left out of the values when unset, so the chart's own defaults apply until a
+# caller says otherwise. Receiver credentials never pass through either: they go
+# into a Secret of their own through `alerting_receiver_secrets`.
+
+# Keep this type expression free of blank lines and comments: terraform-docs
+# renders it verbatim into the README's inputs table.
+variable "alert_rules" {
+  description = <<-EOT
+    Which bundled alerting rules install, and how they are tuned. Maps onto the chart's `rules.*`;
+    see Configuring Alerting in the docs for what each does.
+
+    - `enabled` — install the bundled rules at all. The chart's default is `true`.
+    - `capabilities` — what the deployment contains beyond what the chart derives, such as
+      `crdb-dedicated` or `cilium`. A rule installs only where every capability it requires is
+      present.
+    - `selected` — alert names, rule-group names, or `"*"`, to install beyond the default set.
+    - `disabled` — alert names never to install.
+    - `overrides` — per alert, a `for_duration` (the rule's `for`) and `labels` to add or replace.
+      An override never changes an expression. The usual reason for one is a cluster whose normal
+      hydration takes longer than `cluster-hydration-stuck`'s hour.
+    - `environment_namespaces` — where Materialize environments run. Null uses
+      `materialize_instance_namespace`.
+    - `excluded_namespaces` — namespaces no rule alerts on.
+    - `infra_workloads` — the workloads each infrastructure tier holds (`core`, `important`,
+      `nonessential`, `daemonset`). A tier given here replaces the chart's list for that tier.
+
+    An unknown capability, alert or group name fails the Helm render, as does an override whose
+    `for_duration` is not a duration.
+  EOT
+  type = object({
+    enabled                = optional(bool)
+    capabilities           = optional(list(string))
+    selected               = optional(list(string))
+    disabled               = optional(list(string))
+    overrides              = optional(map(object({ for_duration = optional(string), labels = optional(map(string)) })))
+    environment_namespaces = optional(list(string))
+    excluded_namespaces    = optional(list(string))
+    infra_workloads = optional(object({
+      core         = optional(list(string))
+      important    = optional(list(string))
+      nonessential = optional(list(string))
+      daemonset    = optional(list(string))
+    }))
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for name, o in coalesce(var.alert_rules.overrides, {}) :
+      o.for_duration == null || can(regex("^([0-9]+(ms|s|m|h|d|w|y))+$", o.for_duration))
+    ])
+    error_message = "Every alert_rules.overrides[*].for_duration must be a Prometheus duration such as \"30m\", \"6h\" or \"0s\"."
+  }
+}
+
+variable "alerting" {
+  description = <<-EOT
+    Where the bundled Alertmanager sends alerts. Maps onto the chart's `alerting.*`; see Alert
+    Channels in the docs for worked examples.
+
+    - `preset` — which severity-to-class mapping routes alerts: `critical-infrastructure`,
+      `important` (the chart's default), `evaluation`, or a key of `presets`.
+    - `presets` — severity-to-class mappings to add, or cells to change, keyed by preset name.
+    - `unknown_severity` — the severity an alert with none, or an unknown one, is routed as.
+    - `receivers` — notification receivers keyed by name, each with `class` (the class or list of
+      classes it serves), `config` (an Alertmanager receiver, verbatim, without `name`) and optional
+      `route` options. Empty means no alert reaches anybody.
+    - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
+      of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
+      `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+    - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
+    - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
+
+    The Alertmanager-native parts are typed `any` and passed through as written, so every
+    integration Alertmanager documents works without a module release.
+
+    **Credentials never belong here.** Reference them with a receiver field's `_file` variant —
+    `api_url_file`, `routing_key_file`, `credentials_file` — at
+    `/etc/alertmanager/secrets/alertmanager-receivers/<key>`, and supply `<key>` through
+    `alerting_receiver_secrets`. The chart fails the render on an inline credential.
+  EOT
+  type = object({
+    preset           = optional(string)
+    presets          = optional(map(map(string)))
+    unknown_severity = optional(string)
+    receivers        = optional(any)
+    routes           = optional(object({ root = optional(any), extra = optional(any) }))
+    inhibit_rules    = optional(any)
+    time_intervals   = optional(any)
+    templates        = optional(map(string))
+    global           = optional(any)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = (
+      var.alerting.preset == null
+      || contains(concat(["critical-infrastructure", "important", "evaluation"], keys(coalesce(var.alerting.presets, {}))), coalesce(var.alerting.preset, "important"))
+    )
+    error_message = "alerting.preset must be critical-infrastructure, important, evaluation, or a key of alerting.presets."
+  }
+
+  validation {
+    condition = alltrue([
+      for name, _ in coalesce(var.alerting.templates, {}) : endswith(name, ".tmpl")
+    ])
+    error_message = "Every alerting.templates key must end in .tmpl; Alertmanager loads only those."
+  }
+}
+
+variable "alerting_receiver_secrets" {
+  description = <<-EOT
+    Receiver credentials, keyed by file name: a Slack webhook URL, a PagerDuty routing key, an
+    Opsgenie API key. Each becomes a key of the `alertmanager-receivers` Secret, which the chart
+    mounts at `/etc/alertmanager/secrets/alertmanager-receivers/`, so a receiver reads one as
+    `/etc/alertmanager/secrets/alertmanager-receivers/<key>`.
+
+    Delivered as a Secret this module creates, never through the Helm values: anything in `values`
+    is readable with `helm get values` by anyone who can read the release Secret. Alertmanager
+    re-reads a credential file on every send, so rotating one needs no restart.
+
+    Empty creates no Secret, which is right when External Secrets Operator, Vault or a CSI driver
+    owns `alertmanager-receivers` instead. When it is set, every path under that mount the
+    receivers reference has to name one of these keys, or the plan fails.
+  EOT
+  type        = map(string)
+  default     = {}
+  nullable    = false
+  sensitive   = true
+}
+
+variable "alertmanager_namespace" {
+  description = <<-EOT
+    Namespace the Alertmanager pods run in, which is where `alerting_receiver_secrets` is created.
+    Null uses `namespace`.
+
+    Set it to `alertmanager` under the chart's `split-namespace` profile, which moves Alertmanager
+    there. Not inferred: the module cannot see where an `additional_values` override put it. The
+    namespace has to exist before apply.
+  EOT
+  type        = string
+  default     = null
+}
+
+# ==============================================================================
 # Grafana
 # ==============================================================================
 

@@ -869,6 +869,31 @@ PYEOF
         fi
         echo "    grafana database reached grafana.ini and the Secret mount"
     fi
+
+    # Alerting: receivers, the preset, extra routes, the receiver Secret, and the
+    # rule selections and overrides. Each is checked against what the example
+    # declared, in Terraform's own names, so the module's translation into chart
+    # keys is what is tested. The preset is checked by its effect, `critical`
+    # reaching the receiver that serves its class, since a preset that did not
+    # land leaves the chart's default and routes quietly to someone else.
+    # Silent when the example declares no alerting. Same exit-code discipline as
+    # the scheduling check.
+    alerting_rc=0
+    ${PY_RUN} python "${REPO_ROOT}/bin/check_alerting.py" "${plan_json}" "${rendered}" || alerting_rc=$?
+
+    if [ "${alerting_rc}" -eq 1 ]; then
+        echo "  !! ${example}: a declared alerting input did not land." >&2
+        echo "     See terraform/modules/materialize-monitoring/alerting.tf." >&2
+        status=1
+        continue
+    elif [ "${alerting_rc}" -ne 0 ]; then
+        echo "  !! could not run the alerting check: '${PY_RUN} python' exited ${alerting_rc}." >&2
+        echo "     This is a tooling problem, not an alerting failure. Install uv" >&2
+        echo "     (https://docs.astral.sh/uv/), or set PY_RUN to something that" >&2
+        echo "     can run bin/check_alerting.py with pyyaml available." >&2
+        status=1
+        continue
+    fi
 done
 
 if [ "${status}" -ne 0 ]; then

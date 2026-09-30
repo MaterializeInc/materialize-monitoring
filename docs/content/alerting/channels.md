@@ -12,6 +12,7 @@ params:
 This page describes how to tell the bundled Alertmanager where alerts go: which receivers exist, which alerts reach each
 of them, and where their credentials come from.
 Everything here is configured under the `alerting` values key, which the chart renders into Alertmanager's configuration.
+The Terraform module takes the same configuration as its `alerting` input, and creates the receiver Secret from `alerting_receiver_secrets`; see [Configuring Alerting through Terraform](../terraform/).
 [Alert Architecture](../architecture/#configuration) describes how that rendering works.
 
 <!-- more -->
@@ -128,6 +129,7 @@ It is mounted as optional, so the pods start before it exists.
 Alertmanager reads a `*_file` credential each time it sends, so creating or rotating the Secret takes effect without a
 restart once the kubelet refreshes the mount, typically within a minute.
 
+The Terraform module creates it from `alerting_receiver_secrets`, keyed the same way, and fails the plan when a receiver reads a key that map does not set; see [Credentials](../terraform/#credentials).
 External Secrets Operator, Vault Agent, SOPS, or a cloud secret store's CSI driver MAY own the Secret instead of `kubectl`.
 The chart consumes it by name and never creates it.
 
