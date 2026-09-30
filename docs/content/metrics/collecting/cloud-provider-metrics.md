@@ -15,7 +15,7 @@ The result is written beside every other metric, with the same retention, the sa
 A provider series is therefore joinable with `mz_persist_*` in a single expression.
 A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
 
-The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws them, with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws the database and bucket pulls, and **Infrastructure Autoscaling** (`infra-autoscaling`) the node and quota pulls on its Cloud Capacity tab, each with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
 
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
@@ -28,8 +28,10 @@ The [external-dependency design](../../../reference/internal/design-docs/2026092
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
 charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
 sets on this page are that file's; change them there, not here first. packages/queries/infra-cloud.yaml and
-packages/dashboards/src/grafana/infra_cloud/ draw them, so a metric added to a pull reaches no panel until
-those follow, and a metric removed leaves a panel empty. The numbers on this page
+packages/dashboards/src/grafana/infra_cloud/ draw the database and bucket pulls, and
+packages/queries/infra-autoscaling.yaml and infra_autoscaling/cloud.rs the EKS, Compute Engine and AKS
+pulls, so a metric added to a pull reaches no panel until those follow, and a metric removed leaves a panel
+empty. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, and on 2026-09-29 against the AKS one, with Alloy v1.20.0 locally and
 v1.19.2 in-cluster, and are the ones to re-measure if the exporters are bumped. The Azure call counts
@@ -280,7 +282,7 @@ The scrape of it is clustered, so one replica owns it and each provider is calle
 ## Which destinations receive it
 
 Each provider assigns its families a tier through `metricImportance`, which defaults to `extended`.
-The families `infra-cloud` draws are also named in the query registry, at `diagnostic`, the lowest tier.
+The families `infra-cloud` and `infra-autoscaling` draw are also named in the query registry, at `diagnostic`, the lowest tier.
 A registry tier admits a metric at that tier and above, so `metricImportance` decides for every destination floor above `diagnostic`.
 
 | Destination `minMetricImportance` | Receives provider families at the default |

@@ -119,6 +119,8 @@ pub mod extra {
     pub const LOKI_COMPONENT: &str = "lokiComponent";
     /// Which cloud providers the gateway was found to be pulling from.
     pub const CLOUD_PROVIDER_LIST: &str = "cloudProviderList";
+    /// Whether Karpenter's controller is being scraped.
+    pub const KARPENTER_DETECTED: &str = "karpenterDetected";
 }
 
 /// An empty current selection.
@@ -863,6 +865,53 @@ pub fn cloud_providers() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Karpenter NodePools, discovered from what the controller reports about them.
+///
+/// Multi-select with an `.+` "All", which also keeps out the `nodepool=""`
+/// series Karpenter publishes for nodes it does not manage, such as an EKS
+/// managed node group's.
+pub fn karpenter_node_pools() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::KARPENTER_NODE_POOL,
+        label: "NodePool",
+        description: "Which Karpenter NodePools to read",
+        expr: r#"label_values(karpenter_nodepools_usage, nodepool)"#.to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Whether Karpenter's controller is scraped, which rows render on.
+///
+/// Discovered from `up`, not from a Karpenter metric, so that a Karpenter being
+/// scraped whose metrics never arrive still renders its rows, empty, rather than
+/// a note saying it is not there. The gateway sets `app` from the pod's name
+/// label. Hidden, since it is detection rather than a choice, and single valued
+/// with no "All", because only row conditions read it and they cannot see a
+/// custom "All" value (see `network_components`).
+pub fn karpenter_detected() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::KARPENTER_DETECTED,
+        label: "Karpenter",
+        description: "Whether Karpenter's controller is being scraped; empty when it is not",
+        expr: r#"label_values(up{app="karpenter"}, app)"#.to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Namespaces the log store runs in.
 ///
 /// Discovered from `up{app_instance="loki"}` rather than from a `loki_*` metric,
@@ -1463,6 +1512,26 @@ pub fn dependency_scoped() -> Vec<dashboardv2::VariableKind> {
 /// a namespace would match none of them.
 pub fn cloud_scoped() -> Vec<dashboardv2::VariableKind> {
     vec![metrics_datasource(), cloud_providers()]
+}
+
+/// Controls for the autoscaling dashboard.
+///
+/// No namespace or node picker: autoscaling is a property of the whole cluster,
+/// and the panels that break it down do so by pool, zone or namespace in the
+/// legend. Both datasources, since what an autoscaler decided is only in its
+/// events, and the provider discovery for the Cloud Capacity rows.
+pub fn autoscaling_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![metrics_datasource(), logs_datasource(), cloud_providers()]
+}
+
+/// Controls for the Karpenter dashboard.
+pub fn karpenter_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        logs_datasource(),
+        karpenter_detected(),
+        karpenter_node_pools(),
+    ]
 }
 
 pub fn logs_infra_scoped() -> Vec<dashboardv2::VariableKind> {

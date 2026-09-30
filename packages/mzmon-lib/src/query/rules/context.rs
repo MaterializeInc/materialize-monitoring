@@ -193,6 +193,7 @@ pub fn alerting_context(
             r#"unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})"#
                 .to_string(),
         ),
+        ("nodePools", crate::query::render::NODE_POOLS.to_string()),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))

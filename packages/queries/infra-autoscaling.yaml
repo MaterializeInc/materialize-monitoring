@@ -1,0 +1,737 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Autoscaling: whether the cluster can grow to fit its pods, on any cloud.
+
+description: |
+  How the cluster's nodes follow its pods, whatever does the following.
+
+  Three things add nodes to a Materialize deployment, depending on the cloud:
+  Karpenter on EKS, and the managed cluster autoscaler on GKE and AKS. They
+  expose nothing in common, so everything here is read from what every
+  cluster has instead:
+
+  * **kube-state-metrics** says how many pods are waiting for a node, how
+    many nodes there are, and how full each is to the scheduler.
+  * **Kubernetes events** say what each autoscaler decided: Karpenter's
+    `Nominated` and `Launched`, the cluster autoscaler's `TriggeredScaleUp`
+    and `NotTriggerScaleUp`, the scheduler's `FailedScheduling`, and the node
+    lifecycle's `RegisteredNode` and `DeletingNode`.
+  * **The cloud provider pull** says whether the cloud could supply the nodes
+    asked for: EC2 status checks and node-group sizes, Compute Engine quota,
+    and on AKS the managed autoscaler's own gauges. It is opt-in, and its rows
+    render only where a provider is pulled.
+
+  Karpenter's own metrics, which say far more on EKS, are the Karpenter
+  dashboard's (`infra-karpenter.yaml`).
+
+  ## Node pools
+
+  `%%{nodePools}` gives every node its pool, instance type and zone, from
+  `kube_node_labels`. The pool is whichever label the node's provisioner
+  sets: a Karpenter NodePool, an EKS managed node group, a GKE node pool or an
+  AKS agent pool. kube-state-metrics publishes those labels only because the
+  chart's `metricLabelsAllowlist` names them, and publishes no
+  `kube_node_labels` at all without it.
+
+  ## Deduplication
+
+  Every kube-state-metrics family here is read through `max by` its own
+  identity first, because each extra kube-state-metrics replica reports every
+  object again. The same shape `infra-nodes.yaml` uses.
+
+  ## Provider lookback
+
+  Provider samples arrive with the pull, every five minutes by default, so
+  they are read through `last_over_time(...[15m])` and never rated over
+  `$__rate_interval`; `infra-cloud.yaml` explains why.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- Overview: the verdict ----------------------------------------------------
+  - id: infra.autoscaling.pods.pending
+    stability: experimental
+    description:
+      summary: Pods in the Pending phase right now, across the cluster.
+      nominal: |
+        Zero most of the time. A pod is Pending from creation until every
+        container has started, so brief non-zero readings during a rollout
+        are normal.
+      degraded: |
+        Pods that stay Pending for minutes. Compare with _Pods Waiting for a
+        Node_: if those are the same pods, the cluster has no room for them;
+        if not, they have a node and are stuck starting, usually pulling an
+        image or mounting a volume.
+    promQL: |
+      sum(max by (namespace, pod) (kube_pod_status_phase{phase="Pending"}))
+
+  - id: infra.autoscaling.pods.unscheduled
+    stability: experimental
+    description:
+      summary: |
+        Pods the scheduler has not placed on any node, because no node has
+        room for them or satisfies their constraints.
+      nominal: |
+        Zero, or briefly non-zero while an autoscaler adds a node. These are
+        exactly the pods an autoscaler acts on.
+      degraded: |
+        Non-zero for longer than a node takes to start, a few minutes. Either
+        the autoscaler is not adding a node, or the node it adds does not fit
+        the pod. The Pending Pods tab says which.
+      notes: |
+        Read from the pod's `PodScheduled` condition, which is false exactly
+        while the scheduler has not found it a node.
+    promQL: |
+      sum(max by (namespace, pod) (kube_pod_status_scheduled{condition="false"}))
+
+  - id: infra.autoscaling.nodes.count
+    stability: experimental
+    description:
+      summary: Nodes in the cluster.
+      notes: |
+        Every node, whatever provisioned it, including nodes that are not yet
+        Ready or are being drained.
+    promQL: |
+      count(max by (node) (kube_node_info))
+
+  - id: infra.autoscaling.nodes.not_ready
+    stability: experimental
+    description:
+      summary: Nodes whose kubelet is not reporting Ready.
+      nominal: |
+        Zero. A new node reads not-ready for its first minute or so while its
+        networking starts.
+      unhealthy: |
+        A node that stays not-ready. Its pods are evicted after five minutes,
+        and an autoscaler counts it as capacity it cannot use. Infrastructure
+        Node Detail has the node's own view.
+    promQL: |
+      sum(1 - max by (node) (kube_node_status_condition{condition="Ready", status="true"}))
+
+  - id: infra.autoscaling.nodes.added
+    stability: experimental
+    description:
+      summary: |
+        Nodes in the cluster now that were not at the start of the selected
+        time range.
+      notes: |
+        Not read from the `RegisteredNode` event, which the node controller
+        repeats for every node whenever the managed control plane restarts. A
+        node that joined and left within the range is not counted; _Nodes
+        Removed_ counts it leaving.
+    promQL: |
+      count(
+        max by (node) (kube_node_info)
+        unless max by (node) (kube_node_info offset %%{rangeWindow})
+      )
+      or 0 * count(max by (node) (kube_node_info))
+    instant: true
+
+  - id: infra.autoscaling.nodes.removed
+    stability: experimental
+    description:
+      summary: Nodes that left the cluster in the selected time range.
+      notes: |
+        Counted once per node from its `RemovingNode` or `DeletingNode` event,
+        the node controller's and the cloud's record of the same removal.
+    logQL: |
+      count(
+        sum by (name) (
+          count_over_time(
+            {job="loki.source.kubernetes_events"} | reason=~"RemovingNode|DeletingNode"
+          %%{range})
+        )
+      )
+    instant: true
+
+  - id: infra.autoscaling.hpa.at_max
+    stability: experimental
+    description:
+      summary: |
+        Workloads whose HorizontalPodAutoscaler is running as many replicas
+        as it is allowed to.
+      nominal: |
+        Zero, or a workload that sits at its maximum by design.
+      degraded: |
+        A workload at its maximum cannot absorb more load by adding pods. If
+        its CPU or memory is high, raise the maximum or give each pod more.
+    promQL: |
+      count(
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas)
+        >= max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
+      )
+      or 0 * count(max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas))
+
+  # --- Demand and capacity -------------------------------------------------------
+  - id: infra.autoscaling.pods.unscheduled_by_namespace
+    stability: experimental
+    description:
+      summary: Pods waiting for a node, by namespace.
+      nominal: |
+        Empty, or a brief spike while a node is added.
+      degraded: |
+        A namespace whose pods keep waiting. In a Materialize namespace, that
+        is a cluster replica that cannot start; the Pending Pods tab lists
+        each pod and the scheduler's reason.
+    promQL: |
+      sum by (namespace) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"})) > 0
+
+  - id: infra.autoscaling.pods.pending_by_namespace
+    stability: experimental
+    description:
+      summary: Pods in the Pending phase, by namespace.
+      notes: |
+        Includes pods that have a node and are still starting. The gap between
+        this and _Pods Waiting for a Node_ is pods pulling images or mounting
+        volumes.
+    promQL: |
+      sum by (namespace) (max by (namespace, pod) (kube_pod_status_phase{phase="Pending"})) > 0
+
+  - id: infra.autoscaling.nodes.by_pool
+    stability: experimental
+    description:
+      summary: Nodes in each node pool over time.
+      notes: |
+        A step up is an autoscaler adding a node; a step down is one removing
+        a node it judged empty or replaceable. The pool is the Karpenter
+        NodePool, EKS node group, GKE node pool or AKS agent pool that owns the
+        node, and `unpooled` a node with none of those labels. Every node
+        reads `unpooled` until kube-state-metrics publishes node labels, which
+        the chart configures.
+    promQL: |
+      count by (pool) (%%{nodePools})
+
+  - id: infra.autoscaling.nodes.by_instance_type
+    stability: experimental
+    description:
+      summary: Nodes of each instance type over time.
+    promQL: |
+      count by (instance_type) (%%{nodePools})
+
+  - id: infra.autoscaling.nodes.by_zone
+    stability: experimental
+    description:
+      summary: Nodes in each availability zone over time.
+      notes: |
+        A pool that grows in one zone only can mean the others have no capacity
+        for its instance type, or no subnet for it.
+    promQL: |
+      count by (zone) (%%{nodePools})
+
+  - id: infra.autoscaling.capacity.requested
+    stability: experimental
+    description:
+      summary: |
+        How much of the cluster's allocatable CPU and memory is promised to
+        running pods through their requests.
+      nominal: |
+        Below about 0.85. An autoscaler keeps this high on purpose, removing
+        nodes whose pods fit elsewhere, so a high reading with no pods waiting
+        is efficiency rather than a problem.
+      degraded: |
+        Near 1.0 with pods waiting for a node: the cluster is full and not
+        growing. The Pending Pods and Cloud Capacity tabs say why.
+      notes: |
+        **Requests, not usage**, the number the scheduler places pods by.
+        Completed pods are excluded; pods still waiting for a node are too,
+        since they are not on one yet.
+    promQL:
+      - |
+        sum(
+          max by (namespace, pod, container, node) (kube_pod_container_resource_requests{resource="cpu", node!=""})
+          unless on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"}) == 1)
+        )
+        /
+        sum(max by (node) (kube_node_status_allocatable{resource="cpu"}))
+      - |
+        sum(
+          max by (namespace, pod, container, node) (kube_pod_container_resource_requests{resource="memory", node!=""})
+          unless on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"}) == 1)
+        )
+        /
+        sum(max by (node) (kube_node_status_allocatable{resource="memory"}))
+
+  # --- Node pools -----------------------------------------------------------------
+  - id: infra.autoscaling.pools.cpu_requested
+    stability: experimental
+    description:
+      summary: |
+        The share of each node pool's allocatable CPU promised to running pods.
+      nominal: |
+        Anywhere below 1.0. Pools an autoscaler manages sit high, because it
+        removes nodes whose pods would fit elsewhere.
+      degraded: |
+        A pool near 1.0 with pods waiting for it. A pool that stays low is
+        either sized for a workload that has gone, or held up by pods that
+        block consolidation; on EKS the Karpenter dashboard says which.
+    promQL: |
+      sum by (pool) (
+        sum by (node) (
+          max by (namespace, pod, container, node) (kube_pod_container_resource_requests{resource="cpu", node!=""})
+          unless on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"}) == 1)
+        )
+        * on (node) group_left (pool) %%{nodePools}
+      )
+      /
+      sum by (pool) (
+        max by (node) (kube_node_status_allocatable{resource="cpu"})
+        * on (node) group_left (pool) %%{nodePools}
+      )
+
+  - id: infra.autoscaling.pools.memory_requested
+    stability: experimental
+    description:
+      summary: |
+        The share of each node pool's allocatable memory promised to running
+        pods.
+      nominal: Anywhere below 1.0.
+      degraded: |
+        A Materialize pool near 1.0: the next cluster replica, or a larger
+        size, needs a new node. Memory is usually what fills first on a
+        Materialize node.
+    promQL: |
+      sum by (pool) (
+        sum by (node) (
+          max by (namespace, pod, container, node) (kube_pod_container_resource_requests{resource="memory", node!=""})
+          unless on (namespace, pod) (max by (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"}) == 1)
+        )
+        * on (node) group_left (pool) %%{nodePools}
+      )
+      /
+      sum by (pool) (
+        max by (node) (kube_node_status_allocatable{resource="memory"})
+        * on (node) group_left (pool) %%{nodePools}
+      )
+
+  - id: infra.autoscaling.pools.not_ready
+    stability: experimental
+    description:
+      summary: Nodes not reporting Ready, by node pool.
+      nominal: Zero, apart from a new node's first minute.
+      unhealthy: |
+        A pool with nodes that stay not-ready. An autoscaler may keep adding
+        nodes to replace capacity it cannot use.
+    promQL: |
+      sum by (pool) (
+        (1 - max by (node) (kube_node_status_condition{condition="Ready", status="true"}))
+        * on (node) group_left (pool) %%{nodePools}
+      )
+
+  - id: infra.autoscaling.pools.cordoned
+    stability: experimental
+    description:
+      summary: Nodes marked unschedulable, by node pool.
+      nominal: |
+        Zero, or briefly one while an autoscaler or an upgrade drains a node
+        before removing it.
+      degraded: |
+        A node that stays cordoned. Something started draining it and did not
+        finish, usually because a pod cannot be evicted: a PodDisruptionBudget
+        at its limit, or a Materialize pod marked not to be disrupted.
+    promQL: |
+      sum by (pool) (
+        max by (node) (kube_node_spec_unschedulable)
+        * on (node) group_left (pool) %%{nodePools}
+      )
+
+  - id: infra.autoscaling.nodes.age
+    stability: experimental
+    description:
+      summary: |
+        Every node with its pool, instance type, zone, and how long ago it
+        joined.
+      notes: |
+        Autoscaled nodes come and go, so a fleet of young nodes is normal.
+        Nodes that are all minutes old and keep being replaced are not: an
+        autoscaler that cannot settle, or nodes failing soon after they join.
+    promQL: |
+      (time() - max by (node) (kube_node_created))
+      * on (node) group_left (pool, instance_type, zone) %%{nodePools}
+    instant: true
+
+  # --- Pending pods ---------------------------------------------------------------
+  - id: infra.autoscaling.pods.unscheduled_list
+    stability: experimental
+    description:
+      summary: |
+        Each pod waiting for a node, and how long since it was created.
+      nominal: Empty.
+      degraded: |
+        Pods that have waited longer than a node takes to start. The
+        scheduler's reason for each is in the feed beside this, and the
+        autoscaler's response below it.
+    promQL: |
+      (time() - max by (namespace, pod) (kube_pod_created))
+      and on (namespace, pod) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"}) == 1)
+    instant: true
+
+  - id: infra.autoscaling.events.scheduling_failures
+    stability: experimental
+    description:
+      summary: |
+        The scheduler's explanation for each pod it could not place, newest
+        first.
+      notes: |
+        The message counts the nodes and the reason each was ruled out:
+        `Insufficient memory` means no node has room, while `didn't match
+        Pod's node affinity/selector` or `had untolerated taint` means no
+        node of the right kind exists yet. An autoscaler adds a node for the
+        first kind as long as a pool can hold the pod, and for the second
+        only if a pool offers the kind asked for.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | reason="FailedScheduling"
+        | line_format "{{.name}} — {{.msg}}"
+
+  - id: infra.autoscaling.events.scale_up_decisions
+    stability: experimental
+    description:
+      summary: |
+        What each autoscaler did about pods waiting for a node, newest first.
+      notes: |
+        Karpenter records `Nominated` when it has chosen a node for a pod,
+        new or existing. The cluster autoscaler on GKE and AKS records
+        `TriggeredScaleUp` when it adds a node for a pod, and
+        `NotTriggerScaleUp` with the reason when no node group could take it:
+        a group at its maximum size, or none whose nodes would fit the pod.
+        `FailedScaleUp` is a scale-up the cloud refused, usually for quota or
+        capacity; the Cloud Capacity tab says which.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | reason=~"Nominated|TriggeredScaleUp|NotTriggerScaleUp|FailedScaleUp|ScaledUpGroup"
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: infra.autoscaling.events.scheduling_failures_rate
+    stability: experimental
+    description:
+      summary: Scheduling failures per minute, by namespace.
+      notes: |
+        The scheduler retries a pod it cannot place and records each attempt,
+        so this tracks how long pods have been waiting as much as how many.
+    logQL: |
+      sum by (namespace) (
+        count_over_time(
+          {job="loki.source.kubernetes_events"} | reason="FailedScheduling"
+        [1m])
+      )
+
+  # --- Workload autoscaling -------------------------------------------------------
+  - id: infra.autoscaling.hpa.replicas
+    stability: experimental
+    description:
+      summary: |
+        Every HorizontalPodAutoscaler with its current and desired replicas
+        and the bounds it scales between.
+      notes: |
+        Desired above current is a scale-up under way, or one blocked because
+        the new pods cannot be scheduled. Current equal to the maximum is a
+        workload that cannot grow any further by adding pods.
+    promQL:
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas)
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_desired_replicas)
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_min_replicas)
+      - |
+        max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
+    instant: true
+
+  - id: infra.autoscaling.hpa.share_of_max
+    stability: experimental
+    description:
+      summary: |
+        Each HorizontalPodAutoscaler's replicas as a share of its maximum.
+      nominal: Below 1.0.
+      degraded: |
+        A workload pinned at 1.0 during its busy hours has no room left to
+        scale out.
+    promQL: |
+      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas)
+      /
+      max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
+
+  - id: infra.autoscaling.hpa.unable_to_scale
+    stability: experimental
+    description:
+      summary: |
+        HorizontalPodAutoscalers that cannot act, by the condition that
+        stopped them.
+      nominal: Zero.
+      unhealthy: |
+        `ScalingActive` false means the autoscaler cannot read the metric it
+        scales on, usually because metrics-server is down or the pods set no
+        resource request, and it holds the workload at its current size.
+        `AbleToScale` false means it cannot change the workload's replica
+        count at all.
+    promQL: |
+      sum by (condition) (
+        max by (namespace, horizontalpodautoscaler, condition) (
+          kube_horizontalpodautoscaler_status_condition{condition=~"AbleToScale|ScalingActive", status="false"}
+        )
+      )
+
+  - id: infra.autoscaling.events.hpa_rate
+    stability: experimental
+    description:
+      summary: HorizontalPodAutoscaler events per minute, by reason.
+      notes: |
+        `SuccessfulRescale` is a change of size. `FailedGetResourceMetric` and
+        `FailedComputeMetricsReplicas` are an autoscaler that could not read
+        its metric; a few are normal while a new pod starts, a steady stream
+        is not.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {job="loki.source.kubernetes_events"} | reportingcontroller="horizontal-pod-autoscaler"
+        [1m])
+      )
+
+  - id: infra.autoscaling.events.hpa_stream
+    stability: experimental
+    description:
+      summary: HorizontalPodAutoscaler events, newest first.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | reportingcontroller="horizontal-pod-autoscaler"
+        | line_format "{{.reason}} {{.name}} — {{.msg}}"
+
+  # --- Cloud capacity: EC2 --------------------------------------------------------
+  - id: infra.autoscaling.cloud.ec2.status_checks
+    stability: experimental
+    description:
+      summary: |
+        Cluster nodes failing an EC2 status check, by check.
+      nominal: Zero.
+      unhealthy: |
+        **System** is the host under the node, which only AWS can repair; stop
+        and start the instance to move it to another host, or let the
+        autoscaler replace it. **Instance** is the node's own operating system,
+        usually out of memory or disk. **Attached EBS** is a volume the node
+        cannot reach.
+      notes: |
+        From `pipeline.metrics.provider.cloudwatch.eks.clusters`, which finds
+        the nodes by the cluster tag EKS and Karpenter set.
+    promQL:
+      - |
+        sum(last_over_time(aws_ec2_status_check_failed_system_maximum[15m]))
+      - |
+        sum(last_over_time(aws_ec2_status_check_failed_instance_maximum[15m]))
+      - |
+        sum(last_over_time(aws_ec2_status_check_failed_attached_ebs_maximum[15m]))
+
+  - id: infra.autoscaling.cloud.ec2.node_groups
+    stability: experimental
+    description:
+      summary: |
+        Each EKS managed node group's desired and in-service instances,
+        against its maximum.
+      nominal: In-service equal to desired.
+      degraded: |
+        Desired above in-service for longer than an instance takes to start:
+        EC2 is not supplying the instances, for capacity or quota. Desired at
+        the maximum is a group that cannot grow.
+      notes: |
+        Karpenter's pools have no Auto Scaling group; the Karpenter dashboard
+        covers them.
+    promQL:
+      - |
+        max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_desired_capacity_average[15m]))
+      - |
+        max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_in_service_instances_average[15m]))
+      - |
+        max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_max_size_average[15m]))
+
+  - id: infra.autoscaling.cloud.ec2.vcpus
+    stability: experimental
+    description:
+      summary: |
+        On-Demand vCPUs running in the region, for the whole AWS account.
+      degraded: |
+        Close to the account's quota for Running On-Demand Standard instances
+        (Service Quotas code `L-1216C47A`), which CloudWatch does not publish.
+        At the quota, every launch in these families fails, whatever the
+        cluster's own limits allow.
+      notes: |
+        Account-wide rather than the cluster's, because the quota is. Covers
+        the standard families (A, C, D, H, I, M, R, T, Z), which include every
+        instance type the Terraform examples use.
+    promQL: |
+      max(last_over_time(aws_usage_resource_count_maximum{dimension_Resource="vCPU"}[15m]))
+
+  # --- Cloud capacity: Compute Engine ---------------------------------------------
+  - id: infra.autoscaling.cloud.gce.cpu_quota
+    stability: experimental
+    description:
+      summary: |
+        CPUs in use against the regional quota, for each machine family.
+      nominal: Well below 1.0.
+      unhealthy: |
+        At 1.0, every node that family's pools try to add is refused, and the
+        cluster autoscaler reports `FailedScaleUp`. Request more quota for the
+        family in the region.
+      notes: |
+        Per family because C4, C4A and the other current families each have
+        their own quota; the older regional `CPUS` quota does not cover them.
+        Google publishes quota a few times a day, so this lags a change by
+        hours.
+    promQL: |
+      max by (vm_family, location) (
+        last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_usage{limit_name=~".*per-project-region"}[15m])
+      )
+      /
+      max by (vm_family, location) (
+        last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_limit{limit_name=~".*per-project-region"}[15m])
+      )
+
+  - id: infra.autoscaling.cloud.gce.ssd_quota
+    stability: experimental
+    description:
+      summary: |
+        Local SSD in use against the regional quota, for each machine family.
+      nominal: Well below 1.0.
+      unhealthy: |
+        At 1.0, nodes with local SSD, which Materialize's pools use for spill,
+        cannot be added.
+    promQL: |
+      max by (vm_family, location) (
+        last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_usage{limit_name=~".*per-project-region"}[15m])
+      )
+      /
+      max by (vm_family, location) (
+        last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_limit{limit_name=~".*per-project-region"}[15m])
+      )
+
+  - id: infra.autoscaling.cloud.gce.refusals
+    stability: experimental
+    description:
+      summary: |
+        Requests Compute Engine refused for CPU or local SSD quota, per hour.
+      nominal: Zero.
+      unhealthy: |
+        Any refusal is a node that could not be created. The family and
+        location say which quota to raise.
+      notes: |
+        Written only when a request is refused, so there is usually no series
+        at all.
+    promQL: |
+      sum by (vm_family, location) (
+        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_(cpus|local_ssd_total_storage)_per_vm_family_exceeded(_total)?"}[1h])
+      )
+
+  # --- Cloud capacity: AKS --------------------------------------------------------
+  - id: infra.autoscaling.cloud.aks.unschedulable
+    stability: experimental
+    description:
+      summary: |
+        Pods AKS's cluster autoscaler cannot place on any existing node, the
+        worst of each five minutes.
+      nominal: Zero, or briefly non-zero while a node is added.
+      degraded: |
+        Non-zero while the autoscaler is allowed to scale means it is not
+        adding a node: the pool is at its maximum count, or Azure refused the
+        VM for quota or capacity. The events on the Pending Pods tab carry its
+        reason.
+      notes: |
+        AKS runs the cluster autoscaler in its control plane, where nothing in
+        the cluster can scrape it, so Azure Monitor is the only source of its
+        metrics.
+    promQL: |
+      max by (resourceName) (
+        last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unschedulable_pods_count_maximum_count[15m])
+      )
+
+  - id: infra.autoscaling.cloud.aks.state
+    stability: experimental
+    description:
+      summary: |
+        Whether AKS's cluster autoscaler considers the cluster safe to scale,
+        whether scale-down is paused, and nodes it would remove.
+      nominal: |
+        Safe to scale at 1, cooldown at 0 apart from the minutes after a
+        scale-up, and a few unneeded nodes at most.
+      unhealthy: |
+        Safe to scale at 0: too many nodes are not ready, and the autoscaler
+        has stopped adding or removing any until they recover.
+    promQL:
+      - |
+        min by (resourceName) (
+          last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_cluster_safe_to_autoscale_minimum_count[15m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_scale_down_in_cooldown_maximum_count[15m])
+        )
+      - |
+        max by (resourceName) (
+          last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unneeded_nodes_count_maximum_count[15m])
+        )
+
+  - id: infra.autoscaling.cloud.aks.vms_down
+    stability: experimental
+    description:
+      summary: |
+        Node VMs Azure reports as unavailable, by scale set, at any point in
+        each five minutes.
+      nominal: Zero.
+      unhealthy: |
+        A VM down while Kubernetes still lists its node. Azure took it down
+        for maintenance or a host fault, or its owner stopped it.
+    promQL: |
+      sum by (resourceName) (
+        1 - last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+      )
+
+  # --- Events ---------------------------------------------------------------------
+  - id: infra.autoscaling.events.rate_by_reason
+    stability: experimental
+    description:
+      summary: Node and autoscaler events per minute, by reason.
+      notes: |
+        From Karpenter, the cluster autoscaler, the node lifecycle and the
+        scheduler's placement failures. Karpenter's `DisruptionBlocked` and
+        `Unconsolidatable` are left out: they repeat every few minutes for
+        every node holding a pod that must not be moved, which on a
+        Materialize cluster is most of them, and the Karpenter dashboard
+        breaks them down.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {job="loki.source.kubernetes_events"}
+            | reportingcontroller=~"karpenter|cluster-autoscaler|node-controller|cloud-node-lifecycle-controller" or reason=~"FailedScheduling|Preempted|TriggeredScaleUp|NotTriggerScaleUp|FailedScaleUp|ScaledUpGroup|ScaleDown"
+            | reason!~"DisruptionBlocked|Unconsolidatable"
+        [1m])
+      )
+
+  - id: infra.autoscaling.events.warnings
+    stability: experimental
+    description:
+      summary: Warning events from the autoscalers and the node lifecycle.
+      nominal: |
+        Occasional scheduling failures that clear once a node is added.
+      degraded: |
+        The same warning repeating: a pod that cannot be placed, a node that
+        cannot be drained, or a scale-up the cloud refused.
+    logQL: |
+      {job="loki.source.kubernetes_events", level="WARN"}
+        | reportingcontroller=~"karpenter|cluster-autoscaler|node-controller|cloud-node-lifecycle-controller" or reason=~"FailedScheduling|Preempted|NotTriggerScaleUp|FailedScaleUp"
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: infra.autoscaling.events.stream
+    stability: experimental
+    description:
+      summary: Every node and autoscaler event, newest first.
+      notes: |
+        Without Karpenter's `DisruptionBlocked` and `Unconsolidatable`, for the
+        reason _Events by Reason_ gives.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | reportingcontroller=~"karpenter|cluster-autoscaler|node-controller|cloud-node-lifecycle-controller" or reason=~"FailedScheduling|Preempted|TriggeredScaleUp|NotTriggerScaleUp|FailedScaleUp|ScaledUpGroup|ScaleDown"
+        | reason!~"DisruptionBlocked|Unconsolidatable"
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+metricOverrides:
+  # The provider families, which each provider's `metricImportance` value should
+  # keep deciding; see `infra-cloud.yaml`.
+  - metricPattern: "aws_(ec2|autoscaling|usage)_.*|stackdriver_compute_googleapis_com_location_.*|azure_microsoft_(containerservice_managedclusters|compute_virtualmachinescalesets)_.*"
+    importance: diagnostic
+    priority: 10

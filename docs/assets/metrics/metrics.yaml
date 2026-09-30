@@ -70,6 +70,7 @@
   name: container_cpu_usage_seconds_total
   usage:
   - infra.alloy.resources.cpu
+  - infra.karpenter.controller.cpu
   - infra.kubernetes.pods_high_cpu_ratio
   - infra.kubernetes.vector_high_cpu_ratio
   - materialize.clusters.cpu_high
@@ -115,6 +116,7 @@
   name: container_memory_working_set_bytes
   usage:
   - infra.alloy.resources.memory
+  - infra.karpenter.controller.memory
   - infra.kubernetes.memory_elevated
   - infra.kubernetes.memory_high
   - materialize.environmentd.high_memory
@@ -339,12 +341,18 @@
   labels: []
   name: kube_horizontalpodautoscaler_spec_max_replicas
   usage:
+  - infra.autoscaling.hpa.at_max
+  - infra.autoscaling.hpa.replicas
+  - infra.autoscaling.hpa.share_of_max
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
 - importance: essential
   labels: []
   name: kube_horizontalpodautoscaler_status_current_replicas
   usage:
+  - infra.autoscaling.hpa.at_max
+  - infra.autoscaling.hpa.replicas
+  - infra.autoscaling.hpa.share_of_max
   - infra.kubernetes.hpa_replicas_critical
   - infra.kubernetes.hpa_replicas_high
 - importance: essential
@@ -352,12 +360,15 @@
   - node
   name: kube_node_created
   usage:
+  - infra.autoscaling.nodes.age
   - infra.nodes.created
 - importance: essential
   labels:
   - node
   name: kube_node_info
   usage:
+  - infra.autoscaling.nodes.added
+  - infra.autoscaling.nodes.count
   - infra.nodes.info.address
   - infra.nodes.info.kernel
   - infra.nodes.info.kubelet
@@ -376,6 +387,7 @@
   - node
   name: kube_node_spec_unschedulable
   usage:
+  - infra.autoscaling.pools.cordoned
   - infra.nodes.unschedulable
 - importance: essential
   labels:
@@ -383,6 +395,9 @@
   - resource
   name: kube_node_status_allocatable
   usage:
+  - infra.autoscaling.capacity.requested
+  - infra.autoscaling.pools.cpu_requested
+  - infra.autoscaling.pools.memory_requested
   - infra.nodes.allocation.cpu
   - infra.nodes.allocation.memory
   - infra.nodes.allocation.pods
@@ -403,6 +418,8 @@
   - status
   name: kube_node_status_condition
   usage:
+  - infra.autoscaling.nodes.not_ready
+  - infra.autoscaling.pools.not_ready
   - infra.kubernetes.node_disk_pressure
   - infra.nodes.condition.ready
   - infra.nodes.conditions
@@ -417,6 +434,7 @@
   usage:
   - infra.alloy.resources.cpu
   - infra.alloy.resources.memory
+  - infra.karpenter.controller.memory
   - infra.nodes.pods.budgets
   - materialize.clusters.cpu_high
   - materialize.kubernetes.cpu.usage.percent
@@ -431,6 +449,9 @@
   - unit
   name: kube_pod_container_resource_requests
   usage:
+  - infra.autoscaling.capacity.requested
+  - infra.autoscaling.pools.cpu_requested
+  - infra.autoscaling.pools.memory_requested
   - infra.kubernetes.daemonset_high_cpu
   - infra.kubernetes.daemonset_saturating_cpu
   - infra.kubernetes.daemonset_saturating_mem
@@ -493,6 +514,7 @@
   labels: []
   name: kube_pod_created
   usage:
+  - infra.autoscaling.pods.unscheduled_list
   - materialize.cluster_replicas.not_ready
   - materialize.clusterd.new_restarts_during_release
 - importance: essential
@@ -521,6 +543,11 @@
   - phase
   name: kube_pod_status_phase
   usage:
+  - infra.autoscaling.capacity.requested
+  - infra.autoscaling.pods.pending
+  - infra.autoscaling.pods.pending_by_namespace
+  - infra.autoscaling.pools.cpu_requested
+  - infra.autoscaling.pools.memory_requested
   - infra.kubernetes.infra_pod_pending
   - infra.nodes.allocation.pods
   - infra.nodes.pods.by_namespace
@@ -1346,6 +1373,23 @@
   usage:
   - infra.net.k8s.endpoints.by_namespace
 - importance: recommended
+  labels: []
+  name: kube_horizontalpodautoscaler_spec_min_replicas
+  usage:
+  - infra.autoscaling.hpa.replicas
+- importance: recommended
+  labels:
+  - condition
+  - status
+  name: kube_horizontalpodautoscaler_status_condition
+  usage:
+  - infra.autoscaling.hpa.unable_to_scale
+- importance: recommended
+  labels: []
+  name: kube_horizontalpodautoscaler_status_desired_replicas
+  usage:
+  - infra.autoscaling.hpa.replicas
+- importance: recommended
   labels:
   - namespace
   name: kube_networkpolicy_spec_egress_rules
@@ -1359,6 +1403,26 @@
   - infra.net.security.policies.by_namespace
   - infra.net.security.policies.rules
   - infra.net.security.policies.uncovered
+- importance: recommended
+  labels: []
+  name: kube_node_labels
+  usage:
+  - infra.autoscaling.nodes.age
+  - infra.autoscaling.nodes.by_instance_type
+  - infra.autoscaling.nodes.by_pool
+  - infra.autoscaling.nodes.by_zone
+  - infra.autoscaling.pools.cordoned
+  - infra.autoscaling.pools.cpu_requested
+  - infra.autoscaling.pools.memory_requested
+  - infra.autoscaling.pools.not_ready
+- importance: recommended
+  labels:
+  - condition
+  name: kube_pod_status_scheduled
+  usage:
+  - infra.autoscaling.pods.unscheduled
+  - infra.autoscaling.pods.unscheduled_by_namespace
+  - infra.autoscaling.pods.unscheduled_list
 - importance: recommended
   labels: []
   name: kube_service_spec_type
@@ -2895,6 +2959,26 @@
 - importance: extended
   labels:
   - app
+  - code
+  name: aws_sdk_go_request_total
+  usage:
+  - infra.karpenter.controller.aws_errors
+- importance: extended
+  labels:
+  - app
+  - code
+  name: client_go_request_total
+  usage:
+  - infra.karpenter.controller.kube_errors
+- importance: extended
+  labels:
+  - app
+  name: controller_runtime_reconcile_errors_total
+  usage:
+  - infra.karpenter.controller.reconcile_errors
+- importance: extended
+  labels:
+  - app
   - namespace
   - pod
   name: go_gc_gomemlimit_bytes
@@ -2924,6 +3008,149 @@
   name: go_memstats_sys_bytes
   usage:
   - infra.alloy.resources.gomemlimit
+- importance: extended
+  labels: []
+  name: karpenter_build_info
+  usage:
+  - infra.karpenter.health.disrupted
+  - infra.karpenter.health.launch_errors
+  - infra.karpenter.health.version
+- importance: extended
+  labels: []
+  name: karpenter_cloudprovider_duration_seconds_bucket
+  usage:
+  - infra.karpenter.provisioning.cloud_latency
+- importance: extended
+  labels:
+  - method
+  name: karpenter_cloudprovider_errors_total
+  usage:
+  - infra.karpenter.health.launch_errors
+  - infra.karpenter.provisioning.errors
+- importance: extended
+  labels:
+  - capacity_type
+  name: karpenter_cloudprovider_instance_type_offering_available
+  usage:
+  - infra.karpenter.provisioning.offerings
+- importance: extended
+  labels: []
+  name: karpenter_cluster_state_synced
+  usage:
+  - infra.karpenter.health.synced
+- importance: extended
+  labels:
+  - resource_type
+  name: karpenter_cluster_utilization_percent
+  usage:
+  - infra.karpenter.utilization
+- importance: extended
+  labels: []
+  name: karpenter_interruption_message_queue_duration_seconds_bucket
+  usage:
+  - infra.karpenter.interruption.queue_delay
+- importance: extended
+  labels: []
+  name: karpenter_interruption_received_messages_total
+  usage:
+  - infra.karpenter.interruption.received
+- importance: extended
+  labels:
+  - nodepool
+  name: karpenter_nodeclaims_created_total
+  usage:
+  - infra.karpenter.provisioning.created
+- importance: extended
+  labels:
+  - nodepool
+  name: karpenter_nodeclaims_disrupted_total
+  usage:
+  - infra.karpenter.disruption.disrupted
+  - infra.karpenter.health.disrupted
+- importance: extended
+  labels:
+  - nodepool
+  name: karpenter_nodepools_allowed_disruptions
+  usage:
+  - infra.karpenter.disruption.budget
+- importance: extended
+  labels:
+  - nodepool
+  - resource_type
+  name: karpenter_nodepools_limit
+  usage:
+  - infra.karpenter.nodepools.cpu
+  - infra.karpenter.nodepools.memory
+- importance: extended
+  labels:
+  - nodepool
+  - resource_type
+  name: karpenter_nodepools_usage
+  usage:
+  - infra.karpenter.nodepools.cpu
+  - infra.karpenter.nodepools.memory
+- importance: extended
+  labels:
+  - nodepool
+  - resource_type
+  name: karpenter_nodes_allocatable
+  usage:
+  - infra.karpenter.health.nodes
+  - infra.karpenter.nodes.by_nodepool
+- importance: extended
+  labels:
+  - nodepool
+  name: karpenter_nodes_current_lifetime_seconds
+  usage:
+  - infra.karpenter.nodes.age
+- importance: extended
+  labels: []
+  name: karpenter_nodes_eviction_requests_total
+  usage:
+  - infra.karpenter.disruption.evictions
+- importance: extended
+  labels: []
+  name: karpenter_pods_provisioning_startup_duration_seconds_bucket
+  usage:
+  - infra.karpenter.provisioning.startup
+- importance: extended
+  labels: []
+  name: karpenter_scheduler_queue_depth
+  usage:
+  - infra.karpenter.provisioning.pods_waiting
+- importance: extended
+  labels: []
+  name: karpenter_scheduler_scheduling_duration_seconds_bucket
+  usage:
+  - infra.karpenter.provisioning.scheduling_duration
+- importance: extended
+  labels:
+  - controller
+  name: karpenter_scheduler_unschedulable_pods_count
+  usage:
+  - infra.karpenter.health.pods_unplaceable
+  - infra.karpenter.provisioning.pods_waiting
+- importance: extended
+  labels: []
+  name: karpenter_voluntary_disruption_consolidation_timeouts_total
+  usage:
+  - infra.karpenter.disruption.consolidation_timeouts
+- importance: extended
+  labels: []
+  name: karpenter_voluntary_disruption_decisions_total
+  usage:
+  - infra.karpenter.disruption.decisions
+- importance: extended
+  labels: []
+  name: karpenter_voluntary_disruption_eligible_nodes
+  usage:
+  - infra.karpenter.disruption.eligible
+- importance: extended
+  labels:
+  - app
+  name: leader_election_master_status
+  usage:
+  - infra.karpenter.controller.leader
 - importance: extended
   labels:
   - app_instance
@@ -3064,6 +3291,32 @@
   - materialize.persist.usage.held
 - importance: extended
   labels:
+  - karpenter_sh_nodepool
+  - type
+  name: operator_nodeclaim_status_condition_transition_seconds_bucket
+  usage:
+  - infra.karpenter.provisioning.stages
+- importance: extended
+  labels:
+  - karpenter_sh_nodepool
+  name: operator_nodeclaim_termination_duration_seconds_bucket
+  usage:
+  - infra.karpenter.disruption.termination
+- importance: extended
+  labels:
+  - status
+  - type
+  name: operator_nodepool_status_condition_count
+  usage:
+  - infra.karpenter.health.nodepools_not_ready
+- importance: extended
+  labels:
+  - kind
+  name: operator_status_condition_count
+  usage:
+  - infra.karpenter.conditions
+- importance: extended
+  labels:
   - app
   - namespace
   - pod
@@ -3094,6 +3347,42 @@
   name: prometheus_remote_storage_sent_batch_duration_seconds_bucket
   usage:
   - infra.alloy.metric_pipeline.send_latency
+- importance: extended
+  labels:
+  - app
+  name: workqueue_depth
+  usage:
+  - infra.karpenter.controller.workqueue
+- importance: diagnostic
+  labels: []
+  name: aws_autoscaling_group_desired_capacity_average
+  usage:
+  - infra.autoscaling.cloud.ec2.node_groups
+- importance: diagnostic
+  labels: []
+  name: aws_autoscaling_group_in_service_instances_average
+  usage:
+  - infra.autoscaling.cloud.ec2.node_groups
+- importance: diagnostic
+  labels: []
+  name: aws_autoscaling_group_max_size_average
+  usage:
+  - infra.autoscaling.cloud.ec2.node_groups
+- importance: diagnostic
+  labels: []
+  name: aws_ec2_status_check_failed_attached_ebs_maximum
+  usage:
+  - infra.autoscaling.cloud.ec2.status_checks
+- importance: diagnostic
+  labels: []
+  name: aws_ec2_status_check_failed_instance_maximum
+  usage:
+  - infra.autoscaling.cloud.ec2.status_checks
+- importance: diagnostic
+  labels: []
+  name: aws_ec2_status_check_failed_system_maximum
+  usage:
+  - infra.autoscaling.cloud.ec2.status_checks
 - importance: diagnostic
   labels: []
   name: aws_rds_burst_balance_minimum
@@ -3166,6 +3455,37 @@
   name: aws_s3_number_of_objects_average
   usage:
   - infra.cloud.bucket.objects
+- importance: diagnostic
+  labels:
+  - dimension_Resource
+  name: aws_usage_resource_count_maximum
+  usage:
+  - infra.autoscaling.cloud.ec2.vcpus
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count
+  usage:
+  - infra.autoscaling.cloud.aks.vms_down
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_containerservice_managedclusters_cluster_autoscaler_cluster_safe_to_autoscale_minimum_count
+  usage:
+  - infra.autoscaling.cloud.aks.state
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_containerservice_managedclusters_cluster_autoscaler_scale_down_in_cooldown_maximum_count
+  usage:
+  - infra.autoscaling.cloud.aks.state
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unneeded_nodes_count_maximum_count
+  usage:
+  - infra.autoscaling.cloud.aks.state
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unschedulable_pods_count_maximum_count
+  usage:
+  - infra.autoscaling.cloud.aks.unschedulable
 - importance: diagnostic
   labels: []
   name: azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count
@@ -3292,6 +3612,30 @@
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up
   usage:
   - infra.cloud.cloudsql.up
+- importance: diagnostic
+  labels:
+  - limit_name
+  name: stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_limit
+  usage:
+  - infra.autoscaling.cloud.gce.cpu_quota
+- importance: diagnostic
+  labels:
+  - limit_name
+  name: stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_usage
+  usage:
+  - infra.autoscaling.cloud.gce.cpu_quota
+- importance: diagnostic
+  labels:
+  - limit_name
+  name: stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_limit
+  usage:
+  - infra.autoscaling.cloud.gce.ssd_quota
+- importance: diagnostic
+  labels:
+  - limit_name
+  name: stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_usage
+  usage:
+  - infra.autoscaling.cloud.gce.ssd_quota
 - importance: diagnostic
   labels: []
   name: stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes

@@ -114,6 +114,8 @@ from.
 | `env-persist` | `grafana/env_persist/` | `mz-mon-env-persist` | Materialize Persist (Storage) |
 | `env-consensus` | `grafana/env_consensus/` | `mz-mon-env-consensus` | Materialize Consensus (Metadata) |
 | `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider |
+| `infra-autoscaling` | `grafana/infra_autoscaling/` | `mz-mon-infra-autoscaling` | Infrastructure Autoscaling |
+| `infra-karpenter` | `grafana/infra_karpenter/` | `mz-mon-infra-karpenter` | Karpenter |
 
 Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
@@ -495,6 +497,64 @@ Queries are `packages/queries/infra-cloud.yaml`.
 - **All three reference installs pull provider metrics** as of 2026-09-30, so every provider row can be checked live.
   Before that the AWS and GCP pulls had run only Sep 26–28, which is where the first verification was done.
 - **Size and count panels are on a log axis**, with no `min(0)`: one install's buckets span four orders of magnitude.
+
+## The autoscaling dashboards
+
+Two dashboards, both filed under `Folder::Infra`: one that asks the same questions on every cloud, and Karpenter's own
+account beside it on EKS. GKE and AKS run their autoscalers in the managed control plane, where nothing in the cluster
+can scrape them, so they get no dashboard of their own.
+
+### `infra-autoscaling` tabs
+
+Are pods waiting for a node, and can the cluster grow. Queries are `packages/queries/infra-autoscaling.yaml`, hinted
+`recommended`.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Node Pools | `node_pools.rs` |
+| 3 | Pending Pods | `pending.rs` |
+| 4 | Workload Autoscaling | `workloads.rs` |
+| 5 | Cloud Capacity | `cloud.rs` |
+| 6 | Events | `events.rs` |
+
+- **Pools come from `%%{nodePools}`**, a registry parameter that folds Karpenter's, EKS's, GKE's and AKS's pool labels
+  on `kube_node_labels` into one `pool` label, beside `instance_type` and `zone`. kube-state-metrics publishes no
+  `kube_node_labels` at all without `metricLabelsAllowlist`, so the chart names those six labels and a chart test
+  holds them. The style guide has it under Node pools across provisioners.
+- **Node joins are counted from `kube_node_info`** against itself `offset %%{rangeWindow}`, not from `RegisteredNode`
+  events, which repeat whenever the control plane restarts.
+- **Cloud Capacity reuses `infra_cloud::PROVIDERS`**, so its rows render on `$cloudProviderList` the way
+  `infra-cloud`'s do, with one fallback. The provider families stay `diagnostic` through `metricOverrides`.
+- **Events leave out `DisruptionBlocked` and `Unconsolidatable`.** Karpenter emits them for every node it cannot
+  consolidate, which buries everything else; `infra-karpenter` classifies them instead.
+- **Materialize's replicas are sized, not autoscaled.** The HorizontalPodAutoscalers on Workload Autoscaling are the
+  monitoring stack's and whatever else the operator scales that way.
+
+### `infra-karpenter` tabs
+
+Queries are `packages/queries/infra-karpenter.yaml`, hinted `extended`.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Provisioning | `provisioning.rs` |
+| 3 | Disruption | `disruption.rs` |
+| 4 | Controller | `controller.rs` |
+| 5 | Events and Logs | `events.rs` |
+
+- **Every row renders on `$karpenterDetected`**, discovered from `up{app="karpenter"}`, and the condition matches the
+  literal `karpenter`, never `.+`: an unset variable reaches the condition as `undefined`. Each tab carries one
+  negated fallback, and a test holds that no row is unconditioned.
+- **The scrape is Terraform's.** The self-managed repo's `karpenter` module creates the ServiceMonitor and drops the
+  per-instance-type price and shape families, keeping `offering_available` only for the node pools' types. On the
+  AWS test install that took Karpenter from about 61k samples to about 9k.
+- **Karpenter's generic families are shared.** `controller_runtime_*`, `workqueue_*`, `client_go_*`,
+  `aws_sdk_go_*` and `leader_election_*` come from every controller-runtime process, so each query carries
+  `app="karpenter"`, and a test holds it.
+- **The quirks are in the style guide**: only the leader publishes `karpenter_*`, `_count` names that are gauges, the
+  `service` label arriving as `exported_service`, `offering_available` reading zero for half its series at rest, and
+  AWS SDK 412s being dry runs.
 
 ## Notes on the trickier panels
 

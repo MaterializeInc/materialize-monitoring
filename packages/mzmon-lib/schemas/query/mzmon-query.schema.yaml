@@ -180,6 +180,12 @@ $defs:
       # because being host-network is a property of a pod's whole series set
       # rather than of any one series.
       - "excludeHostNetworkPods"
+      # A whole expression: every node, valued 1, labelled `node`, `pool`,
+      # `instance_type` and `zone`. The pool is whichever label the node's
+      # provisioner sets (Karpenter, EKS node group, GKE node pool, AKS agent
+      # pool), read from `kube_node_labels`, or `unpooled`. Count it, or join
+      # with `* on (node) group_left (pool)`.
+      - "nodePools"
       # Infrastructure workload tiers, as bare regex values: the author writes the
       # label, container=~"%%{infraCoreWorkloadList}" or deployment=~"...". Each
       # is an alternation of container and Deployment names, and which workloads a
@@ -470,6 +476,11 @@ $defs:
         description: The Loki query language (LogQL) query.
         examples:
           - '{app="environmentd"} |~ "peek latency"'
+      instant:
+        type: boolean
+        description: |
+          Whether the query is an instant query, as on a metrics query: one
+          value at the end of the range, for a count over `%%{range}`.
     required:
       - logQL
 

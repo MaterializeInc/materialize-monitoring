@@ -5,8 +5,8 @@ weight: 1
 
 # Available Dashboards
 
-Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
-Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+Thirteen dashboards ship today: five scoped to a Materialize environment (`env-*`), and eight to the platform underneath it (`infra-*`).
+Two of the eight watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -129,6 +129,31 @@ The Object Storage tab draws each bucket's billed size beside the data Materiali
 Provider data is minutes old, and bucket size a day old, so this dashboard says why a dependency is struggling rather than whether it is; `env-consensus` and `env-persist` answer the second question and are the ones to open first.
 
 {{< download-dashboards name="infra-cloud" >}}
+
+### Infrastructure Autoscaling (`infra-autoscaling`)
+
+Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
+Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+
+It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+- **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}) are enabled for them.
+
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+
+{{< download-dashboards name="infra-autoscaling" >}}
+
+### Karpenter (`infra-karpenter`)
+
+How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
+It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
+
+- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
+
+{{< download-dashboards name="infra-karpenter" >}}
 
 ## Meta monitoring (`infra-*`)
 
