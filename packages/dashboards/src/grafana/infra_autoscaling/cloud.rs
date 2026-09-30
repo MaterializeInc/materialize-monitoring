@@ -23,9 +23,12 @@
 //! No provider publishes capacity refusals; those are Karpenter's and the
 //! autoscalers' to report, on the Karpenter dashboard and the Pending Pods tab.
 //!
-//! Rows render on `$cloudProviderList`, as on `infra-cloud`. A provider pulled
-//! only for its database and buckets renders its row here empty, and each panel's
-//! empty state names the value that fills it.
+//! Rows render on `$cloudProviderList`, as on `infra-cloud`, which is discovered
+//! from the pull's `up` and cannot say *what* a provider is pulled for: its
+//! `instance` is a resource name. A provider pulled only for its database and
+//! buckets therefore renders its row here with every panel empty. Each empty
+//! state says so rather than implying nothing is pulled at all, and names the
+//! value that fills it.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
@@ -40,9 +43,25 @@ pub fn rows(q: &Queries) -> Vec<Row> {
 }
 
 /// What an EC2 panel shows when the pull lists no EKS cluster.
+///
+/// The row rendering means CloudWatch is pulled, so the likely cause is a pull
+/// that covers the database and buckets only.
 fn no_eks() -> NoValue {
     NoValue::Custom(
-        "No EC2 data. List the cluster under pipeline.metrics.provider.cloudwatch.eks.clusters."
+        "CloudWatch is pulled, but not for this cluster's nodes. Add the cluster under \
+         pipeline.metrics.provider.cloudwatch.eks.clusters."
+            .to_string(),
+    )
+}
+
+/// What the node group panel shows when no managed node group reports.
+///
+/// Unlike the other EC2 panels this can be empty with the cluster listed: a
+/// cluster whose nodes all come from Karpenter has no managed node group.
+fn no_node_groups() -> NoValue {
+    NoValue::Custom(
+        "No managed node groups reported. Karpenter's nodes have none; if the cluster has \
+         some, add it under pipeline.metrics.provider.cloudwatch.eks.clusters."
             .to_string(),
     )
 }
@@ -50,7 +69,8 @@ fn no_eks() -> NoValue {
 /// What a Compute Engine panel shows when the pull lists no region.
 fn no_gce() -> NoValue {
     NoValue::Custom(
-        "No quota data. List the region under pipeline.metrics.provider.gcp.compute.regions."
+        "Cloud Monitoring is pulled, but not for Compute Engine quota. Add the region under \
+         pipeline.metrics.provider.gcp.compute.regions."
             .to_string(),
     )
 }
@@ -58,7 +78,8 @@ fn no_gce() -> NoValue {
 /// What an AKS panel shows when the pull lists no cluster.
 fn no_aks() -> NoValue {
     NoValue::Custom(
-        "No AKS data. List the cluster under pipeline.metrics.provider.azure.aks.clusters."
+        "Azure Monitor is pulled, but not for this cluster. Add it under \
+         pipeline.metrics.provider.azure.aks.clusters."
             .to_string(),
     )
 }
@@ -102,7 +123,7 @@ fn ec2_node_groups(q: &Queries) -> dashboardv2::PanelKind {
         .unit("short")
         .decimals(0.0)
         .min(0.0)
-        .no_value(no_eks())
+        .no_value(no_node_groups())
         .build(0)
 }
 

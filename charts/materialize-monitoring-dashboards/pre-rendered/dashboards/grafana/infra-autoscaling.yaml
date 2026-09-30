@@ -120,7 +120,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No AKS data. List the cluster under pipeline.metrics.provider.azure.aks.clusters.
+                noValue: Azure Monitor is pulled, but not for this cluster. Add it under pipeline.metrics.provider.azure.aks.clusters.
                 unit: short
               overrides: []
             options:
@@ -185,7 +185,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No AKS data. List the cluster under pipeline.metrics.provider.azure.aks.clusters.
+                noValue: Azure Monitor is pulled, but not for this cluster. Add it under pipeline.metrics.provider.azure.aks.clusters.
                 unit: short
               overrides: []
             options:
@@ -248,7 +248,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No AKS data. List the cluster under pipeline.metrics.provider.azure.aks.clusters.
+                noValue: Azure Monitor is pulled, but not for this cluster. Add it under pipeline.metrics.provider.azure.aks.clusters.
                 thresholds:
                   mode: absolute
                   steps:
@@ -395,7 +395,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No EC2 data. List the cluster under pipeline.metrics.provider.cloudwatch.eks.clusters.
+                noValue: No managed node groups reported. Karpenter's nodes have none; if the cluster has some, add it under pipeline.metrics.provider.cloudwatch.eks.clusters.
                 unit: short
               overrides: []
             options:
@@ -490,7 +490,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No EC2 data. List the cluster under pipeline.metrics.provider.cloudwatch.eks.clusters.
+                noValue: CloudWatch is pulled, but not for this cluster's nodes. Add the cluster under pipeline.metrics.provider.cloudwatch.eks.clusters.
                 thresholds:
                   mode: absolute
                   steps:
@@ -564,7 +564,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No EC2 data. List the cluster under pipeline.metrics.provider.cloudwatch.eks.clusters.
+                noValue: CloudWatch is pulled, but not for this cluster's nodes. Add the cluster under pipeline.metrics.provider.cloudwatch.eks.clusters.
                 unit: short
               overrides: []
             options:
@@ -819,7 +819,7 @@ spec:
               defaults:
                 max: 1
                 min: 0
-                noValue: No quota data. List the region under pipeline.metrics.provider.gcp.compute.regions.
+                noValue: Cloud Monitoring is pulled, but not for Compute Engine quota. Add the region under pipeline.metrics.provider.gcp.compute.regions.
                 thresholds:
                   mode: absolute
                   steps:
@@ -963,7 +963,7 @@ spec:
               defaults:
                 max: 1
                 min: 0
-                noValue: No quota data. List the region under pipeline.metrics.provider.gcp.compute.regions.
+                noValue: Cloud Monitoring is pulled, but not for Compute Engine quota. Add the region under pipeline.metrics.provider.gcp.compute.regions.
                 thresholds:
                   mode: absolute
                   steps:
