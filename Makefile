@@ -462,6 +462,7 @@ security-report:
 # The gate covers only the images we publish, and within those only base-layer
 # packages with a fix available -- the rest of the population is upstream and
 # reports instead. See bin/security-scan.sh for why that line is drawn there.
+# CI no longer runs this target; see bin/security-scan.sh for why.
 security-scan-images:
 	TRIVY=$(TRIVY) ./bin/security-scan.sh images-gate
 .PHONY: security-scan-images

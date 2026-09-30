@@ -14,11 +14,17 @@ name: security
 #                   baselined in .trivyignore.yaml are excluded: the file is
 #                   the record, and re-reporting them produces alerts that can
 #                   only be closed by hand.
-#   image-gate      blocks on fixable HIGH/CRITICAL OS-package vulnerabilities
-#                   in the images we publish. A rebuild is the fix.
 #   image-report    uploads SARIF for every image the chart references. The
 #                   upstream images and the upstream Go binaries inside our own
 #                   image both land here, because neither is ours to patch.
+#
+# There is deliberately no image gate at the moment. One ran here until
+# 2026-09-30 (`make security-scan-images`, still runnable locally), failing on
+# fixable HIGH/CRITICAL OS packages in our own images. It scanned the image the
+# chart *pins* rather than anything a pull request changed, so when Debian
+# published a fix ahead of the distroless base we build on, every open pull
+# request went red with nothing any of them could do about it. A replacement
+# should fail only the change that can act on the finding.
 
 on:
   push:
@@ -85,34 +91,6 @@ jobs:
           sarif_file: trivy-misconfig.sarif
           category: trivy-misconfig
 
-  image-gate:
-    name: trivy image (gate)
-    if: ${{ github.event_name != 'schedule' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      # Reading the image we publish to GHCR.
-      packages: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          lfs: true
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        with:
-          version: v0.74.0
-          cache: true
-      # Anonymous pulls work for the public images, but authenticating avoids
-      # the unauthenticated rate limit on a job that pulls a dozen manifests.
-      - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: trivy image
-        run: make security-scan-images
-
   image-report:
     name: trivy image (report)
     runs-on: ubuntu-24.04
@@ -129,6 +107,8 @@ jobs:
         with:
           version: v0.74.0
           cache: true
+      # Anonymous pulls work for the public images, but authenticating avoids
+      # the unauthenticated rate limit on a job that pulls a dozen manifests.
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -165,7 +145,7 @@ jobs:
   # cancellation fails it. (lint/test/pipelines/dashboards carry the same gate.)
   security-gate:
     name: security-gate
-    needs: [misconfig-gate, misconfig-report, image-gate, image-report]
+    needs: [misconfig-gate, misconfig-report, image-report]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
