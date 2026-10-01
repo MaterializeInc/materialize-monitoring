@@ -311,6 +311,17 @@ tests:
   # that a co-resident rule owner's alerts also reach this Alertmanager, which is
   # a documented trade rather than an oversight. The LogQL rules are
   # PrometheusRules too, and one of them in the import fails the ruler's reload.
+  # The sidecar reads its selector once at start, and the subchart rolls the
+  # Ruler on neither its script nor the selector. Without the label, an upgrade
+  # into the LogQL exclusion kept importing the LogQL rules until something
+  # restarted the pod, and every reload in between failed.
+  - it: rolls the Ruler when the import selector's revision changes
+    template: ../charts/thanos/templates/ruler/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["mzmon.materialize.cloud/rule-import-selector"]
+          value: no-logql
+
   - it: imports every PrometheusRule except the LogQL ones
     template: ../charts/thanos/templates/ruler/configmap-auto-import-prometheus-rules.yaml
     asserts:

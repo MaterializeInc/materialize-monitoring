@@ -153,6 +153,12 @@ The default selector is `mzmon.materialize.cloud/flavor!: logql`.
 The subchart joins the selector map into `key=value` pairs, so a key ending in `!` renders as `key!=value`, which also keeps a `PrometheusRule` carrying no flavor label.
 A selector replacing the default MUST keep that key, or select `mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
+**A selector change takes effect when the Thanos ruler restarts.**
+The import sidecar reads its selector once at start, and nothing in the subchart restarts it when the selector changes.
+`thanos.ruler.podLabels` carries `mzmon.materialize.cloud/rule-import-selector`, whose value changes with the selector so that an upgrade rolls the ruler.
+A deployment that changes `labelSelector` itself SHOULD change that label too, or restart the ruler.
+Until it does, the sidecar keeps importing with the old selector, and `ThanosRuleConfigReloadFailure` is the symptom when that selector lets a LogQL rule in.
+
 **A Prometheus Operator in the same cluster may refuse the LogQL rules.**
 Its Prometheus selects rules by its own `ruleSelector`, so it does not evaluate them.
 Its admission webhook, where one is installed, validates every `PrometheusRule` as PromQL, and rejects a LogQL one when it is applied.

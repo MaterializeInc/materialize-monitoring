@@ -6796,6 +6796,9 @@ validator warns when the two disagree.
   "persistence": {
     "enabled": false
   },
+  "podLabels": {
+    "mzmon.materialize.cloud/rule-import-selector": "no-logql"
+  },
   "podSecurityContext": {
     "runAsNonRoot": true,
     "seccompProfile": {
@@ -6993,6 +6996,11 @@ which also keeps a `PrometheusRule` carrying no flavor label. A selector
 replacing this one keeps the exclusion, or selects
 `mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
+**A selector change needs the Ruler pods restarted.** The sidecar reads
+its script, selector included, once at start, and the subchart puts no
+checksum of it on the pod, so an upgrade that changes only the selector
+leaves the old one running. `podLabels` below is what rolls the pods.
+
 The image is pinned rather than left on the upstream `latest`, so a default
 install does not track a floating tag. It is the only Docker Hub image the
 Thanos subchart pulls, which is why the registry profiles each carry a line
@@ -7046,6 +7054,24 @@ the Ruler adds to every alert it sends that does not already carry
 Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
 chart renders from `clusterName`. Both flags have to survive
 an override of this list; the render warns when either goes missing.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.podLabels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "mzmon.materialize.cloud/rule-import-selector": "no-logql"
+}</pre>
+</td>
+      <td class="helm-value-desc">Pod labels for the Ruler. `rule-import-selector` names the import selector's revision.
+
+The subchart rolls the Ruler on neither its import script nor its
+selector, so a changed selector would wait for the next restart while
+the sidecar kept importing with the old one. Changing this label is what
+restarts it: change the value with `autoImportPrometheusRules.labelSelector`.
+`no-logql` is the revision that leaves out the LogQL rules. Without the
+roll, an upgrade into it kept importing them, and every reload failed.
 </td>
     </tr>
     <tr>
