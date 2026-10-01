@@ -29,7 +29,7 @@ document are to be interpreted as described in
 
 The chart ships alerting rules for Materialize and for the platform under it.
 The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
-The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are installed as ConfigMaps the Loki ruler loads.
+The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
 [Common Alerts](../../reference/stable-metrics/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
@@ -40,7 +40,7 @@ A rule installs when all of the following hold:
 | Every capability the rule requires is present | derived from what the chart deploys, plus `rules.capabilities` |
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
-| A log-derived rule also needs the release's Loki ruler | `loki.ruler.enabled` |
+| A log-derived rule also needs the release's Loki ruler and alloy-gateway | `loki.ruler.enabled`, `alloy-gateway.enabled` |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
 The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
@@ -87,7 +87,7 @@ No component evaluates both PromQL and LogQL, which is why there are two.
 | Language | PromQL | LogQL |
 | Values key | `thanos.ruler` | `loki.ruler`, configured under `loki.loki.rulerConfig` |
 | Reads from | Thanos Query | Loki |
-| Rule source | `PrometheusRule` resources in the cluster | ConfigMaps in the Loki namespace, written into a local rule store by a sidecar |
+| Rule source | `PrometheusRule` resources in the cluster, except `flavor: logql` | `PrometheusRule` resources labelled `flavor: logql`, written into its bucket by the alloy-gateway |
 | Notifies | The bundled Alertmanager | The bundled Alertmanager |
 | Rule results | Remote-written to the alloy-gateway | Remote-written to the alloy-gateway |
 
@@ -128,43 +128,58 @@ Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream
 **That argument is load-bearing.**
 A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
 
-## Rules reach the Thanos Ruler as `PrometheusRule` resources
+## Every bundled rule is a `PrometheusRule`
+
+Both rulers' rules are installed as `PrometheusRule` resources, and the label `mzmon.materialize.cloud/flavor` says which ruler each is for.
+
+| Flavor | Read by | Delivered to |
+|---|---|---|
+| `promql` | The Thanos ruler's import sidecar | The Thanos ruler's rule directory |
+| `logql` | The alloy-gateway's `loki.rules.kubernetes` | The Loki ruler's rule store, through its API |
+
+A deployment's own `PrometheusRule` reaches the right ruler the same way.
+One without the label is PromQL, and one labelled `logql` is LogQL.
+
+## Rules reach the Thanos Ruler through an import sidecar
 
 A sidecar lists `PrometheusRule` resources, writes each one's spec into the ruler's rule directory, and triggers a reload when the set changes.
 No Prometheus Operator controller is involved, and the chart installs the CRDs it needs.
 
-This is the only consumer of a `PrometheusRule` in this stack.
-Alloy reads `ServiceMonitor` and `PodMonitor` and has no rule evaluator, and no Prometheus runs here.
-
-**The sidecar imports every `PrometheusRule` in the cluster.**
+**The sidecar imports every `PrometheusRule` in the cluster except the LogQL ones.**
 That is deliberate: a `PrometheusRule` applied by an operator or by another chart works with no configuration here.
 The cost is that a co-resident rule owner — a kube-prometheus-stack, for instance — has its alerts evaluated by this ruler and notified through this Alertmanager.
 Where that is not wanted, `thanos.ruler.autoImportPrometheusRules.labelSelector` SHOULD be set to narrow the imported set.
 
-## Rules reach the Loki Ruler as ConfigMaps
+**The exclusion is load-bearing.**
+The Thanos ruler reads every file it imports as PromQL, so one LogQL file fails its reload, and it keeps evaluating the rules it loaded before.
+The default selector is `mzmon.materialize.cloud/flavor!: logql`.
+The subchart joins the selector map into `key=value` pairs, so a key ending in `!` renders as `key!=value`, which also keeps a `PrometheusRule` carrying no flavor label.
+A selector replacing the default MUST keep that key, or select `mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
-A sidecar in each Loki ruler pod watches ConfigMaps in the Loki namespace labelled `loki_rule`.
-It writes each one's rule file into `/rules/<tenant>/`, where the tenant is the value of the ConfigMap's `k8s-sidecar-target-directory` annotation.
-The ruler reads `/rules` as a local rule store, and picks up a change within its `poll_interval`.
-The sidecar is the Loki subchart's own (`loki.sidecar.rules`), turned on for the ruler by `loki.ruler.sidecar`.
+**A Prometheus Operator in the same cluster may refuse the LogQL rules.**
+Its Prometheus selects rules by its own `ruleSelector`, so it does not evaluate them.
+Its admission webhook, where one is installed, validates every `PrometheusRule` as PromQL, and rejects a LogQL one when it is applied.
+A cluster running one MUST exclude `mzmon.materialize.cloud/flavor: logql` through the webhook's `objectSelector`, or the install fails.
 
-The chart's log-derived rules arrive this way, one ConfigMap per registry file and tenant.
-A deployment's own LogQL rules MAY arrive the same way: a ConfigMap in the Loki namespace, labelled `loki_rule` and annotated with the tenant, holding a rule file in the Prometheus format whose expressions are LogQL.
-They are not `PrometheusRule` resources, because every consumer of that kind reads its expressions as PromQL, including the Thanos ruler's import sidecar.
+## Rules reach the Loki Ruler through its API
 
-**The local rule store is read-only.**
-The ruler API still lists rules, and refuses to create or delete them.
-The bucket named by `loki.loki.storage.bucketNames.ruler` is still required by the Loki subchart, and the ruler no longer reads it.
+The alloy-gateway's `loki.rules.kubernetes` watches `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, in every namespace.
+It writes each one's groups into the Loki ruler through the ruler API, which stores them in the bucket named by `loki.loki.storage.bucketNames.ruler`.
+Its Loki rule namespaces are prefixed `mzmon`.
+It removes the ones whose `PrometheusRule` is gone and leaves every other namespace alone, so a rule written to the API by anything else survives.
+
+The rule store MUST accept writes, and the render fails when it is `local`.
+Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
+The gateway addresses the ruler with the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`.
+
+A log-derived rule installs only where the release runs both the Loki ruler and the gateway.
 
 **A Loki rule group belongs to one tenant**, and the ruler does not evaluate across tenants.
-The log-derived rules install once per tenant in `rules.logTenants`, which defaults to `pipeline.logging.tenancy.staticTenant`.
+The gateway writes the log-derived rules into each tenant in `rules.logTenants`, which defaults to `pipeline.logging.tenancy.staticTenant`.
 Under the default `static` tenancy every line is in that tenant, and nothing needs setting.
 Under `byEnvironment` each environment's logs are in a tenant named for its environment id, which the chart cannot discover; those tenants MUST be listed in `rules.logTenants` for the rules to see them, and the render warns while none are.
 Under `byNamespace` the tenant set changes as namespaces are created, so no list stays complete.
 Deployments that need complete log alerting SHOULD use `static` or `byEnvironment`.
-
-The sidecar reads the API server.
-The Loki NetworkPolicy opens egress on `443` through `loki.networkPolicy.externalStorage` and on `6443` through `loki.networkPolicy.discovery.port`; a cluster serving the API elsewhere MUST set that port.
 
 ## What an operator configures today
 
@@ -173,16 +188,15 @@ The Loki NetworkPolicy opens egress on `443` through `loki.networkPolicy.externa
 | `thanos.ruler.enabled` | `true` | Deploys the PromQL evaluator. Turning it off makes every `PrometheusRule` in the cluster inert |
 | `thanos.ruler.query.urls` | Thanos Query | Deliberately Query rather than Query Frontend. See below |
 | `thanos.ruler.alertmanagers.config` | Every replica of the bundled Alertmanager, by `dns+` lookup | Thanos's own Alertmanager configuration format, passed through |
-| `thanos.ruler.autoImportPrometheusRules.labelSelector` | `{}` | Which `PrometheusRule` resources to import. Empty means all of them |
+| `thanos.ruler.autoImportPrometheusRules.labelSelector` | `mzmon.materialize.cloud/flavor!: logql` | Which `PrometheusRule` resources to import. The default is all but the LogQL ones |
 | `loki.ruler.enabled` | `true` | Deploys the LogQL evaluator |
 | `loki.loki.rulerConfig.alertmanager_url` | Every replica of the bundled Alertmanager, by SRV lookup | Clearing it leaves the ruler evaluating recording rules and discarding alerts. The `_http._tcp.` form requires `enable_alertmanager_discovery: true` |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
-| `loki.ruler.sidecar` | `true` | Runs the rules sidecar that delivers LogQL rules. The render fails if it is off while log rules install |
 | `rules.enabled` | `true` | Installs the bundled rules that apply |
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
 | `rules.overrides` | `{}` | Per-alert `for` and labels, for metric and log rules alike |
-| `rules.logTenants` | the static tenant | Loki tenants the log-derived rules install for |
+| `rules.logTenants` | the static tenant | Loki tenants the gateway writes the log-derived rules into |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
