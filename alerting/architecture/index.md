@@ -85,6 +85,8 @@ See [Configuration](#configuration).
 
 **Nothing about alerting lives in Grafana.**
 Grafana reads and writes Alertmanager's alerts and silences through a datasource, and keeps none of that state itself.
+It also lists the Loki ruler's rules and their state, read-only, through the Loki datasource.
+That datasource points at the [Loki Gateway](../../logs-and-events/architecture/#loki-gateway), which routes Grafana's rule-list requests to the ruler and refuses rule edits, because the `alloy-gateway` owns the rule definitions.
 
 ## Why the rulers address every replica {#every-replica}
 

@@ -63,6 +63,7 @@ No component authenticates its callers:
 |---|---|
 | Alloy gateway ingest (`3100`, `4317`, `4318`, `9090`) | Write logs and metrics into your backends |
 | Loki distributor / query frontend (`3100`) | Read and write any tenant's logs |
+| Loki gateway (`8080`) | Read any tenant's logs and the ruler's rule state |
 | Thanos Receive (`10908`) / Query (`9090`) | Write and read any metric series |
 | Alertmanager (`9093`) | Read alerts, create silences |
 | Every `/metrics` endpoint | Read the stack's own telemetry |
@@ -287,6 +288,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | `loki.defaults.readinessProbe` scheme | Every Loki pod fails readiness at once — presents as a crashloop |
 | `loki.monitoring.serviceMonitor` scheme | Loki's own metrics vanish, and `up` goes *absent* rather than 0, so an alert on `up == 0` does not fire either |
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
+| The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
@@ -343,11 +345,11 @@ In `materialize-terraform-self-managed` both are on by default, since every exam
 
 Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
 
-| Phase | Profile | Gateway ingress | Loki | Thanos Receive | Alertmanager |
-|---|---|---|---|---|---|
-| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA | TLS, `NoClientCert`; rulers present |
-| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
-| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** | **unreachable** |
+| Phase | Profile | Gateway ingress | Loki | Loki gateway | Thanos Receive | Alertmanager |
+|---|---|---|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS to Grafana and to Loki, no client CA | TLS, no client CA | TLS, `NoClientCert`; rulers present |
+| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | `ssl_verify_client optional`; Grafana presents, and it presents to Loki | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
+| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | **unreachable** | client CA set — **authenticated** | **unreachable** |
 
 The gateway's own ingress reaches phase 3 because its listeners are not the ports the kubelet probes — readiness is on `12345`. That is the difference between it and Loki.
 
@@ -390,6 +392,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
 | **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
+| **In-cluster TLS, Grafana → Loki gateway → Loki** | 🔨 Encrypted on both hops, and presented certificates verified, at phase 2, which is its ceiling. The kubelet probes the Loki gateway's listener too |
 | **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
 | **In-cluster TLS, rulers and Grafana → Alertmanager** | 🔨 Encrypted, and presented certificates verified, at phase 2, which is its ceiling. The kubelet and the config reloader dial the same port and cannot present a certificate |
 | **In-cluster TLS, rulers → gateway** | ✅ Shipped and **authenticated** at phase 3. Both rulers remote-write to `9090` over TLS and present their component's certificate from phase 1 |

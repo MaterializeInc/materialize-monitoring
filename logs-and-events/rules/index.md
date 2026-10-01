@@ -47,6 +47,8 @@ The result: log-derived metrics live in the same place — and are queried the s
 - Group related rules so the ring can balance evaluation across rulers.
 - Keep recording-rule output label sets small — they become metric series and carry the same [cardinality](../../o11y-glossary/#observability-foundations) cost as any other metric.
 - Alert routing, grouping, silences, and notification channels are configured in Alertmanager — see [Alerting](../../alerting/).
+- Grafana's alert list shows these rules and their state, read-only, through the [Loki Gateway](../architecture/#loki-gateway).
+  Edits are refused there: the `alloy-gateway` writes the chart's rules into the ruler and reverts a change it did not make.
 
 ## See more
 

@@ -15,7 +15,7 @@ date: 2026-06-27
         </tr>
         <tr>
           <th>lastmod</th>
-          <td>2026-06-28 00:00:00 &#43;0000 UTC</td>
+          <td>2026-10-01 00:00:00 &#43;0000 UTC</td>
         </tr>
         <tr>
           <th>publishdate</th>
@@ -158,7 +158,7 @@ Fill in as each component is wrapped.
 | query-frontend | ⬜ | ⬜ | |
 | compactor | ⬜ | ⬜ | singleton |
 | ruler | ⬜ | ⬜ | own storage prefix |
-| gateway | ⬜ | ⬜ | nginx today — see topology |
+| gateway | ⬜ | ⬜ | nginx, read path only — see [Gateway / ingress](#gateway--ingress) |
 | memcached | ⬜ | ⬜ | |
 
 ## Storage and credentials
@@ -185,13 +185,35 @@ Fill in as each component is wrapped.
 
 ### Gateway / ingress
 
-The upstream loki-gateway is an **nginx** reverse proxy doing path-based routing, and we do not want nginx here (though we are using it for loki-gateway today).
+The upstream loki-gateway is an **nginx** reverse proxy doing path-based routing.
 Cloud ingress is also fragmenting (ALBs not in use where expected, Gateway API adoption slow, nginx explicitly unwanted).
 
 **Decision: the alloy-gateway is the canonical write-path gateway.**
 We already bundle Alloy in a gateway role, so writes flow agent → **alloy-gateway** → distributor, and the bundled nginx loki-gateway is dropped from the write path.
-The read path points Grafana's datasource at the **query-frontend** Service directly; a `LoadBalancer` Service default is sufficient otherwise.
-Reserve a separate gateway only if a single external hostname or auth termination is required, and prefer the cloud LB / Gateway API / Envoy over re-introducing nginx.
+
+**Revised 2026-10-01: the nginx loki-gateway is back, on the read path only.**
+The first version of this decision pointed Grafana's datasource at the query frontend and kept nginx out.
+That left Grafana's alerting UI with no Loki rules.
+Grafana reads a datasource's rules from the datasource's own URL, and in distributed mode the ruler serves them, not the query frontend.
+A path-routing proxy in front of both is the smallest change that fixes it.
+
+The objection to nginx was that it resolves a backend once at startup and loses it when DNS is repointed.
+It does not hold for this gateway, for two independent reasons:
+
+| Reason | Detail |
+| --- | --- |
+| The backends are ClusterIP Services | A ClusterIP is immutable for the life of its Service; only deleting and recreating the Service changes it |
+| The config resolves per request | Each `proxy_pass` names its backend through a variable, so nginx resolves it through `resolver` on each request, with a ten-second cache, instead of once at startup |
+
+Both were measured against the pinned image rather than read off documentation: a backend whose address changed was followed within ten seconds with no restart.
+
+Pingap, which Materialize Cloud runs as its Loki gateway, and Envoy were the alternatives.
+Pingap presents no client certificate to an upstream and verifies none on its listener, so it would weaken the read hop under the mTLS profiles.
+Either one would also mean a Deployment this chart owns, and for pingap an image as well, where the subchart already ships one for nginx.
+
+The gateway runs this chart's nginx.conf rather than the subchart's.
+It routes Grafana's reads to the query frontend and the ruler's rule and alert state (`GET`) to the ruler, and refuses everything else: pushes, rule definitions, rings, flushes and deletes.
+Rule definitions are refused because the alloy-gateway's `loki.rules.kubernetes` owns them, and Grafana reads the refusal as a ruler it cannot edit.
 
 ## Sizing
 
