@@ -20,6 +20,34 @@
 use std::collections::HashMap;
 
 use crate::query::error::{Error, Result};
+
+/// Every node with its pool, instance type and zone, for `%%{nodePools}`.
+///
+/// Read from `kube_node_labels`, which carries these only because the chart
+/// tells kube-state-metrics to copy them (`metricLabelsAllowlist`). The pool is
+/// whichever label the node's provisioner sets: a Karpenter NodePool, an EKS
+/// managed node group, a GKE node pool or an AKS agent pool. A node with none of
+/// them reads `unpooled`.
+///
+/// One series per node, valued 1, labelled `node`, `pool`, `instance_type` and
+/// `zone` and nothing else, so it can be counted directly or joined with
+/// `* on (node) group_left (pool)`. The outer `max` also removes the duplicate
+/// each extra kube-state-metrics replica adds.
+pub const NODE_POOLS: &str = concat!(
+    "max by (node, pool, instance_type, zone) (",
+    "label_replace(label_replace(label_replace(label_replace(",
+    "label_replace(label_replace(label_replace(",
+    "kube_node_labels, ",
+    r#""pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "#,
+    r#""pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "#,
+    r#""pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "#,
+    r#""pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "#,
+    r#""pool", "unpooled", "pool", ""), "#,
+    r#""instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "#,
+    r#""zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")"#,
+    ")",
+);
+
 use crate::query::model::{Query, QueryEngine, TemplateExpr};
 use crate::query::registry::QueryRegistry;
 
@@ -282,6 +310,9 @@ fn extraction_context<'a>(
             "excludeHostNetworkPods",
             r#"unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})"#,
         ),
+        // A whole expression, and the one metric it reads is the one extraction
+        // should find.
+        ("nodePools", NODE_POOLS),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

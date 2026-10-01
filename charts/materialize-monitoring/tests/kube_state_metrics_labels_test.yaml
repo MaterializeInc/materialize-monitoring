@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# Node labels on `kube_node_labels`.
+#
+# kube-state-metrics 2.x publishes no `kube_node_labels` at all unless the
+# allowlist names a label, so losing this flag does not thin the metric — it
+# removes it, and every per-pool panel on Infrastructure Autoscaling goes empty
+# with nothing else failing. The pool is read from whichever of four labels the
+# node's provisioner sets, so all four have to be here, beside the instance type
+# and zone.
+suite: kube-state-metrics node labels
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.kube-state-metrics: true
+templates:
+  - ../charts/kube-state-metrics/templates/deployment.yaml
+tests:
+  - it: should copy every provisioner's pool label, the instance type and the zone
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metric-labels-allowlist=nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]
+
+  # One series per node is cheap; every label on every node is not, and a
+  # wildcard here would also copy labels an operator never meant to export.
+  - it: should never copy every node label
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --metric-labels-allowlist=nodes=[*]

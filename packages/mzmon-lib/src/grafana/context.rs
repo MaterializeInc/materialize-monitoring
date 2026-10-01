@@ -143,6 +143,11 @@ pub mod variables {
     pub const ALLOY_ROLE: &str = "alloyRole";
     /// Which collector pod a meta-monitoring panel reads.
     pub const ALLOY_POD: &str = "alloyPod";
+    /// Which Karpenter NodePools a panel reads.
+    ///
+    /// Written literally by `infra-karpenter.yaml`, on the same precedent as
+    /// [`LOKI_NAMESPACE`], and matched against Karpenter's own `nodepool` label.
+    pub const KARPENTER_NODE_POOL: &str = "karpenterNodePool";
 }
 
 /// Drops pods sharing the node's network namespace from a cAdvisor rollup.
@@ -226,6 +231,12 @@ pub const ALLOY_VARIABLES: &[&str] = &[
     variables::ALLOY_ROLE,
     variables::ALLOY_POD,
 ];
+
+/// Variables required only by the Karpenter dashboard.
+///
+/// Written literally by `infra-karpenter.yaml`, for the reason [`LOKI_VARIABLES`]
+/// gives.
+pub const KARPENTER_VARIABLES: &[&str] = &[variables::KARPENTER_NODE_POOL];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
 /// [`DashboardScope::operator_variable`].
@@ -533,6 +544,7 @@ pub fn dashboard_context<'a>(
         // variable here would tie a shared parameter to one dashboard's
         // pickers.
         ("excludeHostNetworkPods", HOST_NETWORK_EXCLUSION.to_string()),
+        ("nodePools", crate::query::render::NODE_POOLS.to_string()),
         (
             "excludeEnvironmentFilter",
             scope.exclude_environments.clone(),

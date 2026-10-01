@@ -262,7 +262,9 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Seven dashboards are rendered, and `selected` decides which of them a release installs:
+Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
+These are the ones with something to know before narrowing it:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -295,6 +297,15 @@ Seven dashboards are rendered, and `selected` decides which of them a release in
   discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
   match nothing.
   `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
+- **Infrastructure Autoscaling** (`infra-autoscaling` → `mz-mon-infra-autoscaling`), matched by the default `infra-*` pattern.
+  Its Node Pools tab groups nodes by labels that kube-state-metrics publishes only when its
+  `metricLabelsAllowlist` names them.
+  The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
+  reads empty.
+- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), also matched by the default `infra-*` pattern.
+  It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
+  row saying why it is empty.
+  Leave it out of `selected` on GKE and AKS if that row is noise.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.

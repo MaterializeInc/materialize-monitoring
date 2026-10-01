@@ -1,0 +1,664 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Karpenter: how it adds, replaces and removes the cluster's nodes on EKS.
+
+description: |
+  Karpenter's own account of provisioning and disruption, from the metrics its
+  controller publishes and the events it records.
+
+  Karpenter adds nodes on EKS in the self-managed Terraform: it watches for
+  pods the scheduler cannot place, launches an EC2 instance that fits them,
+  and later removes or replaces nodes that are empty, underused, drifted from
+  their NodePool's spec, or being interrupted by AWS. Everything it does to a
+  node goes through a NodeClaim, one per instance.
+
+  The controller runs two replicas and only the leader does any work, so most
+  families here come from one pod. Counters restart on a leader change; every
+  query reads them through `rate` or `increase`, which tolerates that.
+
+  ## Scrape
+  The chart's ServiceMonitor is enabled by the Terraform's `karpenter` module.
+  It drops the offering price estimates and per-instance-type CPU and memory,
+  which describe every instance type in the region rather than the cluster,
+  and keeps offering availability only for the node pools' instance types.
+  Karpenter's generic families (`controller_runtime_*`, `workqueue_*`,
+  `client_go_*`, `aws_sdk_go_*`) carry no `karpenter_` prefix, so they are
+  scoped by `app="karpenter"`, which the gateway sets from the pod's name label.
+
+  ## Names ending in `_count`
+  `karpenter_scheduler_unschedulable_pods_count` and the
+  `operator_*_status_condition_count` families are gauges, not the counts of a
+  histogram.
+
+  ## Rare events
+  NodeClaims are created and removed a few times a day, so their duration
+  histograms are read over an hour rather than `$__rate_interval`, which would
+  leave the panel mostly empty.
+
+metricImportanceHint: extended
+
+queries:
+  # --- Overview: the verdict ----------------------------------------------------
+  - id: infra.karpenter.health.nodepools_not_ready
+    stability: experimental
+    description:
+      summary: NodePools that are not Ready.
+      nominal: Zero.
+      unhealthy: |
+        A NodePool that is not Ready launches nothing. Its conditions in
+        _NodePool and NodeClass Conditions_ say why: usually its EC2NodeClass
+        cannot find an AMI, subnet or security group, or
+        `NodeRegistrationHealthy` is false because the nodes it launched never
+        joined the cluster.
+    promQL: |
+      count(
+        max by (name) (operator_nodepool_status_condition_count{type="Ready", status!="True"}) == 1
+      )
+      or 0 * count(max by (name) (operator_nodepool_status_condition_count{type="Ready"}))
+
+  - id: infra.karpenter.health.nodes
+    stability: experimental
+    description:
+      summary: Nodes Karpenter manages, in the selected NodePools.
+      notes: |
+        Nodes from an EKS managed node group, such as the base group Karpenter
+        itself runs on, are not Karpenter's and are left out.
+    promQL: |
+      count(
+        max by (node_name) (karpenter_nodes_allocatable{resource_type="cpu", nodepool!="", nodepool=~"$karpenterNodePool"})
+      )
+
+  - id: infra.karpenter.health.pods_unplaceable
+    stability: experimental
+    description:
+      summary: |
+        Pods Karpenter could not find or create a node for in its last
+        scheduling pass.
+      nominal: Zero.
+      unhealthy: |
+        Non-zero for more than a pass or two: no NodePool can hold these pods.
+        Their node selectors, affinities or tolerations match no pool, a pool
+        is at its limits, or no instance type in the pool is big enough. The
+        pods' `FailedScheduling` events, on Infrastructure Autoscaling, name
+        the constraint.
+    promQL: |
+      max(karpenter_scheduler_unschedulable_pods_count{controller="provisioner"})
+
+  - id: infra.karpenter.health.launch_errors
+    stability: experimental
+    description:
+      summary: Instance launches EC2 refused in the selected time range.
+      nominal: Zero.
+      unhealthy: |
+        Any. Karpenter retries with another instance type or zone where the
+        NodePool allows one; a NodePool with a single instance type, like the
+        Terraform examples' Materialize pool, has nowhere else to go. The
+        error type on the Provisioning tab says whether it was capacity, quota
+        or a configuration problem.
+    promQL: |
+      sum(increase(karpenter_cloudprovider_errors_total{method="Create"}%%{range}))
+      or 0 * max(karpenter_build_info)
+    instant: true
+
+  - id: infra.karpenter.health.disrupted
+    stability: experimental
+    description:
+      summary: |
+        NodeClaims Karpenter removed or replaced in the selected time range, in
+        the selected NodePools.
+      notes: |
+        Consolidation, drift, expiry and interruption all count. A Materialize
+        replica on a disrupted node restarts elsewhere, so a Materialize pool
+        should read low; the examples mark its pods not to be disrupted, which
+        is why it usually reads zero.
+    promQL: |
+      sum(increase(karpenter_nodeclaims_disrupted_total{nodepool=~"$karpenterNodePool"}%%{range}))
+      or 0 * max(karpenter_build_info)
+    instant: true
+
+  - id: infra.karpenter.health.synced
+    stability: experimental
+    description:
+      summary: |
+        Whether Karpenter's view of the cluster's nodes and pods is in step
+        with Kubernetes.
+      nominal: 1, synced.
+      unhealthy: |
+        0 for more than a few seconds. Karpenter makes no scheduling or
+        disruption decision until it is back in step, so pods wait and nodes
+        are not removed. Usually an API server problem; the Controller tab has
+        the error rates.
+    promQL: |
+      max(karpenter_cluster_state_synced)
+
+  - id: infra.karpenter.health.version
+    stability: experimental
+    description:
+      summary: The Karpenter version running.
+    promQL: |
+      max by (version) (karpenter_build_info)
+    instant: true
+
+  # --- Overview: capacity ---------------------------------------------------------
+  - id: infra.karpenter.nodes.by_nodepool
+    stability: experimental
+    description:
+      summary: Karpenter's nodes in each NodePool over time.
+    promQL: |
+      count by (nodepool) (
+        max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type="cpu", nodepool!="", nodepool=~"$karpenterNodePool"})
+      )
+
+  - id: infra.karpenter.nodepools.cpu
+    stability: experimental
+    description:
+      summary: |
+        CPU each NodePool's nodes provide, against the limit the NodePool sets.
+      degraded: |
+        Usage at the limit: the NodePool launches nothing more, and pods that
+        need it wait. Raise the limit in the NodePool's `limits`.
+      notes: |
+        The limit is drawn only for a NodePool that sets one; the Terraform
+        examples set none.
+    promQL:
+      - |
+        max by (nodepool) (karpenter_nodepools_usage{resource_type="cpu", nodepool=~"$karpenterNodePool"})
+      - |
+        max by (nodepool) (karpenter_nodepools_limit{resource_type="cpu", nodepool=~"$karpenterNodePool"})
+
+  - id: infra.karpenter.nodepools.memory
+    stability: experimental
+    description:
+      summary: |
+        Memory each NodePool's nodes provide, against the limit the NodePool
+        sets.
+      degraded: Usage at the limit, for the same reason as CPU.
+    promQL:
+      - |
+        max by (nodepool) (karpenter_nodepools_usage{resource_type="memory", nodepool=~"$karpenterNodePool"})
+      - |
+        max by (nodepool) (karpenter_nodepools_limit{resource_type="memory", nodepool=~"$karpenterNodePool"})
+
+  - id: infra.karpenter.utilization
+    stability: experimental
+    description:
+      summary: |
+        The share of Karpenter's nodes' allocatable CPU, memory and pod slots
+        that pods have requested.
+      nominal: |
+        High. Karpenter consolidates onto fewer nodes when it can, so a low
+        reading that stays low means something is keeping it from doing so.
+      degraded: |
+        Low and not recovering. The Disruption tab says what is blocking
+        consolidation; on a Materialize cluster it is usually replicas marked
+        not to be disrupted.
+    promQL: |
+      max by (resource_type) (karpenter_cluster_utilization_percent{resource_type=~"cpu|memory|pods"}) / 100
+
+  - id: infra.karpenter.conditions
+    stability: experimental
+    description:
+      summary: |
+        Every condition on each NodePool and EC2NodeClass, and its current
+        status.
+      nominal: Every row True.
+      unhealthy: |
+        A False or Unknown row, with its reason. On an EC2NodeClass,
+        `AMIsReady`, `SubnetsReady`, `SecurityGroupsReady` or
+        `InstanceProfileReady` false means Karpenter cannot build a launch
+        request at all. On a NodePool, `NodeRegistrationHealthy` false means
+        instances launched but did not join the cluster.
+    promQL: |
+      max by (kind, name, type, status, reason) (
+        operator_status_condition_count{kind=~"NodePool|EC2NodeClass"}
+      ) == 1
+    instant: true
+
+  # --- Provisioning ---------------------------------------------------------------
+  - id: infra.karpenter.provisioning.created
+    stability: experimental
+    description:
+      summary: NodeClaims created per hour, by NodePool and reason.
+      notes: |
+        `provisioned` is a new node for waiting pods; `drifted`, `expired` and
+        the consolidation reasons are replacements.
+    promQL: |
+      sum by (nodepool, reason) (
+        rate(karpenter_nodeclaims_created_total{nodepool=~"$karpenterNodePool"}%%{interval})
+      ) * 3600
+
+  - id: infra.karpenter.provisioning.errors
+    stability: experimental
+    description:
+      summary: Errors from EC2 per hour, by error type and operation.
+      nominal: Nothing on `Create`.
+      unhealthy: |
+        On `Create`: `InsufficientCapacityError` is EC2 out of the instance
+        type in a zone, which Karpenter works around if the NodePool allows
+        other types or zones. `UnfulfillableCapacity` and quota errors need a
+        change on the AWS side, and the others usually a change to the
+        EC2NodeClass.
+      notes: |
+        `NodeClaimNotFoundError` on `Delete` or `IsDrifted` is an instance
+        already gone when Karpenter checked on it, which is routine after a
+        termination.
+    promQL: |
+      sum by (error, method) (
+        rate(karpenter_cloudprovider_errors_total%%{interval})
+      ) * 3600
+
+  - id: infra.karpenter.provisioning.offerings
+    stability: experimental
+    description:
+      summary: |
+        Zones where each of the node pools' instance types can be launched, by
+        capacity type.
+      nominal: Flat.
+      degraded: |
+        A dip: EC2 refused a launch for capacity, and Karpenter stops asking
+        that zone for that type for a few minutes. A dip in the only type a
+        NodePool allows is a pool that cannot grow in that zone until it
+        recovers.
+      notes: |
+        Only the types the Terraform's `service_monitor_instance_types` names
+        are kept. Reserved capacity is left out: it reads unavailable wherever
+        there is no reservation.
+    promQL: |
+      sum by (instance_type, capacity_type) (
+        max by (instance_type, capacity_type, zone) (karpenter_cloudprovider_instance_type_offering_available{capacity_type!="reserved"})
+      )
+
+  - id: infra.karpenter.provisioning.pods_waiting
+    stability: experimental
+    description:
+      summary: |
+        Pods waiting for Karpenter: the ones it cannot place, and the queue for
+        its next scheduling pass.
+      nominal: Zero, or briefly non-zero while a node launches.
+    promQL:
+      - |
+        max(karpenter_scheduler_unschedulable_pods_count{controller="provisioner"})
+      - |
+        max by (controller) (karpenter_scheduler_queue_depth)
+
+  - id: infra.karpenter.provisioning.startup
+    stability: experimental
+    description:
+      summary: |
+        How long pods that needed a new node took to start running, from when
+        the scheduler gave up on existing nodes.
+      nominal: |
+        A minute or two: the time to launch an instance, boot it and join the
+        cluster.
+      degraded: |
+        Much longer, or rising: slow EC2 capacity, a slow AMI, or a node that
+        joins but is slow to become Ready. _Node Launch Stages_ says which
+        stage.
+    promQL:
+      - |
+        histogram_quantile(0.5, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))
+      - |
+        histogram_quantile(0.99, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))
+
+  - id: infra.karpenter.provisioning.stages
+    stability: experimental
+    description:
+      summary: |
+        How long NodeClaims took to reach each stage of launching, at the 99th
+        percentile over the last hour.
+      notes: |
+        `Launched` is EC2 accepting the request, `Registered` the node joining
+        the cluster, and `Initialized` the node Ready with its startup taints
+        removed. A slow `Registered` is usually the node's bootstrap; a
+        missing one is a node that never joined.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (type, le) (
+          increase(operator_nodeclaim_status_condition_transition_seconds_bucket{type=~"Launched|Registered|Initialized", karpenter_sh_nodepool=~"$karpenterNodePool"}[1h])
+        )
+      )
+
+  - id: infra.karpenter.provisioning.scheduling_duration
+    stability: experimental
+    description:
+      summary: How long each of Karpenter's scheduling passes takes, at the 99th percentile.
+      nominal: Well under a second.
+      degraded: |
+        Seconds or more: a very large number of waiting pods or instance types
+        to consider. Every pass delays the next node.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (controller, le) (rate(karpenter_scheduler_scheduling_duration_seconds_bucket%%{interval}))
+      )
+
+  - id: infra.karpenter.provisioning.cloud_latency
+    stability: experimental
+    description:
+      summary: How long Karpenter's calls to AWS take, by operation, at the 99th percentile.
+      notes: |
+        `Create` is a launch, which waits on EC2; `GetInstanceTypes` refreshes
+        the catalogue and prices.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (method, le) (rate(karpenter_cloudprovider_duration_seconds_bucket%%{interval}))
+      )
+
+  # --- Disruption -----------------------------------------------------------------
+  - id: infra.karpenter.disruption.disrupted
+    stability: experimental
+    description:
+      summary: NodeClaims removed or replaced per hour, by NodePool and reason.
+      notes: |
+        `empty` and `underutilized` are consolidation; `drifted` a node that no
+        longer matches its NodePool or EC2NodeClass, such as after an AMI
+        update; `expired` one past its NodePool's `expireAfter`;
+        `interrupted` one AWS is reclaiming.
+    promQL: |
+      sum by (nodepool, reason) (
+        rate(karpenter_nodeclaims_disrupted_total{nodepool=~"$karpenterNodePool"}%%{interval})
+      ) * 3600
+
+  - id: infra.karpenter.disruption.decisions
+    stability: experimental
+    description:
+      summary: Disruptions Karpenter decided on per hour, by reason and action.
+      notes: |
+        `delete` removes a node whose pods fit elsewhere; `replace` launches a
+        cheaper or up-to-date node first.
+    promQL: |
+      sum by (reason, decision) (
+        rate(karpenter_voluntary_disruption_decisions_total%%{interval})
+      ) * 3600
+
+  - id: infra.karpenter.disruption.eligible
+    stability: experimental
+    description:
+      summary: Nodes Karpenter considers candidates for disruption, by reason.
+      notes: |
+        Candidates stay candidates while something blocks them. A count that
+        stays high while _NodeClaims Disrupted_ stays at zero is a blocked
+        disruption; _Why Disruption Is Blocked_ says by what.
+    promQL: |
+      max by (reason) (karpenter_voluntary_disruption_eligible_nodes)
+
+  - id: infra.karpenter.disruption.budget
+    stability: experimental
+    description:
+      summary: |
+        Nodes each NodePool's disruption budget allows removing right now, by
+        reason.
+      notes: |
+        Zero is a budget that allows none at the moment, by design or because
+        nodes are already being disrupted.
+    promQL: |
+      min by (nodepool, reason) (karpenter_nodepools_allowed_disruptions{nodepool=~"$karpenterNodePool"})
+
+  - id: infra.karpenter.disruption.blocked
+    stability: experimental
+    description:
+      summary: |
+        Why Karpenter is leaving nodes in place, from its `DisruptionBlocked`
+        and `Unconsolidatable` events per five minutes.
+      nominal: |
+        On a Materialize cluster, mostly the `do-not-disrupt` annotation: the
+        operator marks every Materialize pod so, because moving a replica means
+        rehydrating it. That is the design working, not a fault.
+      degraded: |
+        A PodDisruptionBudget blocking the same pods for hours holds nodes that
+        could otherwise be removed or replaced, including drifted nodes that
+        should be.
+      notes: |
+        Karpenter repeats these events every few minutes for every blocked
+        node, so the numbers track how long, not how many.
+    logQL: |
+      sum by (why) (
+        count_over_time(
+          {job="loki.source.kubernetes_events"}
+            | reportingcontroller="karpenter"
+            | reason=~"DisruptionBlocked|Unconsolidatable"
+            | line_format "{{.msg}}"
+            | regexp "^(?P<why>Pod has .karpenter.sh/do-not-disrupt. annotation|Pdb prevents pod evictions|NodePool .[^ ]+. has [a-z-]+ consolidation disabled|[A-Z][^(]+)"
+        [5m])
+      )
+
+  - id: infra.karpenter.disruption.blocked_stream
+    stability: experimental
+    description:
+      summary: Karpenter's blocked-disruption events, newest first.
+      notes: |
+        The message names the pod or PodDisruptionBudget holding each node.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | reportingcontroller="karpenter"
+        | reason=~"DisruptionBlocked|Unconsolidatable"
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: infra.karpenter.disruption.evictions
+    stability: experimental
+    description:
+      summary: Pod evictions Karpenter requested per minute, by response.
+      nominal: Mostly `200`, the eviction allowed.
+      degraded: |
+        `429` is an eviction a PodDisruptionBudget refused. Karpenter retries,
+        and the node is not removed until the budget allows it.
+    promQL: |
+      sum by (code) (rate(karpenter_nodes_eviction_requests_total%%{interval})) * 60
+
+  - id: infra.karpenter.disruption.termination
+    stability: experimental
+    description:
+      summary: |
+        How long NodeClaims took to terminate, from the decision to the
+        instance gone, at the 99th percentile over the last hour.
+      degraded: |
+        Hours: pods that could not be evicted held the node. Nodes in the
+        Materialize pool wait for a Materialize rollout to move their pods.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (increase(operator_nodeclaim_termination_duration_seconds_bucket{karpenter_sh_nodepool=~"$karpenterNodePool"}[1h]))
+      )
+
+  - id: infra.karpenter.disruption.consolidation_timeouts
+    stability: experimental
+    description:
+      summary: Consolidation searches that ran out of time, per hour.
+      notes: |
+        Karpenter gives up on a search and tries again later; frequent
+        timeouts mean consolidation rarely completes on a large cluster.
+    promQL: |
+      sum by (consolidation_type) (
+        rate(karpenter_voluntary_disruption_consolidation_timeouts_total%%{interval})
+      ) * 3600
+
+  - id: infra.karpenter.nodes.age
+    stability: experimental
+    description:
+      summary: |
+        Each of Karpenter's nodes, with its NodePool, instance type, zone and
+        age.
+      notes: |
+        The Materialize pool's nodes are meant to live long: the examples set
+        its `expireAfter` to `Never`, since replacing a node moves replicas.
+    promQL: |
+      max by (node_name, nodepool, instance_type, zone) (
+        karpenter_nodes_current_lifetime_seconds{nodepool!="", nodepool=~"$karpenterNodePool"}
+      )
+    instant: true
+
+  # --- Interruptions --------------------------------------------------------------
+  - id: infra.karpenter.interruption.received
+    stability: experimental
+    description:
+      summary: |
+        Notices Karpenter read from its interruption queue per hour, by type.
+      notes: |
+        `spot_interrupted` and `rebalance_recommendation` apply to Spot capacity,
+        which the examples do not use. `scheduled_change` is AWS maintenance on
+        a host, and `instance_stopped` or `instance_terminated` an instance
+        stopped outside Karpenter. The queue receives every instance event in
+        the account and region, so `no_op`, an event about an instance that is
+        not Karpenter's, is usually most of it.
+    promQL: |
+      sum by (message_type) (
+        rate(karpenter_interruption_received_messages_total%%{interval})
+      ) * 3600
+
+  - id: infra.karpenter.interruption.queue_delay
+    stability: experimental
+    description:
+      summary: |
+        How long notices waited in the interruption queue before Karpenter read
+        them, at the 99th percentile over the last hour.
+      nominal: Seconds.
+      unhealthy: |
+        Minutes: Karpenter is not keeping up, or was down. A notice read late
+        leaves less of AWS's warning to drain the node in.
+    promQL: |
+      histogram_quantile(0.99,
+        sum by (le) (increase(karpenter_interruption_message_queue_duration_seconds_bucket[1h]))
+      )
+
+  # --- Controller -----------------------------------------------------------------
+  - id: infra.karpenter.controller.reconcile_errors
+    stability: experimental
+    description:
+      summary: Reconcile errors per minute, by controller.
+      nominal: |
+        Near zero. A few are routine: an object changed while it was being
+        reconciled, and the next attempt succeeds.
+      degraded: |
+        A controller erroring steadily. Its log lines, on the Events and Logs
+        tab, carry the error.
+    promQL: |
+      sum by (controller) (
+        rate(controller_runtime_reconcile_errors_total{app="karpenter"}%%{interval})
+      ) * 60 > 0
+
+  - id: infra.karpenter.controller.workqueue
+    stability: experimental
+    description:
+      summary: Items waiting in each of Karpenter's work queues.
+      nominal: Near zero.
+      degraded: |
+        A queue that grows and does not drain: that controller is behind.
+    promQL: |
+      max by (name) (workqueue_depth{app="karpenter"}) > 0
+
+  - id: infra.karpenter.controller.aws_errors
+    stability: experimental
+    description:
+      summary: AWS API calls that did not succeed per minute, by service, action and status.
+      nominal: |
+        A trickle of `400` on `DescribeLaunchTemplates`, which is Karpenter
+        looking for a launch template before it creates it.
+      degraded: |
+        `403` is a permission Karpenter's IAM role lacks; `429` or
+        `RequestLimitExceeded` is API throttling, often from something else in
+        the account. `CreateFleet` errors are launches EC2 refused; the
+        Provisioning tab's _EC2 Errors_ says why.
+      notes: |
+        `412` is left out: EC2 answers every dry run with it, and Karpenter dry
+        runs `CreateFleet` and `RunInstances` to check its EC2NodeClasses. The
+        SDK's own `service` label arrives as `exported_service`, since the
+        scrape stamps the Kubernetes Service name on `service`.
+    promQL: |
+      sum by (exported_service, action, code) (
+        rate(aws_sdk_go_request_total{app="karpenter", code!~"2..|412"}%%{interval})
+      ) * 60 > 0
+
+  - id: infra.karpenter.controller.kube_errors
+    stability: experimental
+    description:
+      summary: Kubernetes API calls that did not succeed per minute, by method and status.
+      nominal: |
+        Near zero. `409` conflicts are an object changed underneath Karpenter,
+        which it retries.
+      degraded: |
+        `429` is the API server throttling Karpenter; `5xx` an API server in
+        trouble, which also shows as _Cluster State Synced_ dropping.
+    promQL: |
+      sum by (method, code) (
+        rate(client_go_request_total{app="karpenter", code!~"2.."}%%{interval})
+      ) * 60 > 0
+
+  - id: infra.karpenter.controller.leader
+    stability: experimental
+    description:
+      summary: Which Karpenter replica holds the leader lease.
+      notes: |
+        Only the leader provisions and disrupts. A change of leader restarts
+        its counters, and Karpenter spends a few seconds syncing its state.
+    promQL: |
+      max by (pod) (leader_election_master_status{app="karpenter"})
+
+  - id: infra.karpenter.controller.cpu
+    stability: experimental
+    description:
+      summary: CPU each Karpenter replica uses, in cores.
+      notes: The standby replica uses almost none.
+    promQL: |
+      sum by (pod) (
+        rate(container_cpu_usage_seconds_total{container="controller", pod=~"karpenter-.+"}%%{interval})
+      )
+
+  - id: infra.karpenter.controller.memory
+    stability: experimental
+    description:
+      summary: Memory each Karpenter replica holds, against its limit.
+      degraded: |
+        The leader near its limit. Karpenter's memory grows with the number of
+        nodes, pods and instance types it tracks, and an out-of-memory restart
+        stops all provisioning while the standby takes over.
+    promQL:
+      - |
+        max by (pod) (container_memory_working_set_bytes{container="controller", pod=~"karpenter-.+"})
+      - |
+        max by (pod) (kube_pod_container_resource_limits{container="controller", pod=~"karpenter-.+", resource="memory"})
+
+  # --- Events and logs ------------------------------------------------------------
+  - id: infra.karpenter.events.rate_by_reason
+    stability: experimental
+    description:
+      summary: Karpenter's events per minute, by reason.
+      notes: |
+        Without `DisruptionBlocked` and `Unconsolidatable`, which repeat for
+        every blocked node and are broken down on the Disruption tab. A node's
+        life reads `Launched`, `Registered`, `Initialized`, and at the end
+        `Disrupted` and `Drained`.
+    logQL: |
+      sum by (reason) (
+        count_over_time(
+          {job="loki.source.kubernetes_events"}
+            | reportingcontroller="karpenter"
+            | reason!~"DisruptionBlocked|Unconsolidatable"
+        [1m])
+      )
+
+  - id: infra.karpenter.events.stream
+    stability: experimental
+    description:
+      summary: Karpenter's events, newest first.
+      notes: |
+        Without `DisruptionBlocked` and `Unconsolidatable`, for the reason
+        _Events by Reason_ gives.
+    logQL: |
+      {job="loki.source.kubernetes_events"}
+        | reportingcontroller="karpenter"
+        | reason!~"DisruptionBlocked|Unconsolidatable"
+        | line_format "{{.reason}} {{.kind}}/{{.name}} — {{.msg}}"
+
+  - id: infra.karpenter.logs.rate
+    stability: experimental
+    description:
+      summary: Karpenter's log lines per minute, by level.
+    logQL: |
+      sum by (level) (count_over_time({app="karpenter"}[1m]))
+
+  - id: infra.karpenter.logs.problems
+    stability: experimental
+    description:
+      summary: Karpenter's warning and error log lines, newest first.
+      notes: |
+        Karpenter logs JSON; expanding a line shows its fields, including the
+        NodeClaim or NodePool it concerns.
+    logQL: |
+      {app="karpenter", level=~"WARN|ERROR"}
