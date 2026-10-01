@@ -15,9 +15,50 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.27.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.28.0 (Unreleased)
 
 _Changes Pending_
+
+## Container Images v0.7.0 (Unreleased)
+
+_Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.27.0
+
+* Expose alerting rules, routing and receiver credentials through Terraform
+    * [materialize-monitoring#424](https://github.com/MaterializeInc/materialize-monitoring/pull/424)
+    * The Terraform module takes the chart's alerting configuration:
+        * `alert_rules` sets which bundled rules install and their overrides, namespaces and infrastructure workload tiers.
+        * `alerting` sets the routing preset, receivers, extra routes, inhibit rules, time intervals, templates and Alertmanager's `global` block.
+    * `alerting_receiver_secrets` is new: a `sensitive` map the module turns into the `alertmanager-receivers` Secret, so receiver credentials stay out of the Helm values.
+        * Receivers read each key as `/etc/alertmanager/secrets/alertmanager-receivers/<key>`, and the plan fails on a key the map does not set.
+        * Leave it empty to manage that Secret some other way.
+    * `alertmanager_namespace` is new: where that Secret is created. Set it to `alertmanager` under the chart's `split-namespace` profile.
+* DEP-233 Pull instance availability from each cloud's monitoring API
+    * [materialize-monitoring#422](https://github.com/MaterializeInc/materialize-monitoring/pull/422)
+    * Pull what each cloud publishes about instance availability, off by default:
+        * `pipeline.metrics.provider.cloudwatch.eks.clusters` pulls EC2 status checks for every node of the listed EKS clusters, their managed node groups' sizes, and the region's On-Demand vCPU usage. It needs `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `tag:GetResources` and `autoscaling:DescribeAutoScalingGroups`.
+        * `pipeline.metrics.provider.gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and refusals. `roles/monitoring.viewer` already covers it.
+        * `pipeline.metrics.provider.azure.aks.clusters` pulls the AKS cluster autoscaler's gauges and each node VM's availability. It needs Monitoring Reader on each cluster and its node resource group.
+        * The new families (`aws_ec2_*`, `aws_autoscaling_*`, `aws_usage_*`, `stackdriver_compute_googleapis_com_location_*`, `azure_microsoft_containerservice_managedclusters_*` and `azure_microsoft_compute_virtualmachinescalesets_*`) take each provider's `metricImportance`.
+* Run Grafana on a read-only root, and give every pod a securityContext
+    * [materialize-monitoring#423](https://github.com/MaterializeInc/materialize-monitoring/pull/423)
+    * **Grafana runs on a read-only root filesystem.** The chart mounts an `emptyDir` at `/tmp` through `grafana.extraEmptyDirMounts`. A values file that sets that list replaces the chart's, so it has to keep the `/tmp` entry; the render fails if it does not.
+    * **Grafana's bundled datasource plugins stay at the image's versions.** `grafana.ini.plugins.preinstall_auto_update` defaults to `false`. Previously Grafana replaced Prometheus, Loki and the other bundled datasources with the newest release on grafana.com at every start.
+    * **New render errors** when Grafana has a read-only root and nothing is mounted at `/tmp`, when preinstall auto-update is back on, or when `grafana.env.GF_AWS_PROFILES` is set without a mount at `/usr/share/grafana/.aws`. A warning fires when `grafana.containerSecurityContext.readOnlyRootFilesystem` is turned off.
+    * **`RuntimeDefault` seccomp and a pod-level `securityContext`** on grafana-operator, every Thanos component, metrics-server, node-exporter and the pre-validate job, and seccomp on the Alloy containers. node-exporter drops every capability and forbids privilege escalation.
+    * **grafana-operator requests resources** (10m CPU, 64Mi memory, 512Mi memory limit). It was BestEffort.
+* dashboards: add Persist, Consensus and Cloud Provider dashboards
+    * [materialize-monitoring#419](https://github.com/MaterializeInc/materialize-monitoring/pull/419)
+    * Three new dashboards, installed by default: **Materialize Persist (Storage)** (`env-persist`) and **Materialize Consensus (Metadata)** (`env-consensus`), Materialize's own view of object storage and the metadata database, and **Infrastructure Cloud Provider** (`infra-cloud`), which draws the metrics collected by `pipeline.metrics.provider`.
+    * **Infrastructure Networking** (`infra-net`) now shows its CNI and Security vendor rows. They were hidden on every cluster, which read as "No Dataplane Metrics".
+    * About 50 persist and timestamp-oracle metric families now ship to destinations at `minMetricImportance: recommended`, and the cloud provider families named by `infra-cloud` join the `diagnostic` tier. `pipeline.metrics.provider.*.metricImportance` still decides every tier above `diagnostic`.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.26.0
 
@@ -249,9 +290,13 @@ _Changes Pending_
 * Included Prometheus Scrapers @ v0.4.0..v0.5.0
 * Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
-## Container Images v0.6.0 (Unreleased)
+## Container Images v0.6.0
 
-_Changes Pending_
+* chore(deps): update dependency grafana/alloy to v1.20.0
+    * [materialize-monitoring#406](https://github.com/MaterializeInc/materialize-monitoring/pull/406)
+    * [`v1.20.0`](https://redirect.github.com/grafana/alloy/releases/tag/v1.20.0)
+* Update debian:13 Docker digest to 9cc0800
+    * [materialize-monitoring#379](https://github.com/MaterializeInc/materialize-monitoring/pull/379)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.22.0
 

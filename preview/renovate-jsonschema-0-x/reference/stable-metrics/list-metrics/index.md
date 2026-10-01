@@ -1137,19 +1137,24 @@ like our bundled Thanos provider.
     </li>
     <li id="mz_persist_compaction_dropped">mz_persist_compaction_dropped
         <details>
+            Used labels: materialize_cloud_organization_name
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.outcomes">materialize.persist.compaction.outcomes</a></li>
                 <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
             </ul>
         </details>
     </li>
     <li id="mz_persist_compaction_failed">mz_persist_compaction_failed
         <details>
+            Used labels: materialize_cloud_organization_name
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.outcomes">materialize.persist.compaction.outcomes</a></li>
                 <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
+                <li><a href="../common-queries#materialize.persist.health.compaction_failures">materialize.persist.health.compaction_failures</a></li>
             </ul>
         </details>
     </li>
@@ -1182,18 +1187,25 @@ like our bundled Thanos provider.
     </li>
     <li id="mz_persist_external_failed_count">mz_persist_external_failed_count
         <details>
+            Used labels: materialize_cloud_organization_name, op
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.consensus.failures.by_operation">materialize.consensus.failures.by_operation</a></li>
+                <li><a href="../common-queries#materialize.consensus.health.failed_ops">materialize.consensus.health.failed_ops</a></li>
                 <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
+                <li><a href="../common-queries#materialize.persist.failures.by_operation">materialize.persist.failures.by_operation</a></li>
+                <li><a href="../common-queries#materialize.persist.health.failed_ops">materialize.persist.health.failed_ops</a></li>
             </ul>
         </details>
     </li>
     <li id="mz_persist_lease_timeout_read">mz_persist_lease_timeout_read
         <details>
+            Used labels: materialize_cloud_organization_name
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#materialize.consensus.gc.lease_timeouts">materialize.consensus.gc.lease_timeouts</a></li>
                 <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
             </ul>
         </details>
@@ -1661,6 +1673,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
                 <li><a href="../common-queries#infra.alloy.resources.terminations">infra.alloy.resources.terminations</a></li>
                 <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
+                <li><a href="../common-queries#infra.cloud.collection.pulls">infra.cloud.collection.pulls</a></li>
                 <li><a href="../common-queries#infra.loki.health.up">infra.loki.health.up</a></li>
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
@@ -2477,6 +2490,397 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="mz_persist_blob_cache_hits_bytes">mz_persist_blob_cache_hits_bytes
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.cache.hits">materialize.persist.cache.hits</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_blob_hedges_fired">mz_persist_blob_hedges_fired
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.hedging">materialize.persist.hedging</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_blob_hedges_won">mz_persist_blob_hedges_won
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.hedging">materialize.persist.hedging</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_cmd_cas_mismatch_count">mz_persist_cmd_cas_mismatch_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.contention.conflicts">materialize.consensus.contention.conflicts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_applied">mz_persist_compaction_applied
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.outcomes">materialize.persist.compaction.outcomes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_bytes">mz_persist_compaction_bytes
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.writes.amplification">materialize.persist.writes.amplification</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_queued_seconds">mz_persist_compaction_queued_seconds
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.queue_wait">materialize.persist.compaction.queue_wait</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_requested">mz_persist_compaction_requested
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.outcomes">materialize.persist.compaction.outcomes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_seconds">mz_persist_compaction_seconds
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.busy">materialize.persist.compaction.busy</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_started">mz_persist_compaction_started
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.outcomes">materialize.persist.compaction.outcomes</a></li>
+                <li><a href="../common-queries#materialize.persist.compaction.queue_wait">materialize.persist.compaction.queue_wait</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_timed_out">mz_persist_compaction_timed_out
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.compaction.outcomes">materialize.persist.compaction.outcomes</a></li>
+                <li><a href="../common-queries#materialize.persist.health.compaction_failures">materialize.persist.health.compaction_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_compaction_write_stall_count">mz_persist_compaction_write_stall_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.health.write_stalls">materialize.persist.health.write_stalls</a></li>
+                <li><a href="../common-queries#materialize.persist.writes.stalls_by_process">materialize.persist.writes.stalls_by_process</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_external_bytes_count">mz_persist_external_bytes_count
+        <details>
+            Used labels: materialize_cloud_organization_name, op
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.ops.bytes">materialize.consensus.ops.bytes</a></li>
+                <li><a href="../common-queries#materialize.persist.cache.hits">materialize.persist.cache.hits</a></li>
+                <li><a href="../common-queries#materialize.persist.ops.throughput">materialize.persist.ops.throughput</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_external_consensus_truncated_count">mz_persist_external_consensus_truncated_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.state.versions">materialize.consensus.state.versions</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_external_rtt_latency">mz_persist_external_rtt_latency
+        <details>
+            Used labels: external, materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.latency.round_trip">materialize.consensus.latency.round_trip</a></li>
+                <li><a href="../common-queries#materialize.persist.latency.round_trip">materialize.persist.latency.round_trip</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_external_seconds">mz_persist_external_seconds
+        <details>
+            Used labels: materialize_cloud_organization_name, op
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.latency.mean_by_operation">materialize.consensus.latency.mean_by_operation</a></li>
+                <li><a href="../common-queries#materialize.persist.latency.mean_by_operation">materialize.persist.latency.mean_by_operation</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_external_started_count">mz_persist_external_started_count
+        <details>
+            Used labels: materialize_cloud_organization_name, op
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.health.commits">materialize.consensus.health.commits</a></li>
+                <li><a href="../common-queries#materialize.consensus.latency.mean_by_operation">materialize.consensus.latency.mean_by_operation</a></li>
+                <li><a href="../common-queries#materialize.consensus.ops.by_type">materialize.consensus.ops.by_type</a></li>
+                <li><a href="../common-queries#materialize.consensus.ops.commits_by_process">materialize.consensus.ops.commits_by_process</a></li>
+                <li><a href="../common-queries#materialize.persist.latency.mean_by_operation">materialize.persist.latency.mean_by_operation</a></li>
+                <li><a href="../common-queries#materialize.persist.ops.by_type">materialize.persist.ops.by_type</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_external_succeeded_count">mz_persist_external_succeeded_count
+        <details>
+            Used labels: materialize_cloud_organization_name, op
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.state.versions">materialize.consensus.state.versions</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_gc_finished">mz_persist_gc_finished
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.gc.runs">materialize.consensus.gc.runs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_gc_noop">mz_persist_gc_noop
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.gc.runs">materialize.consensus.gc.runs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_gc_started">mz_persist_gc_started
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.gc.runs">materialize.consensus.gc.runs</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_acquire_seconds">mz_persist_postgres_connpool_acquire_seconds
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.acquire_wait">materialize.consensus.pool.acquire_wait</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_acquires">mz_persist_postgres_connpool_acquires
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.acquire_wait">materialize.consensus.pool.acquire_wait</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_available">mz_persist_postgres_connpool_available
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.health.waiting">materialize.consensus.health.waiting</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.in_use">materialize.consensus.pool.in_use</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.waiting">materialize.consensus.pool.waiting</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_connection_errors">mz_persist_postgres_connpool_connection_errors
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.failures.connection_errors">materialize.consensus.failures.connection_errors</a></li>
+                <li><a href="../common-queries#materialize.consensus.health.connection_errors">materialize.consensus.health.connection_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_connections_created">mz_persist_postgres_connpool_connections_created
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.churn">materialize.consensus.pool.churn</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_size">mz_persist_postgres_connpool_size
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.cloud.db.connections">infra.cloud.db.connections</a></li>
+                <li><a href="../common-queries#materialize.consensus.health.connections_held">materialize.consensus.health.connections_held</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.in_use">materialize.consensus.pool.in_use</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.size">materialize.consensus.pool.size</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_postgres_connpool_ttl_reconnections">mz_persist_postgres_connpool_ttl_reconnections
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.churn">materialize.consensus.pool.churn</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_retry_retries_count">mz_persist_retry_retries_count
+        <details>
+            Used labels: materialize_cloud_organization_name, op
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.retries.by_operation">materialize.consensus.retries.by_operation</a></li>
+                <li><a href="../common-queries#materialize.persist.retries.by_operation">materialize.persist.retries.by_operation</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_s3_connect_timeouts">mz_persist_s3_connect_timeouts
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.failures.timeouts">materialize.persist.failures.timeouts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_s3_errors">mz_persist_s3_errors
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.failures.store_errors">materialize.persist.failures.store_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_s3_operation_attempt_timeouts">mz_persist_s3_operation_attempt_timeouts
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.failures.timeouts">materialize.persist.failures.timeouts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_s3_operation_timeouts">mz_persist_s3_operation_timeouts
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.failures.timeouts">materialize.persist.failures.timeouts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_s3_operations">mz_persist_s3_operations
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.failures.timeouts">materialize.persist.failures.timeouts</a></li>
+                <li><a href="../common-queries#materialize.persist.ops.requests">materialize.persist.ops.requests</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_s3_read_timeouts">mz_persist_s3_read_timeouts
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.failures.timeouts">materialize.persist.failures.timeouts</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_user_bytes">mz_persist_user_bytes
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.writes.amplification">materialize.persist.writes.amplification</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_persist_user_write_stall_count">mz_persist_user_write_stall_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.persist.health.write_stalls">materialize.persist.health.write_stalls</a></li>
+                <li><a href="../common-queries#materialize.persist.writes.stalls_by_process">materialize.persist.writes.stalls_by_process</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="mz_query_total">mz_query_total
         <details>
             Used labels: materialize_cloud_organization_name
@@ -2661,6 +3065,123 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.storage.tables.count">materialize.storage.tables.count</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_failed_count">mz_ts_oracle_failed_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.failures.by_operation">materialize.consensus.failures.by_operation</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_acquire_seconds">mz_ts_oracle_postgres_connpool_acquire_seconds
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.acquire_wait">materialize.consensus.pool.acquire_wait</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_acquires">mz_ts_oracle_postgres_connpool_acquires
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.acquire_wait">materialize.consensus.pool.acquire_wait</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_available">mz_ts_oracle_postgres_connpool_available
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.health.waiting">materialize.consensus.health.waiting</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.in_use">materialize.consensus.pool.in_use</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.waiting">materialize.consensus.pool.waiting</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_connection_errors">mz_ts_oracle_postgres_connpool_connection_errors
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.failures.connection_errors">materialize.consensus.failures.connection_errors</a></li>
+                <li><a href="../common-queries#materialize.consensus.health.connection_errors">materialize.consensus.health.connection_errors</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_connections_created">mz_ts_oracle_postgres_connpool_connections_created
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.churn">materialize.consensus.pool.churn</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_size">mz_ts_oracle_postgres_connpool_size
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.cloud.db.connections">infra.cloud.db.connections</a></li>
+                <li><a href="../common-queries#materialize.consensus.health.connections_held">materialize.consensus.health.connections_held</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.in_use">materialize.consensus.pool.in_use</a></li>
+                <li><a href="../common-queries#materialize.consensus.pool.size">materialize.consensus.pool.size</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_postgres_connpool_ttl_reconnections">mz_ts_oracle_postgres_connpool_ttl_reconnections
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.pool.churn">materialize.consensus.pool.churn</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_retry_retries_count">mz_ts_oracle_retry_retries_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.retries.by_operation">materialize.consensus.retries.by_operation</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_seconds">mz_ts_oracle_seconds
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.oracle.latency">materialize.consensus.oracle.latency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="mz_ts_oracle_started_count">mz_ts_oracle_started_count
+        <details>
+            Used labels: materialize_cloud_organization_name
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.oracle.latency">materialize.consensus.oracle.latency</a></li>
+                <li><a href="../common-queries#materialize.consensus.oracle.ops">materialize.consensus.oracle.ops</a></li>
             </ul>
         </details>
     </li>

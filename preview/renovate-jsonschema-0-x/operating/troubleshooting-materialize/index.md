@@ -68,13 +68,19 @@ Ordered so the cheapest question that could explain everything comes first.
    *Infrastructure Node Detail* → Summary, for the node the pods are on.
    Memory pressure, disk pressure, a cordon, or requests at 100% will make Materialize look broken while nothing about
    Materialize is broken.
-4. **Is it lagging, or is it stuck?**
+4. **Is it the metadata database or object storage?**
+   *Materialize Consensus (Metadata)* → Overview, then *Materialize Persist (Storage)* → Overview.
+   Every write Materialize makes commits to the metadata database and uploads to the bucket, so a failing dependency
+   stalls every collection at once and looks like a Materialize problem.
+   Each Overview ends with the dependency's own error text from the logs, which separates a wrong URL or credential from
+   a database at `max_connections`.
+5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that
    have results and are behind.
    A collection is in exactly one of the two, which is what makes them readable together.
-5. **Only then, what is it saying?**
-   *Logs and Events*, filtered to warnings, over the window the first four steps identified.
+6. **Only then, what is it saying?**
+   *Logs and Events*, filtered to warnings, over the window the first five steps identified.
 
 Going to logs first is the common mistake.
 Logs are the most detailed and least structured evidence you have, and without a window to read them in they are noise.
@@ -88,6 +94,9 @@ Logs are the most detailed and least structured evidence you have, and without a
 | Did a rollout do this, and has the new generation caught up | Materialize Upgrade |
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
+| Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
+| Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
+| Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |
 
 The Environment Overview's Summary tab is built to be the first screen: every panel answers one question and names the
 tab that explains it.

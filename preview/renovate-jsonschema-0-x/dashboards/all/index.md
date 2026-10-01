@@ -5,8 +5,8 @@
 
 # Available Dashboards
 
-Eight dashboards ship today: three scoped to a Materialize environment (`env-*`), and five to the platform underneath it (`infra-*`).
-Two of the five watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
+Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
@@ -152,6 +152,99 @@ It needs both a metrics and a logs datasource.
 </table>
 
 
+### Materialize Persist (Storage) (`env-persist`)
+
+Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
+Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
+
+The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
+The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
+The bucket's own size, as the provider bills it, is on `infra-cloud`.
+It needs both a metrics and a logs datasource.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/env-persist.json?xxhash=230c947af037b854" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <br /><small>UID <code>mz-mon-env-persist</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>materialize</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.41.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Materialize Consensus (Metadata) (`env-consensus`)
+
+The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
+Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
+
+The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.
+The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
+State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
+Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
+It needs both a metrics and a logs datasource.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/env-consensus.json?xxhash=4d2120bdc6f46bff" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
+        <br /><small>UID <code>mz-mon-env-consensus</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>materialize</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
 ## Infrastructure (`infra-*`)
 
 ### Infrastructure Node Detail (`infra-nodes`)
@@ -266,8 +359,53 @@ The Kubernetes side of a load balancer — that one was created, and the address
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/infra-net.json?xxhash=7cf14d5efa051e8c" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/infra-net.json?xxhash=c22c126400b39cc0" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
         <br /><small>UID <code>mz-mon-infra-net</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Infrastructure Cloud Provider (`infra-cloud`)
+
+What the cloud provider reports about the metadata database and the buckets a Materialize deployment depends on, across three tabs: Metadata Database, Object Storage, and Collection.
+It reads the CloudWatch, Cloud Monitoring, and Azure Monitor metrics the gateway pulls when [cloud provider metrics](/materialize-monitoring/preview/renovate-jsonschema-0-x/metrics/collecting/cloud-provider-metrics/) are enabled, and renders rows only for the provider it finds.
+Provider collection is off by default; with none configured, each tab explains what enabling it adds.
+
+The Metadata Database tab leads with the headroom every provider publishes — CPU against the 60% steady-state target Materialize's sizing guidance sets, open connections beside the number Materialize holds, and transaction-ID consumption — followed by the provider's own storage, memory, and disk I/O rows.
+The Object Storage tab draws each bucket's billed size beside the data Materialize accounts for; on GCS it also splits live data from noncurrent versions and soft-deleted objects, which a persist bucket can accumulate in quantity.
+Provider data is minutes old, and bucket size a day old, so this dashboard says why a dependency is struggling rather than whether it is; `env-consensus` and `env-persist` answer the second question and are the ones to open first.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/infra-cloud.json?xxhash=41720f670e80e137" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-cloud</code></small>
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>infra</code><br />

@@ -800,5 +800,5 @@ The Terraform story is stale in several places here and should be corrected as t
 - [ ] Retention defaults for the buckets: what lifecycle policy does the wrapper set, and does it agree with the chart's compactor/retention defaults?
 - [ ] Is the `prometheus_url` output alias worth one release, or is a clean break clearer given the semantics change to Thanos Query?
 - [x] ~~Should `enable_observability` default to `true` in `examples/simple`?~~ **Yes, at GA.** Recorded in [Migration](#migration).
-- [ ] Alertmanager routing has no Terraform input here (no receivers, no upstream integration). Is `additional_values` sufficient for the first version? Note the E2E suite cannot assert delivery without a receiver, so routing stays effectively unqualified either way.
+- [x] ~~Alertmanager routing has no Terraform input here (no receivers, no upstream integration). Is `additional_values` sufficient for the first version?~~ **No, once receivers need credentials.** `additional_values` cannot create a Secret, and the chart requires receiver credentials in one. The module now takes `alert_rules`, `alerting` and a `sensitive` `alerting_receiver_secrets` ([DEP-339](https://linear.app/materializeinc/issue/DEP-339)). Delivery itself is still unqualified in E2E, which has no receiver to assert against.
 

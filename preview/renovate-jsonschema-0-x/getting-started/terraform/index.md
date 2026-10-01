@@ -22,7 +22,7 @@ One module per cloud creates the storage and identity the stack needs, then inst
 | **Logs** | Loki, backed by object storage |
 | **Collection** | Alloy — an agent DaemonSet on every node, and a gateway for shaping and egress |
 | **Dashboards** | The released Grafana dashboard set, via grafana-operator |
-| **Alerting** | Alertmanager with the bundled rules |
+| **Alerting** | Alertmanager with the bundled rules. No receiver until one is configured; see [Alerting](#alerting) |
 | **Grafana state** | A dedicated small PostgreSQL instance, so what users build in the UI survives a restart |
 
 Cloud-side, per backend: one bucket, and one IAM role (AWS) or Google service account with a Workload Identity binding (GCP).
@@ -154,6 +154,44 @@ See [Metrics > Storing](../../metrics/storing/) for what each tier contains.
 Neither needs cloud resources, so they are not surfaced as flat wrapper variables the way Google Cloud Monitoring is; set them on the wrapper's `monitoring` module block.
 Credentials reach the gateway through a Secret the module creates rather than through the Helm values, and rotating one rolls the gateway.
 See [Metrics > Storing](../../metrics/storing/#through-terraform) and the [module README](https://github.com/MaterializeInc/materialize-monitoring/blob/main/terraform/modules/materialize-monitoring/README.md#metric-destinations).
+
+### Alerting
+
+Alertmanager and the bundled rules install with the stack.
+A default install configures no receiver, so every alert reaches `mzmon-null`, which notifies nobody, until one is set.
+
+Which rules install and where alerts go are inputs on the `materialize-monitoring` module itself:
+
+| Input | Default | Configures |
+|---|---|---|
+| `alert_rules` | `{}` | Which bundled rules install, their overrides, and the namespaces and infrastructure workloads they read |
+| `alerting` | `{}` | The routing preset, receivers, routes, inhibit rules, time intervals and templates |
+| `alerting_receiver_secrets` | `{}` | Receiver credentials. Sensitive, and delivered as the `alertmanager-receivers` Secret rather than as Helm values |
+| `alertmanager_namespace` | `namespace` | Where that Secret is created. `alertmanager` under the chart's `split-namespace` profile |
+
+```hcl
+alerting = {
+  preset = "critical-infrastructure"
+  receivers = {
+    oncall = {
+      class  = "page"
+      config = { pagerduty_configs = [{ routing_key_file = "/etc/alertmanager/secrets/alertmanager-receivers/pagerduty-key" }] }
+    }
+    platform = {
+      class  = ["high", "normal"]
+      config = { slack_configs = [{ channel = "#platform-alerts", api_url_file = "/etc/alertmanager/secrets/alertmanager-receivers/slack-url" }] }
+    }
+  }
+}
+
+alerting_receiver_secrets = {
+  "pagerduty-key" = var.pagerduty_routing_key
+  "slack-url"     = var.platform_slack_webhook
+}
+```
+
+Like the Datadog and OTLP inputs, they need no cloud resources and pass through the per-cloud wrappers under the same names; set them on the wrapper's `monitoring` module block.
+[Configuring Alerting through Terraform](../../alerting/terraform/) covers each in full, and [Alert Channels](../../alerting/channels/) has the receiver configurations for PagerDuty, Slack, Opsgenie, email and the rest.
 
 ### Integration
 
@@ -340,10 +378,11 @@ The modules cover the cloud-resource half of a production deployment — buckets
 
 [Production Best Practices](../../operating/production-best-practices/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/#terraform-consumer), then work the items still tagged `[operator]`.
 
-Three that catch people out on a first production install:
+Four that catch people out on a first production install:
 
 - **A default StorageClass must exist.** Several components are PVC-backed and the modules do not create one.
 - **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/#metrics-thanos).
+- **Nothing is notified until a receiver exists.** Alertmanager and the bundled rules install, but a default install routes every alert to `mzmon-null`. See [Alerting](#alerting).
 - **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/#grafana).
 
 ## Pinning a different version
