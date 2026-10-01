@@ -119,7 +119,8 @@ jobs:
       # alert it cannot render, so this step is the registry's rule check too.
       - name: make rules
         run: |
-          rm -f charts/materialize-monitoring/pre-rendered/rules/prometheus/*.yaml
+          rm -f charts/materialize-monitoring/pre-rendered/rules/_index.yaml \
+            charts/materialize-monitoring/pre-rendered/rules/{prometheus,loki}/*.yaml
           make rules
       - name: generated alerting rules are up to date
         run: |

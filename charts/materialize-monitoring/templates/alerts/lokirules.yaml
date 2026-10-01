@@ -1,0 +1,48 @@
+{{- /*
+The bundled LogQL alerting rules, as PrometheusRule resources for the Loki ruler.
+
+The rules are rendered at build time from the query registry into
+`pre-rendered/rules/loki/` (`mz-monitoring-build gen-rules`), one file per
+registry file, and filled in and filtered by `mzmon.rules.groups` exactly as the
+PromQL rules are. Each file becomes one PrometheusRule.
+
+**Delivery is the alloy-gateway's `loki.rules.kubernetes`**
+(`mzmon.alloyGateway.pipeline.lokiRules`). It watches PrometheusRules labelled
+`mzmon.materialize.cloud/flavor: logql` and writes their groups into the Loki
+ruler through its API, once per tenant in `mzmon.rules.logTenants`, so this
+object is not per tenant. A deployment's own LogQL PrometheusRule carrying the
+same label is delivered the same way.
+
+**The flavor label keeps these away from every PromQL reader.** The Thanos
+ruler's import sidecar reads each PrometheusRule it selects as PromQL, so its
+`labelSelector` excludes `flavor: logql`, and `mzmon.rules.validate` fails the
+render if an override drops that. A Prometheus Operator in the same cluster
+selects rules by its own `ruleSelector`; its admission webhook, where one is
+installed, validates every PrometheusRule as PromQL and refuses these unless
+its `objectSelector` leaves them out.
+
+The files are read as data and never passed through `tpl`; see
+`mzmon.rules.groups`.
+*/}}
+{{- if and .Values.rules.enabled ( include "mzmon.rules.logRuleSync.enabled" $ ) }}
+{{- range $path, $_ := $.Files.Glob "pre-rendered/rules/loki/*.yaml" }}
+  {{- $file := base $path }}
+  {{- $doc := include "mzmon.rules.groups" ( dict "root" $ "path" $path ) | fromYaml }}
+  {{- if $doc.groups }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ printf "%s-%s" ( include "mzmon.fullname" $ ) ( trimSuffix ".yaml" $file ) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ include "mzmon.namespace" $ }}
+  labels:
+    {{- include "mzmon.labels" $ | nindent 4 }}
+    app.kubernetes.io/part-of: materialize-monitoring
+    app.kubernetes.io/component: alerting-rules
+    {{ include "mzmon.rules.flavorLabel" $ }}: logql
+spec:
+  groups:
+    {{- toYaml $doc.groups | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

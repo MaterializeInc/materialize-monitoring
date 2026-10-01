@@ -61,8 +61,8 @@ interpretation of a metric that has one written down.
 **Silence is not health.** Only a default set of the bundled rules installs, and
 only where the deployment has what each needs; most definitions are not
 installed. Never conclude "nothing is alerting, so it is fine" without checking
-the alert is in `pre-rendered/rules/prometheus/_index.yaml`'s default set and the
-ruler is evaluating it. Evaluate the alert's own expression instead; that is what
+the alert is in `pre-rendered/rules/_index.yaml`'s default set and the
+ruler its `engine` names (Thanos for `promql`, Loki for `logql`) is evaluating it. Evaluate the alert's own expression instead; that is what
 it would have done.
 
 **Confirm a label before building on it.** `count by (<label>) (<metric>)` costs

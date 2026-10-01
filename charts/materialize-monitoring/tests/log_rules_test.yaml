@@ -1,0 +1,355 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the log-derived alerting rules: which install, and how they reach
+# the Loki ruler.
+#
+# The rules are rendered at build time into pre-rendered/rules/loki/, filtered
+# by the same helpers as the PromQL rules, and installed as PrometheusRules
+# labelled `mzmon.materialize.cloud/flavor: logql`. The alloy-gateway's
+# `loki.rules.kubernetes` writes them into the Loki ruler through its API, and
+# the Thanos ruler's importer leaves them out. Every failure here is silent at
+# runtime: a rule the gateway does not select, a tenant it does not write to, a
+# store that refuses writes, or a LogQL file in the Thanos import all leave a
+# healthy ruler evaluating the wrong set.
+suite: log-derived alerting rules
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+templates:
+  - templates/alerts/lokirules.yaml
+  - templates/alerts/prometheusrules.yaml
+  - templates/pipelines/cm-alloy-gateway.yaml
+  - templates/validate.yaml
+  - templates/NOTES.txt
+tests:
+  # --- what installs --------------------------------------------------------
+
+  - it: installs the default-set log rules as one PrometheusRule labelled logql
+    template: templates/alerts/lokirules.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PrometheusRule
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-log-alerts
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - equal:
+          path: metadata.labels["mzmon.materialize.cloud/flavor"]
+          value: logql
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "materialize-panic")]
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "data-correctness-error")]
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "persist-filter-pushdown-violation")]
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "trace-logging-enabled")]
+
+  - it: labels the PromQL rules promql
+    template: templates/alerts/prometheusrules.yaml
+    asserts:
+      - equal:
+          path: metadata.labels["mzmon.materialize.cloud/flavor"]
+          value: promql
+
+  - it: fills the namespace placeholders from values
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.namespaces.environment: [mz-env-a, mz-env-b]
+      rules.namespaces.operator: [mz-operator]
+      rules.namespaces.exclude: [mz-scratch]
+    asserts:
+      - matchRegex:
+          path: spec.groups[0].rules[0].expr
+          pattern: 'namespace=~"mz-operator\|mz-env-a\|mz-env-b", namespace!~"mz-scratch", level="CRITICAL"'
+      - notMatchRegex:
+          path: spec.groups[0].rules[0].expr
+          pattern: "__mzmon_"
+
+  - it: installs an opt-in log rule once it is selected
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.selected: [trace-logging-enabled]
+    asserts:
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "trace-logging-enabled")]
+
+  - it: leaves a disabled log rule out
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.disabled: [materialize-panic]
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "materialize-panic")]
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "data-correctness-error")]
+
+  - it: applies an override to a log rule as it does to a PromQL one
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.overrides:
+        materialize-panic:
+          for: 2m
+          labels:
+            severity: critical
+            team: storage
+    asserts:
+      - equal:
+          path: spec.groups[?(@.name == "panics")].rules[?(@.alert == "materialize-panic")].for
+          value: 2m
+      - equal:
+          path: spec.groups[?(@.name == "panics")].rules[?(@.alert == "materialize-panic")].labels.severity
+          value: critical
+      - equal:
+          path: spec.groups[?(@.name == "panics")].rules[?(@.alert == "materialize-panic")].labels.team
+          value: storage
+
+  - it: keeps log rules out of the PromQL PrometheusRules
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["*"]
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "materialize-panic")]
+
+  # --- delivery -------------------------------------------------------------
+
+  # The gateway is what puts these rules in front of the Loki ruler. It selects
+  # on the flavor label, so a deployment's own LogQL PrometheusRule carrying it
+  # is delivered too.
+  - it: has the gateway write logql PrometheusRules into the Loki ruler
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '(?s)loki\.rules\.kubernetes "tenant_0" \{\s+address = "http://loki-ruler\.test-monitoring\.svc:3100"\s+tenant_id = "loki"\s+loki_namespace_prefix = "mzmon"\s+rule_selector \{\s+match_labels = \{\s+"mzmon\.materialize\.cloud/flavor" = "logql",'
+
+  - it: reaches the ruler over TLS when the Loki destination does
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.logging.gateway.destination.loki.tls.enabled: true
+      pipeline.logging.gateway.destination.loki.tls.caFile: /etc/mzmon/tls/ca.crt
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '(?s)loki\.rules\.kubernetes "tenant_0" \{\s+address = "https://loki-ruler\.test-monitoring\.svc:3100".*?tls_config \{\s+ca_file = "/etc/mzmon/tls/ca\.crt"'
+
+  - it: follows the Loki namespace under split-namespace
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.namespaceOverride: loki-system
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'address = "http://loki-ruler\.loki-system\.svc:3100"'
+
+  # Distributed Loki refuses to run without its ruler, so the case is a release
+  # that does not run Loki at all.
+  - it: installs no log rules without the Loki ruler
+    template: templates/alerts/lokirules.yaml
+    set:
+      loki.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: leaves the sync out of the gateway without the Loki ruler
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.rules\.kubernetes'
+
+  - it: warns that a selected log rule cannot be delivered
+    template: templates/NOTES.txt
+    set:
+      loki.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+      rules.selected: [trace-logging-enabled]
+    asserts:
+      - matchRegexRaw:
+          pattern: 'rules.selected names "trace-logging-enabled", a LogQL rule, but this release cannot deliver it'
+
+  - it: installs no log rules when rules are off
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # A `local` rule store refuses the ruler API's writes, so the rules are left
+  # out rather than installed where the gateway cannot deliver them, and the
+  # render says so: a missing rule reads exactly like a quiet one.
+  - it: installs no log rules when the ruler's store refuses writes
+    template: templates/alerts/lokirules.yaml
+    set:
+      loki.loki.structuredConfig.ruler_storage.backend: local
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: leaves the sync out of the gateway when the store refuses writes
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.loki.structuredConfig.ruler_storage.backend: local
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.rules\.kubernetes'
+
+  - it: warns that a local rule store leaves the log rules out
+    template: templates/NOTES.txt
+    set:
+      loki.loki.structuredConfig.ruler_storage.backend: local
+    asserts:
+      - matchRegexRaw:
+          pattern: "The Loki ruler's rule store is local"
+
+  # Without the Thanos objstore client the subchart derives the legacy store,
+  # and a filesystem-only Loki gets `local`, as the test profile does.
+  - it: resolves the legacy store the way the subchart does
+    template: templates/alerts/lokirules.yaml
+    values:
+      - ../profiles/loki-test.values.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: stays quiet about the store when it accepts writes
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "rule store is local"
+
+  # The ruler answers on a different Service in each deployment mode.
+  - it: addresses the backend target under simple-scalable Loki
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.deploymentMode: SimpleScalable
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'address = "http://loki-backend\.test-monitoring\.svc:3100"'
+
+  - it: addresses the single binary under monolithic Loki
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.deploymentMode: SingleBinary
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'address = "http://loki\.test-monitoring\.svc:3100"'
+
+  # --- the Thanos import ----------------------------------------------------
+
+  # One LogQL file in the import fails the Thanos ruler's reload.
+  - it: fails when the Thanos import would read the log rules
+    template: templates/validate.yaml
+    set:
+      thanos.ruler.autoImportPrometheusRules.labelSelector:
+        mzmon.materialize.cloud/flavor!: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "labelSelector .* does not leave out the log-derived rules"
+
+  - it: accepts a selector that imports only the promql flavor
+    template: templates/validate.yaml
+    set:
+      thanos.ruler.autoImportPrometheusRules.labelSelector:
+        mzmon.materialize.cloud/flavor!: null
+        mzmon.materialize.cloud/flavor: promql
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: does not check the import when no log rule installs
+    template: templates/validate.yaml
+    set:
+      thanos.ruler.autoImportPrometheusRules.labelSelector:
+        mzmon.materialize.cloud/flavor!: null
+      rules.disabled: [materialize-panic, data-correctness-error, persist-filter-pushdown-violation]
+    asserts:
+      - notFailedTemplate: {}
+
+  # --- tenants --------------------------------------------------------------
+
+  # A rule group belongs to one tenant, so the gateway writes into each. The
+  # component label is the tenant's position; an id may hold characters an
+  # Alloy label may not.
+  - it: writes the rules into every tenant in rules.logTenants
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      rules.logTenants: [env_one, Env.Two]
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '(?s)loki\.rules\.kubernetes "tenant_0" \{.*?tenant_id = "env_one".*?loki\.rules\.kubernetes "tenant_1" \{.*?tenant_id = "Env\.Two"'
+
+  - it: follows the static tenant when it is renamed
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.logging.tenancy.staticTenant: logs
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '(?s)loki\.rules\.kubernetes "tenant_0" \{.*?tenant_id = "logs"'
+
+  - it: refuses a tenant id Loki would refuse
+    template: templates/validate.yaml
+    set:
+      rules.logTenants: ["../etc"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.logTenants contains "../etc", which is not a Loki tenant id'
+
+  # An empty rules.logTenants falls back to the static tenant, which is checked
+  # the same way rather than written into the gateway's config unchecked.
+  - it: checks the static tenant the rules fall back to
+    template: templates/validate.yaml
+    set:
+      pipeline.logging.tenancy.staticTenant: "a b"
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pipeline.logging.tenancy.staticTenant \(the default for rules.logTenants\) contains "a b"'
+
+  - it: warns that non-static tenancy leaves tenants the rules do not cover
+    template: templates/NOTES.txt
+    set:
+      pipeline.logging.tenancy.tenantMap.environment: byEnvironment
+    asserts:
+      - matchRegexRaw:
+          pattern: 'the log-derived rules are written only into "loki"\. List every tenant'
+
+  - it: stays quiet about tenants once they are listed
+    template: templates/NOTES.txt
+    set:
+      pipeline.logging.tenancy.tenantMap.environment: byEnvironment
+      rules.logTenants: [env-one]
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "log-derived rules are written only into"

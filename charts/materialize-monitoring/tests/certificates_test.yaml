@@ -168,6 +168,22 @@ tests:
           path: spec.dnsNames
           content: alloy-gateway-cluster.test-monitoring.svc
 
+  # The gateway writes the LogQL alerting rules to the Loki ruler's own Service,
+  # through the same Loki certificate; a name missing here fails every write with
+  # a verification error.
+  - it: should name the Loki ruler on the Loki certificate
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-tls
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: loki-ruler.test-monitoring.svc
+
   - it: should follow the cluster domain into the last rung
     set:
       certificates.enabled: true

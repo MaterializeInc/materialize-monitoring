@@ -522,7 +522,7 @@ tests:
       thanos.ruler.enabled: false
     asserts:
       - matchRegexRaw:
-          pattern: "thanos.ruler is off, so nothing in this release evaluates them"
+          pattern: "thanos.ruler is off, so nothing in this release evaluates the PromQL rules"
 
   - it: warns that the retired config.rules keys do nothing
     template: templates/NOTES.txt

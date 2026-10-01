@@ -1,0 +1,212 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Log-derived alerting rules for the Materialize deployment: what whoever runs
+# the deployment acts on, detected in Materialize's own log lines rather than in
+# its metrics. The Loki ruler evaluates these; the metric alerts beside them in
+# materialize-alerts.yaml go to the Thanos ruler.
+#
+# Materialize Cloud's equivalents are rules clicked into Grafana, never written
+# down anywhere else. These are re-derived from them, not copied: Cloud's labels
+# (`k8s_namespace`, `environment-*` namespaces) do not exist here, and its
+# windows were Grafana's `$__range`, which no ruler can parse.
+
+description: |
+  Log-derived alerting rules for Materialize.
+
+  Each alert matches a line Materialize logs when something has gone wrong that
+  its metrics do not show: a process panicking, or an invariant a dataflow relies
+  on for correct results failing. They are LogQL, evaluated by the Loki ruler
+  against the logs the pipeline collects, and route through the same
+  Alertmanager as the metric alerts.
+
+  **A match is on the log line's text**, and that text is not a contract.
+  Materialize can reword a message in any release, and a reworded message makes
+  the rule silent rather than broken. Each alert names the source of the line it
+  matches, so a contributor can check it still exists.
+
+  **The window is the alert's duration.** A rule fires on the first evaluation at
+  which a matching line falls inside its range and `for` is `0s`, so the range
+  is how long the alert keeps firing after the last matching line, not how long
+  the condition must persist.
+
+  The label contract these read is documented under
+  [Logs and Events](../../../logs-and-events/querying/): `namespace`, `app`,
+  `container` and `level` are stream labels; `pod` and the pipeline's panic
+  fields are structured metadata, which a rule may still group by.
+
+# Required of every registry file. LogQL names no metrics, so nothing here is
+# tiered by it.
+metricImportanceHint: essential
+
+alertLabels:
+  audience: platform
+
+alerts:
+  # --- process crashes -------------------------------------------------------
+  - alert: materialize-panic
+    group: panics
+    stability: best-effort
+    enabledByDefault: true
+    for: 0s
+    labels:
+      severity: warning
+      component: materialize
+    description:
+      summary: A Materialize process panicked. The pod's logs from just before the restart hold the panic message and backtrace.
+      unhealthy: |
+        environmentd, clusterd, balancerd or the Materialize operator panicked.
+        The process exits and Kubernetes restarts it; a panic on the same input
+        after restart crash-loops the pod. The alert's `panic_location` label is
+        the source location that panicked, which is what a Materialize support
+        request needs first.
+
+        Read the panicking pod's logs on the Logs & Events dashboard, filtered to
+        level `CRITICAL`. A clusterd replica that panics on a query crash-loops
+        until the query that triggered it stops being retried.
+      notes: |
+        The pipeline classifies a panic, rather than this rule matching the word
+        "panic": a line that starts `thread '…' panicked at <file>:<line>:<col>`
+        becomes level `CRITICAL`, and its thread and location become the
+        `panic_thread` and `panic_location` structured metadata. A tracing line
+        that merely quotes a panic is not one. The metric alerts
+        `envd-terminated` and `clusterd-error-kill` see the restart that
+        follows; this sees why.
+
+        Stays firing for 5m after the last panic.
+    query:
+      id: materialize.logs.alerts.panic
+      stability: best-effort
+      description:
+        summary: Panics per Materialize pod over the last 5m, by where they panicked.
+      logQL: |
+        sum by (namespace, app, pod, panic_location) (
+          count_over_time(
+            {%%{mzDeploymentNamespaceFilter}, %%{excludeEnvironmentFilter}, level="CRITICAL"}
+              | panic_location != ""
+            [5m]
+          )
+        ) > 0
+
+  # --- correctness -----------------------------------------------------------
+  - alert: data-correctness-error
+    group: correctness
+    stability: best-effort
+    enabledByDefault: true
+    for: 0s
+    labels:
+      severity: critical
+      component: compute
+    description:
+      summary: Materialize logged a dataflow invariant violation, so results from the affected objects may be incorrect. Contact Materialize support.
+      unhealthy: |
+        A dataflow saw data that correct inputs cannot produce: a negative
+        count, a negative multiplicity, or an accumulation that should have
+        cancelled out and did not. Queries and sinks reading from the affected
+        dataflow can return wrong results, silently.
+
+        Each of these errors is logged at `ERROR` and, beside it at `WARN`, a
+        `[customer-data]` line that names the dataflow and the values involved.
+        That second line is how the affected object is found; it may contain
+        user data. Collect both before the pod restarts and raise them with
+        Materialize support.
+      notes: |
+        The patterns are the static messages Materialize logs when a compute
+        invariant fails (`src/compute/src/render/reduce.rs`, `top_k.rs`,
+        `compute_state.rs`, and the adapter's peek path). Cloud's version of
+        this rule also matched `invalid record multiplicity`, which Materialize
+        no longer logs.
+
+        Stays firing for 15m after the last match.
+    query:
+      id: materialize.logs.alerts.data_correctness
+      stability: best-effort
+      description:
+        summary: Dataflow invariant violations logged per Materialize pod over the last 15m.
+      logQL: |
+        sum by (namespace, app, pod) (
+          count_over_time(
+            {%%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}, level="ERROR"}
+              |~ "(?i)(non-positive accumulation|negative accumulation|negative multiplicit(y|ies)|non-positive multiplicity|invalid negative unsigned aggregation|invalid data in source|net-zero records with non-zero accumulation|non-monotonic input to monotonictop1)"
+            [15m]
+          )
+        ) > 0
+
+  - alert: persist-filter-pushdown-violation
+    group: correctness
+    stability: best-effort
+    enabledByDefault: true
+    for: 0s
+    labels:
+      severity: critical
+      component: persist
+    description:
+      summary: "Persist filter pushdown skipped data a query needed. Disable it with `ALTER SYSTEM SET persist_stats_filter_enabled = false` and contact Materialize support."
+      unhealthy: |
+        Filter pushdown lets a read skip parts of a persist shard whose
+        statistics show they cannot match the query's filter. A sampled audit
+        re-reads some skipped parts, and this line means a skipped part did
+        match: statistics and data disagree, and results that relied on the skip
+        were missing rows.
+
+        By default a failed audit also panics the process
+        (`persist_stats_audit_panic`), so the replica restarts and can
+        crash-loop, and `materialize-panic` fires with the same message.
+        Turning pushdown off as `mz_system` stops both; it trades read
+        performance for correctness until the cause is found.
+      notes: |
+        The line is logged by `src/storage-operators/src/persist_source.rs`.
+        Cloud's version of this rule told the responder to turn the feature
+        off in LaunchDarkly; on self-managed the same flag is a system
+        parameter.
+
+        Stays firing for 15m after the last match.
+    query:
+      id: materialize.logs.alerts.persist_filter_pushdown_violation
+      stability: best-effort
+      description:
+        summary: Persist filter-pushdown audit failures logged per Materialize pod over the last 15m.
+      logQL: |
+        sum by (namespace, app, pod) (
+          count_over_time(
+            {%%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}}
+              |= "persist filter pushdown correctness violation"
+            [15m]
+          )
+        ) > 0
+
+  # --- log volume ------------------------------------------------------------
+  - alert: trace-logging-enabled
+    group: log_volume
+    stability: experimental
+    for: 30m
+    labels:
+      severity: notice
+      component: materialize
+    description:
+      summary: "A Materialize component has logged at TRACE level for 30m, which multiplies log volume. Reset it with `ALTER SYSTEM RESET log_filter`."
+      degraded: |
+        Trace logging is for a short debugging session. Left on, it multiplies
+        the volume the pipeline ships and Loki stores, and can push the gateway
+        into its per-level rate limits, where it sheds other lines.
+
+        `log_filter` is a system parameter; it can also be set on the
+        `Materialize` resource's `environmentdExtraArgs`, which `ALTER SYSTEM`
+        does not undo.
+      notes: |
+        Scoped to the environment namespaces. The Materialize operator logs its
+        reconciliation at TRACE in normal operation, so its namespace is left out
+        rather than firing on it permanently.
+
+        Not in the default set: Cloud's copy of this rule is paused, and there
+        is no evidence yet that the volume matters on a self-managed install.
+    query:
+      id: materialize.logs.alerts.trace_logging
+      stability: experimental
+      description:
+        summary: TRACE-level lines per Materialize component over the last 10m.
+      logQL: |
+        sum by (namespace, app) (
+          count_over_time(
+            {%%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}, level="TRACE"}
+            [10m]
+          )
+        ) > 0

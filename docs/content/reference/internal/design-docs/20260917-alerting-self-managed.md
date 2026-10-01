@@ -716,6 +716,16 @@ The registry already models LogQL — `env-logs` and `env-upgrade` are built on 
 
 That gets the class four things it has never had: review, a docsite entry beside the metric alerts, a single definition rendered to both the chart and, eventually, Cloud, and the ability to change a pattern in one place rather than in three regions' worth of clicked-in copies.
 
+As ported, from the fourteen clicked-in rules, which are five detectors copied per region:
+
+| Clicked-in detector | Ported as | Changed |
+|---|---|---|
+| Panic | `materialize-panic`, default set | Matches the pipeline's panic classification (`level="CRITICAL"`, `panic_location`) rather than `(?i)panic` minus a `seqno` exception, and drops the per-environment exclusions |
+| Potential data corruption errors | `data-correctness-error`, default set | Drops `invalid record multiplicity`, which Materialize no longer logs |
+| Filter pushdown correctness violation | `persist-filter-pushdown-violation`, default set | Names the system parameter that disables pushdown, where Cloud named a LaunchDarkly flag |
+| Trace logs enabled | `trace-logging-enabled`, opt-in | Scoped to the environment namespaces, because the operator logs at TRACE in normal operation |
+| Hanging query warning | Not ported | Matched an HTTP/2 error from the gRPC controller transport, which Materialize has since removed |
+
 ## Maintenance windows do not work when the customer picks the time
 
 The `docs/content/alerting/maintenance.md` page is an empty heading, and the obvious thing to put on it is wrong for this audience.
@@ -828,12 +838,12 @@ Work in this repository, roughly in dependency order.
 
 | Item | Why it blocks |
 |---|---|
-| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done for PromQL, through an alerting render context whose deployment-specific values are install-time placeholders. LogQL is not rendered yet |
+| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done, through an alerting render context whose deployment-specific values are install-time placeholders. One `_index.yaml` beside the two directories lists both engines' rules |
 | Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
 | Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
-| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
+| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done. The rule store is the ruler bucket. The LogQL rules are `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into it through the ruler API, once per tenant. The Thanos importer's selector excludes that flavor with a `flavor!: logql` key. A Prometheus Operator admission webhook in the same cluster still validates them as PromQL, and has to be told to skip them |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
 | `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |
 | `alerting.secrets` mounting, and the `_file` credential convention | ✅ done, through `alertmanager.extraSecretMounts` rather than `alerting.secrets` — see the note under [Notification channels](#notification-channels). Inline credentials and unmounted `*_file` paths both fail the render |
@@ -842,11 +852,11 @@ Work in this repository, roughly in dependency order.
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | 🔨 Every rule carries `runbook_url`, pointing for now at its entry on Common Alerts. The runbooks are not written |
-| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/prometheus/_index.yaml` is in the committed-surface table and CODEOWNERS |
+| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/_index.yaml` is in the committed-surface table and CODEOWNERS |
 | `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` are done; `extra` is not. An override sets one rule's `for` and labels, never its expression |
 | `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
-| Log-alert registry files and the LogQL render path | The class that has never been code |
+| Log-alert registry files and the LogQL render path | ✅ done for Materialize: `materialize-log-alerts.yaml`, installed per tenant in `rules.logTenants`. No `infra-log-alerts.yaml` yet, because none of the clicked-in rules is about the platform |
 | Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
 | Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
@@ -857,7 +867,7 @@ Work in this repository, roughly in dependency order.
 
 The kind E2E tiers can prove most of this, and the parts they cannot are worth naming rather than pretending.
 
-- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built for PromQL: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. No LogQL rules exist yet to validate.
+- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. LogQL rules are checked for shape by `gen-rules` and parsed with `logcli`'s offline mode, which uses Loki's own parser, in `make rules-check`. Neither is the ruler's own loader.
 - ✅ **Every shipped rule's metrics exist.** The applicability check, asserted as a test rather than only as a build step, so that a rule added later cannot quietly reintroduce the problem.
 - **The rulers load what the chart rendered.** Assert against each ruler's own API that the group count and names match the render, rather than asserting the ConfigMap exists. A ruler that rejected a group reports healthy.
 - **An alert reaches Alertmanager.** Install a rule that fires on `vector(1)`, assert it appears in Alertmanager's API within the evaluation and group-wait interval. This is the end-to-end assertion the whole page exists for.
@@ -882,7 +892,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
 - **Silences suppress notification and not state.** Silence an alert, assert no notification and a firing `ALERTS` series. This is the over-reporting behaviour the call-home level inherits, and pinning it keeps it a known property rather than a surprise.
 - **Inhibition suppresses a rollout and not a restart.** Stand up a second generation and assert the restart alerts are inhibited; restart a pod without a rollout and assert they are not. The second half is the assertion, since an inhibition rule that fires too widely is indistinguishable from one that works until the day it hides something.
-- **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus.
+- **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus. Not automated: each shipped log rule was evaluated by hand against the test installs, quiet as it stands and, for the panic rule, firing over a window holding a real panic.
 - **Not covered by any tier:** that a notification reaches a receiver. Every receiver is a third-party endpoint, and a test that posts to a real one is a test that pages somebody. A local webhook receiver proves Alertmanager's delivery path and proves nothing about a vendor's ingestion.
 
 ## Documentation to update

@@ -44,13 +44,24 @@ Labels:
           {{- end }}
 </p>
         {{- end }}
-        {{- $promQL := slice }}
-        {{- if reflect.IsSlice .query.promQL }}
-          {{- $promQL = .query.promQL }}
+        {{- /* A rule's query is PromQL for the Thanos ruler or LogQL for the Loki
+               ruler. Chroma has no LogQL lexer, and PromQL's is close enough to
+               mark up its selectors and strings. */}}
+        {{- $expressions := slice }}
+        {{- $engine := "promql" }}
+        {{- with .query.logQL }}
+          {{- $expressions = . }}
+          {{- $engine = "logql" }}
         {{- else }}
-          {{- $promQL = slice .query.promQL }}
+          {{- $expressions = .query.promQL }}
         {{- end }}
-        {{- range $promQL }}
+        {{- if not ( reflect.IsSlice $expressions ) }}
+          {{- $expressions = slice $expressions }}
+        {{- end }}
+        {{- if eq $engine "logql" }}
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+        {{- end }}
+        {{- range $expressions }}
           {{ $query := . }}
           {{- if reflect.IsMap $query }}
             {{- $query = $query.template}}

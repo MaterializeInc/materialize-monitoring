@@ -60,8 +60,9 @@ jobs:
         run: make alertmanager-config-check
       # The same shape for the alerting rules: render the chart, extract each
       # PrometheusRule, and check it with the promtool in the pinned Prometheus
-      # image, then run the rule unit tests in packages/queries/tests/.
-      - name: promtool check + test over the rendered alerting rules
+      # image; parse each LogQL rule with the logcli of the pinned Loki; then
+      # run the rule unit tests in packages/queries/tests/.
+      - name: promtool and logcli checks over the rendered alerting rules
         run: make rules-check
 
   terraform-check:

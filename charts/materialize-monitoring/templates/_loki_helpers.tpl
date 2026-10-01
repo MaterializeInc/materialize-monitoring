@@ -407,6 +407,59 @@ Usage:
 {{- end }}
 
 {{- /*
+The backend the Loki ruler stores rules in, as Loki resolves it.
+
+With `use_thanos_objstore` on, Loki reads the top-level `ruler_storage`, which
+the subchart renders from `loki.storage.object_store.type` and a
+`structuredConfig` may override. Otherwise it reads the legacy `ruler.storage`,
+which the subchart derives the way `loki.rulerStorageConfig` does: an explicit
+`rulerConfig.storage.type`, else `s3` for the bundled MinIO, else the object
+store `loki.storage.type` names, else `local`.
+
+Only `local` refuses writes through the ruler API, which is how the chart's
+LogQL rules arrive; the Thanos objstore `filesystem` backend accepts them.
+
+Usage:
+  {{- $store := include "mzmon.loki.ruler.store" $ }}
+*/}}
+{{- define "mzmon.loki.ruler.store" }}
+  {{- $values := $.Values.loki | default dict }}
+  {{- if dig "loki" "storage" "use_thanos_objstore" false $values }}
+    {{- dig "loki" "structuredConfig" "ruler_storage" "backend" ( dig "loki" "storage" "object_store" "type" "" $values ) $values }}
+  {{- else if dig "loki" "rulerConfig" "storage" "type" "" $values }}
+    {{- dig "loki" "rulerConfig" "storage" "type" "" $values }}
+  {{- else if dig "minio" "enabled" false $values }}
+    {{- "s3" }}
+  {{- else if has ( dig "loki" "storage" "type" "" $values ) ( list "s3" "gcs" "azure" "swift" "alibabacloud" "cos" "bos" ) }}
+    {{- dig "loki" "storage" "type" "" $values }}
+  {{- else }}
+    {{- "local" }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+The Service that serves the Loki ruler's API, by deployment mode.
+
+Distributed Loki runs the ruler as its own component; simple-scalable runs it in
+the backend target; a single binary runs it in-process. The migration modes keep
+the component the cluster is migrating away from, which still answers.
+
+Usage:
+  {{- $svc := include "mzmon.loki.ruler.service" $ }}
+*/}}
+{{- define "mzmon.loki.ruler.service" }}
+  {{- $name := $.Values.loki.fullnameOverride | default "loki" }}
+  {{- $mode := $.Values.loki.deploymentMode | default "Distributed" | toString }}
+  {{- if has $mode ( list "Distributed" "SimpleScalable<->Distributed" ) }}
+    {{- printf "%s-ruler" $name }}
+  {{- else if eq $mode "SimpleScalable" }}
+    {{- printf "%s-backend" $name }}
+  {{- else }}
+    {{- $name }}
+  {{- end }}
+{{- end }}
+
+{{- /*
 Validate the Loki ruler.
 
 Usage:
@@ -522,7 +575,7 @@ Usage:
          tenants. Under the dynamic tenancy modes the tenant set is not knowable
          at render time, so a rendered rule set covers the tenants that existed
          when Helm last ran. */}}
-  {{- $tenantMap := dig "tenancy" "tenantMap" dict ( $.Values.pipeline | default dict ) }}
+  {{- $tenantMap := dig "logging" "tenancy" "tenantMap" dict ( $.Values.pipeline | default dict ) }}
   {{- $dynamic := list }}
   {{- range $class, $mode := $tenantMap }}
     {{- if eq ( $mode | toString ) "byNamespace" }}
@@ -530,7 +583,15 @@ Usage:
     {{- end }}
   {{- end }}
   {{- if $dynamic }}
-    {{- $warnings = append $warnings ( printf "pipeline.tenancy.tenantMap sets %s to byNamespace, so every Materialize namespace is its own Loki tenant and the tenant set changes as namespaces are created. A Loki rule group is per tenant and the ruler does not evaluate across them, so log alerting cannot be complete under this mode. Prefer `static` or `byEnvironment` where log alerting matters." ( join ", " ( sortAlpha $dynamic ) ) ) }}
+    {{- $warnings = append $warnings ( printf "pipeline.logging.tenancy.tenantMap sets %s to byNamespace, so every Materialize namespace is its own Loki tenant and the tenant set changes as namespaces are created. A Loki rule group is per tenant and the ruler does not evaluate across them, so log alerting cannot be complete under this mode. Prefer `static` or `byEnvironment` where log alerting matters." ( join ", " ( sortAlpha $dynamic ) ) ) }}
+  {{- end }}
+
+  {{- /* The chart's LogQL rules reach the ruler through its API, which a `local`
+         rule store refuses. `mzmon.rules.logRuleSync.enabled` leaves them out
+         there rather than install rules the gateway cannot deliver; say so,
+         since a missing rule reads exactly like a quiet one. */}}
+  {{- if and ( dig "enabled" false ( $.Values.rules | default dict ) ) ( include "mzmon.alloyGateway.enabled" $ ) ( eq ( include "mzmon.loki.ruler.store" $ ) "local" ) }}
+    {{- $warnings = append $warnings "The Loki ruler's rule store is local, which the ruler API cannot write to, so the log-derived alerting rules are not installed. Store rules in an object store (loki.loki.storage) for the alloy-gateway to deliver them." }}
   {{- end }}
 
   {{- /* final output */}}

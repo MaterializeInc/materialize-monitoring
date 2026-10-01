@@ -43,11 +43,19 @@ read-only, with the `__mzmon_*__` placeholders substituted:
 `gcx --context <ctx> metrics query -d mzmon-thanos '<expr>'`. Check it is quiet
 now, that each metric it names returns series, and that it fires over a window
 in which the condition is known to have happened. Quiet on its own proves
-nothing.
+nothing. A LogQL rule is the same with
+`gcx --context <ctx> logs metrics -d mzmon-loki '<expr>' --since 5m`, its range
+widened to cover a line known to have been logged.
 
 **Prove the fix with a unit test.** Every behaviour worth fixing is a
 three-series `promtool test rules` case: one input that fires the alert, and
-the one it used to misfire on. Assert on `ALERTS`, not on the annotations.
+the one it used to misfire on. Assert on `ALERTS`, not on the annotations. Loki
+has no rule test, so for a LogQL rule the live evaluation above is the proof.
+
+**Match a log rule on structure before text.** Stream labels in the selector,
+then the pipeline's structured metadata (a panic is already `level="CRITICAL"`
+with `panic_location`), and a line filter last. A matched message is not a
+contract, so name the source file that logs it.
 
 **Re-derive from Cloud; never copy.** Cloud's rules and the Grafana-managed
 set are prior art for thresholds and history. They use Cloud's namespaces,

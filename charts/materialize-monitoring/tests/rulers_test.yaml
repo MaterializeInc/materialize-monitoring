@@ -292,7 +292,7 @@ tests:
   # when Helm last ran.
   - it: warns that byNamespace tenancy cannot have complete log alerting
     set:
-      pipeline.tenancy.tenantMap.materialize: byNamespace
+      pipeline.logging.tenancy.tenantMap.environment: byNamespace
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
@@ -306,16 +306,17 @@ tests:
 
   # --- rule import ----------------------------------------------------------
 
-  # Deliberately unscoped: an operator's own `PrometheusRule` works with no
-  # chart configuration. The cost is that a co-resident rule owner's alerts also
-  # reach this Alertmanager, which is a documented trade rather than an
-  # oversight.
-  - it: imports PrometheusRule resources with no label selector
+  # Unscoped but for the LogQL rules: an operator's own `PrometheusRule` works with
+  # no chart configuration, and so does one carrying no flavor label. The cost is
+  # that a co-resident rule owner's alerts also reach this Alertmanager, which is
+  # a documented trade rather than an oversight. The LogQL rules are
+  # PrometheusRules too, and one of them in the import fails the ruler's reload.
+  - it: imports every PrometheusRule except the LogQL ones
     template: ../charts/thanos/templates/ruler/configmap-auto-import-prometheus-rules.yaml
     asserts:
       - matchRegex:
           path: data["import.sh"]
-          pattern: "No label selector provided, importing ALL PrometheusRules"
+          pattern: 'SELECTOR="mzmon\.materialize\.cloud/flavor!=logql"'
 
   # The sidecar shells out and runs curl, so it cannot be the distroless
   # `registry.k8s.io/kubectl` the cleanup hook uses. Pinned so a default install
