@@ -214,10 +214,10 @@ fn retry_logs(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn collections(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::stat("Durable Collections")
+    Panel::stat("Durable Objects")
         .query(
             q.get("materialize.consensus.ops.collections")
-                .legend("collections"),
+                .legend("objects"),
         )
         .shade(SHADE)
         .unit("short")

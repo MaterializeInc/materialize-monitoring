@@ -170,7 +170,7 @@ fn index_types(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-/// Total lag, beside the worst case rather than instead of it.
+/// Total freshness, beside the worst case rather than instead of it.
 ///
 /// The two are asking different questions and the difference matters most while
 /// a cluster is catching up: the max is pinned to whichever single collection is
@@ -181,7 +181,7 @@ fn index_types(q: &Queries) -> dashboardv2::PanelKind {
 /// worst-case that ranges over orders of magnitude; it would flatten the very
 /// decay this panel exists to show.
 fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Total Lag by Cluster")
+    Panel::timeseries("Total Freshness by Cluster")
         .query(
             q.get("materialize.compute.freshness.lag_total_by_cluster")
                 .legend("{{cluster_name}}"),
@@ -193,7 +193,7 @@ fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn lag_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Freshness Lag by Cluster")
+    Panel::timeseries("Worst Freshness by Cluster")
         .query(
             q.get("materialize.compute.freshness.lag_by_cluster")
                 .legend("{{cluster_name}}"),
@@ -205,7 +205,7 @@ fn lag_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-/// The bar-chart `custom` block both lag/hydration bar charts share.
+/// The bar-chart `custom` block both freshness/hydration bar charts share.
 fn bar_custom(threshold_area: bool) -> serde_json::Value {
     let mut custom = serde_json::json!({
         "fillOpacity": 80,
@@ -222,7 +222,7 @@ fn bar_custom(threshold_area: bool) -> serde_json::Value {
 }
 
 fn top_lagged_collections(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::barchart("Most-Lagged Collections")
+    Panel::barchart("Least Fresh Objects")
         .query(
             q.get("materialize.compute.freshness.top_collections")
                 .legend("{{cluster_name}} / {{name}}"),
@@ -248,7 +248,7 @@ fn hydration_queue_size(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn slowest_hydrating_collections(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::barchart("Slowest Hydrating Collections")
+    Panel::barchart("Slowest Hydrating Objects")
         .query(
             q.get("materialize.compute.hydration.slowest_collections")
                 .legend("{{cluster_name}} / r{{replica_id}} / {{name}}"),
@@ -356,8 +356,8 @@ impl Collections {
 
     fn title(self) -> &'static str {
         match self {
-            Collections::System => "System Collections — Record Counts",
-            Collections::User => "User Collections — Record Counts",
+            Collections::System => "System Objects — Record Counts",
+            Collections::User => "User Objects — Record Counts",
             Collections::Transient => "Transient / Uncategorized — Record Counts",
         }
     }
@@ -386,11 +386,7 @@ impl Collections {
     }
 
     fn row_label(self) -> &'static str {
-        if self.named() {
-            "Collection"
-        } else {
-            "Collection ID"
-        }
+        if self.named() { "Object" } else { "Object ID" }
     }
 }
 
@@ -531,11 +527,11 @@ mod tests {
         // They have no catalog entry to resolve, and the column header says so.
         let transient = record_counts(q, Collections::Transient);
         assert!(!expr_of(&transient).contains("mz_object_info"));
-        assert_eq!(Collections::Transient.row_label(), "Collection ID");
+        assert_eq!(Collections::Transient.row_label(), "Object ID");
 
         for named in [Collections::System, Collections::User] {
             assert!(expr_of(&record_counts(q, named)).contains("mz_object_info"));
-            assert_eq!(named.row_label(), "Collection");
+            assert_eq!(named.row_label(), "Object");
         }
     }
 

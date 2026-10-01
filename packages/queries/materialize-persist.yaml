@@ -154,8 +154,8 @@ queries:
         compaction consolidates updates.
       notes: |
         This is what Materialize needs, not what the bucket holds. The bucket
-        also holds data kept only for readers, uploads in flight, anything
-        leaked, and whatever the provider retains for versioning or soft
+        also holds data kept only for readers, uploads in flight, orphaned
+        data, and whatever the provider retains for versioning or soft
         delete — _Storage_ breaks down the first three, and the Infrastructure
         Cloud Provider dashboard has the bucket's own size.
     promQL: |
@@ -602,12 +602,12 @@ queries:
         What this environment's data in object storage is for.
       nominal: |
         Almost all of it is current data: files the latest state of each
-        collection refers to, and the rollups that summarize that state.
+        object refers to, and the rollups that summarize that state.
       degraded: |
         _Held for readers_ is data a reader still needs from an older state;
         growth there points at a stuck reader, named on _Data Held for
-        Readers by Collection_. _Uploads in flight_ is written but not yet
-        committed. _Leaked_ is data nothing refers to that cleanup missed,
+        Readers by Object_. _Uploads in flight_ is written but not yet
+        committed. _Orphaned_ is data nothing refers to that cleanup missed,
         which is billed and does nothing.
       notes: |
         Materialize's own accounting, recomputed periodically rather than on
@@ -632,7 +632,7 @@ queries:
         remove.
       nominal: Zero, or close to it.
       degraded: |
-        Leaked data is billed and never read. A little accumulates when a
+        Orphaned data is billed and never read. A little accumulates when a
         process is killed mid-write; a steadily growing amount is worth
         raising with Materialize support.
     promQL: |
@@ -642,7 +642,7 @@ queries:
     stability: experimental
     description:
       summary: |
-        The ten collections using the most object storage, now.
+        The ten objects using the most object storage, now.
       nominal: |
         Your largest sources and materialized views.
       notes: |
@@ -662,16 +662,16 @@ queries:
     stability: experimental
     description:
       summary: |
-        The ten collections keeping the most data only because a reader still
+        The ten objects keeping the most data only because a reader still
         needs an older version of it.
       nominal: |
         Small and changing: readers move forward and release what they held.
       degraded: |
-        A collection whose held data only grows has a reader stuck in the
+        An object whose held data only grows has a reader stuck in the
         past, and its storage will keep growing until that reader moves or its
         lease expires. The same reader holds old state in the metadata
         database, on Materialize Consensus under
-        _State and Cleanup -> Versions Held by Collection_.
+        _State and Cleanup -> Versions Held by Object_.
       notes: |
         Translate a shard id to an object with
         `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN

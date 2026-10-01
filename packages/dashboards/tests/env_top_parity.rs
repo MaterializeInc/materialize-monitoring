@@ -80,6 +80,59 @@ fn is_added(name: &str) -> bool {
     ADDED_PANELS.iter().any(|(panel, _)| panel == &name)
 }
 
+/// Panels retitled after the port, each with the title it carries now.
+///
+/// Product review asked for _object_ over _collection_ and _freshness_ over
+/// _lag_ in everything a reader sees. The baseline predates that, so these
+/// panels are held to their new title rather than the baseline's, and an entry
+/// whose title has drifted from the one listed fails as a mismatch.
+const RETITLED: &[(&str, &str)] = &[
+    ("summary-max-lag", "Worst Freshness (Select Time Range)"),
+    ("freshness-lag-by-cluster", "Worst Freshness by Cluster"),
+    ("freshness-top-collections", "Least Fresh Objects"),
+    ("hydration-slowest-collections", "Slowest Hydrating Objects"),
+    (
+        "arrangement-records-system",
+        "System Objects — Record Counts",
+    ),
+    ("arrangement-records-user", "User Objects — Record Counts"),
+];
+
+/// Column headers renamed by the same review, as baseline -> ours.
+///
+/// Applied to the baseline's `renameByName` targets before transformations are
+/// compared, so the rest of each transformation is still checked in full.
+const RELABELED_COLUMNS: &[(&str, &str)] =
+    &[("Collection", "Object"), ("Collection ID", "Object ID")];
+
+/// The title a panel should carry: its retitle if it has one, else the baseline's.
+fn expected_title<'a>(name: &str, baseline_title: &'a str) -> &'a str {
+    RETITLED
+        .iter()
+        .find(|(panel, _)| *panel == name)
+        .map_or(baseline_title, |(_, title)| title)
+}
+
+/// Rewrites the baseline's `organize` column renames through [`RELABELED_COLUMNS`],
+/// recording which entries applied.
+fn relabel_columns(
+    options: &mut serde_json::Map<String, serde_json::Value>,
+    used: &mut BTreeSet<&str>,
+) {
+    let Some(serde_json::Value::Object(renames)) = options.get_mut("renameByName") else {
+        return;
+    };
+    for target in renames.values_mut() {
+        if let Some((old, new)) = RELABELED_COLUMNS
+            .iter()
+            .find(|(old, _)| target.as_str() == Some(old))
+        {
+            *target = serde_json::Value::String((*new).to_string());
+            used.insert(old);
+        }
+    }
+}
+
 /// Panel descriptions that deliberately differ from the baseline.
 ///
 /// Two of these fix broken cross-references: the baseline points readers at tabs
@@ -139,9 +192,10 @@ fn ours() -> dashboardv2::Dashboard {
 #[test]
 fn the_ported_panels_carry_the_baseline_titles() {
     // A title is the panel's contract with the reader, so it has to match the
-    // baseline exactly. Descriptions no longer do: they come from the query
-    // registry now, which is deliberately better prose than the baseline carried
-    // -- see `descriptions_come_from_the_registry` below.
+    // baseline exactly, apart from the retitles in [`RETITLED`]. Descriptions no
+    // longer do: they come from the query registry now, which is deliberately
+    // better prose than the baseline carried -- see
+    // `descriptions_come_from_the_registry` below.
     let baseline = baseline_panels();
     let ours = ours();
 
@@ -156,11 +210,19 @@ fn the_ported_panels_carry_the_baseline_titles() {
             }
             continue;
         };
-        let want_title = want["spec"]["title"].as_str().unwrap_or_default();
+        let baseline_title = want["spec"]["title"].as_str().unwrap_or_default();
+        let want_title = expected_title(name, baseline_title);
         if panel.spec.title != want_title {
             mismatches.push(format!(
-                "{name}: title {:?} != baseline {want_title:?}",
+                "{name}: title {:?} != expected {want_title:?} (baseline {baseline_title:?})",
                 panel.spec.title
+            ));
+        }
+    }
+    for (name, _) in RETITLED {
+        if !baseline.contains_key(*name) {
+            mismatches.push(format!(
+                "{name}: listed in RETITLED but not in the baseline"
             ));
         }
     }
@@ -505,6 +567,7 @@ fn the_ported_panels_transform_their_data_the_same_way() {
     let ours = ours();
 
     let mut mismatches = Vec::new();
+    let mut relabels_used = BTreeSet::new();
     for (name, element) in &ours.elements {
         let dashboardv2::Element::PanelKind(panel) = element else {
             continue;
@@ -550,10 +613,11 @@ fn the_ported_panels_transform_their_data_the_same_way() {
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
-            let want_options = want["spec"]["options"]
+            let mut want_options = want["spec"]["options"]
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
+            relabel_columns(&mut want_options, &mut relabels_used);
             if got_options != want_options {
                 mismatches.push(format!(
                     "{name} transformation {index} ({}) options differ:\n      ours: {}\n      base: {}",
@@ -562,6 +626,15 @@ fn the_ported_panels_transform_their_data_the_same_way() {
                     serde_json::to_string(&want_options).unwrap_or_default(),
                 ));
             }
+        }
+    }
+    // Checked in both directions, like the allow-lists: a relabel that no
+    // baseline column uses any more is a stale entry.
+    for (old, _) in RELABELED_COLUMNS {
+        if !relabels_used.contains(old) {
+            mismatches.push(format!(
+                "RELABELED_COLUMNS: no baseline column is named {old:?}"
+            ));
         }
     }
     assert!(

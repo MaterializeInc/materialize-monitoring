@@ -56,7 +56,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Persist (Storage) (`env-persist`)
 
 Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
-Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
@@ -69,7 +69,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
 The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
-Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
 The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.

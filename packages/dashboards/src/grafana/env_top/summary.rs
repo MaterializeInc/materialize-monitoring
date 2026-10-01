@@ -99,11 +99,11 @@ fn last_restart(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn max_lag(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::stat("Max Lag (Select Time Range)")
-        .query(q.get("materialize.info.max_lag").legend("max lag"))
+    Panel::stat("Worst Freshness (Select Time Range)")
+        .query(q.get("materialize.info.max_lag").legend("worst freshness"))
         .color_background()
         .unit("s")
-        // High is bad: an hour of lag is the alarming end.
+        // High is bad: an hour behind real time is the alarming end.
         .thresholds(threshold::stability(3600.0, true).build())
         .no_value(NoValue::FilterMismatch)
         .build(0)

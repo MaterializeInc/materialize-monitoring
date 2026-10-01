@@ -253,6 +253,25 @@ Assume SQL fluency.
 Explain Materialize-side concepts (peek, hydration, arrangement) when they appear.
 Don't restate the obvious ("Network bandwidth per pod" — they can read the title).
 
+### Terminology
+
+Titles, legends, empty-state text, and descriptions use Materialize's product vocabulary rather than its internal one.
+Product review set these three:
+
+| Write | Instead of | Means |
+|---|---|---|
+| object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
+| freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+
+Freshness is a duration, so a larger value is worse.
+Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
+
+The rule covers what a reader sees.
+Metric names, label names, query ids, and element keys keep Materialize's own spelling, since they have to match what Materialize emits or are not shown.
+_Sink Lag_ keeps its name because it is a byte backlog, not a freshness reading.
+Metric and log _collection_ — gathering telemetry — is a different sense of the word and is unaffected.
+
 ### Structure
 
 The registry's `description` is structured, and `format_description` renders it to the shape below: `summary` in bold

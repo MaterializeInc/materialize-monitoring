@@ -54,7 +54,7 @@ fn stored(q: &Queries) -> Row {
 }
 
 fn collections(q: &Queries) -> Row {
-    Row::new("By Collection").grid(
+    Row::new("By Object").grid(
         AutoGrid::new(2)
             .column_width(ColumnWidth::Wide)
             .row_height(RowHeight::Tall)
@@ -72,7 +72,7 @@ fn by_state(q: &Queries) -> dashboardv2::PanelKind {
                 "current rollups",
                 "held for readers",
                 "uploads in flight",
-                "leaked",
+                "orphaned",
             ],
         ))
         .unit("bytes")
@@ -92,8 +92,8 @@ fn current(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn leaked(q: &Queries) -> dashboardv2::PanelKind {
-    zero_is_healthy("Leaked Data")
-        .query(q.get("materialize.persist.usage.leaked").legend("leaked"))
+    zero_is_healthy("Orphaned Data")
+        .query(q.get("materialize.persist.usage.leaked").legend("orphaned"))
         .thresholds(threshold::errors(1_000_000.0, 1_000_000_000.0).build())
         .unit("bytes")
         .no_value(not_collected())
@@ -103,7 +103,7 @@ fn leaked(q: &Queries) -> dashboardv2::PanelKind {
 /// A current fact, so an instant query: over a range, each shard would repeat
 /// once per step and the table would be hundreds of near-identical rows.
 fn largest(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::table("Largest Collections")
+    Panel::table("Largest Objects")
         .query(q.get("materialize.persist.usage.largest").table_format())
         .transformations(vec![transform::organize_full(
             &["Time"],
@@ -116,7 +116,7 @@ fn largest(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn held(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Data Held for Readers by Collection")
+    Panel::timeseries("Data Held for Readers by Object")
         .query(q.get("materialize.persist.usage.held").legend("{{shard}}"))
         .unit("bytes")
         .min(0.0)

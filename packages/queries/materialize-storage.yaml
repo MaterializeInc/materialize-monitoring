@@ -140,8 +140,8 @@ queries:
         upstream connection (e.g. restarted and couldn't resume pulling from
         Kafka). The source still shows `Running` overall and the aggregate
         throughput hides it, so this per-replica split is where it surfaces —
-        lag will be climbing too; restarting that replica usually
-        clears the stale connection.
+        the source will be falling behind real time too; restarting that
+        replica usually clears the stale connection.
       notes: Scoped to the selected clusters/replicas.
     promQL:
       template: |
@@ -168,7 +168,7 @@ queries:
         broker/DB-unreachable case (BrokerTransportFailure, severed security
         group, DNS) that commit-failures can't catch, because the source never
         reaches the commit step. When disconnected is 1, throughput flat-lines
-        and lag climbs. Read the exact error via `SELECT name, status,
+        and the source falls further behind real time. Read the exact error via `SELECT name, status,
         error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.
       notes: |
         Data-decode errors are separate (`mz_source_error_inserts`). Scoped to

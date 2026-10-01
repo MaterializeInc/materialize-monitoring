@@ -60,7 +60,7 @@ fn no_generations() -> NoValue {
 /// on the graph. Reaching this message means no generation has any collection to
 /// score — a brand-new one in its first moments, or a torn-down one.
 fn no_collections() -> NoValue {
-    NoValue::Custom("No collections reporting for the selected generations".to_string())
+    NoValue::Custom("No objects reporting for the selected generations".to_string())
 }
 
 pub fn rows(q: &Queries) -> Vec<Row> {
@@ -160,7 +160,7 @@ fn hydrating_now(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn max_lag_now(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::stat("Worst-Case Lag")
+    Panel::stat("Worst-Case Freshness")
         .query(
             q.get("materialize.generations.lag.max")
                 .legend("gen {{generation}}"),
@@ -228,7 +228,7 @@ fn version_by_generation(q: &Queries) -> dashboardv2::PanelKind {
 // ---------------------------------------------------------------- hydration
 
 fn hydrating_by_generation(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Hydrating Collections by Generation")
+    Panel::timeseries("Hydrating Objects by Generation")
         .query(
             q.get("materialize.generations.hydrating")
                 .legend("gen {{generation}}"),
@@ -239,7 +239,7 @@ fn hydrating_by_generation(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn collections_by_generation(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Collections by Generation")
+    Panel::timeseries("Objects by Generation")
         .query(
             q.get("materialize.generations.collections")
                 .legend("gen {{generation}}"),
@@ -258,7 +258,7 @@ fn collections_by_generation(q: &Queries) -> dashboardv2::PanelKind {
 /// The total falls with every collection that catches up, which is the shape an
 /// operator waits for before promoting.
 fn lag_total_by_generation(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Total Lag by Generation")
+    Panel::timeseries("Total Freshness by Generation")
         .query(
             q.get("materialize.generations.lag.total")
                 .legend("gen {{generation}}"),
@@ -275,7 +275,7 @@ fn lag_total_by_generation(q: &Queries) -> dashboardv2::PanelKind {
 /// siblings — absolute totals scale with how many collections a cluster carries,
 /// so the pairing that reads is `gen N / u1` beside `gen N+1 / u1`.
 fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Total Lag by Generation and Cluster")
+    Panel::timeseries("Total Freshness by Generation and Cluster")
         .query(
             q.get("materialize.generations.lag.total_by_cluster")
                 .legend("gen {{generation}} / {{instance_id}}"),
@@ -287,7 +287,7 @@ fn lag_total_by_cluster(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn lag_by_generation(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Worst-Case Lag by Generation")
+    Panel::timeseries("Worst-Case Freshness by Generation")
         .query(
             q.get("materialize.generations.lag.max")
                 .legend("gen {{generation}}"),

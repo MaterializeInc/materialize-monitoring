@@ -173,7 +173,7 @@ queries:
         Commits to the metadata database per second — the load this
         environment puts on it.
       nominal: |
-        Steady. It scales with the number of durable collections that are
+        Steady. It scales with the number of durable objects that are
         being updated, not with data volume or query rate, and an idle
         environment already commits dozens of times a second.
       notes: |
@@ -223,7 +223,7 @@ queries:
         node, its zone, or a proxy in the way. Every process high at once is
         the database, or a database that is not in the cluster's region.
       notes: |
-        A gauge the client refreshes on its own schedule, so it can lag the
+        A gauge the client refreshes on its own schedule, so it can trail the
         latency panels by a few seconds.
     promQL:
       template: |
@@ -242,7 +242,7 @@ queries:
       nominal: Nothing drawn above zero.
       degraded: |
         `consensus_cas` failing is writes failing. `consensus_scan` and
-        `consensus_head` failing are reads of a collection's state, which
+        `consensus_head` failing are reads of an object's state, which
         every process does when it opens one — failures there on their own
         often mean a process that is starting up cannot reach the database.
         Timestamp oracle failures stop every query from being assigned a
@@ -314,12 +314,12 @@ queries:
         Metadata database calls per second, by operation.
       nominal: |
         `consensus_cas` — commits — is nearly all of it. `consensus_scan`
-        reads a collection's recent history and `consensus_truncate` deletes
+        reads an object's recent history and `consensus_truncate` deletes
         history nothing needs any more, both at a few per second.
       degraded: |
         A step change in commits without a matching change in the number of
-        collections usually means something is being rewritten in a loop — a
-        collection that cannot settle.
+        objects usually means something is being rewritten in a loop — an
+        object that cannot settle.
     promQL: |
       sum by (op) (
         rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"consensus_.*"}%%{interval})
@@ -352,7 +352,7 @@ queries:
       summary: |
         Bytes per second exchanged with the metadata database, by operation.
       nominal: |
-        Small — the state record of a collection is kilobytes, not data. A
+        Small — the state record of an object is kilobytes, not data. A
         commit writes one; a scan reads several.
       degraded: |
         Rising commit bytes with a steady commit rate means the state records
@@ -366,7 +366,7 @@ queries:
     stability: experimental
     description:
       summary: |
-        Durable collections in this environment — each one a stream of
+        Durable objects in this environment — each one a stream of
         commits to the metadata database.
       nominal: |
         Grows with what you create. The system catalog alone is around a
@@ -375,7 +375,7 @@ queries:
         Metadata database sizing guidance is stated in continuously updated
         objects: roughly 4,500 for the smallest recommended instance and
         18,000 for the default. This count is an upper bound on that, since it
-        also includes collections that rarely change.
+        also includes objects that rarely change.
 
         List them with `SELECT s.shard_id, o.name, o.type FROM
         mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id =
@@ -438,12 +438,12 @@ queries:
         Commits that lost a race with another writer and were retried, per
         second, by process.
       nominal: |
-        A trickle. Several processes write the same collections, so the odd
+        A trickle. Several processes write the same objects, so the odd
         conflict is expected and costs one retry.
       degraded: |
         A burst during an upgrade is the two generations overlapping, and
         stops when the old one is retired. A sustained high rate outside a
-        rollout means two processes are fighting over the same collections —
+        rollout means two processes are fighting over the same objects —
         usually a replica that should have been shut down and was not.
     promQL:
       template: |
@@ -660,7 +660,7 @@ queries:
       degraded: |
         Written staying above deleted for hours means the table persist
         writes to is growing. The usual cause is a reader holding old
-        versions — _Versions Held by Collection_ names it. On PostgreSQL a
+        versions — _Versions Held by Object_ names it. On PostgreSQL a
         growing table is also more work for autovacuum, which is how this
         eventually shows up as commit latency.
     promQL:
@@ -674,16 +674,16 @@ queries:
     description:
       summary: |
         State versions currently stored in the metadata database, summed
-        across every collection — roughly the number of rows persist keeps
+        across every object — roughly the number of rows persist keeps
         there.
       nominal: |
-        Flat, at a few hundred per collection.
+        Flat, at a few hundred per object.
       degraded: |
         Steady growth is the backlog that _Versions Written and Deleted_
         shows as a gap. It is not urgent on its own, but it is the database's
         storage and vacuum load growing without anything new being stored.
       notes: |
-        Measured at each collection's last cleanup, so it moves in steps.
+        Measured at each object's last cleanup, so it moves in steps.
     promQL: |
       sum(max by (shard) (mz_persist_shard_gc_live_diffs{%%{mzEnvironmentFilter}}))
 
@@ -691,12 +691,12 @@ queries:
     stability: experimental
     description:
       summary: |
-        The ten collections holding the most old state versions, which cleanup
+        The ten objects holding the most old state versions, which cleanup
         cannot delete until whatever is reading them moves on.
       nominal: |
         Hundreds at most, and moving.
       degraded: |
-        A collection whose count only ever grows has a reader stuck in the
+        An object whose count only ever grows has a reader stuck in the
         past: a subscription or a replica that is not keeping up, or one that
         went away without releasing its hold. Its hold is released when the
         reader's lease expires.
@@ -731,7 +731,7 @@ queries:
     stability: experimental
     description:
       summary: |
-        Readers whose lease on a collection expired, per second.
+        Readers whose lease on an object expired, per second.
       nominal: |
         Occasional, around restarts: a process that goes away without saying
         so has its leases expire instead.
@@ -739,7 +739,7 @@ queries:
         Steady expirations with no restarts mean readers are being starved —
         a process too busy to renew its leases. Each expiry releases the old
         state versions that reader was holding, so this is also what un-sticks
-        _Versions Held by Collection_.
+        _Versions Held by Object_.
     promQL: |
       sum(rate(mz_persist_lease_timeout_read{%%{mzEnvironmentFilter}}%%{interval}))
 

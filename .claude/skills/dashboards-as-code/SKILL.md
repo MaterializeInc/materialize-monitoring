@@ -167,7 +167,7 @@ Generated from the rendered artifact; regenerate rather than hand-editing when t
 **Summary**
 
 1. Environment Health — Environment Status, Environment Availability (Select Time Range), Last Restart Time, Currently
-   Hydrating, Max Lag (Select Time Range), Current CPU Usage (5 min), Current Memory Usage
+   Hydrating, Worst Freshness (Select Time Range), Current CPU Usage (5 min), Current Memory Usage
 2. Environment Info — Materialize Version, Total CPU Capacity, Total Memory
 
 **Kubernetes Workloads**
@@ -193,10 +193,10 @@ Generated from the rendered artifact; regenerate rather than hand-editing when t
 **Compute Objects**
 
 1. Compute Objects Summary (**header hidden**) — Active Materialized Views, Active Indexes, Active Views, Active Subscribes, Index Relationship Types
-2. Freshness — Freshness Lag by Cluster, Total Lag by Cluster, Most-Lagged Collections
-3. Hydration — Currently Hydrating, Hydration Queue Size, Slowest Hydrating Collections
+2. Freshness — Worst Freshness by Cluster, Total Freshness by Cluster, Least Fresh Objects
+3. Hydration — Currently Hydrating, Hydration Queue Size, Slowest Hydrating Objects
 4. Dataflows — Dataflow Count, Dataflow Count (per worker), Dataflow Elapsed Rate
-5. Arrangements — Arrangement Maintenance Rate, Arrangement Maintenance Rate (per worker), System / User / Transient Collections — Record Counts
+5. Arrangements — Arrangement Maintenance Rate, Arrangement Maintenance Rate (per worker), System / User / Transient Objects — Record Counts
 
 **Sources and Sinks**
 
@@ -235,10 +235,10 @@ Each rate panel sits beside the feed it summarizes, in the same row: the chart s
 
 **Generations** — the two sides of a blue/green rollout, split apart:
 
-1. Rollout Status (**header hidden**) — Active Generations, Currently Hydrating, Worst-Case Lag, Pods
+1. Rollout Status (**header hidden**) — Active Generations, Currently Hydrating, Worst-Case Freshness, Pods
 2. Versions — Version by Generation (table)
-3. Hydration — Hydrating Collections by Generation, Collections by Generation
-4. Freshness — Worst-Case Lag by Generation, Total Lag by Generation, Total Lag by Generation and Cluster
+3. Hydration — Hydrating Objects by Generation, Objects by Generation
+4. Freshness — Worst-Case Freshness by Generation, Total Freshness by Generation, Total Freshness by Generation and Cluster
 5. Footprint — CPU by Generation, Memory by Generation
 
 **Version by Generation** is the row that says what the rollout is *for*. It reads the `mz_version` label off
@@ -608,7 +608,7 @@ Tracked items that are working but could be tidier:
 
 - **Hydration is SQL-only on self-managed.** No Prometheus metric exposes per-collection hydration state or time
   (`v2_mz_compute_hydration_time_seconds` is cloud-only; `mz_compute_controller_hydration_queue_size` is just the
-  controller queue and reads 0 even with many objects mid-hydration). Slowest Hydrating Collections stays backed by the
+  controller queue and reads 0 even with many objects mid-hydration). Slowest Hydrating Objects stays backed by the
   cloud metric (blank here) with a description pointing at `mz_internal.mz_hydration_statuses` /
   `mz_compute_hydration_times`; the live metric-side proxy is the Freshness row (`wallclock_lag`).
 - **The `mz-mon-` UID prefix is not validated.** One dashboard, consistent today. Worth a check if more land.
