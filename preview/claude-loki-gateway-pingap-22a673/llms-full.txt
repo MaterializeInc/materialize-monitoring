@@ -4785,7 +4785,7 @@ flowchart TB
       gcr["Grafana CR: mzmon-grafana<br/>spec.external.url + credentials"]
       gman["GrafanaManifest: mzmon-env-top-dashboard<br/>resyncPeriod 5m"]
       gfld["GrafanaFolder: mzmon-materialize · mzmon-infra · mzmon-meta-o11y"]
-      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki query frontend"]
+      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki gateway"]
     end
   end
 
@@ -4828,9 +4828,9 @@ Two things shift automatically under `split-namespace`, both to keep `mode: bund
 The operator watches all namespaces by default (`WATCH_NAMESPACE=""`), so it sees both regardless of layout.
 Scoping that watch is a separate decision — see [Watch scope](../grafana-operator/#watch-scope).
 
-Datasource URLs are the piece that does *not* adjust itself, because the chart does not ship datasources yet.
-Under `split-namespace` they must name the backend's own namespace (`thanos-query.thanos`, `loki-query-frontend.loki`),
-and cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+Datasource URLs follow the backends: each is built from its backend's own namespace, so under `split-namespace` they name `thanos-query.thanos` and `loki-gateway.loki`.
+Cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+For Loki that is `loki.networkPolicy.ingress.namespaceSelector`, which admits clients to the Loki gateway.
 
 ## Dashboards
 
@@ -4991,7 +4991,7 @@ The chart ships two, as `GrafanaDatasource` resources targeting the same instanc
 | Datasource | Type | UID | In-cluster endpoint | Notes |
 |---|---|---|---|---|
 | Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
-| Loki | `loki` | `mzmon-loki` | `http://loki-query-frontend.<namespace>.svc:3100` | Carries a tenant header — see below |
+| Loki | `loki` | `mzmon-loki` | `http://loki-gateway.<namespace>.svc:8080` | The Loki gateway; carries a tenant header — see below |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
 `<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
@@ -5048,9 +5048,10 @@ Under `byNamespace`, `byEnvironment`, or `byLabel`, logs are spread across many 
 exactly one of them — the chart emits an install-time warning saying which.
 Those modes need a datasource per tenant, or a multi-tenant read path in front of Loki.
 
-The Loki **gateway is disabled by default** (`loki.gateway.enabled: false`) — writes go through `alloy-gateway` and
-reads go straight to the query frontend.
-Do not point a datasource at a `loki-gateway` service; it does not exist.
+The Loki datasource points at the [Loki gateway](../../../logs-and-events/architecture/#loki-gateway), not at the query frontend.
+Grafana's alerting UI lists a datasource's rules from the datasource's own URL, and the gateway routes those requests to the ruler and everything else to the query frontend.
+A Loki datasource on the query frontend therefore shows no Loki rules.
+Writes do not pass through the gateway; they go through `alloy-gateway`.
 
 ## Reaching Grafana
 
@@ -21409,8 +21410,9 @@ Two ports stop short of `authenticate` by nature rather than by choice, and
 the chart refuses to configure them otherwise: Loki's HTTP port and
 Alertmanager's API port are probed by the kubelet, and a `httpGet` probe has
 no field for a client certificate, so their terminal state is `present`.
-Grafana's datasources verify the backend, and present a certificate only to
-Alertmanager.
+The Loki gateway's listener stops at `present` for the same reason. Grafana's
+datasources verify the backend, and from `present` they present a certificate
+to Alertmanager and to the Loki gateway; the Thanos datasource presents none.
 </td>
         <td class="tf-var-default"><code>off</code></td>
     </tr>
@@ -21727,7 +21729,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_grafana_admin_secret_name"></a> [grafana_admin_secret_name](#output_grafana_admin_secret_name) | Name of the Secret holding the Grafana admin credentials. |
 | <a name="output_grafana_admin_user"></a> [grafana_admin_user](#output_grafana_admin_user) | Grafana admin username. |
 | <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead. |
-| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. Reads carry a tenant header; see the chart's datasource configuration. |
+| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. `https` whenever `internal_tls` is not `off`, verified against the internal CA. Reads carry a tenant header; see the chart's datasource configuration. |
 | <a name="output_metrics_url"></a> [metrics_url](#output_metrics_url) | Thanos Query endpoint. Prometheus-API-compatible, so consumers of a Prometheus URL keep working against it. |
 | <a name="output_namespace"></a> [namespace](#output_namespace) | Namespace the monitoring stack is installed into. |
 | <a name="output_release_name"></a> [release_name](#output_release_name) | Name of the materialize-monitoring Helm release. |
