@@ -78,6 +78,13 @@ networkPolicies:
             - port: 9093
               protocol: TCP
 
+# **Grafana reaches Loki through the Loki gateway, on 8080.** The Loki subchart's
+# `ingress` policy is what admits it, and that policy takes its peers from
+# `loki.networkPolicy.ingress.namespaceSelector`. Under this profile the selector
+# has to match the `grafana` namespace as well, or every log panel renders empty.
+# In distributed mode that selector governed nothing before the gateway, so a
+# values file that set it carelessly may only now find out.
+
 # **One hop this profile cannot close from values: Loki's ruler egress.**
 #
 # The Loki subchart renders an `egress-alertmanager` policy, but it selects

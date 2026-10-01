@@ -950,6 +950,7 @@ point rather than a researched one.
     "secretName": "",
     "services": [
       "loki-distributor",
+      "loki-gateway",
       "loki-query-frontend",
       "loki-ruler"
     ]
@@ -3156,8 +3157,8 @@ valuesFrom:
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-query-frontend.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100"</code></td>
-      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).
+      <td class="helm-value-default"><code>"http://loki-gateway.{{ include \"mzmon.loki.namespace\" $ }}.svc:8080"</code></td>
+      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway, which routes queries to the query frontend and rule state to the ruler. Grafana's alerting UI lists the Loki rules from this same URL, so a datasource pointed at the query frontend shows none. With `loki.gateway.enabled` off, point this at `http://loki-query-frontend.<namespace>.svc:3100`.
 </td>
     </tr>
     <tr>
@@ -5220,8 +5221,150 @@ destination fan-out rather than only the bundled metric store.
     <tr>
       <td class="helm-value-key">loki<wbr>.gateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run the Loki gateway, the nginx reverse proxy Grafana reads Loki through.
+
+Grafana's alerting UI lists a datasource's rules from the datasource's own
+URL. In distributed mode the query frontend answers queries and the ruler
+answers for rules, so a datasource pointed at either one sees half of Loki.
+The gateway routes by path and gives Grafana one address for both.
+
+The routing is this chart's own (`nginxConfig.file`), and it is narrower
+than the subchart's:
+
+| Request | Subchart's gateway | This chart's gateway |
+| --- | --- | --- |
+| Queries, labels, tail | Query frontend | Query frontend |
+| Rule and alert state | Ruler | Ruler, `GET` only |
+| Rule definitions | Ruler, read and write | Refused; `loki.rules.kubernetes` on the alloy-gateway owns them |
+| Pushes | Distributor | Refused; the alloy-gateway is the write path |
+| Rings, flush, config, deletes | Each component | Refused |
+
+Every request resolves its backend's name through `resolver`, so a Service
+recreated under the same name is followed without a restart. Turning the
+gateway off needs `connections.datasources.loki.url` pointed back at the
+query frontend, and Grafana then shows no Loki rules.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. The subchart's required per-node anti-affinity is kept, so each replica needs a node of its own.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.podDisruptionBudget<wbr>.minAvailable</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Keep one gateway through voluntary disruption.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "nginxinc/nginx-unprivileged",
+  "tag": "1.31.6-alpine-slim"
+}</pre>
+</td>
+      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "50m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.verboseLogging</td>
+      <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Disable gateway by default. We recommend using alloy-gateway for loki writes. Use the query-frontend for loki reads.
+      <td class="helm-value-desc">Log only failed requests (4xx and 5xx). Grafana reads through the gateway constantly, and every successful request's line would be ingested back into the Loki it is proxying.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.service<wbr>.port</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>8080</code></td>
+      <td class="helm-value-desc">The Service port, equal to the container port. A TLS profile then changes only the scheme of the URL that dials it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.nginxConfig<wbr>.file</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"{{ include \"mzmon.loki.gateway.nginxConf\" . }}"</code></td>
+      <td class="helm-value-desc">The nginx.conf, rendered by `mzmon.loki.gateway.nginxConf`. Its header comment lists what it routes and what it refuses.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.nginxConfig<wbr>.tls</td>
+      <td class="helm-value-type">desc</td>
+      <td class="helm-value-default"><em>every path empty</em></td>
+      <td class="helm-value-desc">TLS for the gateway's listener and for its connections to Loki.
+
+Read by this chart's nginx.conf; the subchart does not know the key.
+`profiles/mtls.values.yaml` sets these, alongside `ssl` and `schema`.
+
+| Key | nginx directive | Used when |
+| --- | --- | --- |
+| `certFile`, `keyFile` | `ssl_certificate`, `ssl_certificate_key` | `ssl` is true |
+| `clientCaFile` | `ssl_client_certificate`, with `ssl_verify_client optional` | set, with `ssl` |
+| `upstreamCaFile` | `proxy_ssl_trusted_certificate`, with `proxy_ssl_verify on` | `schema` is `https` |
+| `upstreamCertFile`, `upstreamKeyFile` | `proxy_ssl_certificate`, `proxy_ssl_certificate_key` | set, with `schema: https` |
+
+Requiring a client certificate is not offered. The kubelet's readiness
+probe dials the same listener and cannot present one, the same limit
+that holds Loki's own HTTP port at phase 2.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "ghcr.io",
+  "repository": "jkroepke/access-log-exporter",
+  "tag": "0.4.11"
+}</pre>
+</td>
+      <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--nginx.scrape-url=http://127.0.0.1:8081/stub_status"
+]</pre>
+</td>
+      <td class="helm-value-desc">Scrape `stub_status` from the loopback-only listener the nginx.conf serves on 8081, rather than from the client port. The flag is repeated after the subchart's own and the later one wins, so turning on TLS for clients does not break the scrape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the exporter out of the subchart's ServiceMonitor and into this chart's plaintext one. It serves `/metrics` in the clear whatever the gateway's listener does. See `monitoring.serviceMonitor` below.
 </td>
     </tr>
   </tbody>
@@ -5778,14 +5921,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
 
 **Plaintext exporters are excluded from it.** The subchart renders a
 single ServiceMonitor covering everything it labels, with one `scheme`
-shared by every target. Three of those targets never speak TLS whatever
-Loki is configured to do — the canary's own `/metrics` server, and the
-two memcached exporters — so under `profiles/mtls`, which sets
-`scheme: https` here, all three fail the scrape and their series vanish.
-For the canary that means the end-to-end write→read check goes quiet
-rather than red, which is the worst way for a canary to fail.
+shared by every target. Four of those targets never speak TLS whatever
+Loki is configured to do — the canary's own `/metrics` server, the two
+memcached exporters, and the gateway's access-log exporter — so under
+`profiles/mtls`, which sets `scheme: https` here, all four fail the
+scrape and their series vanish. For the canary that means the end-to-end
+write→read check goes quiet rather than red, which is the worst way for
+a canary to fail.
 
-Each of the three therefore carries
+Each of the four therefore carries
 `prometheus.io/service-monitor: "false"`, which the subchart's selector
 excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
 opt-in that this chart's own monitor selects on

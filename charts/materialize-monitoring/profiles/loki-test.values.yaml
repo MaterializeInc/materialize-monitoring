@@ -16,16 +16,14 @@ tags:
 
 # -- Endpoints for consumers of Loki.
 # SingleBinary renders exactly one `loki` Service. The chart defaults name the
-# microservice Services — `loki-query-frontend` for reads, `loki-distributor` for
-# writes — so every consumer resolves a host that does not exist unless it is
-# repointed here. The write path is the one that fails silently: the gateway
-# retries DNS forever and no logs reach Loki.
-# (The canary reads through `loki-query-frontend` too, but it is disabled below.)
-connections:
-  datasources:
-    loki:
-      url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
-
+# microservice Services — `loki-distributor` for writes — so a consumer that
+# dials a component resolves a host that does not exist unless it is repointed
+# here. The write path is the one that fails silently: the alloy-gateway retries
+# DNS forever and no logs reach Loki.
+#
+# Grafana's datasource needs no override. It reads through the Loki gateway,
+# which routes to the single `loki` Service in this mode.
+# (The canary reads through `loki-query-frontend`, but it is disabled below.)
 pipeline:
   logging:
     gateway:

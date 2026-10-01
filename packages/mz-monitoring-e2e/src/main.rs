@@ -249,6 +249,26 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         datasources && ctx.features.enabled("loki"),
         checks::grafana::loki_datasource_query,
     ));
+    // The rule list reaches the ruler only through the Loki gateway, so both
+    // have to be on. With the gateway off, the datasource points at the query
+    // frontend and Grafana has no Loki rules to list, by design.
+    let loki_rules_in_grafana = datasources
+        && ctx.features.enabled("loki")
+        && ["loki.gateway.enabled", "loki.ruler.enabled"]
+            .iter()
+            .all(|path| {
+                ctx.features
+                    .get(path)
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+            });
+    trials.push(trial(
+        runtime,
+        ctx,
+        "grafana::loki_rules_listed",
+        loki_rules_in_grafana,
+        checks::grafana::loki_rules_listed,
+    ));
     // Enabled by default and needing no flag: the support bundle is the single
     // richest artifact the stack exposes, and each role has its own.
     trials.push(trial(

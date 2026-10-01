@@ -99,8 +99,12 @@ loki:
     image:
       registry: "docker.io"
       repository: "<ORG>/dhi-memcached-exporter"
-  # Inert unless `loki.gateway.enabled` is turned on. DHI publishes no
-  # `nginx-unprivileged` variant because its `nginx` already runs non-root.
+  # DHI publishes no `nginx-unprivileged` variant because its `nginx` already
+  # runs non-root.
+  #
+  # **Restate the nginx tag.** `values.yaml` pins nginx's `-alpine-slim`
+  # variant, and the inherited string is unlikely to match a DHI tag. Set
+  # `tag` to the same nginx version in the variant the mirror holds.
   gateway:
     image:
       registry: "docker.io"

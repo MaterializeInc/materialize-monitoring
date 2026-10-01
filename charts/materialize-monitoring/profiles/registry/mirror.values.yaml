@@ -109,7 +109,7 @@ loki:
   memcachedExporter:
     image:
       registry: *dockerHub
-  # Inert unless `loki.gateway.enabled` is turned on.
+  # The Loki gateway's nginx, and its access-log exporter sidecar.
   gateway:
     image:
       registry: *dockerHub

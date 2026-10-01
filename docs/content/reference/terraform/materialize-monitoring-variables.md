@@ -931,7 +931,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_grafana_admin_secret_name"></a> [grafana_admin_secret_name](#output_grafana_admin_secret_name) | Name of the Secret holding the Grafana admin credentials. |
 | <a name="output_grafana_admin_user"></a> [grafana_admin_user](#output_grafana_admin_user) | Grafana admin username. |
 | <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead. |
-| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (query frontend). Reads carry a tenant header; see the chart's datasource configuration. |
+| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. Reads carry a tenant header; see the chart's datasource configuration. |
 | <a name="output_metrics_url"></a> [metrics_url](#output_metrics_url) | Thanos Query endpoint. Prometheus-API-compatible, so consumers of a Prometheus URL keep working against it. |
 | <a name="output_namespace"></a> [namespace](#output_namespace) | Namespace the monitoring stack is installed into. |
 | <a name="output_release_name"></a> [release_name](#output_release_name) | Name of the materialize-monitoring Helm release. |

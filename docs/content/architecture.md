@@ -112,7 +112,8 @@ For the full component breakdown — diagrams, the read/write paths, the hash ri
 At a glance:
 
 * **Write path** — `alloy-gateway` pushes processed logs to the **Loki Distributor**, which fans each stream across **Loki Ingesters** through a consistent hash ring (replication factor 3); ingesters flush chunks and the TSDB index to object storage.
-* **Read path** — Grafana issues LogQL to the **Loki Query Frontend**, which queues and splits work for **Loki Queriers** (assisted by the **Loki Query Scheduler** and **Loki Index Gateway**); queriers read recent data from ingesters and historical data from object storage.
+* **Read path** — Grafana issues LogQL through the **Loki Gateway** (nginx) to the **Loki Query Frontend**, which queues and splits work for **Loki Queriers** (assisted by the **Loki Query Scheduler** and **Loki Index Gateway**); queriers read recent data from ingesters and historical data from object storage.
+  The gateway also routes Grafana's rule list to the **Loki Ruler**.
 * **Backend / maintenance** — the **Loki Compactor** (singleton) compacts the index and enforces retention; the **Loki Ruler** evaluates LogQL alerting and recording rules, sending alerts to [Alertmanager](#alertmanager-prometheus-alertmanager) and recording-rule samples back through `alloy-gateway` to the long-term metric store ([Thanos](#thanos-thanos)).
 
 Loki writes all durable data to object storage (S3-compatible, GCS, or Azure Blob).

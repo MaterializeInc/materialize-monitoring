@@ -487,7 +487,8 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 #### 8. Read path
 
 - [x] `[chart]` Query-frontend ≥ 2 for queue fairness; query splitting/parallelism configured.
-- [x] `[chart]` Grafana Loki datasource provisioned, pointing at the **query-frontend** Service (bundled nginx loki-gateway is off; datasource wiring still to land).
+- [x] `[chart]` Grafana Loki datasource provisioned, pointing at the **Loki Gateway**, which routes queries to the query frontend and Grafana's rule list to the ruler.
+- [x] `[chart]` Loki Gateway: two replicas with a PDB, routing only Grafana's reads and the ruler's rule state; rule edits, pushes and admin endpoints refused.
 - [ ] `[operator]` Scale queriers/frontends — not ingesters — when dashboards feel slow.
 
 #### 9. Tenancy & auth

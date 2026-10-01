@@ -71,11 +71,26 @@ loki:
         client_ca_file: /etc/mzmon/tls/ca.crt
         client_auth_type: VerifyClientCertIfGiven
 
+  # The Loki gateway takes the same step on both of its sides. Its listener
+  # verifies a certificate Grafana presents and still serves a client that
+  # presents none, which is nginx's `ssl_verify_client optional` and the same
+  # state as Loki's `VerifyClientCertIfGiven`. Its connections to Loki present
+  # Loki's own certificate, which carries `client auth`.
+  #
+  # This is where the gateway stops. Requiring a certificate would refuse the
+  # kubelet's readiness probe, which dials the same listener and presents none.
+  gateway:
+    nginxConfig:
+      tls:
+        clientCaFile: /etc/mzmon/tls/ca.crt
+        upstreamCertFile: /etc/mzmon/tls/tls.crt
+        upstreamKeyFile: /etc/mzmon/tls/tls.key
+
 # Alertmanager's API port moves the same way as Loki's HTTP port, for the same
 # reason: its listener has a real verify-if-given. Both rulers already present a
-# certificate from phase 1, so the clients this changes are Grafana, below, and
-# nothing else. The probes and the config reloader present nothing and are still
-# served, which is why this is where the port stops.
+# certificate from phase 1, so the client this changes is Grafana, below. The
+# probes and the config reloader present nothing and are still served, which is
+# why this is where the port stops.
 alerting:
   server:
     tls:
@@ -89,6 +104,11 @@ connections:
         # Grafana's own certificate, which carries `client auth`. Like the CA in
         # phase 1, Grafana stores it rather than reading it, so a renewal reaches
         # the datasource on `connections.datasources.resyncPeriod`.
+        clientCert:
+          secretName: '{{ include "mzmon.certificates.secretName" ( dict "context" $ "component" "grafana" ) }}'
+    loki:
+      tls:
+        # The same certificate, presented to the Loki gateway above.
         clientCert:
           secretName: '{{ include "mzmon.certificates.secretName" ( dict "context" $ "component" "grafana" ) }}'
 

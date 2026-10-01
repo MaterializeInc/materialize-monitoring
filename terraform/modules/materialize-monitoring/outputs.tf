@@ -40,8 +40,8 @@ output "metrics_url" {
 }
 
 output "logs_url" {
-  description = "Loki read endpoint (query frontend). Reads carry a tenant header; see the chart's datasource configuration."
-  value       = "http://loki-query-frontend.${local.namespace}.svc.cluster.local:3100"
+  description = "Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. Reads carry a tenant header; see the chart's datasource configuration."
+  value       = "http://loki-gateway.${local.namespace}.svc.cluster.local:8080"
 }
 
 output "remote_write_url" {

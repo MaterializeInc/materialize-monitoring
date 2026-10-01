@@ -75,6 +75,10 @@
 # authenticating proxy in front of Loki, or moving inter-component traffic to a
 # port the kubelet does not touch. Both are larger than this profile.
 #
+# The Loki gateway is a proxy in front of Loki but not yet that one. Its listener
+# carries the kubelet's readiness probe too, so it stops at phase 2 for the same
+# reason; and Loki's own port still answers any client that reaches it directly.
+#
 # **Alertmanager is absent for the same reason**, and one more: its config
 # reloader POSTs `/-/reload` to the same port and its HTTP client has no option
 # for a client certificate either. `alerting.server.tls.clientAuth:

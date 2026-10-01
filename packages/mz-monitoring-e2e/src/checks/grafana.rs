@@ -264,6 +264,56 @@ pub async fn loki_datasource_query(ctx: &Ctx) -> Result<()> {
     .await
 }
 
+/// Grafana lists the Loki ruler's rules, read-only.
+///
+/// Grafana's alerting UI reads a Loki datasource's rules from the datasource's
+/// own URL, and the Loki gateway is what routes that URL's rule paths to the
+/// ruler. These are the two requests Grafana's rule list makes:
+///
+/// * The rule state (`/prometheus/api/v1/rules`, behind Grafana's
+///   `api/prometheus/<uid>` proxy) has to succeed. An empty list is legitimate:
+///   a ruler whose store is `local` receives none of the chart's LogQL rules.
+/// * The ruler's configuration API (behind `api/ruler/<uid>`) has to answer
+///   `404 page not found`. Grafana reads that body as "no ruler API" and shows
+///   the rules without an Edit button, which is correct: the alloy-gateway owns
+///   them and reverts an edit. A success here means the gateway is routing rule
+///   writes; any other error means Grafana would mark the datasource broken.
+pub async fn loki_rules_listed(ctx: &Ctx) -> Result<()> {
+    let target = access(ctx).await?;
+    let uid = encode_segment(&ctx.features.datasource_uid("loki"));
+    let state = format!("api/prometheus/{uid}/api/v1/rules");
+    let config = format!("api/ruler/{uid}/api/v1/rules");
+
+    retry_until(
+        "grafana lists the Loki ruler's rules, read-only",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let body = ctx.cluster.get_authenticated_json(&target, &state).await?;
+            expect_success(&body).context("listing Loki rules through Grafana")?;
+            if body
+                .pointer("/data/groups")
+                .and_then(Value::as_array)
+                .is_none()
+            {
+                bail!("the Loki rule list has no data.groups array: {body}");
+            }
+
+            match ctx.cluster.get_authenticated_json(&target, &config).await {
+                Ok(body) => bail!(
+                    "the ruler's configuration API answered through the Loki gateway, so Grafana \
+                     would offer to edit rules the alloy-gateway owns: {body}"
+                ),
+                Err(err) if format!("{err:#}").contains("page not found") => Ok(()),
+                Err(err) => {
+                    Err(err.context("probing the Loki ruler's configuration API through Grafana"))
+                }
+            }
+        },
+    )
+    .await
+}
+
 /// Query Thanos through its Grafana datasource.
 ///
 /// `up` is asserted non-empty because it is self-monitoring: the stack scrapes

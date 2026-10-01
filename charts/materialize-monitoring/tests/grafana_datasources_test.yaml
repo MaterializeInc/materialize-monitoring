@@ -4,8 +4,9 @@
 # guard against is uniformly silent — a wrong endpoint, a missing default, or a
 # missing tenant header all render an empty dashboard with no error anywhere:
 #
-#   1. Endpoints. Reads go to Thanos Query and the Loki *query frontend*; the
-#      Loki gateway is disabled in this chart, so it is not a valid target.
+#   1. Endpoints. Reads go to Thanos Query and the *Loki gateway*, which routes
+#      queries to the query frontend and rule state to the ruler. A Loki
+#      datasource on the query frontend would show Grafana no Loki rules.
 #   2. Default. The dashboards resolve `${metricsDatasource}` to whichever
 #      Prometheus-type datasource is default, so Thanos must claim it.
 #   3. Tenant. The bundled Loki runs `auth_enabled: true`, so reads without an
@@ -75,7 +76,7 @@ tests:
             prometheusType: Thanos
             httpMethod: POST
 
-  - it: should point Loki at the query frontend, not the disabled gateway
+  - it: should point Loki at the gateway, which also serves the ruler's state
     documentIndex: 1
     asserts:
       - equal:
@@ -86,7 +87,7 @@ tests:
           value: mzmon-loki
       - equal:
           path: spec.datasource.url
-          value: http://loki-query-frontend.test-monitoring.svc:3100
+          value: http://loki-gateway.test-monitoring.svc:8080
       - equal:
           path: spec.datasource.isDefault
           value: false
@@ -317,7 +318,7 @@ tests:
         documentIndex: 0
       - equal:
           path: spec.datasource.url
-          value: http://loki-query-frontend.loki.svc:3100
+          value: http://loki-gateway.loki.svc:8080
         documentIndex: 1
       - equal:
           path: spec.datasource.url

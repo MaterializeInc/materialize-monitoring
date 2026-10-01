@@ -64,7 +64,8 @@
 #     startup. Swapping it is a rebuild, not a retag.
 #   * **The Loki gateway's access-log exporter**
 #     (`loki.gateway.metrics.image`) — Chainguard publishes no equivalent.
-#     Inert unless `loki.gateway.enabled` is turned on.
+#     Set `loki.gateway.metrics.enabled: false` to run without it; the gateway
+#     then exports no request metrics.
 
 # --- Loki --------------------------------------------------------------------
 # `imagePullSecrets` for these pods comes from `pull-secret.values.yaml`; Loki
@@ -93,12 +94,18 @@ loki:
     image:
       registry: "cgr.dev"
       repository: "<ORG>/memcached-exporter"
-  # Inert unless `loki.gateway.enabled` is turned on. Chainguard publishes no
-  # `nginx-unprivileged` variant because its `nginx` already runs non-root.
+  # Chainguard publishes no `nginx-unprivileged` variant because its `nginx`
+  # already runs non-root.
+  #
+  # **The second tag this file restates.** `values.yaml` pins nginx's
+  # `-alpine-slim` variant, a suffix Chainguard does not publish, so inheriting
+  # the tag names an image that does not exist. This is the same nginx version
+  # without the suffix; move it with `loki.gateway.image.tag`.
   gateway:
     image:
       registry: "cgr.dev"
       repository: "<ORG>/nginx"
+      tag: "1.31.6"
   sidecar:
     image:
       registry: "cgr.dev"
@@ -126,10 +133,11 @@ thanos:
           repository: "<ORG>/kubectl"
           # -dev, because this sidecar runs a shell script and curls the Ruler's
           # reload endpoint. The default image is distroless and would
-          # crash-loop. This is the one place in this file that overrides a tag,
-          # and it overrides the base chart's pinned version rather than the
-          # upstream default -- so it floats where everything else here is
-          # pinned. Pin it to a versioned `-dev` tag if your catalog carries one.
+          # crash-loop. This is one of two tags this file overrides (the Loki
+          # gateway's is the other), and it overrides the base chart's pinned
+          # version rather than the upstream default -- so it floats where
+          # everything else here is pinned. Pin it to a versioned `-dev` tag if
+          # your catalog carries one.
           tag: "latest-dev"
 
 # --- Grafana -----------------------------------------------------------------
