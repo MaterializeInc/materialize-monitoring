@@ -4474,7 +4474,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Persist (Storage) (`env-persist`)
 
 Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
-Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
@@ -4487,7 +4487,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
 The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
-Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
 The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.
@@ -22457,6 +22457,25 @@ Assume SQL fluency.
 Explain Materialize-side concepts (peek, hydration, arrangement) when they appear.
 Don't restate the obvious ("Network bandwidth per pod" — they can read the title).
 
+### Terminology
+
+Titles, legends, empty-state text, and descriptions use Materialize's product vocabulary rather than its internal one.
+Product review set these three:
+
+| Write | Instead of | Means |
+|---|---|---|
+| object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
+| freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+
+Freshness is a duration, so a larger value is worse.
+Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
+
+The rule covers what a reader sees.
+Metric names, label names, query ids, and element keys keep Materialize's own spelling, since they have to match what Materialize emits or are not shown.
+_Sink Lag_ keeps its name because it is a byte backlog, not a freshness reading.
+Metric and log _collection_ — gathering telemetry — is a different sense of the word and is unaffected.
+
 ### Structure
 
 The registry's `description` is structured, and `format_description` renders it to the shape below: `summary` in bold
@@ -24107,7 +24126,16 @@ rather than updating the fixture.
 
 ## Allow-listed divergences
 
-Both parity allow-lists — shell fields and queries — are checked **in both directions**.
+The parity suite records deliberate divergences in four lists:
+
+| List | Records |
+|---|---|
+| `ALLOWED` | dashboard shell fields |
+| `QUERY_DIVERGENCES` | panels whose registry query differs from the baseline's expression |
+| `RETITLED` | panels retitled after the port, each with the title it carries now |
+| `RELABELED_COLUMNS` | table column headers renamed after the port, applied to the baseline before transformations are compared |
+
+Each is checked **in both directions**.
 An entry that no longer diverges fails too, so the list cannot rot into a set of stale excuses.
 
 That bidirectional check is what proved the four registry fixes landed: twenty-one entries went stale at once, and the

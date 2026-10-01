@@ -6890,7 +6890,7 @@ rather than a load one.
 Live SUBSCRIBE sessions — long-running queries that stream updates to a
 client as data changes. A handful of <code>system</code> subscribes are
 Materialize&rsquo;s own internal probes; a persistently climbing <code>user</code> count
-is a classic leaked-connection signal.
+usually means a client is opening subscribes and never closing them.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.compute.subscribes.active-tabs" id="materialize.compute.subscribes.active-tab-0" checked>
   <label for="materialize.compute.subscribes.active-tab-0">PromQL</label>
@@ -6933,7 +6933,7 @@ usually worth a second look.
 <h4 id="materialize.compute.hydration.currently_hydrating">materialize.compute.hydration.currently_hydrating
   <a class="anchor" href="#materialize.compute.hydration.currently_hydrating">#</a>
 </h4>
-Collections still rebuilding their in-memory state — a live
+Objects still rebuilding their in-memory state — a live
 hydration-queue proxy. After a restart, replica creation, or some DDL, a
 dataflow has to rebuild from persisted storage before it can serve, and
 until it does it produces no results.
@@ -6964,7 +6964,7 @@ until it does it produces no results.
 <h4 id="materialize.compute.hydration.queue_size">materialize.compute.hydration.queue_size
   <a class="anchor" href="#materialize.compute.hydration.queue_size">#</a>
 </h4>
-Collections waiting in each replica&rsquo;s hydration queue. environmentd
+Objects waiting in each replica&rsquo;s hydration queue. environmentd
 schedules hydration in batches; a backlog means work is arriving faster
 than the replica can rebuild it.
 <div class="book-tabs">
@@ -6989,7 +6989,7 @@ than the replica can rebuild it.
 <h4 id="materialize.compute.hydration.slowest_collections">materialize.compute.hydration.slowest_collections
   <a class="anchor" href="#materialize.compute.hydration.slowest_collections">#</a>
 </h4>
-The 15 collections that took longest to finish hydrating. Hydration time
+The 15 objects that took longest to finish hydrating. Hydration time
 scales with the size of the state being rebuilt, so large materialized
 views and indexes naturally top the list.
 <div class="book-tabs">
@@ -7016,7 +7016,7 @@ views and indexes naturally top the list.
 <h4 id="materialize.compute.freshness.lag_by_cluster">materialize.compute.freshness.lag_by_cluster
   <a class="anchor" href="#materialize.compute.freshness.lag_by_cluster">#</a>
 </h4>
-How far behind real time each cluster&rsquo;s most-lagged collection is — the
+How far behind real time each cluster&rsquo;s least fresh object is — the
 worst-case freshness across every index, materialized view, and source
 on the cluster.
 <div class="book-tabs">
@@ -7040,8 +7040,8 @@ on the cluster.
 <h4 id="materialize.compute.freshness.lag_total_by_cluster">materialize.compute.freshness.lag_total_by_cluster
   <a class="anchor" href="#materialize.compute.freshness.lag_total_by_cluster">#</a>
 </h4>
-The lag of every collection on each cluster, added together — one number
-for how far behind the cluster is in total.
+The freshness of every object on each cluster, added together — one
+number for how far behind the cluster is in total.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.compute.freshness.lag_total_by_cluster-tabs" id="materialize.compute.freshness.lag_total_by_cluster-tab-0" checked>
   <label for="materialize.compute.freshness.lag_total_by_cluster-tab-0">PromQL</label>
@@ -7065,8 +7065,8 @@ for how far behind the cluster is in total.
 <h4 id="materialize.compute.freshness.top_collections">materialize.compute.freshness.top_collections
   <a class="anchor" href="#materialize.compute.freshness.top_collections">#</a>
 </h4>
-The 15 collections whose results are furthest behind real time —
-the per-collection breakdown behind the per-cluster freshness lag,
+The 15 objects whose results are furthest behind real time —
+the per-object breakdown behind <em>Worst Freshness by Cluster</em>,
 labeled by object name.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.compute.freshness.top_collections-tabs" id="materialize.compute.freshness.top_collections-tab-0" checked>
@@ -7223,8 +7223,8 @@ The same maintenance CPU, split per worker — each worker tops out at 1.0.
 <h4 id="materialize.compute.arrangements.records.system">materialize.compute.arrangements.records.system
   <a class="anchor" href="#materialize.compute.arrangements.records.system">#</a>
 </h4>
-Row counts of arrangements for Materialize&rsquo;s internal system collections
-(collection id starts with <code>s</code>). These back the catalog and internal
+Row counts of arrangements for Materialize&rsquo;s internal system objects
+(object id starts with <code>s</code>). These back the catalog and internal
 probes, not user data, so they shouldn&rsquo;t grow with your workload —
 unexpected growth here can point at a Materialize bug.
 <div class="book-tabs">
@@ -7249,9 +7249,9 @@ unexpected growth here can point at a Materialize bug.
 <h4 id="materialize.compute.arrangements.records.user">materialize.compute.arrangements.records.user
   <a class="anchor" href="#materialize.compute.arrangements.records.user">#</a>
 </h4>
-Row counts of arrangements for your compute objects (collection id starts
+Row counts of arrangements for your compute objects (object id starts
 with <code>u</code>) — the row count of every user index and materialized view, and
-the primary driver of cluster memory. Growth on a collection tracks the
+the primary driver of cluster memory. Growth on an object tracks the
 size of its underlying data.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.compute.arrangements.records.user-tabs" id="materialize.compute.arrangements.records.user-tab-0" checked>
@@ -7275,7 +7275,7 @@ size of its underlying data.
 <h4 id="materialize.compute.arrangements.records.transient">materialize.compute.arrangements.records.transient
   <a class="anchor" href="#materialize.compute.arrangements.records.transient">#</a>
 </h4>
-Row counts of transient (collection id <code>t*</code>) and uncategorized (<code>none</code>)
+Row counts of transient (object id <code>t*</code>) and uncategorized (<code>none</code>)
 arrangements — short-lived intermediates from query optimization and
 dataflow execution. Normally small and ephemeral.
 <div class="book-tabs">
@@ -7798,7 +7798,7 @@ Bytes per second exchanged with the metadata database, by operation.
 <h4 id="materialize.consensus.ops.collections">materialize.consensus.ops.collections
   <a class="anchor" href="#materialize.consensus.ops.collections">#</a>
 </h4>
-Durable collections in this environment — each one a stream of
+Durable objects in this environment — each one a stream of
 commits to the metadata database.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.consensus.ops.collections-tabs" id="materialize.consensus.ops.collections-tab-0" checked>
@@ -8046,7 +8046,7 @@ versions deleted.
   <a class="anchor" href="#materialize.consensus.state.live">#</a>
 </h4>
 State versions currently stored in the metadata database, summed
-across every collection — roughly the number of rows persist keeps
+across every object — roughly the number of rows persist keeps
 there.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.consensus.state.live-tabs" id="materialize.consensus.state.live-tab-0" checked>
@@ -8060,7 +8060,7 @@ there.
 <h4 id="materialize.consensus.state.held">materialize.consensus.state.held
   <a class="anchor" href="#materialize.consensus.state.held">#</a>
 </h4>
-The ten collections holding the most old state versions, which cleanup
+The ten objects holding the most old state versions, which cleanup
 cannot delete until whatever is reading them moves on.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.consensus.state.held-tabs" id="materialize.consensus.state.held-tab-0" checked>
@@ -8094,7 +8094,7 @@ another process had already done the work.
 <h4 id="materialize.consensus.gc.lease_timeouts">materialize.consensus.gc.lease_timeouts
   <a class="anchor" href="#materialize.consensus.gc.lease_timeouts">#</a>
 </h4>
-Readers whose lease on a collection expired, per second.
+Readers whose lease on an object expired, per second.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.consensus.gc.lease_timeouts-tabs" id="materialize.consensus.gc.lease_timeouts-tab-0" checked>
   <label for="materialize.consensus.gc.lease_timeouts-tab-0">PromQL</label>
@@ -8394,7 +8394,7 @@ replicas standing behind it.
 <h4 id="materialize.generations.hydrating">materialize.generations.hydrating
   <a class="anchor" href="#materialize.generations.hydrating">#</a>
 </h4>
-Collections still rebuilding their in-memory state, split by generation —
+Objects still rebuilding their in-memory state, split by generation —
 the panel that answers whether a new generation is ready to promote.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.generations.hydrating-tabs" id="materialize.generations.hydrating-tab-0" checked>
@@ -8421,7 +8421,7 @@ the panel that answers whether a new generation is ready to promote.
 <h4 id="materialize.generations.collections">materialize.generations.collections
   <a class="anchor" href="#materialize.generations.collections">#</a>
 </h4>
-Collections each generation is tracking — the denominator for hydration,
+Objects each generation is tracking — the denominator for hydration,
 and the shape of a new generation building out its dataflows.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.generations.collections-tabs" id="materialize.generations.collections-tab-0" checked>
@@ -8448,8 +8448,8 @@ and the shape of a new generation building out its dataflows.
 <h4 id="materialize.generations.lag.max">materialize.generations.lag.max
   <a class="anchor" href="#materialize.generations.lag.max">#</a>
 </h4>
-The worst lag in each generation — how far behind real time its
-most-lagged collection is.
+The worst freshness in each generation — how far behind real time its
+least fresh object is.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.generations.lag.max-tabs" id="materialize.generations.lag.max-tab-0" checked>
   <label for="materialize.generations.lag.max-tab-0">PromQL</label>
@@ -8473,8 +8473,8 @@ most-lagged collection is.
 <h4 id="materialize.generations.lag.total">materialize.generations.lag.total
   <a class="anchor" href="#materialize.generations.lag.total">#</a>
 </h4>
-Every hydrated collection&rsquo;s lag in each generation, added together — how
-far behind the generation is in total.
+Every hydrated object&rsquo;s freshness in each generation, added together —
+how far behind the generation is in total.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.generations.lag.total-tabs" id="materialize.generations.lag.total-tab-0" checked>
   <label for="materialize.generations.lag.total-tab-0">PromQL</label>
@@ -8500,8 +8500,8 @@ far behind the generation is in total.
 <h4 id="materialize.generations.lag.total_by_cluster">materialize.generations.lag.total_by_cluster
   <a class="anchor" href="#materialize.generations.lag.total_by_cluster">#</a>
 </h4>
-Total lag split by generation <em>and</em> cluster — which cluster in which
-generation is carrying the lag.
+Total freshness split by generation <em>and</em> cluster — which cluster in
+which generation is furthest behind.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.generations.lag.total_by_cluster-tabs" id="materialize.generations.lag.total_by_cluster-tab-0" checked>
   <label for="materialize.generations.lag.total_by_cluster-tab-0">PromQL</label>
@@ -8733,8 +8733,8 @@ upgrade.
 <h4 id="materialize.info.max_lag">materialize.info.max_lag
   <a class="anchor" href="#materialize.info.max_lag">#</a>
 </h4>
-The worst lag seen anywhere in the environment over the
-selected window — how far the most-behind collection&rsquo;s output trailed
+The worst freshness seen anywhere in the environment over the
+selected window — how far the most-behind object&rsquo;s output trailed
 real time. A top-level freshness pointer.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.info.max_lag-tabs" id="materialize.info.max_lag-tab-0" checked>
@@ -10202,7 +10202,7 @@ remove.
 <h4 id="materialize.persist.usage.largest">materialize.persist.usage.largest
   <a class="anchor" href="#materialize.persist.usage.largest">#</a>
 </h4>
-The ten collections using the most object storage, now.
+The ten objects using the most object storage, now.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.persist.usage.largest-tabs" id="materialize.persist.usage.largest-tab-0" checked>
   <label for="materialize.persist.usage.largest-tab-0">PromQL</label>
@@ -10218,7 +10218,7 @@ The ten collections using the most object storage, now.
 <h4 id="materialize.persist.usage.held">materialize.persist.usage.held
   <a class="anchor" href="#materialize.persist.usage.held">#</a>
 </h4>
-The ten collections keeping the most data only because a reader still
+The ten objects keeping the most data only because a reader still
 needs an older version of it.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="materialize.persist.usage.held-tabs" id="materialize.persist.usage.held-tab-0" checked>

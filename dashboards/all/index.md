@@ -43,7 +43,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/dashboards/grafana/env-top.json?xxhash=067e270f5f05f836" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/dashboards/grafana/env-top.json?xxhash=204980476eb7d58d" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -129,7 +129,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/dashboards/grafana/env-upgrade.json?xxhash=67ea29c2cabdc309" download="mz-mon-env-upgrade.json"><code>env-upgrade.json</code></a>
+        <a href="/materialize-monitoring/dashboards/grafana/env-upgrade.json?xxhash=9a7e7c03f84f2da5" download="mz-mon-env-upgrade.json"><code>env-upgrade.json</code></a>
         <br /><small>UID <code>mz-mon-env-upgrade</code></small>
       </td>
       <td>
@@ -155,7 +155,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Persist (Storage) (`env-persist`)
 
 Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
-Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
@@ -175,7 +175,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/dashboards/grafana/env-persist.json?xxhash=230c947af037b854" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <a href="/materialize-monitoring/dashboards/grafana/env-persist.json?xxhash=7efe94408edca7fd" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
         <br /><small>UID <code>mz-mon-env-persist</code></small>
       </td>
       <td>
@@ -201,7 +201,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
 The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
-Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
 The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.
@@ -222,7 +222,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/dashboards/grafana/env-consensus.json?xxhash=4d2120bdc6f46bff" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
+        <a href="/materialize-monitoring/dashboards/grafana/env-consensus.json?xxhash=e243ee012218ef7d" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
         <br /><small>UID <code>mz-mon-env-consensus</code></small>
       </td>
       <td>
@@ -404,7 +404,7 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/dashboards/grafana/infra-cloud.json?xxhash=41720f670e80e137" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
+        <a href="/materialize-monitoring/dashboards/grafana/infra-cloud.json?xxhash=fd53e6e0add2299f" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
         <br /><small>UID <code>mz-mon-infra-cloud</code></small>
       </td>
       <td>
