@@ -219,13 +219,17 @@ spec:
                   spec:
                     expr: |
                       sum by (resourceName) (
-                        1 - last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+                        1 - min by (resourceName, dimensionVmname) (
+                          last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+                        )
                       )
                     legendFormat: '{{resourceName}}'
                     qryType: 1
                     query: |
                       sum by (resourceName) (
-                        1 - last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+                        1 - min by (resourceName, dimensionVmname) (
+                          last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+                        )
                       )
                   version: v0
                 refId: query-0
@@ -237,6 +241,8 @@ spec:
           **Nominal:** Zero.
 
           **Unhealthy:** A VM down while Kubernetes still lists its node. Azure took it down for maintenance or a host fault, or its owner stopped it.
+
+          Azure splits a VM's series by `Context`, which says whether the platform or its owner took it down, so one VM can carry two series inside the lookback. Each VM is taken at its worst before counting.
         id: 1039
         links: []
         title: Node VMs Down
@@ -862,16 +868,37 @@ spec:
                   spec:
                     expr: |
                       sum by (vm_family, location) (
-                        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_(cpus|local_ssd_total_storage)_per_vm_family_exceeded(_total)?"}[1h])
+                        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_exceeded(_total)?"}[1h])
                       )
-                    legendFormat: '{{vm_family}} {{location}}'
+                    legendFormat: CPU {{vm_family}} {{location}}
                     qryType: 1
                     query: |
                       sum by (vm_family, location) (
-                        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_(cpus|local_ssd_total_storage)_per_vm_family_exceeded(_total)?"}[1h])
+                        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_exceeded(_total)?"}[1h])
                       )
                   version: v0
                 refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (vm_family, location) (
+                        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded(_total)?"}[1h])
+                      )
+                    legendFormat: Local SSD {{vm_family}} {{location}}
+                    qryType: 1
+                    query: |
+                      sum by (vm_family, location) (
+                        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded(_total)?"}[1h])
+                      )
+                  version: v0
+                refId: query-1
             queryOptions: {}
             transformations: []
         description: |-
@@ -879,9 +906,9 @@ spec:
 
           **Nominal:** Zero.
 
-          **Unhealthy:** Any refusal is a node that could not be created. The family and location say which quota to raise.
+          **Unhealthy:** Any refusal is a node that could not be created. The quota, family and location say which limit to raise.
 
-          Written only when a request is refused, so there is usually no series at all.
+          Written only when a request is refused, so there is usually no series at all. One expression per quota: `increase` drops the metric name, so a single expression over both would merge CPU and local SSD refusals for the same family.
         id: 1036
         links: []
         title: Quota Refusals per Hour

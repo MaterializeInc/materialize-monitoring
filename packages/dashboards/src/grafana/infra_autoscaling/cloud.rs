@@ -186,7 +186,13 @@ fn gce_ssd_quota(q: &Queries) -> dashboardv2::PanelKind {
 
 fn gce_refusals(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Quota Refusals per Hour")
-        .query(q.get("infra.autoscaling.cloud.gce.refusals").legend(FAMILY))
+        .query(q.legended(
+            "infra.autoscaling.cloud.gce.refusals",
+            &[
+                "CPU {{vm_family}} {{location}}",
+                "Local SSD {{vm_family}} {{location}}",
+            ],
+        ))
         .unit("short")
         .min(0.0)
         // Written only when a request is refused, so empty is the healthy

@@ -608,15 +608,22 @@ queries:
         Requests Compute Engine refused for CPU or local SSD quota, per hour.
       nominal: Zero.
       unhealthy: |
-        Any refusal is a node that could not be created. The family and
-        location say which quota to raise.
+        Any refusal is a node that could not be created. The quota, family
+        and location say which limit to raise.
       notes: |
         Written only when a request is refused, so there is usually no series
-        at all.
-    promQL: |
-      sum by (vm_family, location) (
-        increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_(cpus|local_ssd_total_storage)_per_vm_family_exceeded(_total)?"}[1h])
-      )
+        at all. One expression per quota: `increase` drops the metric name,
+        so a single expression over both would merge CPU and local SSD
+        refusals for the same family.
+    promQL:
+      - |
+        sum by (vm_family, location) (
+          increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_exceeded(_total)?"}[1h])
+        )
+      - |
+        sum by (vm_family, location) (
+          increase({__name__=~"stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded(_total)?"}[1h])
+        )
 
   # --- Cloud capacity: AKS --------------------------------------------------------
   - id: infra.autoscaling.cloud.aks.unschedulable
@@ -676,9 +683,15 @@ queries:
       unhealthy: |
         A VM down while Kubernetes still lists its node. Azure took it down
         for maintenance or a host fault, or its owner stopped it.
+      notes: |
+        Azure splits a VM's series by `Context`, which says whether the
+        platform or its owner took it down, so one VM can carry two series
+        inside the lookback. Each VM is taken at its worst before counting.
     promQL: |
       sum by (resourceName) (
-        1 - last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+        1 - min by (resourceName, dimensionVmname) (
+          last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
+        )
       )
 
   # --- Events ---------------------------------------------------------------------
