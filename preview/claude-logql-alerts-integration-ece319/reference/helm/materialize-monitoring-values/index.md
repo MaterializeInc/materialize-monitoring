@@ -941,7 +941,8 @@ point rather than a researched one.
     "secretName": "",
     "services": [
       "loki-distributor",
-      "loki-query-frontend"
+      "loki-query-frontend",
+      "loki-ruler"
     ]
   },
   "thanos": {

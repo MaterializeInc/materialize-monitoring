@@ -112,7 +112,7 @@ Most requirements are **inferred**.
 A metric the table does not claim fails the build.
 
 A LogQL alert names no metrics, so nothing is inferred for it.
-Its requirements are what it declares, and the chart installs it only where the release runs the Loki ruler and the alloy-gateway that delivers it.
+Its requirements are what it declares, and the chart installs it only where the release can deliver it: a Loki ruler, the alloy-gateway, and a rule store the ruler API can write to.
 
 **`requires` declares what metric names cannot show.**
 An alert whose only metric is `up` MUST declare what it is about, since `up` exists for every target.
