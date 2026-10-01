@@ -452,7 +452,7 @@ The per-pool panels need kube-state-metrics to publish node labels, which the ch
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-autoscaling-dashboards/dashboards/grafana/infra-autoscaling.json?xxhash=cc81a87850cb1f87" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-autoscaling-dashboards/dashboards/grafana/infra-autoscaling.json?xxhash=a0d6ff29eb206fc2" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
         <br /><small>UID <code>mz-mon-infra-autoscaling</code></small>
       </td>
       <td>

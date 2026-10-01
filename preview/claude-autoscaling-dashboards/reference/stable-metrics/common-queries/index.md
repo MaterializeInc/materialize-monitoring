@@ -2936,7 +2936,12 @@ Requests Compute Engine refused for CPU or local SSD quota, per hour.
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>{__name__<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_(cpus|local_ssd_total_storage)_per_vm_family_exceeded(_total)?</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>{__name__<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_exceeded(_total)?</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>{__name__<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded(_total)?</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -2994,7 +2999,9 @@ each five minutes.
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> last_over_time<span style="color:#f92672">(</span>azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName, dimensionVmname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
