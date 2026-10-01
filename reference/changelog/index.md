@@ -15,9 +15,27 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.28.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.29.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.28.0
+
+* Render LogQL alerts from the query registry and deliver them to the Loki ruler
+    * [materialize-monitoring#426](https://github.com/MaterializeInc/materialize-monitoring/pull/426)
+    * Bundled log-derived alerts, evaluated by the Loki ruler. `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` are in the default set. `trace-logging-enabled` installs when selected.
+    * Every bundled `PrometheusRule` now carries `mzmon.materialize.cloud/flavor: promql` or `logql`. The alloy-gateway writes `logql` ones into the Loki ruler through its API, including a deployment's own. They install only where the ruler's rule store accepts writes; a `local` store, which a filesystem-only Loki gets, leaves them out with a render warning.
+    * `thanos.ruler.autoImportPrometheusRules.labelSelector` defaults to `mzmon.materialize.cloud/flavor!: logql`. A replacement selector has to keep that key, or select `flavor: promql`. A cluster running a Prometheus Operator admission webhook has to exclude `flavor: logql` from it.
+    * New `rules.logTenants`: the Loki tenants the log-derived rules are written into. Empty means `pipeline.logging.tenancy.staticTenant`. List them under `byEnvironment` tenancy.
+    * The generated rule index moved from `pre-rendered/rules/prometheus/_index.yaml` to `pre-rendered/rules/_index.yaml`, and records each rule's `engine`.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * chore(deps): update rust crate tokio-rustls to v0.26.6
+        * [materialize-monitoring#427](https://github.com/MaterializeInc/materialize-monitoring/pull/427)
 
 ## Container Images v0.7.0 (Unreleased)
 
