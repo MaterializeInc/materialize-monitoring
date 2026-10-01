@@ -2445,16 +2445,14 @@ networkpolicy:
                 matchLabels:
                   app: grafana
           ports:
-            - port: http-metrics
+            - port: http
               protocol: TCP
       podSelector:
         matchExpressions:
           - key: app.kubernetes.io/component
             operator: In
             values:
-              - read
-              - write
-              - single-binary
+              - gateway
         matchLabels:
           app.kubernetes.io/instance: t
           app.kubernetes.io/name: loki

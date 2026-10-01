@@ -1,0 +1,480 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# The Loki gateway: the nginx.conf this chart renders for it, the profiles that
+# move it to TLS, and the validators on either side of it.
+#
+# The nginx.conf is rendered by the Loki subchart from an umbrella helper
+# (`mzmon.loki.gateway.nginxConf`), so the routing cases target the subchart's
+# ConfigMap. Its behaviour was also exercised against the pinned nginx image —
+# routing, per-request DNS, and certificate rotation — which a render cannot
+# show; these cases pin the text that behaviour came from.
+suite: loki gateway
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.loki: true
+  tags.managed-grafana: true
+  loki.loki.storage.bucketNames.chunks: test-chunks
+  loki.loki.storage.bucketNames.ruler: test-ruler
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: test-monitoring
+  # The mtls profile moves the datasource to https, and the render refuses an
+  # https datasource with no CA. The profile names a Secret; this stands in for it.
+  connections.datasources.loki.tls.caPem: |
+    -----BEGIN CERTIFICATE-----
+    placeholder
+    -----END CERTIFICATE-----
+tests:
+  # --- on by default, and what Grafana dials ---------------------------------
+  - it: runs two pinned replicas by default
+    template: ../charts/loki/templates/gateway/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/nginxinc/nginx-unprivileged:1.31.6-alpine-slim
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: ghcr.io/jkroepke/access-log-exporter:0.4.11
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  # The subchart's own flag points at the client port; the chart's is appended
+  # and wins, because the exporter parses with Go's `flag`, where the last
+  # occurrence of a flag sets it.
+  - it: points the exporter at the loopback status listener, last
+    template: ../charts/loki/templates/gateway/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].args[4]
+          value: --nginx.scrape-url=http://127.0.0.1:8081/stub_status
+      - lengthEqual:
+          path: spec.template.spec.containers[1].args
+          count: 5
+
+  # The two fields are mutually exclusive, and the API server refuses a PDB that
+  # sets both. Unlike `queryScheduler`, the gateway has no deprecated top-level
+  # `maxUnavailable` for Helm's merge to carry in; this pins that it stays so.
+  - it: keeps one replica through voluntary disruption
+    template: ../charts/loki/templates/gateway/pdb.yaml
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 1
+      - notExists:
+          path: spec.maxUnavailable
+
+  - it: serves on the container port, so TLS changes only the scheme
+    template: ../charts/loki/templates/gateway/service.yaml
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+
+  - it: points Grafana's Loki datasource at the gateway
+    template: templates/grafana-datasources.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-datasource
+    asserts:
+      - equal:
+          path: spec.datasource.url
+          value: http://loki-gateway.test-monitoring.svc:8080
+
+  # The same split the canary and the memcached exporters get: the exporter is
+  # plaintext whatever the gateway's listener does.
+  - it: moves the exporter to the plaintext ServiceMonitor
+    template: ../charts/loki/templates/gateway/service-exporter.yaml
+    asserts:
+      - equal:
+          path: metadata.labels["prometheus.io/service-monitor"]
+          value: "false"
+      - equal:
+          path: metadata.labels["monitoring.materialize.cloud/scrape-scheme"]
+          value: plaintext
+
+  # --- the routing -------------------------------------------------------------
+  - it: routes reads to the query frontend
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location \^~ /loki/api/v1/ \{\n\s+proxy_set_header X-Query-Tags [^\n]+\n\s+set \$backend\s+"http://loki-query-frontend\.test-monitoring\.svc\.cluster\.local:3100";\n\s+proxy_pass\s+\$backend\$request_uri;'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location = /loki/api/v1/tail \{\n\s+proxy_set_header Upgrade \$http_upgrade;'
+
+  # Grafana's alert list for a Loki datasource reads exactly these two paths.
+  - it: routes rule and alert state to the ruler, GET only
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location = /prometheus/api/v1/rules \{\n\s+limit_except GET \{\n\s+deny all;\n\s+\}\n\s+set \$backend\s+"http://loki-ruler\.test-monitoring\.svc\.cluster\.local:3100";'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location = /prometheus/api/v1/alerts \{\n\s+limit_except GET \{\n\s+deny all;\n\s+\}\n\s+set \$backend\s+"http://loki-ruler\.'
+
+  # The body is the point. Grafana reads "page not found" from the ruler-config
+  # probe as "this datasource has no ruler API" and shows the rules read-only;
+  # nginx's own 404 page says "Not Found" and would not match.
+  - it: refuses rule definitions with the body Grafana reads as unsupported
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location \^~ /api/prom/rules \{\n\s+return 404 "404 page not found\\n";'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location \^~ /loki/api/v1/rules \{\n\s+return 404 "404 page not found\\n";'
+
+  - it: refuses writes and administration
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location = /loki/api/v1/push \{\n\s+return 404'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'location \^~ /loki/api/v1/delete \{\n\s+return 404'
+      - notMatchRegex:
+          path: data["nginx.conf"]
+          pattern: 'loki-distributor|loki-compactor|loki-ingester|/flush|/ring'
+
+  # A variable in proxy_pass is what makes nginx resolve per request; `valid`
+  # bounds the cache whatever TTL the cluster's DNS hands out.
+  - it: resolves each backend per request, with a bounded cache
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'resolver kube-dns\.kube-system\.svc\.cluster\.local\. valid=10s;'
+      - notMatchRegex:
+          path: data["nginx.conf"]
+          pattern: 'proxy_pass\s+http'
+      - notMatchRegex:
+          path: data["nginx.conf"]
+          pattern: 'upstream \S+ \{'
+
+  - it: serves stub_status on loopback only
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'listen 127\.0\.0\.1:8081;\n\s+access_log off;\n\n\s+location = /stub_status \{'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'listen 8080;\n\s+listen \[::\]:8080;'
+
+  - it: logs only failed requests by default
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'access_log\s+/dev/stderr\s+main\s+if=\$loggable;'
+
+  - it: routes a single binary to the one loki Service
+    values:
+      - ../profiles/loki-test.values.yaml
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'set \$backend\s+"http://loki\.test-monitoring\.svc\.cluster\.local:3100";\n\s+proxy_pass\s+\$backend\$request_uri;\n\s+\}\n\s+location = /prometheus/api/v1/alerts'
+      - notMatchRegex:
+          path: data["nginx.conf"]
+          pattern: 'loki-query-frontend|loki-ruler'
+
+  - it: lets Grafana keep its default URL under a single binary
+    values:
+      - ../profiles/loki-test.values.yaml
+    template: templates/grafana-datasources.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-datasource
+    asserts:
+      - equal:
+          path: spec.datasource.url
+          value: http://loki-gateway.test-monitoring.svc:8080
+
+  - it: opens the gateway's port to the ingress selector
+    template: ../charts/loki/templates/networkpolicy.yaml
+    documentSelector:
+      path: metadata.name
+      value: loki-ingress
+    asserts:
+      - equal:
+          path: spec.podSelector.matchExpressions[0].values
+          value: [gateway]
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: http
+
+  # --- TLS, phase by phase -----------------------------------------------------
+  - it: serves and dials TLS under the mtls profile
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'listen 8080 ssl;'
+      # Named with a variable, so nginx re-reads a renewed certificate.
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'ssl_certificate\s+/etc/mzmon/tls/tls\.crt\$mzmon_tls_reload;\n\s+ssl_certificate_key\s+/etc/mzmon/tls/tls\.key\$mzmon_tls_reload;\n\s+ssl_certificate_cache max=4;'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'proxy_ssl_trusted_certificate /etc/mzmon/tls/ca\.crt;\n\s+proxy_ssl_verify\s+on;'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: '"https://loki-ruler\.test-monitoring\.svc\.cluster\.local:3100"'
+      - notMatchRegex:
+          path: data["nginx.conf"]
+          pattern: 'ssl_client_certificate|proxy_ssl_certificate '
+
+  - it: mounts the certificate and probes over HTTPS under the mtls profile
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/gateway/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value:
+            path: /
+            port: http
+            scheme: HTTPS
+      - equal:
+          path: spec.template.spec.volumes[?(@.name=="mzmon-tls")].secret
+          value:
+            secretName: mzmon-loki-tls
+            optional: false
+
+  - it: moves Grafana to https on the gateway under the mtls profile
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/grafana-datasources.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-datasource
+    asserts:
+      - equal:
+          path: spec.datasource.url
+          value: https://loki-gateway.test-monitoring.svc:8080
+
+  - it: verifies a presented certificate and presents its own at phase 2
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: ../charts/loki/templates/gateway/configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'ssl_client_certificate /etc/mzmon/tls/ca\.crt;\n\s+ssl_verify_client\s+optional;'
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: 'proxy_ssl_certificate\s+/etc/mzmon/tls/tls\.crt\$mzmon_tls_reload;\n\s+proxy_ssl_certificate_key\s+/etc/mzmon/tls/tls\.key\$mzmon_tls_reload;'
+
+  - it: has Grafana present its certificate to the gateway at phase 2
+    values:
+      - ../profiles/mtls.values.yaml
+      - ../profiles/mtls-phase2.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/grafana-datasources.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-datasource
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.tlsAuth
+          value: true
+      - contains:
+          path: spec.valuesFrom
+          content:
+            targetPath: secureJsonData.tlsClientCert
+            valueFrom:
+              secretKeyRef:
+                name: mzmon-grafana-tls
+                key: tls.crt
+
+  - it: covers the gateway's name on Loki's certificate
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+    template: templates/certificates.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-loki-tls
+    asserts:
+      - contains:
+          path: spec.dnsNames
+          content: loki-gateway.test-monitoring.svc
+
+  # --- validators --------------------------------------------------------------
+  - it: refuses a datasource left on a gateway that is off
+    set:
+      loki.gateway.enabled: false
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.gateway.enabled is off, but connections.datasources.loki.url"
+
+  - it: accepts the gateway off with the datasource on the query frontend
+    set:
+      loki.gateway.enabled: false
+      connections.datasources.loki.url: 'http://loki-query-frontend.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: refuses a plaintext gateway in front of a TLS Loki
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.gateway.nginxConfig.schema: http
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "gateway would send plaintext at a TLS port"
+
+  - it: refuses a TLS gateway in front of a plaintext Loki
+    set:
+      loki.gateway.nginxConfig.schema: https
+      loki.gateway.nginxConfig.tls.upstreamCaFile: /etc/mzmon/tls/ca.crt
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "open TLS against a plaintext port"
+
+  - it: refuses https upstream with no CA to verify against
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.gateway.nginxConfig.tls.upstreamCaFile: ""
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "no loki.gateway.nginxConfig.tls.upstreamCaFile"
+
+  - it: refuses a half client keypair
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.gateway.nginxConfig.tls.upstreamCertFile: /etc/mzmon/tls/tls.crt
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "one of upstreamCertFile and upstreamKeyFile without the other"
+
+  - it: refuses a TLS listener with no certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.gateway.nginxConfig.tls.certFile: ""
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "listener has no certificate to serve"
+
+  - it: refuses a TLS listener probed over plaintext
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      loki.gateway.readinessProbe.httpGet.scheme: HTTP
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "readinessProbe.httpGet.scheme is not HTTPS"
+
+  - it: refuses a client CA with no TLS listener to use it
+    set:
+      loki.gateway.nginxConfig.tls.clientCaFile: /etc/mzmon/tls/ca.crt
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "no TLS listener to verify client certificates on"
+
+  - it: refuses an https datasource against a plaintext gateway
+    set:
+      connections.datasources.loki.url: 'https://loki-gateway.{{ include "mzmon.loki.namespace" $ }}.svc:8080'
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "the gateway answers in plaintext"
+
+  - it: refuses a plaintext datasource against a TLS gateway
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      connections.datasources.loki.url: 'http://loki-gateway.{{ include "mzmon.loki.namespace" $ }}.svc:8080'
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "send plaintext to a TLS listener"
+
+  # The TLS keys are this chart's nginx.conf's, so a replacement file owns them.
+  - it: leaves a replacement nginx.conf's TLS to its author
+    set:
+      loki.gateway.nginxConfig.file: "events {}"
+      loki.gateway.nginxConfig.tls.clientCaFile: /etc/mzmon/tls/ca.crt
+    template: validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: refuses an https datasource whose host is not on Loki's certificate
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      certificates.components.loki.services: [loki-distributor, loki-query-frontend, loki-ruler]
+    template: validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'connections.datasources.loki.url dials "loki-gateway.test-monitoring.svc", which is not a SAN'
+
+  # --- registry profiles -------------------------------------------------------
+  # Chainguard publishes no `-alpine-slim` tag, so inheriting values.yaml's would
+  # name an image that does not exist.
+  - it: gives the Chainguard nginx a tag Chainguard publishes
+    values:
+      - ../profiles/registry/chainguard.values.yaml
+    template: ../charts/loki/templates/gateway/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: cgr.dev/<ORG>/nginx:1.31.6

@@ -74,6 +74,10 @@ Usage:
     {{- $errors = concat $errors $res.errors | default list }}
     {{- $warnings = concat $warnings $res.warnings | default list }}
 
+    {{- $res := include "mzmon.loki.validate.gateway" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+
     {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}
       {{- $res := include "mzmon.loki.validate.ruler" $ | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}

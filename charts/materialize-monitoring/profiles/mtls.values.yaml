@@ -13,6 +13,7 @@
 # through its subchart:
 #
 #   alloy-gateway -> Loki distributor      (Loki serves TLS on 3100)
+#   Grafana -> Loki gateway -> Loki        (the Loki gateway serves TLS on 8080)
 #   alloy-gateway -> Thanos Receive        (Receive serves TLS on remote-write)
 #   both rulers   -> Alertmanager          (Alertmanager serves TLS on 9093)
 #   Grafana       -> Alertmanager          (the same listener)
@@ -263,6 +264,39 @@ loki:
         mountPath: /etc/mzmon/tls
         readOnly: true
 
+  # The Loki gateway (nginx, not the alloy-gateway) is a server to Grafana and a
+  # client of Loki, so it moves on both sides at once. It renders from its own
+  # template, so `defaults` reaches neither its mount nor its probe — the same
+  # asymmetry as the canary above. It serves Loki's certificate, which carries
+  # `loki-gateway` among its SANs.
+  #
+  # nginx reads the certificate per handshake through a one-minute cache, so a
+  # renewal is picked up without a restart. The CA is read at startup.
+  gateway:
+    nginxConfig:
+      # The listener Grafana dials.
+      ssl: true
+      # The connections to the query frontend and the ruler, verified against
+      # the internal CA under each Service's own name.
+      schema: https
+      tls:
+        certFile: /etc/mzmon/tls/tls.crt
+        keyFile: /etc/mzmon/tls/tls.key
+        upstreamCaFile: /etc/mzmon/tls/ca.crt
+    # Merged into the subchart's probe, which keeps its path and port.
+    readinessProbe:
+      httpGet:
+        scheme: HTTPS
+    extraVolumes:
+      - name: mzmon-tls
+        secret:
+          secretName: mzmon-loki-tls
+          optional: false
+    extraVolumeMounts:
+      - name: mzmon-tls
+        mountPath: /etc/mzmon/tls
+        readOnly: true
+
 # ---------------------------------------------------------------------------
 # Thanos Receive: serve TLS on the remote-write listener
 # ---------------------------------------------------------------------------
@@ -467,8 +501,9 @@ pipeline:
 # Verification is real here — no `tlsSkipVerify`. `connections.datasources.*.tls`
 # follows the URL scheme, so moving the URL to `https://` is enough: the chart
 # points the datasource at the internal CA in `<release>-grafana-tls` through the
-# `GrafanaDatasource` CRD's `valuesFrom`, and the certificate Loki presents
-# carries `loki-query-frontend.<ns>.svc` as a SAN, so the name matches.
+# `GrafanaDatasource` CRD's `valuesFrom`, and the certificate the Loki gateway
+# presents carries `loki-gateway.<ns>.svc` as a SAN, so the name matches. A render
+# check refuses an https Loki URL whose host is not on that certificate.
 #
 # **This is the one hop that does not renew on its own.** Grafana keeps the
 # material in its own database rather than reading a file, so a renewed CA takes
@@ -487,7 +522,7 @@ pipeline:
 connections:
   datasources:
     loki:
-      url: 'https://loki-query-frontend.{{ include "mzmon.loki.namespace" $ }}.svc:3100'
+      url: 'https://loki-gateway.{{ include "mzmon.loki.namespace" $ }}.svc:8080'
       tls:
         caSecret:
           # The Grafana component's own certificate Secret, which carries the

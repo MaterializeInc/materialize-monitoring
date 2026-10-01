@@ -248,6 +248,14 @@ loki:
       # only; this does not create the PVC, `persistence.enabled` does.
       size: 1Gi
 
+  # -- The Loki gateway renders in every deployment mode, so it is sized here
+  # once for both. The exporter sidecar is already at its floor.
+  gateway:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
   # -- memcached sizing is `allocatedMemory` (MB), and the pod request is
   # derived from it with overhead — so lowering a request alone would not help.
   # Same shape of trap as the Store Gateway pools above.

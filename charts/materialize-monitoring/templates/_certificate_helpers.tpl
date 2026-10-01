@@ -346,6 +346,20 @@ Usage:
     {{- end }}
   {{- end }}
 
+  {{- /* Grafana's Loki datasource, when it verifies a Service in Loki's
+         namespace — the Loki gateway by default. Checked only over https, the
+         one case where a missing SAN breaks anything, and only inside that
+         namespace, for the same reason as the ruler above. */}}
+  {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) ) }}
+    {{- $dsUrl := tpl ( dig "datasources" "loki" "url" "" ( $.Values.connections | default dict ) | toString ) $ }}
+    {{- if and ( hasPrefix "https://" $dsUrl ) ( contains ( printf ".%s.svc" ( include "mzmon.loki.namespace" $ ) ) $dsUrl ) }}
+      {{- $checks = append $checks ( dict
+          "component" "loki"
+          "path" "connections.datasources.loki.url"
+          "url" $dsUrl ) }}
+    {{- end }}
+  {{- end }}
+
   {{- range $check := $checks }}
     {{- if ( include "mzmon.certificates.enabled" ( dict "context" $ "component" $check.component ) ) }}
       {{- $url := tpl ( $check.url | toString ) $ }}

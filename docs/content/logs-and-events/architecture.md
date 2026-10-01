@@ -49,10 +49,12 @@ flowchart TB
       dist -->|"hash ring"| ing
     end
     subgraph lread["Read path"]
+      lgw["Loki Gateway<br/>(nginx)"]
       qf["Loki Query Frontend"]
       qs["Loki Query Scheduler"]
       qr["Loki Querier"]
       idxgw["Loki Index Gateway"]
+      lgw --> qf
       qf --> qs --> qr
       qr --> idxgw
     end
@@ -74,11 +76,13 @@ flowchart TB
   comp <--> store
   ruler --> idxgw
   ruler -->|"alerts"| am
-  graf -->|"LogQL"| qf
+  graf -->|"LogQL · rule list"| lgw
+  lgw -->|"rule and alert state"| ruler
 ```
 
 Writes flow left-to-right: the gateway pushes to the [Loki Distributor](#loki-distributor), which fans each stream out to [Loki Ingesters](#loki-ingester), which buffer logs and flush them to [object storage](#storage).
-Reads flow from Grafana into the [Loki Query Frontend](#loki-query-frontend), which queues and splits the query for [Loki Queriers](#loki-querier) that pull recent data from ingesters and historical data from object storage.
+Reads flow from Grafana through the [Loki Gateway](#loki-gateway) into the [Loki Query Frontend](#loki-query-frontend), which queues and splits the query for [Loki Queriers](#loki-querier) that pull recent data from ingesters and historical data from object storage.
+The gateway sends Grafana's rule-list requests to the [Loki Ruler](#ruler) instead.
 In the background, the [Loki Compactor](#loki-compactor) maintains the index and retention, and the [Loki Ruler](#ruler) evaluates rules — sending alerts to Alertmanager and recording-rule samples back through `alloy-gateway` to the long-term metric store.
 
 ## Collection components {#collection}
@@ -153,6 +157,28 @@ Each ingester holds tokens on the ring and moves through lifecycle states (joini
 ## Loki read path {#read-path}
 
 The read path serves the [Querying](../querying/) stage — almost always reached through Grafana.
+
+### Loki Gateway {#loki-gateway}
+
+The **Loki Gateway** is an nginx reverse proxy, and it is the address Grafana's Loki datasource points at.
+It routes by path: queries go to the query frontend, and rule and alert state go to the ruler.
+Grafana's alerting UI lists a datasource's rules from that datasource's own URL, so a datasource pointed at the query frontend alone shows no Loki rules.
+
+| Request | Routed to |
+| --- | --- |
+| `/loki/api/v1/*`, including `tail` | Loki Query Frontend |
+| `/prometheus/api/v1/rules`, `/prometheus/api/v1/alerts` (`GET`) | Loki Ruler |
+| Rule definitions, pushes, rings, flushes, deletes | Refused with `404 page not found` |
+
+Rule definitions are refused because the `alloy-gateway` owns them: its `loki.rules.kubernetes` writes the chart's LogQL rules into the ruler and reverts any change it did not make.
+Grafana reads the refusal as a ruler without a configuration API, and lists the rules without offering to edit them.
+Writes are refused because the `alloy-gateway` is the write path.
+
+The gateway resolves each backend's Service name per request, through the cluster DNS resolver with a ten-second cache.
+A Service that is deleted and recreated is followed without a restart.
+Under `profiles/mtls.values.yaml` it serves TLS to Grafana and dials Loki over TLS, and it re-reads its certificate from disk within a minute of a renewal.
+
+*See more:* `loki.gateway` in the [values reference](../../reference/helm/materialize-monitoring-values/), and the header of `templates/_loki_gateway_helpers.tpl` for every route.
 
 ### Loki Query Frontend
 
