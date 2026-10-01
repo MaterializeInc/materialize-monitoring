@@ -1150,8 +1150,9 @@ variable "internal_tls" {
     the chart refuses to configure them otherwise: Loki's HTTP port and
     Alertmanager's API port are probed by the kubelet, and a `httpGet` probe has
     no field for a client certificate, so their terminal state is `present`.
-    Grafana's datasources verify the backend, and present a certificate only to
-    Alertmanager.
+    The Loki gateway's listener stops at `present` for the same reason. Grafana's
+    datasources verify the backend, and from `present` they present a certificate
+    to Alertmanager and to the Loki gateway; the Thanos datasource presents none.
   EOT
   type        = string
   default     = "off"

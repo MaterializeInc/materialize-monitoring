@@ -40,8 +40,10 @@ output "metrics_url" {
 }
 
 output "logs_url" {
-  description = "Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. Reads carry a tenant header; see the chart's datasource configuration."
-  value       = "http://loki-gateway.${local.namespace}.svc.cluster.local:8080"
+  description = "Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. `https` whenever `internal_tls` is not `off`, verified against the internal CA. Reads carry a tenant header; see the chart's datasource configuration."
+  # Every stage past `off` composes `mtls.values.yaml`, which moves the gateway's
+  # listener to TLS on the same port.
+  value = "${var.internal_tls == "off" ? "http" : "https"}://loki-gateway.${local.namespace}.svc.cluster.local:8080"
 }
 
 output "remote_write_url" {

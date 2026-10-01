@@ -60,12 +60,17 @@ tests:
           path: spec.template.spec.containers[1].args
           count: 5
 
+  # The two fields are mutually exclusive, and the API server refuses a PDB that
+  # sets both. Unlike `queryScheduler`, the gateway has no deprecated top-level
+  # `maxUnavailable` for Helm's merge to carry in; this pins that it stays so.
   - it: keeps one replica through voluntary disruption
     template: ../charts/loki/templates/gateway/pdb.yaml
     asserts:
       - equal:
           path: spec.minAvailable
           value: 1
+      - notExists:
+          path: spec.maxUnavailable
 
   - it: serves on the container port, so TLS changes only the scheme
     template: ../charts/loki/templates/gateway/service.yaml
