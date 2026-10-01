@@ -1,0 +1,287 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# Tests for the log-derived alerting rules: which install, and how they reach
+# the Loki ruler.
+#
+# The rules are rendered at build time into pre-rendered/rules/loki/, filtered
+# by the same helpers as the PromQL rules, and delivered as ConfigMaps that the
+# Loki subchart's rules sidecar writes into the ruler's local rule store. Every
+# failure here is silent at runtime: a ConfigMap the sidecar does not watch, a
+# tenant directory the ruler does not read, or a store pointed somewhere else
+# all leave a healthy ruler evaluating nothing.
+#
+# The rule file is a string inside the ConfigMap, so what it holds is asserted
+# with `matchRegex` on the data key.
+suite: log-derived alerting rules
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: true
+  loki.loki.storage.bucketNames.chunks: "test-chunks"
+  loki.loki.storage.bucketNames.ruler: "test-ruler"
+  loki.networkPolicy.metrics.namespaceSelector:
+    matchLabels:
+      test-metrics: "true"
+  loki.networkPolicy.ingress.namespaceSelector:
+    matchLabels:
+      loki-ok: "true"
+  thanos.global.objstore.createSecret: true
+  thanos.global.objstore.config: |
+    type: s3
+    config:
+      bucket: test-thanos
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+templates:
+  - templates/alerts/lokirules.yaml
+  - templates/alerts/prometheusrules.yaml
+  - templates/validate.yaml
+  - templates/NOTES.txt
+tests:
+  # --- what installs --------------------------------------------------------
+
+  - it: installs the default-set log rules as one ConfigMap for the static tenant
+    template: templates/alerts/lokirules.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-log-alerts-loki
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      # The sidecar selects on the label's presence; its value is empty.
+      - equal:
+          path: metadata.labels.loki_rule
+          value: ""
+      # The directory the sidecar writes into, which the ruler reads as the tenant.
+      - equal:
+          path: metadata.annotations["k8s-sidecar-target-directory"]
+          value: loki
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: materialize-panic"
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: data-correctness-error"
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: persist-filter-pushdown-violation"
+      - notMatchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: trace-logging-enabled"
+
+  - it: fills the namespace placeholders from values
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.namespaces.environment: [mz-env-a, mz-env-b]
+      rules.namespaces.operator: [mz-operator]
+      rules.namespaces.exclude: [mz-scratch]
+    asserts:
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: 'namespace=~"mz-operator\|mz-env-a\|mz-env-b", namespace!~"mz-scratch", level="CRITICAL"'
+      - notMatchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "__mzmon_"
+
+  - it: installs an opt-in log rule once it is selected
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.selected: [trace-logging-enabled]
+    asserts:
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: trace-logging-enabled"
+
+  - it: leaves a disabled log rule out
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.disabled: [materialize-panic]
+    asserts:
+      - notMatchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: materialize-panic"
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: "alert: data-correctness-error"
+
+  - it: applies an override to a log rule as it does to a PromQL one
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.overrides:
+        materialize-panic:
+          for: 2m
+          labels:
+            severity: critical
+            team: storage
+    asserts:
+      - matchRegex:
+          path: data["materialize-log-alerts.yaml"]
+          pattern: '(?s)alert: materialize-panic.*?for: 2m.*?severity: critical.*?team: storage'
+
+  - it: keeps log rules out of the PrometheusRules
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.selected: ["*"]
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "materialize-panic")]
+
+  # --- tenants --------------------------------------------------------------
+
+  # A rule group belongs to one tenant, so the file is delivered once per tenant.
+  # A tenant id may hold characters an object name may not; the name only has to
+  # be unique, and the annotation keeps the tenant as written.
+  - it: delivers the rules once per tenant in rules.logTenants
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.logTenants: [env_one, Env.Two]
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-log-alerts-env-one
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["k8s-sidecar-target-directory"]
+          value: env_one
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-log-alerts-env-two
+        documentIndex: 1
+      - equal:
+          path: metadata.annotations["k8s-sidecar-target-directory"]
+          value: Env.Two
+        documentIndex: 1
+
+  - it: follows the static tenant when it is renamed
+    template: templates/alerts/lokirules.yaml
+    set:
+      pipeline.logging.tenancy.staticTenant: logs
+    asserts:
+      - equal:
+          path: metadata.annotations["k8s-sidecar-target-directory"]
+          value: logs
+
+  - it: refuses a tenant id Loki would refuse
+    template: templates/validate.yaml
+    set:
+      rules.logTenants: ["../etc"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rules.logTenants contains "../etc", which is not a Loki tenant id'
+
+  - it: warns that non-static tenancy leaves tenants the rules do not cover
+    template: templates/NOTES.txt
+    set:
+      pipeline.logging.tenancy.tenantMap.environment: byEnvironment
+    asserts:
+      - matchRegexRaw:
+          pattern: 'the log-derived rules install only for "loki"\. List every tenant'
+
+  - it: stays quiet about tenants once they are listed
+    template: templates/NOTES.txt
+    set:
+      pipeline.logging.tenancy.tenantMap.environment: byEnvironment
+      rules.logTenants: [env-one]
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "log-derived rules install only for"
+
+  # --- where they go --------------------------------------------------------
+
+  - it: follows the Loki namespace under split-namespace
+    template: templates/alerts/lokirules.yaml
+    set:
+      loki.namespaceOverride: loki-system
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: loki-system
+
+  # Distributed Loki refuses to run without its ruler, so the case is a release
+  # that does not run Loki at all.
+  - it: installs no log rules without the Loki ruler
+    template: templates/alerts/lokirules.yaml
+    set:
+      loki.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: warns that a selected log rule needs the Loki ruler
+    template: templates/NOTES.txt
+    set:
+      loki.enabled: false
+      pipeline.logging.gateway.destination.loki.enabled: false
+      rules.selected: [trace-logging-enabled]
+    asserts:
+      - matchRegexRaw:
+          pattern: 'rules.selected names "trace-logging-enabled", a LogQL rule, but this release does not run the Loki ruler'
+
+  - it: installs no log rules when rules are off
+    template: templates/alerts/lokirules.yaml
+    set:
+      rules.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- delivery -------------------------------------------------------------
+
+  - it: fails when no rules sidecar runs beside the ruler
+    template: templates/validate.yaml
+    set:
+      loki.ruler.sidecar: false
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.ruler.sidecar is false, so no rules sidecar runs beside the ruler"
+
+  - it: fails when the sidecar does not watch ConfigMaps
+    template: templates/validate.yaml
+    set:
+      loki.sidecar.rules.resource: secret
+    asserts:
+      - failedTemplate:
+          errorPattern: 'loki.sidecar.rules.resource is "secret"'
+
+  - it: fails when the sidecar would not write into a tenant directory
+    template: templates/validate.yaml
+    set:
+      loki.sidecar.rules.folderAnnotation: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "loki.sidecar.rules.folderAnnotation is empty"
+
+  - it: fails when the ruler reads a store other than the sidecar's folder
+    template: templates/validate.yaml
+    set:
+      loki.loki.structuredConfig.ruler_storage.backend: s3
+    asserts:
+      - failedTemplate:
+          errorPattern: 'ruler_storage \(backend, local.directory\) is "s3", "/rules", but the rules sidecar writes into "/rules"'
+
+  - it: checks the legacy store when the Thanos objstore client is off
+    template: templates/validate.yaml
+    set:
+      loki.loki.storage.use_thanos_objstore: false
+      loki.loki.rulerConfig.storage.local.directory: /elsewhere
+    asserts:
+      - failedTemplate:
+          errorPattern: 'rulerConfig.storage \(type, local.directory\) is "local", "/elsewhere"'
+
+  - it: does not check delivery when no log rule installs
+    template: templates/validate.yaml
+    set:
+      loki.ruler.sidecar: false
+      rules.disabled: [materialize-panic, data-correctness-error, persist-filter-pushdown-violation]
+    asserts:
+      - notFailedTemplate: {}

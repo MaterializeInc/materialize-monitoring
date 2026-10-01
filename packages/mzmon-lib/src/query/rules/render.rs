@@ -7,13 +7,18 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Rendering the registry's alerts into Prometheus rule files.
+//! Rendering the registry's alerts into rule files for the two rulers.
 //!
 //! [`render_rules`] turns every alert into a [`RenderedRule`], validating as it
 //! goes, and [`RuleSet`] serializes the result: one `groups:` document per source
-//! registry file, plus an index the chart selects from. Every problem is an
-//! error, never a warning, and all of them are collected before returning, so a
-//! contributor sees the whole list at once.
+//! registry file and [`RuleEngine`], plus one index of every rule the chart
+//! selects from. Every problem is an error, never a warning, and all of them are
+//! collected before returning, so a contributor sees the whole list at once.
+//!
+//! An alert whose query is PromQL is a Prometheus rule for the Thanos ruler; one
+//! whose query is LogQL is a rule for the Loki ruler. Both files share the
+//! Prometheus rule format, and the two engines share every check that is about
+//! the rule rather than its language.
 //!
 //! The checks are the ones a rule needs and a dashboard query does not: a rule
 //! is evaluated unattended, so a mistake that a panel would show as an empty
@@ -49,12 +54,57 @@ pub const SEVERITIES: &[&str] = &["critical", "warning", "notice"];
 /// send the two to different people.
 pub const AUDIENCES: &[&str] = &["platform", "workload"];
 
+/// The ruler that evaluates a rule, which follows from its query's language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuleEngine {
+    /// PromQL, evaluated by the Thanos ruler from `PrometheusRule` resources.
+    PromQl,
+    /// LogQL, evaluated by the Loki ruler from rule files the chart delivers
+    /// into its rule store.
+    LogQl,
+}
+
+impl RuleEngine {
+    pub const ALL: [RuleEngine; 2] = [RuleEngine::PromQl, RuleEngine::LogQl];
+
+    /// The query language, as the index records it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RuleEngine::PromQl => "promql",
+            RuleEngine::LogQl => "logql",
+        }
+    }
+
+    /// The directory under `pre-rendered/rules/` this engine's files go in.
+    pub fn dir(self) -> &'static str {
+        match self {
+            RuleEngine::PromQl => "prometheus",
+            RuleEngine::LogQl => "loki",
+        }
+    }
+
+    /// The chart template that installs this engine's files.
+    fn template(self) -> &'static str {
+        match self {
+            RuleEngine::PromQl => "templates/alerts/prometheusrules.yaml",
+            RuleEngine::LogQl => "templates/alerts/lokirules.yaml",
+        }
+    }
+}
+
+impl fmt::Display for RuleEngine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// One alert, rendered and validated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedRule {
     pub alert: String,
     /// The registry file stem this rule is written under.
     pub source: String,
+    pub engine: RuleEngine,
     pub group: String,
     /// The rule expression, placeholders intact.
     pub expr: String,
@@ -62,7 +112,8 @@ pub struct RenderedRule {
     pub keep_firing_for: Option<String>,
     pub labels: IndexMap<String, String>,
     pub annotations: IndexMap<String, String>,
-    /// Inferred from the metrics the rule reads, plus what it declares.
+    /// Inferred from the metrics the rule reads, plus what it declares. A LogQL
+    /// rule names no metrics, so its set is what it declares.
     pub requires: BTreeSet<Capability>,
     pub enabled_by_default: bool,
     /// The least important metric-tier any metric the rule reads is in. A
@@ -105,25 +156,32 @@ static GRAFANA_VARIABLE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$(\{|__|[A-Za-z_])").unwrap());
 static PLACEHOLDER_TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"__mzmon_[a-z_]+?__").unwrap());
+/// A LogQL range: `[5m]`, `[1h30m]`. LogQL has no subqueries, so no `:step`.
+static LOGQL_RANGE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\s*([0-9]+(ms|s|m|h|d|w|y))+\s*\]").unwrap());
+
+/// The contexts a rule renders through.
+struct Contexts<'a> {
+    promql: TemplateContext<'a>,
+    /// PromQL with every enrichment function as the identity, for inference.
+    inference: TemplateContext<'a>,
+    logql: TemplateContext<'a>,
+}
 
 /// Render and validate every alert in `registry`.
 pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>> {
-    let ctx = alerting_context(registry, QueryEngine::PromQl, false);
-    let inference_ctx = alerting_context(registry, QueryEngine::PromQl, true);
+    let contexts = Contexts {
+        promql: alerting_context(registry, QueryEngine::PromQl, false),
+        inference: alerting_context(registry, QueryEngine::PromQl, true),
+        logql: alerting_context(registry, QueryEngine::LogQl, false),
+    };
     let importance = metric_importance(registry);
 
     let mut rules = Vec::new();
     let mut errors = Vec::new();
     for alert in registry.alerts() {
         let mut problems = Vec::new();
-        let rule = render_one(
-            registry,
-            alert,
-            &ctx,
-            &inference_ctx,
-            &importance,
-            &mut problems,
-        );
+        let rule = render_one(registry, alert, &contexts, &importance, &mut problems);
         if problems.is_empty() {
             if let Some(rule) = rule {
                 rules.push(rule);
@@ -154,8 +212,7 @@ pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>>
 fn render_one(
     registry: &QueryRegistry,
     alert: &Alert,
-    ctx: &TemplateContext,
-    inference_ctx: &TemplateContext,
+    contexts: &Contexts,
     importance: &HashMap<String, Importance>,
     problems: &mut Vec<String>,
 ) -> Option<RenderedRule> {
@@ -219,19 +276,40 @@ fn render_one(
         problems.push(format!("`queryId` `{}` names no query", alert.query_id));
         return None;
     };
-    if query.is_log_query() {
-        problems.push("LogQL alerts are not rendered yet; only PromQL rules are supported".into());
+    let engine = if query.is_log_query() {
+        RuleEngine::LogQl
+    } else {
+        RuleEngine::PromQl
+    };
+    let expressions = match engine {
+        RuleEngine::PromQl => &query.promql,
+        RuleEngine::LogQl => &query.logql,
+    };
+    if engine == RuleEngine::LogQl && !query.promql.is_empty() {
+        problems.push(format!(
+            "`{}` has both a PromQL and a LogQL expression; a rule is evaluated by one ruler, so \
+             its query is one or the other",
+            query.id
+        ));
         return None;
     }
-    if query.promql.len() != 1 {
+    if expressions.len() != 1 {
         problems.push(format!(
-            "a rule needs exactly one PromQL expression, and `{}` has {}",
+            "a rule needs exactly one {} expression, and `{}` has {}",
+            match engine {
+                RuleEngine::PromQl => "PromQL",
+                RuleEngine::LogQl => "LogQL",
+            },
             query.id,
-            query.promql.len()
+            expressions.len()
         ));
         return None;
     }
 
+    let ctx = match engine {
+        RuleEngine::PromQl => &contexts.promql,
+        RuleEngine::LogQl => &contexts.logql,
+    };
     let expr = match query.render(ctx) {
         Ok(mut rendered) => rendered.remove(0).trim().to_string(),
         Err(err) => {
@@ -239,27 +317,42 @@ fn render_one(
             return None;
         }
     };
-    check_expr(&expr, problems);
 
-    let requires = match query.render(inference_ctx) {
-        Ok(mut rendered) => infer_requires(&rendered.remove(0), &alert.requires, problems),
-        Err(err) => {
-            problems.push(format!("rendering for capability inference failed: {err}"));
-            return None;
+    let (requires, min_importance) = match engine {
+        RuleEngine::PromQl => {
+            check_promql_expr(&expr, problems);
+            let requires = match query.render(&contexts.inference) {
+                Ok(mut rendered) => infer_requires(&rendered.remove(0), &alert.requires, problems),
+                Err(err) => {
+                    problems.push(format!("rendering for capability inference failed: {err}"));
+                    return None;
+                }
+            };
+            let min_importance =
+                ExtractedMetric::extract_from_promql(&expr)
+                    .ok()
+                    .and_then(|metrics| {
+                        metrics
+                            .iter()
+                            .filter_map(|m| importance.get(&normalize_sql_prefix(&m.name)).copied())
+                            .min_by_key(|i| i.rank())
+                    });
+            (requires, min_importance)
+        }
+        // A log rule reads no metrics, so there is nothing to infer from and no
+        // metric tier a destination could filter it out of. Whether the logs it
+        // reads are collected, and whether a Loki ruler evaluates it, is the
+        // chart's to decide.
+        RuleEngine::LogQl => {
+            check_logql_expr(&expr, problems);
+            (alert.requires.iter().copied().collect(), None)
         }
     };
-    let min_importance = ExtractedMetric::extract_from_promql(&expr)
-        .ok()
-        .and_then(|metrics| {
-            metrics
-                .iter()
-                .filter_map(|m| importance.get(&normalize_sql_prefix(&m.name)).copied())
-                .min_by_key(|i| i.rank())
-        });
 
     Some(RenderedRule {
         alert: alert.alert.clone(),
         source,
+        engine,
         group: alert.group.clone(),
         expr,
         for_: alert.for_.clone(),
@@ -280,13 +373,89 @@ fn check_duration(field: &str, value: &str, problems: &mut Vec<String>) {
     }
 }
 
-/// Checks on the expression as the ruler will see it, placeholders aside.
-fn check_expr(expr: &str, problems: &mut Vec<String>) {
+/// Checks on a PromQL expression as the Thanos ruler will see it, placeholders
+/// aside.
+fn check_promql_expr(expr: &str, problems: &mut Vec<String>) {
     if let Err(message) = promql_parser::parser::parse(expr) {
         problems.push(format!(
             "the rendered expression is not valid PromQL: {message}"
         ));
     }
+    check_tokens(expr, problems);
+}
+
+/// Checks on a LogQL expression as the Loki ruler will see it, placeholders
+/// aside.
+///
+/// There is no LogQL parser here, so this checks the shape a rule needs and
+/// `make rules-check` parses every rendered rule with Loki's own (`logcli`).
+/// The shape matters beyond syntax: a log query, rather than a metric query,
+/// parses and is refused by the ruler when it loads the group.
+fn check_logql_expr(expr: &str, problems: &mut Vec<String>) {
+    if let Err(message) = check_balanced(expr) {
+        problems.push(format!(
+            "the rendered expression is not valid LogQL: {message}"
+        ));
+    }
+    if !expr.contains('{') {
+        problems.push("the expression has no stream selector (`{…}`)".into());
+    }
+    if !LOGQL_RANGE.is_match(expr) {
+        problems.push(
+            "the expression has no range (such as `[5m]`), so it is a log query rather than a \
+             metric query, and a ruler evaluates only the second. The range is how long a matching \
+             line keeps the alert firing; write it out."
+                .into(),
+        );
+    }
+    check_tokens(expr, problems);
+}
+
+/// That every bracket in `expr` closes, outside string literals. LogQL strings
+/// are `"…"` with backslash escapes, or raw `` `…` ``.
+fn check_balanced(expr: &str) -> Result<(), String> {
+    let mut open: Vec<char> = Vec::new();
+    let mut chars = expr.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => loop {
+                match chars.next() {
+                    Some('\\') => {
+                        chars.next();
+                    }
+                    Some('"') => break,
+                    Some(_) => {}
+                    None => return Err("a `\"` string is not closed".into()),
+                }
+            },
+            '`' => {
+                if !chars.any(|c| c == '`') {
+                    return Err("a `` ` `` string is not closed".into());
+                }
+            }
+            '(' | '{' | '[' => open.push(c),
+            ')' | '}' | ']' => {
+                let expected = match c {
+                    ')' => '(',
+                    '}' => '{',
+                    _ => '[',
+                };
+                if open.pop() != Some(expected) {
+                    return Err(format!("unbalanced `{c}`"));
+                }
+            }
+            _ => {}
+        }
+    }
+    match open.last() {
+        Some(c) => Err(format!("`{c}` is not closed")),
+        None => Ok(()),
+    }
+}
+
+/// Checks on what remains of the templating in a rendered expression, which no
+/// ruler resolves whatever its language.
+fn check_tokens(expr: &str, problems: &mut Vec<String>) {
     if expr.contains("%%{") {
         problems.push("an unrendered `%%{…}` placeholder remains".into());
     }
@@ -413,13 +582,18 @@ fn normalize_sql_prefix(name: &str) -> String {
 // -- serialization -----------------------------------------------------------
 
 /// Header written at the top of every generated rule file.
-pub const RULE_FILE_HEADER: &str = "\
+fn rule_file_header(engine: RuleEngine) -> String {
+    format!(
+        "\
 # Generated by `mz-monitoring-build gen-rules` from packages/queries/. DO NOT EDIT.
 #
 # Tokens of the form __mzmon_*__ are replaced by the chart at install time
-# (templates/alerts/prometheusrules.yaml); which rules install is decided there
-# from _index.yaml.
-";
+# ({}); which rules install is decided there
+# from ../_index.yaml.
+",
+        engine.template()
+    )
+}
 
 #[derive(Serialize)]
 struct RuleFileDoc<'a> {
@@ -460,6 +634,7 @@ struct CapabilityDoc {
 #[serde(rename_all = "camelCase")]
 struct IndexRuleDoc<'a> {
     file: String,
+    engine: &'static str,
     group: &'a str,
     severity: &'a str,
     audience: &'a str,
@@ -470,10 +645,10 @@ struct IndexRuleDoc<'a> {
 }
 
 impl RuleSet {
-    /// The source file stems, in output order.
-    pub fn sources(&self) -> Vec<&str> {
+    /// The source file stems with rules for `engine`, in output order.
+    pub fn sources(&self, engine: RuleEngine) -> Vec<&str> {
         let mut seen: Vec<&str> = Vec::new();
-        for rule in &self.rules {
+        for rule in self.rules.iter().filter(|r| r.engine == engine) {
             if !seen.contains(&rule.source.as_str()) {
                 seen.push(&rule.source);
             }
@@ -481,10 +656,18 @@ impl RuleSet {
         seen
     }
 
-    /// The `groups:` document for one source file.
-    pub fn rule_file_yaml(&self, source: &str) -> serde_yaml_ng::Result<String> {
+    /// The `groups:` document for one source file's `engine` rules.
+    pub fn rule_file_yaml(
+        &self,
+        engine: RuleEngine,
+        source: &str,
+    ) -> serde_yaml_ng::Result<String> {
         let mut groups: IndexMap<&str, Vec<RuleDoc>> = IndexMap::new();
-        for rule in self.rules.iter().filter(|r| r.source == source) {
+        for rule in self
+            .rules
+            .iter()
+            .filter(|r| r.engine == engine && r.source == source)
+        {
             groups.entry(&rule.group).or_default().push(RuleDoc {
                 alert: &rule.alert,
                 expr: &rule.expr,
@@ -501,7 +684,8 @@ impl RuleSet {
                 .collect(),
         };
         Ok(format!(
-            "{RULE_FILE_HEADER}{}",
+            "{}{}",
+            rule_file_header(engine),
             serde_yaml_ng::to_string(&doc)?
         ))
     }
@@ -528,7 +712,8 @@ impl RuleSet {
                     (
                         rule.alert.as_str(),
                         IndexRuleDoc {
-                            file: format!("{}.yaml", rule.source),
+                            file: format!("{}/{}.yaml", rule.engine.dir(), rule.source),
+                            engine: rule.engine.as_str(),
                             group: &rule.group,
                             severity: rule.labels.get("severity").map_or("", String::as_str),
                             audience: rule.labels.get("audience").map_or("", String::as_str),
@@ -543,7 +728,8 @@ impl RuleSet {
         let header = "\
 # Generated by `mz-monitoring-build gen-rules`. DO NOT EDIT.
 #
-# What the chart needs to decide which rules install: each rule's capabilities
+# What the chart needs to decide which rules install: each rule's engine (which
+# ruler evaluates it, and so which directory its file is in), its capabilities
 # (inferred from the metrics it reads, plus any it declares) and whether it is in
 # the default set, and the vocabularies the chart validates values against.
 ";
@@ -624,11 +810,14 @@ mod tests {
         assert_eq!(rule.annotations["description"], "Do the thing.");
         assert!(rule.annotations["runbook_url"].ends_with("#pod-pending"));
 
-        let file = set.rule_file_yaml("test-alerts").unwrap();
+        let file = set
+            .rule_file_yaml(RuleEngine::PromQl, "test-alerts")
+            .unwrap();
         assert!(file.starts_with("# Generated by"));
         assert!(file.contains("- name: test_group"));
         let index = set.index_yaml().unwrap();
-        assert!(index.contains("file: test-alerts.yaml"));
+        assert!(index.contains("file: prometheus/test-alerts.yaml"));
+        assert!(index.contains("engine: promql"));
         assert!(index.contains("enabledByDefault: true"));
     }
 
@@ -855,7 +1044,9 @@ mod tests {
             ),
         );
         let set = render_rules(&registry(&yaml)).unwrap();
-        let file = set.rule_file_yaml("test-alerts").unwrap();
+        let file = set
+            .rule_file_yaml(RuleEngine::PromQl, "test-alerts")
+            .unwrap();
         for placeholder in Placeholder::ALL {
             assert!(file.contains(placeholder.token()), "{placeholder:?} unused");
         }
@@ -874,10 +1065,200 @@ mod tests {
         });
         assert!(set.rules.len() > 50, "expected the whole alert set");
         assert!(set.rules.iter().any(|r| r.enabled_by_default));
-        for source in set.sources() {
-            let file = set.rule_file_yaml(source).unwrap();
+        for source in set.sources(RuleEngine::PromQl) {
+            let file = set.rule_file_yaml(RuleEngine::PromQl, source).unwrap();
             crate::scrape::test_support::assert_promtool_rules_ok(source, &file);
         }
+        let log_rules: Vec<&RenderedRule> = set
+            .rules
+            .iter()
+            .filter(|r| r.engine == RuleEngine::LogQl)
+            .collect();
+        assert!(!log_rules.is_empty(), "expected the log-derived alerts");
+        for rule in log_rules {
+            assert_logcli_parses(&rule.alert, &rule.expr);
+        }
+    }
+
+    // --- LogQL ----------------------------------------------------------------
+
+    fn log_alert(name: &str, logql: &str, extra: &str) -> String {
+        format!(
+            r#"  - alert: {name}
+    group: test_logs
+    stability: best-effort
+    for: 0s
+    labels: {LABELS}
+    description:
+      summary: Something was logged.
+{extra}    query:
+      id: test.{id}
+      stability: best-effort
+      description:
+        summary: q
+      logQL: '{logql}'
+"#,
+            id = name.replace('-', "_")
+        )
+    }
+
+    /// Parse `expr` with Loki's own LogQL parser, through `logcli`'s offline
+    /// `--stdin` mode, when it is installed; `make rules-check` does the same
+    /// in CI. A metric query parses and is then refused as unsupported over
+    /// stdin, so only a parse error is a failure.
+    fn assert_logcli_parses(name: &str, expr: &str) {
+        use std::process::{Command, Stdio};
+        let Ok(output) = Command::new("logcli")
+            .args(["query", "--stdin", "--quiet", expr])
+            .stdin(Stdio::null())
+            .output()
+        else {
+            eprintln!("skipping LogQL parse check for {name}: `logcli` not found on PATH");
+            return;
+        };
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("parse error"),
+            "Loki's parser rejected {name}: {stderr}\n{expr}"
+        );
+    }
+
+    #[test]
+    fn renders_a_log_rule_for_the_loki_ruler() {
+        let set = render_rules(&registry(&log_alert(
+            "thing-panicked",
+            r#"sum by (namespace, pod) (count_over_time({%%{mzEnvironmentNamespaceFilter}, level="CRITICAL"} | panic_location != "" [5m])) > 0"#,
+            "    enabledByDefault: true\n    requires: [materialize]\n",
+        )))
+        .unwrap();
+        let rule = &set.rules[0];
+        assert_eq!(rule.engine, RuleEngine::LogQl);
+        assert_eq!(
+            rule.expr,
+            r#"sum by (namespace, pod) (count_over_time({namespace=~"__mzmon_environment_namespaces__", level="CRITICAL"} | panic_location != "" [5m])) > 0"#
+        );
+        // Nothing to infer from: what it declares is what it requires.
+        assert_eq!(
+            rule.requires.iter().collect::<Vec<_>>(),
+            vec![&Capability::Materialize]
+        );
+        assert_eq!(rule.min_importance, None);
+
+        assert!(set.sources(RuleEngine::PromQl).is_empty());
+        assert_eq!(set.sources(RuleEngine::LogQl), vec!["test-alerts"]);
+        let file = set
+            .rule_file_yaml(RuleEngine::LogQl, "test-alerts")
+            .unwrap();
+        assert!(file.contains("templates/alerts/lokirules.yaml"));
+        assert!(file.contains("- name: test_logs"));
+        let index = set.index_yaml().unwrap();
+        assert!(index.contains("file: loki/test-alerts.yaml"), "{index}");
+        assert!(index.contains("engine: logql"), "{index}");
+        assert_logcli_parses(&rule.alert, &rule.expr);
+    }
+
+    #[test]
+    fn a_log_rule_needs_no_requires() {
+        // Unlike a PromQL rule reading only `up`, there is no metric to say
+        // what it needs; the chart gates it on the Loki ruler instead.
+        let set = render_rules(&registry(&log_alert(
+            "x",
+            r#"sum(count_over_time({%%{mzEnvironmentNamespaceFilter}} |= "boom" [5m])) > 0"#,
+            "",
+        )))
+        .unwrap();
+        assert!(set.rules[0].requires.is_empty());
+    }
+
+    #[test]
+    fn a_log_query_is_not_a_rule() {
+        let errs = errors(&log_alert(
+            "x",
+            r#"{%%{mzEnvironmentNamespaceFilter}} |= "boom""#,
+            "",
+        ));
+        assert!(
+            has(&errs, "log query rather than a metric query"),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn grafana_ranges_and_viewer_pickers_are_refused_in_log_rules() {
+        // The clicked-in rules' shape: `$__range` is Grafana's, and a Loki
+        // ruler cannot parse it.
+        let errs = errors(&log_alert(
+            "x",
+            r#"sum(count_over_time({%%{mzEnvironmentNamespaceFilter}} |~ "(?i)panic" [$__range])) > 0"#,
+            "",
+        ));
+        assert!(has(&errs, "Grafana variable"), "{errs:?}");
+        assert!(has(&errs, "no range"), "{errs:?}");
+
+        let errs = errors(&log_alert(
+            "x",
+            r#"sum(count_over_time({%%{mzLogNamespaceFilter}} |= "boom" [5m])) > 0"#,
+            "",
+        ));
+        assert!(has(&errs, "rendering failed"), "{errs:?}");
+    }
+
+    #[test]
+    fn unbalanced_log_rules_are_errors() {
+        let errs = errors(&log_alert(
+            "x",
+            r#"sum(count_over_time({%%{mzEnvironmentNamespaceFilter}} |= "a)" [5m]) > 0"#,
+            "",
+        ));
+        assert!(has(&errs, "not valid LogQL"), "{errs:?}");
+        // A bracket inside a string is not one.
+        assert!(check_balanced(r#"sum(count_over_time({a="b"} |~ "[(" [5m]))"#).is_ok());
+        assert!(check_balanced(r#"sum(count_over_time({a="b"} |~ `\)` [5m]))"#).is_ok());
+        assert!(check_balanced(r#"sum(count_over_time({a="b\"} [5m]))"#).is_err());
+    }
+
+    #[test]
+    fn a_query_is_promql_or_logql_not_both() {
+        let yaml = r#"  - alert: x
+    group: test_group
+    stability: best-effort
+    for: 5m
+    labels: {severity: warning, component: test}
+    description:
+      summary: s
+    query:
+      id: test.both
+      stability: best-effort
+      description:
+        summary: q
+      promQL: 'mz_thing > 0'
+      logQL: 'sum(count_over_time({namespace="a"} [5m])) > 0'
+"#;
+        assert!(has(&errors(yaml), "both a PromQL and a LogQL expression"));
+    }
+
+    #[test]
+    fn each_engine_writes_its_own_file_and_one_index_lists_both() {
+        let yaml = format!(
+            "{}{}",
+            alert("metric-alert", LABELS, "mz_a > 0", ""),
+            log_alert(
+                "log-alert",
+                r#"sum(count_over_time({%%{mzEnvironmentNamespaceFilter}} |= "boom" [5m])) > 0"#,
+                ""
+            ),
+        );
+        let set = render_rules(&registry(&yaml)).unwrap();
+        let prom = set
+            .rule_file_yaml(RuleEngine::PromQl, "test-alerts")
+            .unwrap();
+        let loki = set
+            .rule_file_yaml(RuleEngine::LogQl, "test-alerts")
+            .unwrap();
+        assert!(prom.contains("metric-alert") && !prom.contains("log-alert"));
+        assert!(loki.contains("log-alert") && !loki.contains("metric-alert"));
+        let index = set.index_yaml().unwrap();
+        assert!(index.contains("metric-alert:") && index.contains("log-alert:"));
     }
 
     #[test]
@@ -891,8 +1272,10 @@ mod tests {
         let one = render_rules(&registry).unwrap();
         let two = render_rules(&registry).unwrap();
         assert_eq!(
-            one.rule_file_yaml("test-alerts").unwrap(),
-            two.rule_file_yaml("test-alerts").unwrap()
+            one.rule_file_yaml(RuleEngine::PromQl, "test-alerts")
+                .unwrap(),
+            two.rule_file_yaml(RuleEngine::PromQl, "test-alerts")
+                .unwrap()
         );
         // Registration order, not alphabetical.
         assert_eq!(one.rules[0].alert, "b-alert");

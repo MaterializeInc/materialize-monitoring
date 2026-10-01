@@ -102,9 +102,8 @@ tests:
       - notFailedTemplate: {}
 
   # The endpoint reaches Loki itself, not just the values file: it has to land in
-  # the chunk client's config *and* the ruler's, which are rendered by separate
-  # helpers off the same block.
-  - it: should carry the s3 endpoint into both the chunk and ruler storage config
+  # the chunk client's config.
+  - it: should carry the s3 endpoint into the chunk storage config
     set:
       loki.loki.storage.object_store.s3.endpoint: s3.us-east-1.amazonaws.com
     template: ../charts/loki/templates/config.yaml
@@ -112,9 +111,17 @@ tests:
       - matchRegex:
           path: data["config.yaml"]
           pattern: 'object_store:\s+s3:(?:\s+\w+: \S+)*?\s+bucket_name: test-chunks\s+endpoint: s3\.us-east-1\.amazonaws\.com'
+
+  # The subchart points `ruler_storage` at the ruler bucket and offers no value
+  # to change its backend; `structuredConfig` replaces it with the folder the
+  # rules sidecar fills. Left on the bucket, the ruler reads a prefix nothing
+  # writes and evaluates no rules, while healthy.
+  - it: should read rules from the sidecar's folder rather than the ruler bucket
+    template: ../charts/loki/templates/config.yaml
+    asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: 'ruler_storage:\s+backend: s3\s+s3:(?:\s+\w+: \S+)*?\s+bucket_name: test-ruler\s+endpoint: s3\.us-east-1\.amazonaws\.com'
+          pattern: 'ruler_storage:(?:\s+[a-z0-9_]+:.*)*?\s+backend: local\s+local:\s+directory: /rules'
 
   # Backend-consistency guard: the compactor's delete-request store must name the
   # same backend as storage.object_store.type, or the compactor fails at startup

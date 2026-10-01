@@ -159,15 +159,15 @@ loki config configmap:
             enabled: true
           rule_path: /var/loki/ruler-rules
           storage:
-            s3:
-              bucketnames: test-ruler
-              insecure: false
-              s3forcepathstyle: false
-            type: s3
+            local:
+              directory: /rules
+            type: local
           wal:
             dir: /var/loki/ruler-wal
         ruler_storage:
-          backend: s3
+          backend: local
+          local:
+            directory: /rules
           s3:
             access_key_id: null
             bucket_name: test-ruler
@@ -1024,7 +1024,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: compactor
           labels:
             app.kubernetes.io/component: compactor
@@ -1163,7 +1163,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: distributor
           labels:
             app.kubernetes.io/component: distributor
@@ -1297,7 +1297,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: index-gateway
           labels:
             app.kubernetes.io/component: index-gateway
@@ -1434,7 +1434,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: ingester
           labels:
             app.kubernetes.io/component: ingester
@@ -1672,7 +1672,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: querier
           labels:
             app.kubernetes.io/component: querier
@@ -1818,7 +1818,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: query-frontend
           labels:
             app.kubernetes.io/component: query-frontend
@@ -1956,7 +1956,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: query-scheduler
           labels:
             app.kubernetes.io/component: query-scheduler
@@ -2222,7 +2222,7 @@ medium (base) workloads:
       template:
         metadata:
           annotations:
-            checksum/config: 9f16703574257e77b8c950f4e23aa676cd660b4a9b1e8e0e1f82492000937f87
+            checksum/config: 772721375f13296f095a92037e42ad2206b2839989044f7c56c61cf1211a24b1
             kubectl.kubernetes.io/default-container: ruler
           labels:
             app.kubernetes.io/component: ruler
@@ -2315,6 +2315,69 @@ medium (base) workloads:
                   name: data
                 - mountPath: /tmp
                   name: temp
+                - mountPath: /rules
+                  name: sc-rules-volume
+            - env:
+                - name: METHOD
+                  value: WATCH
+                - name: LABEL
+                  value: loki_rule
+                - name: FOLDER
+                  value: /rules
+                - name: FOLDER_ANNOTATION
+                  value: k8s-sidecar-target-directory
+                - name: RESOURCE
+                  value: configmap
+                - name: WATCH_SERVER_TIMEOUT
+                  value: "60"
+                - name: WATCH_CLIENT_TIMEOUT
+                  value: "60"
+                - name: LOG_LEVEL
+                  value: INFO
+                - name: HEALTH_PORT
+                  value: "8080"
+              image: docker.io/kiwigrid/k8s-sidecar:2.10.1
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                failureThreshold: 3
+                httpGet:
+                  path: /healthz
+                  port: http-sidecar
+                initialDelaySeconds: 30
+                periodSeconds: 30
+                successThreshold: 1
+                timeoutSeconds: 1
+              name: loki-sc-rules
+              ports:
+                - containerPort: 8080
+                  name: http-sidecar
+                  protocol: TCP
+              readinessProbe:
+                failureThreshold: 3
+                httpGet:
+                  path: /healthz
+                  port: http-sidecar
+                initialDelaySeconds: 3
+                periodSeconds: 10
+                successThreshold: 1
+                timeoutSeconds: 1
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - mountPath: /tmp
+                  name: sc-rules-temp
+                - mountPath: /rules
+                  name: sc-rules-volume
           enableServiceLinks: true
           priorityClassName: monitoring-scalable
           securityContext:
@@ -2339,6 +2402,10 @@ medium (base) workloads:
             - configMap:
                 name: loki-runtime
               name: runtime-config
+            - emptyDir: {}
+              name: sc-rules-volume
+            - emptyDir: {}
+              name: sc-rules-temp
       volumeClaimTemplates:
         - apiVersion: v1
           kind: PersistentVolumeClaim
@@ -2530,6 +2597,28 @@ networkpolicy:
           to:
             - ipBlock:
                 cidr: 0.0.0.0/0
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/instance: t
+          app.kubernetes.io/name: loki
+      policyTypes:
+        - Egress
+  7: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      labels:
+        app.kubernetes.io/instance: t
+        app.kubernetes.io/name: loki
+        app.kubernetes.io/version: 3.7.6
+        helm.sh/chart: loki-1.2.3
+      name: loki-egress-discovery
+      namespace: loki
+    spec:
+      egress:
+        - ports:
+            - port: 6443
+              protocol: TCP
       podSelector:
         matchLabels:
           app.kubernetes.io/instance: t

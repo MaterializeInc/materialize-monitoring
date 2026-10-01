@@ -522,7 +522,7 @@ Usage:
          tenants. Under the dynamic tenancy modes the tenant set is not knowable
          at render time, so a rendered rule set covers the tenants that existed
          when Helm last ran. */}}
-  {{- $tenantMap := dig "tenancy" "tenantMap" dict ( $.Values.pipeline | default dict ) }}
+  {{- $tenantMap := dig "logging" "tenancy" "tenantMap" dict ( $.Values.pipeline | default dict ) }}
   {{- $dynamic := list }}
   {{- range $class, $mode := $tenantMap }}
     {{- if eq ( $mode | toString ) "byNamespace" }}
@@ -530,7 +530,50 @@ Usage:
     {{- end }}
   {{- end }}
   {{- if $dynamic }}
-    {{- $warnings = append $warnings ( printf "pipeline.tenancy.tenantMap sets %s to byNamespace, so every Materialize namespace is its own Loki tenant and the tenant set changes as namespaces are created. A Loki rule group is per tenant and the ruler does not evaluate across them, so log alerting cannot be complete under this mode. Prefer `static` or `byEnvironment` where log alerting matters." ( join ", " ( sortAlpha $dynamic ) ) ) }}
+    {{- $warnings = append $warnings ( printf "pipeline.logging.tenancy.tenantMap sets %s to byNamespace, so every Materialize namespace is its own Loki tenant and the tenant set changes as namespaces are created. A Loki rule group is per tenant and the ruler does not evaluate across them, so log alerting cannot be complete under this mode. Prefer `static` or `byEnvironment` where log alerting matters." ( join ", " ( sortAlpha $dynamic ) ) ) }}
+  {{- end }}
+
+  {{- /* The chart's LogQL rules reach the ruler only through the rules sidecar,
+         writing into a folder that a local rule store reads. Take away any
+         piece and the ruler loads nothing and reports healthy, which reads
+         exactly like a deployment with nothing wrong in its logs. */}}
+  {{- $index := include "mzmon.rules.index" $ | fromYaml }}
+  {{- $logRules := list }}
+  {{- range $name := ( include "mzmon.rules.installed" $ | fromYamlArray ) }}
+    {{- if eq ( ( get $index.rules $name ).engine | default "promql" ) "logql" }}
+      {{- $logRules = append $logRules $name }}
+    {{- end }}
+  {{- end }}
+  {{- if $logRules }}
+    {{- $why := printf "The %d log-derived rules this release installs (%s) would never reach the Loki ruler." ( len $logRules ) ( join ", " $logRules ) }}
+    {{- $sidecar := dig "sidecar" "rules" dict $values }}
+    {{- $folder := dig "folder" "" $sidecar | toString }}
+    {{- if not ( dig "ruler" "sidecar" false $values ) }}
+      {{- $errors = append $errors ( printf "loki.ruler.sidecar is false, so no rules sidecar runs beside the ruler. %s Turn it on, or disable the rules (rules.disabled)." $why ) }}
+    {{- end }}
+    {{- if not ( dig "enabled" false $sidecar ) }}
+      {{- $errors = append $errors ( printf "loki.sidecar.rules.enabled is false. %s" $why ) }}
+    {{- end }}
+    {{- if not ( has ( dig "resource" "both" $sidecar | toString ) ( list "configmap" "both" ) ) }}
+      {{- $errors = append $errors ( printf "loki.sidecar.rules.resource is %q, but the chart delivers its rules as ConfigMaps. %s Set it to configmap." ( dig "resource" "" $sidecar | toString ) $why ) }}
+    {{- end }}
+    {{- if not ( dig "folderAnnotation" "" $sidecar ) }}
+      {{- $errors = append $errors ( printf "loki.sidecar.rules.folderAnnotation is empty, so the sidecar writes every rule file into %s itself rather than into a tenant's directory, where the ruler does not look. %s Set it to k8s-sidecar-target-directory." $folder $why ) }}
+    {{- end }}
+    {{- $store := dict }}
+    {{- $storePath := "" }}
+    {{- if dig "loki" "storage" "use_thanos_objstore" false $values }}
+      {{- $rs := dig "loki" "structuredConfig" "ruler_storage" dict $values }}
+      {{- $store = dict "type" ( dig "backend" "" $rs ) "dir" ( dig "local" "directory" "" $rs ) }}
+      {{- $storePath = "loki.loki.structuredConfig.ruler_storage (backend, local.directory)" }}
+    {{- else }}
+      {{- $rs := dig "loki" "rulerConfig" "storage" dict $values }}
+      {{- $store = dict "type" ( dig "type" "" $rs ) "dir" ( dig "local" "directory" "" $rs ) }}
+      {{- $storePath = "loki.loki.rulerConfig.storage (type, local.directory)" }}
+    {{- end }}
+    {{- if or ( ne ( $store.type | toString ) "local" ) ( ne ( $store.dir | toString ) $folder ) }}
+      {{- $errors = append $errors ( printf "%s is %q, %q, but the rules sidecar writes into %q (loki.sidecar.rules.folder), so the ruler reads a different store. %s Use a local store on that directory." $storePath ( $store.type | toString ) ( $store.dir | toString ) $folder $why ) }}
+    {{- end }}
   {{- end }}
 
   {{- /* final output */}}

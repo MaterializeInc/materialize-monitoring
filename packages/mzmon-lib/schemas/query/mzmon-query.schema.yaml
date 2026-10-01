@@ -630,7 +630,7 @@ $defs:
           `cilium_*` metric requires `cilium`), so this lists only the rest: a
           rule that reads nothing but `up`, or one that depends on a label a
           particular deployment adds. The effective set is recorded per rule in
-          `pre-rendered/rules/prometheus/_index.yaml`.
+          `pre-rendered/rules/_index.yaml`.
         uniqueItems: true
         items:
           $ref: "#/$defs/capability"

@@ -1,64 +1,24 @@
 {{- /*
-The bundled alerting rules, as PrometheusRule resources.
+The bundled PromQL alerting rules, as PrometheusRule resources.
 
 The rules are rendered at build time from the query registry into
 `pre-rendered/rules/prometheus/` (`mz-monitoring-build gen-rules`), one file per
-registry file. Here each file has its placeholders filled from values, its rules
-filtered to the ones that install (`mzmon.rules.installed`), and whatever is left
-emitted as one PrometheusRule. A file with nothing left emits nothing.
+registry file. Each file is filled in and filtered by `mzmon.rules.groups`, and
+whatever is left is emitted as one PrometheusRule. A file with nothing left
+emits nothing.
 
 The one consumer of a PrometheusRule in this stack is the Thanos ruler's import
 sidecar (`thanos.ruler.autoImportPrometheusRules`); a Prometheus Operator in the
 same cluster would also pick these up, which is what the `part-of` label is for.
-
-**The files are read as data and never passed through `tpl`.** Their
-annotations may carry `{{ $labels.namespace }}`, which is Prometheus template
-syntax for the ruler to expand, and `tpl` would try to expand it here.
+The LogQL rules are not PrometheusRules, for the same reason: every consumer of
+the kind parses its expressions as PromQL. They go to the Loki ruler from
+`lokirules.yaml`.
 */}}
 {{- if .Values.rules.enabled }}
-{{- $index := include "mzmon.rules.index" $ | fromYaml }}
-{{- $installed := include "mzmon.rules.installed" $ | fromYamlArray }}
-{{- $substitutions := include "mzmon.rules.substitutions" $ | fromYaml }}
-{{- $overrides := $.Values.rules.overrides | default dict }}
 {{- range $path, $_ := $.Files.Glob "pre-rendered/rules/prometheus/*.yaml" }}
   {{- $file := base $path }}
-  {{- if ne $file "_index.yaml" }}
-    {{- $raw := $.Files.Get $path }}
-    {{- /* `placeholders` is longest first, so no token is a prefix of one replaced later. */}}
-    {{- range $token := $index.placeholders }}
-      {{- $value := get $substitutions $token | required ( printf "no install-time value for rule placeholder %s" $token ) }}
-      {{- $raw = replace $token $value $raw }}
-    {{- end }}
-    {{- with regexFind "__mzmon_[a-z_]+__" $raw }}
-      {{- fail ( printf "pre-rendered/rules/prometheus/%s carries %s, a placeholder this chart does not know how to fill. Regenerate it with `make rules`." $file . ) }}
-    {{- end }}
-    {{- $doc := $raw | fromYaml }}
-    {{- if hasKey $doc "Error" }}
-      {{- fail ( printf "pre-rendered/rules/prometheus/%s does not parse: %s" $file $doc.Error ) }}
-    {{- end }}
-    {{- $groups := list }}
-    {{- range $group := $doc.groups }}
-      {{- $rules := list }}
-      {{- range $rule := $group.rules }}
-        {{- if has $rule.alert $installed }}
-          {{- /* `rules.overrides` changes one rule's `for` and labels, never its expression. */}}
-          {{- with get $overrides $rule.alert }}
-            {{- $rule = deepCopy $rule }}
-            {{- with .for }}
-              {{- $_ := set $rule "for" . }}
-            {{- end }}
-            {{- with .labels }}
-              {{- $_ := set $rule "labels" ( mergeOverwrite ( deepCopy $rule.labels ) . ) }}
-            {{- end }}
-          {{- end }}
-          {{- $rules = append $rules $rule }}
-        {{- end }}
-      {{- end }}
-      {{- if $rules }}
-        {{- $groups = append $groups ( dict "name" $group.name "rules" $rules ) }}
-      {{- end }}
-    {{- end }}
-    {{- if $groups }}
+  {{- $doc := include "mzmon.rules.groups" ( dict "root" $ "path" $path ) | fromYaml }}
+  {{- if $doc.groups }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -71,8 +31,7 @@ metadata:
     app.kubernetes.io/component: alerting-rules
 spec:
   groups:
-    {{- toYaml $groups | nindent 4 }}
-    {{- end }}
+    {{- toYaml $doc.groups | nindent 4 }}
   {{- end }}
 {{- end }}
 {{- end }}

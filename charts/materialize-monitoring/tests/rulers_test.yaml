@@ -53,6 +53,47 @@ tests:
           path: metadata.name
           value: loki-ruler
 
+  # The chart's log rules reach the ruler only through this sidecar, writing into
+  # the folder the ruler reads as its rule store. Without it the store is empty
+  # and the ruler reports healthy.
+  - it: runs the rules sidecar beside the Loki ruler, sharing the rule folder
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "loki-sc-rules")].env
+          content:
+            name: FOLDER_ANNOTATION
+            value: k8s-sidecar-target-directory
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "loki-sc-rules")].env
+          content:
+            name: RESOURCE
+            value: configmap
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "loki-sc-rules")].volumeMounts
+          content:
+            name: sc-rules-volume
+            mountPath: /rules
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "ruler")].volumeMounts
+          content:
+            name: sc-rules-volume
+            mountPath: /rules
+
+  # The sidecar watches the API server. `externalStorage` already opens 443;
+  # kind and several self-hosted distributions serve the API on 6443.
+  - it: opens the Loki pods' egress to the API server on 6443
+    template: ../charts/loki/templates/networkpolicy.yaml
+    documentSelector:
+      path: metadata.name
+      value: loki-egress-discovery
+    asserts:
+      - contains:
+          path: spec.egress[0].ports
+          content:
+            port: 6443
+            protocol: TCP
+
   # --- stateless mode -------------------------------------------------------
 
   # The subchart models no `remoteWrite` key and passes `--objstore.config-file`
@@ -292,7 +333,7 @@ tests:
   # when Helm last ran.
   - it: warns that byNamespace tenancy cannot have complete log alerting
     set:
-      pipeline.tenancy.tenantMap.materialize: byNamespace
+      pipeline.logging.tenancy.tenantMap.environment: byNamespace
     template: NOTES.txt
     asserts:
       - matchRegexRaw:

@@ -1,11 +1,13 @@
 {{- /* Alerting-rule helpers and validators.
 
 The rules themselves are rendered at build time by `mz-monitoring-build
-gen-rules` into `pre-rendered/rules/prometheus/`: one `groups:` document per
-query-registry file, and `_index.yaml`, which records each rule's capabilities
-and whether it is in the default set. These helpers decide which of those rules
-install, and fill in the placeholders the build left for facts only an install
-knows. `templates/alerts/prometheusrules.yaml` emits the result.
+gen-rules` into `pre-rendered/rules/`: one `groups:` document per query-registry
+file and ruler, PromQL under `prometheus/` and LogQL under `loki/`, and
+`_index.yaml`, which records each rule's engine, its capabilities and whether it
+is in the default set. These helpers decide which of those rules install, and
+fill in the placeholders the build left for facts only an install knows.
+`templates/alerts/prometheusrules.yaml` emits the PromQL result for the Thanos
+ruler, and `templates/alerts/lokirules.yaml` the LogQL result for the Loki ruler.
 */}}
 
 {{- /*
@@ -49,10 +51,10 @@ Usage:
   {{- $index := include "mzmon.rules.index" $ | fromYaml }}
 */}}
 {{- define "mzmon.rules.index" }}
-  {{- $index := $.Files.Get "pre-rendered/rules/prometheus/_index.yaml" | required "pre-rendered/rules/prometheus/_index.yaml cannot be missing/empty; run `make rules`" | fromYaml }}
+  {{- $index := $.Files.Get "pre-rendered/rules/_index.yaml" | required "pre-rendered/rules/_index.yaml cannot be missing/empty; run `make rules`" | fromYaml }}
   {{- /* `fromYaml` reports a parse failure as an `Error` key rather than failing. */}}
   {{- if hasKey $index "Error" }}
-    {{- fail ( printf "pre-rendered/rules/prometheus/_index.yaml does not parse: %s" $index.Error ) }}
+    {{- fail ( printf "pre-rendered/rules/_index.yaml does not parse: %s" $index.Error ) }}
   {{- end }}
   {{- $index | toYaml }}
 {{- end }}
@@ -173,7 +175,9 @@ The names of the rules that install, as a YAML list.
 
 A rule installs when rules are enabled, every capability it requires is
 present, it is in the default set or named (or its group named, or `*`) in
-`rules.selected`, and it is not named in `rules.disabled`.
+`rules.selected`, and it is not named in `rules.disabled`. A LogQL rule also
+needs this release's Loki ruler, which is the only thing its file is delivered
+to.
 */}}
 {{- define "mzmon.rules.installed" }}
   {{- $installed := list }}
@@ -182,12 +186,16 @@ present, it is in the default set or named (or its group named, or `*`) in
     {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
     {{- $selected := $.Values.rules.selected | default list }}
     {{- $disabled := $.Values.rules.disabled | default list }}
+    {{- $lokiRuler := include "mzmon.loki.ruler.enabled" $ }}
     {{- range $name, $rule := $index.rules }}
       {{- $applies := true }}
       {{- range $rule.requires }}
         {{- if not ( has . $caps ) }}
           {{- $applies = false }}
         {{- end }}
+      {{- end }}
+      {{- if and ( eq ( $rule.engine | default "promql" ) "logql" ) ( not $lokiRuler ) }}
+        {{- $applies = false }}
       {{- end }}
       {{- $chosen := or $rule.enabledByDefault ( has $name $selected ) ( has $rule.group $selected ) ( has "*" $selected ) }}
       {{- if and $applies $chosen ( not ( has $name $disabled ) ) }}
@@ -196,6 +204,86 @@ present, it is in the default set or named (or its group named, or `*`) in
     {{- end }}
   {{- end }}
   {{- $installed | toYaml }}
+{{- end }}
+
+{{- /*
+One pre-rendered rule file as it installs, as a YAML dict with `groups`.
+
+Each file has its placeholders filled from values, its rules filtered to the
+ones that install (`mzmon.rules.installed`) with `rules.overrides` applied, and
+any group left empty dropped. A file with nothing left returns no groups. Both
+engines' files go through this, so a rule installs, and is overridden, the same
+way whichever ruler evaluates it.
+
+**The file is read as data and never passed through `tpl`.** Its annotations
+may carry `{{ $labels.namespace }}`, which is Prometheus template syntax for the
+ruler to expand, and `tpl` would try to expand it here.
+
+Usage:
+  {{- $doc := include "mzmon.rules.groups" ( dict "root" $ "path" $path ) | fromYaml }}
+*/}}
+{{- define "mzmon.rules.groups" }}
+  {{- $root := .root }}
+  {{- $path := .path }}
+  {{- $index := include "mzmon.rules.index" $root | fromYaml }}
+  {{- $installed := include "mzmon.rules.installed" $root | fromYamlArray }}
+  {{- $substitutions := include "mzmon.rules.substitutions" $root | fromYaml }}
+  {{- $overrides := $root.Values.rules.overrides | default dict }}
+  {{- $raw := $root.Files.Get $path }}
+  {{- /* `placeholders` is longest first, so no token is a prefix of one replaced later. */}}
+  {{- range $token := $index.placeholders }}
+    {{- $value := get $substitutions $token | required ( printf "no install-time value for rule placeholder %s" $token ) }}
+    {{- $raw = replace $token $value $raw }}
+  {{- end }}
+  {{- with regexFind "__mzmon_[a-z_]+__" $raw }}
+    {{- fail ( printf "%s carries %s, a placeholder this chart does not know how to fill. Regenerate it with `make rules`." $path . ) }}
+  {{- end }}
+  {{- $doc := $raw | fromYaml }}
+  {{- if hasKey $doc "Error" }}
+    {{- fail ( printf "%s does not parse: %s" $path $doc.Error ) }}
+  {{- end }}
+  {{- $groups := list }}
+  {{- range $group := $doc.groups }}
+    {{- $rules := list }}
+    {{- range $rule := $group.rules }}
+      {{- if has $rule.alert $installed }}
+        {{- /* `rules.overrides` changes one rule's `for` and labels, never its expression. */}}
+        {{- with get $overrides $rule.alert }}
+          {{- $rule = deepCopy $rule }}
+          {{- with .for }}
+            {{- $_ := set $rule "for" . }}
+          {{- end }}
+          {{- with .labels }}
+            {{- $_ := set $rule "labels" ( mergeOverwrite ( deepCopy $rule.labels ) . ) }}
+          {{- end }}
+        {{- end }}
+        {{- $rules = append $rules $rule }}
+      {{- end }}
+    {{- end }}
+    {{- if $rules }}
+      {{- $groups = append $groups ( dict "name" $group.name "rules" $rules ) }}
+    {{- end }}
+  {{- end }}
+  {{- dict "groups" $groups | toYaml }}
+{{- end }}
+
+{{- /*
+The Loki tenants the log rules install for, as a YAML list.
+
+A Loki rule group belongs to one tenant, and the ruler does not evaluate across
+tenants, so the log rules install once per tenant whose logs they should read.
+`rules.logTenants` lists them; empty means the tenant the pipeline writes every
+class to under `static` tenancy, `pipeline.logging.tenancy.staticTenant`.
+
+Usage:
+  {{- $tenants := include "mzmon.rules.logTenants" $ | fromYamlArray }}
+*/}}
+{{- define "mzmon.rules.logTenants" }}
+  {{- $tenants := $.Values.rules.logTenants | default list }}
+  {{- if not $tenants }}
+    {{- $tenants = list $.Values.pipeline.logging.tenancy.staticTenant }}
+  {{- end }}
+  {{- $tenants | uniq | toYaml }}
 {{- end }}
 
 {{- /*
@@ -283,6 +371,15 @@ Validation for the rules surface.
     {{- end }}
   {{- end }}
 
+  {{- /* A tenant becomes a directory name under the rules sidecar's folder and the
+         `X-Scope-OrgID` the ruler queries as, so it has to be a valid Loki tenant
+         id, which also keeps it one path segment. */}}
+  {{- range ( $values.logTenants | default list ) }}
+    {{- if not ( and ( kindIs "string" . ) ( regexMatch "^[a-zA-Z0-9!._*'()-]{1,150}$" ( toString . ) ) ( not ( has ( toString . ) ( list "." ".." ) ) ) ) }}
+      {{- $errors = append $errors ( printf "rules.logTenants contains %s, which is not a Loki tenant id: up to 150 letters, digits and the characters ! - _ . * ' ( ), and not `.` or `..`." ( toJson . ) ) }}
+    {{- end }}
+  {{- end }}
+
   {{- /* Entries land inside a PromQL string literal in a YAML block scalar. */}}
   {{- $workloads := $values.infraWorkloads | default dict }}
   {{- range $tier, $list := $workloads }}
@@ -302,7 +399,7 @@ Validation for the rules surface.
 
   {{- if $values.enabled }}
     {{- if not ( include "mzmon.thanos.ruler.enabled" $ ) }}
-      {{- $warnings = append $warnings "rules.enabled renders PrometheusRule resources, but thanos.ruler is off, so nothing in this release evaluates them. That is only correct if another component in the cluster imports PrometheusRules." }}
+      {{- $warnings = append $warnings "rules.enabled renders PrometheusRule resources, but thanos.ruler is off, so nothing in this release evaluates the PromQL rules. That is only correct if another component in the cluster imports PrometheusRules." }}
     {{- end }}
 
     {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
@@ -312,8 +409,12 @@ Validation for the rules surface.
         {{- $warnings = append $warnings ( printf "rules.overrides names %q, which is not installed, so the override has no effect. Select it in rules.selected if it should install." $name ) }}
       {{- end }}
     {{- end }}
+    {{- $lokiRuler := include "mzmon.loki.ruler.enabled" $ }}
     {{- range $name := ( $values.selected | default list ) }}
       {{- with ( get $index.rules $name ) }}
+        {{- if and ( eq ( .engine | default "promql" ) "logql" ) ( not $lokiRuler ) }}
+          {{- $warnings = append $warnings ( printf "rules.selected names %q, a LogQL rule, but this release does not run the Loki ruler (loki.ruler.enabled), so it is not installed." $name ) }}
+        {{- end }}
         {{- $missing := list }}
         {{- range .requires }}
           {{- if not ( has . $caps ) }}
@@ -323,6 +424,22 @@ Validation for the rules surface.
         {{- if $missing }}
           {{- $warnings = append $warnings ( printf "rules.selected names %q, which requires %s that this deployment does not have, so it is not installed. Add %s to rules.capabilities if the deployment does." $name ( join ", " $missing ) ( join ", " $missing ) ) }}
         {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* One Loki rule group reads one tenant. Under anything but uniformly
+           static tenancy the logs are spread across tenants the chart cannot
+           enumerate, so the rules cover only the ones named. */}}
+    {{- $logRules := list }}
+    {{- range $name := $installedNames }}
+      {{- if eq ( ( get $index.rules $name ).engine | default "promql" ) "logql" }}
+        {{- $logRules = append $logRules $name }}
+      {{- end }}
+    {{- end }}
+    {{- if and $logRules ( not $values.logTenants ) }}
+      {{- $modes := values ( $.Values.pipeline.logging.tenancy.tenantMap | default dict ) | uniq | sortAlpha }}
+      {{- if ne ( join "," $modes ) "static" }}
+        {{- $warnings = append $warnings ( printf "pipeline.logging.tenancy.tenantMap is not uniformly \"static\" (%s), so logs are spread across Loki tenants, and the log-derived rules install only for %q. List every tenant whose logs they should read in rules.logTenants." ( join ", " $modes ) $.Values.pipeline.logging.tenancy.staticTenant ) }}
       {{- end }}
     {{- end }}
 

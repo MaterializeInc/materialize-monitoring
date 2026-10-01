@@ -2226,9 +2226,11 @@ connections:
 # @raw
 #
 # The bundled rules are rendered at build time from the query registry
-# (`packages/queries/`) and installed as `PrometheusRule` resources, which the
-# Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
-# below.
+# (`packages/queries/`). The PromQL rules are installed as `PrometheusRule`
+# resources, which the Thanos ruler imports and evaluates. The LogQL rules are
+# installed as ConfigMaps the Loki ruler loads (`loki.sidecar.rules`), and
+# install only where this release runs the Loki ruler. Where they go once they
+# fire is `alerting`, below.
 #
 # A rule installs when **every capability it requires is present**, and it is
 # either in the **default set** or named in `selected`, and it is not named in
@@ -2236,7 +2238,7 @@ connections:
 # it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 # derived from what this chart deploys (`materialize`, `kube-state-metrics`,
 # `loki`, …); the rest are listed in `capabilities`. The generated
-# `pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+# `pre-rendered/rules/_index.yaml` lists every rule with its engine and the
 # capabilities it requires.
 rules:
   # -- Install the bundled alerting rules.
@@ -2304,6 +2306,22 @@ rules:
   # not installed renders with a warning.
   # @default -- `{}`
   overrides: {}
+
+  # -- Loki tenants the log-derived rules install for. Empty means `pipeline.logging.tenancy.staticTenant`.
+  # @raw
+  #
+  # A Loki rule reads one tenant's logs, and the ruler does not evaluate across
+  # tenants, so each LogQL rule installs once per tenant listed here. Under the
+  # default `static` tenancy every log line is in `staticTenant`, and the
+  # default is right.
+  #
+  # Under `byEnvironment` each Materialize environment's logs are in a tenant
+  # named for its environment id, which the chart cannot know at render time.
+  # List those tenants here, and restate the list when an environment is
+  # added. Under `byNamespace` the tenant set grows with every namespace, and no
+  # list stays complete.
+  # @default -- `[]`
+  logTenants: []
 
   namespaces:
     # -- Namespaces holding Materialize environments.
@@ -3428,6 +3446,11 @@ loki:
         - 80
       cidrs:
         - "0.0.0.0/0"
+    # -- Egress to the API server on `6443`, for the ruler's rules sidecar.
+    # `443` is already open through `externalStorage`. A cluster serving the API
+    # elsewhere sets its port here; `null` removes the policy.
+    discovery:
+      port: 6443
 
   loki:
     storage:
@@ -3515,17 +3538,28 @@ loki:
     # evaluates its rules correctly and drops every alert on the floor, which is
     # indistinguishable from nothing being wrong. That is what this block fixes.
     #
-    # **Rule storage is already configured and is not here.** With
-    # `loki.storage.use_thanos_objstore` on, the subchart renders a top-level
-    # `ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
-    # writes rules into that bucket yet — the chart's own log-alert definitions
-    # do not exist, and how they get delivered is decided with them.
-    #
     # Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
     # resolves. It does **not** see the umbrella's values, which is why these
     # addresses are spelled out rather than built from the helpers the Thanos
     # side uses — and why `split-namespace` overrides both of them.
     rulerConfig:
+      # -- Where the ruler reads its rules: a local directory the rules sidecar fills.
+      # @raw
+      #
+      # The chart's log-derived rules arrive as ConfigMaps
+      # (`templates/alerts/lokirules.yaml`), which `loki.sidecar.rules` writes
+      # into this directory, one subdirectory per tenant. `local` is the rule
+      # store that reads a directory, and it is read-only: the ruler API still
+      # lists rules, and refuses to create or delete them.
+      #
+      # This is the legacy selector, read only while
+      # `loki.storage.use_thanos_objstore` is off. `structuredConfig.ruler_storage`
+      # below is the one read while it is on, which is the default. Both are set
+      # so the two paths agree.
+      storage:
+        type: local
+        local:
+          directory: /rules
       # `alertmanager-headless` follows `alertmanager.fullnameOverride`; a
       # deployment changing that name changes this with it, and the render warns
       # when the two disagree.
@@ -3600,6 +3634,22 @@ loki:
               min_shards: 1
               max_samples_per_send: 500
               batch_send_deadline: 5s
+
+    # -- (object) Config merged over the subchart's rendered Loki configuration, last.
+    # @raw
+    #
+    # With `loki.storage.use_thanos_objstore` on, the subchart renders a
+    # top-level `ruler_storage` pointed at `loki.storage.bucketNames.ruler`,
+    # and gives no value to change its backend. This replaces the backend with
+    # the local directory `rulerConfig.storage` describes, so the ruler reads the
+    # rules the chart delivers rather than an object-store prefix nothing
+    # writes. The bucket block the subchart rendered stays in the file and is
+    # not read.
+    structuredConfig:
+      ruler_storage:
+        backend: local
+        local:
+          directory: /rules
 
   gateway:
     # -- Disable gateway by default.
@@ -3900,9 +3950,16 @@ loki:
     enabled: true
     replicas: 2
 
+    # -- Run the rules sidecar (`loki.sidecar.rules`) beside the ruler.
+    # It is how the chart's log-derived rules reach the ruler's local rule
+    # store. Without it the store stays empty, and the ruler evaluates nothing
+    # while reporting healthy; the render fails if it is off while log rules
+    # install.
+    sidecar: true
+
     persistence:
       # -- Keep a PVC for the ruler (unlike the other components, which are
-      # ephemeral). Rule definitions come from object storage, but the ruler's
+      # ephemeral). Rule definitions come from ConfigMaps, but the ruler's
       # remote-write WAL buffers recording-rule samples when the metric store is
       # unreachable — genuinely useful durability in the run-up to an incident,
       # exactly when you don't want to drop derived signals.
@@ -3936,6 +3993,42 @@ loki:
         valueFrom:
           fieldRef:
             fieldPath: metadata.name
+
+  # -- (h5) The rules sidecar, which delivers LogQL rules from ConfigMaps to the ruler.
+  # @raw
+  #
+  # A `kiwigrid/k8s-sidecar` container in each ruler pod (`loki.ruler.sidecar`)
+  # watches ConfigMaps in the Loki namespace that carry `rules.label`, and
+  # writes each one's data into `rules.folder`, under the subdirectory named by
+  # its `rules.folderAnnotation`. The ruler reads that folder as its rule store
+  # (`loki.loki.rulerConfig.storage`), where a subdirectory is a tenant.
+  #
+  # The chart's own log-derived rules arrive this way
+  # (`templates/alerts/lokirules.yaml`), and so can a deployment's own: a
+  # ConfigMap in the Loki namespace labelled `loki_rule` and annotated
+  # `k8s-sidecar-target-directory: <tenant>`, holding a Prometheus-format rule
+  # file whose expressions are LogQL.
+  #
+  # The sidecar reads the API server, so the ruler needs egress to it. The
+  # Loki NetworkPolicy's `externalStorage` rule already opens `443` to
+  # everywhere; `networkPolicy.discovery.port` opens `6443`, which is where
+  # kind and several self-hosted distributions serve it.
+  sidecar:
+    rules:
+      enabled: true
+      label: loki_rule
+      labelValue: ""
+      folder: /rules
+      # The annotation that names a ConfigMap's tenant directory. Its value is
+      # relative to `folder`.
+      folderAnnotation: k8s-sidecar-target-directory
+      # ConfigMaps only. The chart delivers none of its rules as Secrets, and a
+      # watch on Secrets is a watch on every credential in the namespace.
+      resource: configmap
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
 
   # -- (h5) Chunk cache (memcached). Default allocation is sized for very large
   # installs; we shrink it to match our volumes. The results cache keeps its

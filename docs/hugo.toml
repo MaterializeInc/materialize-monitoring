@@ -37,7 +37,7 @@ baseURL = 'https://materializeinc.github.io/materialize-monitoring/'
   # is in the default set, which the registry files alone cannot say.
   [[module.mounts]]
     disableWatch = true
-    source = "../charts/materialize-monitoring/pre-rendered/rules/prometheus"
+    source = "../charts/materialize-monitoring/pre-rendered/rules"
     files = ["_index.yaml"]
     target = "assets/rules/"
 

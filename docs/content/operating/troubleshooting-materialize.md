@@ -180,7 +180,7 @@ Most of the definitions in this repo are outside that set: some await triage, an
 Materialize Cloud runs, so a self-managed install has no data behind them either way.
 
 So never reason "nothing is alerting, therefore it is healthy" without first checking the alert is installed.
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
+`pre-rendered/rules/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
 default set, and the Thanos ruler's own rule list says what it is evaluating.
 Read the definitions as *thresholds* — they are the closest thing here to "how bad is this number" — and evaluate their
 expressions yourself against Thanos when in doubt.

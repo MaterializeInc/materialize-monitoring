@@ -3423,9 +3423,11 @@ every replica like any other.
 Which alerting rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
-(`packages/queries/`) and installed as `PrometheusRule` resources, which the
-Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
-below.
+(`packages/queries/`). The PromQL rules are installed as `PrometheusRule`
+resources, which the Thanos ruler imports and evaluates. The LogQL rules are
+installed as ConfigMaps the Loki ruler loads (`loki.sidecar.rules`), and
+install only where this release runs the Loki ruler. Where they go once they
+fire is `alerting`, below.
 
 A rule installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
@@ -3433,7 +3435,7 @@ either in the **default set** or named in `selected`, and it is not named in
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
 `loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
 capabilities it requires.
 
 <table class="helm-values">
@@ -3525,6 +3527,26 @@ rules:
 `audience` one of `platform` and `workload`, so the routes still match. An
 unknown alert name fails the render, and an override for a rule that is
 not installed renders with a warning.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.logTenants</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Loki tenants the log-derived rules install for. Empty means `pipeline.logging.tenancy.staticTenant`.
+
+A Loki rule reads one tenant's logs, and the ruler does not evaluate across
+tenants, so each LogQL rule installs once per tenant listed here. Under the
+default `static` tenancy every log line is in `staticTenant`, and the
+default is right.
+
+Under `byEnvironment` each Materialize environment's logs are in a tenant
+named for its environment id, which the chart cannot know at render time.
+List those tenants here, and restate the list when an environment is
+added. Under `byNamespace` the tenant set grows with every namespace, and no
+list stays complete.
 </td>
     </tr>
     <tr>
@@ -4914,6 +4936,17 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.networkPolicy<wbr>.discovery</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "port": 6443
+}</pre>
+</td>
+      <td class="helm-value-desc">Egress to the API server on `6443`, for the ruler's rules sidecar. `443` is already open through `externalStorage`. A cluster serving the API elsewhere sets its port here; `null` removes the policy.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -5114,7 +5147,13 @@ Upstream reference:
     },
     "enabled": true
   },
-  "rule_path": "/var/loki/ruler-rules"
+  "rule_path": "/var/loki/ruler-rules",
+  "storage": {
+    "local": {
+      "directory": "/rules"
+    },
+    "type": "local"
+  }
 }</pre>
 </td>
       <td class="helm-value-desc">Ruler *configuration* (distinct from the ruler deployment below).
@@ -5124,16 +5163,35 @@ never had is somewhere to send an alert: without `alertmanager_url` it
 evaluates its rules correctly and drops every alert on the floor, which is
 indistinguishable from nothing being wrong. That is what this block fixes.
 
-**Rule storage is already configured and is not here.** With
-`loki.storage.use_thanos_objstore` on, the subchart renders a top-level
-`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
-writes rules into that bucket yet — the chart's own log-alert definitions
-do not exist, and how they get delivered is decided with them.
-
 Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
 resolves. It does **not** see the umbrella's values, which is why these
 addresses are spelled out rather than built from the helpers the Thanos
 side uses — and why `split-namespace` overrides both of them.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.storage</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "local": {
+    "directory": "/rules"
+  },
+  "type": "local"
+}</pre>
+</td>
+      <td class="helm-value-desc">Where the ruler reads its rules: a local directory the rules sidecar fills.
+
+The chart's log-derived rules arrive as ConfigMaps
+(`templates/alerts/lokirules.yaml`), which `loki.sidecar.rules` writes
+into this directory, one subdirectory per tenant. `local` is the rule
+store that reads a directory, and it is read-only: the ruler API still
+lists rules, and refuses to create or delete them.
+
+This is the legacy selector, read only while
+`loki.storage.use_thanos_objstore` is off. `structuredConfig.ruler_storage`
+below is the one read while it is on, which is the default. Both are set
+so the two paths agree.
 </td>
     </tr>
     <tr>
@@ -5182,6 +5240,30 @@ when the metric store is unreachable, which is exactly the run-up to an
 incident. Same destination as the Thanos ruler — the alloy-gateway's
 `prometheus.receive_http` listener — so both rulers' results reach the
 destination fan-out rather than only the bundled metric store.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.structuredConfig</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "ruler_storage": {
+    "backend": "local",
+    "local": {
+      "directory": "/rules"
+    }
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Config merged over the subchart's rendered Loki configuration, last.
+
+With `loki.storage.use_thanos_objstore` on, the subchart renders a
+top-level `ruler_storage` pointed at `loki.storage.bucketNames.ruler`,
+and gives no value to change its backend. This replaces the backend with
+the local directory `rulerConfig.storage` describes, so the ruler reads the
+rules the chart delivers rather than an object-store prefix nothing
+writes. The bucket block the subchart rendered stays in the file and is
+not read.
 </td>
     </tr>
     <tr>
@@ -5640,10 +5722,17 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.ruler<wbr>.sidecar</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run the rules sidecar (`loki.sidecar.rules`) beside the ruler. It is how the chart's log-derived rules reach the ruler's local rule store. Without it the store stays empty, and the ruler evaluates nothing while reporting healthy; the render fails if it is off while log rules install.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Keep a PVC for the ruler (unlike the other components, which are ephemeral). Rule definitions come from object storage, but the ruler's remote-write WAL buffers recording-rule samples when the metric store is unreachable — genuinely useful durability in the run-up to an incident, exactly when you don't want to drop derived signals.
+      <td class="helm-value-desc">Keep a PVC for the ruler (unlike the other components, which are ephemeral). Rule definitions come from ConfigMaps, but the ruler's remote-write WAL buffers recording-rule samples when the metric store is unreachable — genuinely useful durability in the run-up to an incident, exactly when you don't want to drop derived signals.
 </td>
     </tr>
     <tr>
@@ -5697,6 +5786,30 @@ https://grafana.com/docs/loki/latest/get-started/components/
 ]</pre>
 </td>
       <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar</td>
+      <td class="helm-value-type">h5</td>
+      <td class="helm-value-default"><code>{"resources":{"requests":{"cpu":"10m", "memory":"64Mi"}}, "rules":{"enabled":true, "folder":"/rules", "folderAnnotation":"k8s-sidecar-target-directory", "label":"loki_rule", "labelValue":"", "resource":"configmap"}}</code></td>
+      <td class="helm-value-desc">The rules sidecar, which delivers LogQL rules from ConfigMaps to the ruler.
+
+A `kiwigrid/k8s-sidecar` container in each ruler pod (`loki.ruler.sidecar`)
+watches ConfigMaps in the Loki namespace that carry `rules.label`, and
+writes each one's data into `rules.folder`, under the subdirectory named by
+its `rules.folderAnnotation`. The ruler reads that folder as its rule store
+(`loki.loki.rulerConfig.storage`), where a subdirectory is a tenant.
+
+The chart's own log-derived rules arrive this way
+(`templates/alerts/lokirules.yaml`), and so can a deployment's own: a
+ConfigMap in the Loki namespace labelled `loki_rule` and annotated
+`k8s-sidecar-target-directory: <tenant>`, holding a Prometheus-format rule
+file whose expressions are LogQL.
+
+The sidecar reads the API server, so the ruler needs egress to it. The
+Loki NetworkPolicy's `externalStorage` rule already opens `443` to
+everywhere; `networkPolicy.discovery.port` opens `6443`, which is where
+kind and several self-hosted distributions serve it.
 </td>
     </tr>
     <tr>

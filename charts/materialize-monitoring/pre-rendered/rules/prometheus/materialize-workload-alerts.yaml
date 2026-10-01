@@ -2,7 +2,7 @@
 #
 # Tokens of the form __mzmon_*__ are replaced by the chart at install time
 # (templates/alerts/prometheusrules.yaml); which rules install is decided there
-# from _index.yaml.
+# from ../_index.yaml.
 groups:
 - name: freshness
   rules:
