@@ -6173,7 +6173,9 @@ The remaining work is described in the [alerting design doc](../../reference/int
 
 ## The bundled rules
 
-The chart ships alerting rules for Materialize and for the platform under it, installed as `PrometheusRule` resources that the Thanos ruler evaluates.
+The chart ships alerting rules for Materialize and for the platform under it.
+The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
+The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
 [Common Alerts](../../reference/stable-metrics/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
@@ -6184,6 +6186,7 @@ A rule installs when all of the following hold:
 | Every capability the rule requires is present | derived from what the chart deploys, plus `rules.capabilities` |
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
+| A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
 The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
@@ -6230,7 +6233,7 @@ No component evaluates both PromQL and LogQL, which is why there are two.
 | Language | PromQL | LogQL |
 | Values key | `thanos.ruler` | `loki.ruler`, configured under `loki.loki.rulerConfig` |
 | Reads from | Thanos Query | Loki |
-| Rule source | `PrometheusRule` resources in the cluster | The ruler's object-storage bucket |
+| Rule source | `PrometheusRule` resources in the cluster, except `flavor: logql` | `PrometheusRule` resources labelled `flavor: logql`, written into its bucket by the alloy-gateway |
 | Notifies | The bundled Alertmanager | The bundled Alertmanager |
 | Rule results | Remote-written to the alloy-gateway | Remote-written to the alloy-gateway |
 
@@ -6271,26 +6274,59 @@ Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream
 **That argument is load-bearing.**
 A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
 
-## Rules reach the Thanos Ruler as `PrometheusRule` resources
+## Every bundled rule is a `PrometheusRule`
+
+Both rulers' rules are installed as `PrometheusRule` resources, and the label `mzmon.materialize.cloud/flavor` says which ruler each is for.
+
+| Flavor | Read by | Delivered to |
+|---|---|---|
+| `promql` | The Thanos ruler's import sidecar | The Thanos ruler's rule directory |
+| `logql` | The alloy-gateway's `loki.rules.kubernetes` | The Loki ruler's rule store, through its API |
+
+A deployment's own `PrometheusRule` reaches the right ruler the same way.
+One without the label is PromQL, and one labelled `logql` is LogQL.
+
+## Rules reach the Thanos Ruler through an import sidecar
 
 A sidecar lists `PrometheusRule` resources, writes each one's spec into the ruler's rule directory, and triggers a reload when the set changes.
 No Prometheus Operator controller is involved, and the chart installs the CRDs it needs.
 
-This is the only consumer of a `PrometheusRule` in this stack.
-Alloy reads `ServiceMonitor` and `PodMonitor` and has no rule evaluator, and no Prometheus runs here.
-
-**The sidecar imports every `PrometheusRule` in the cluster.**
+**The sidecar imports every `PrometheusRule` in the cluster except the LogQL ones.**
 That is deliberate: a `PrometheusRule` applied by an operator or by another chart works with no configuration here.
 The cost is that a co-resident rule owner — a kube-prometheus-stack, for instance — has its alerts evaluated by this ruler and notified through this Alertmanager.
 Where that is not wanted, `thanos.ruler.autoImportPrometheusRules.labelSelector` SHOULD be set to narrow the imported set.
 
-## Loki rules come from object storage
+**The exclusion is load-bearing.**
+The Thanos ruler reads every file it imports as PromQL, so one LogQL file fails its reload, and it keeps evaluating the rules it loaded before.
+The default selector is `mzmon.materialize.cloud/flavor!: logql`.
+The subchart joins the selector map into `key=value` pairs, so a key ending in `!` renders as `key!=value`, which also keeps a `PrometheusRule` carrying no flavor label.
+A selector replacing the default MUST keep that key, or select `mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
-The Loki ruler reads its rule groups from the bucket named by `loki.loki.storage.bucketNames.ruler`.
-Nothing in the chart writes rules into that bucket yet.
+**A Prometheus Operator in the same cluster may refuse the LogQL rules.**
+Its Prometheus selects rules by its own `ruleSelector`, so it does not evaluate them.
+Its admission webhook, where one is installed, validates every `PrometheusRule` as PromQL, and rejects a LogQL one when it is applied.
+A cluster running one MUST exclude `mzmon.materialize.cloud/flavor: logql` through the webhook's `objectSelector`, or the install fails.
 
-A Loki rule group belongs to one tenant, and the ruler does not evaluate across tenants.
-Where `pipeline.tenancy.tenantMap` selects `byNamespace`, every Materialize namespace becomes its own tenant and the tenant set changes as namespaces are created, so a rule set installed at deploy time covers only the namespaces that existed then.
+## Rules reach the Loki Ruler through its API
+
+The alloy-gateway's `loki.rules.kubernetes` watches `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, in every namespace.
+It writes each one's groups into the Loki ruler through the ruler API, which stores them in the bucket named by `loki.loki.storage.bucketNames.ruler`.
+Its Loki rule namespaces are prefixed `mzmon`.
+It removes the ones whose `PrometheusRule` is gone and leaves every other namespace alone, so a rule written to the API by anything else survives.
+
+Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
+The gateway addresses the Service that serves the ruler in Loki's deployment mode: `loki-ruler` when distributed, `loki-backend` when simple-scalable, and `loki` for a single binary.
+It uses the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`, and the chart's Loki certificate names `loki-ruler`.
+
+A log-derived rule installs only where the release runs the Loki ruler and the gateway, and where the ruler's rule store accepts writes.
+A `local` store does not; that is what a filesystem-only Loki gets, such as the `loki-test` profile.
+There the log-derived rules are left out and the render warns.
+
+**A Loki rule group belongs to one tenant**, and the ruler does not evaluate across tenants.
+The gateway writes the log-derived rules into each tenant in `rules.logTenants`, which defaults to `pipeline.logging.tenancy.staticTenant`.
+Under the default `static` tenancy every line is in that tenant, and nothing needs setting.
+Under `byEnvironment` each environment's logs are in a tenant named for its environment id, which the chart cannot discover; those tenants MUST be listed in `rules.logTenants` for the rules to see them, and the render warns while none are.
+Under `byNamespace` the tenant set changes as namespaces are created, so no list stays complete.
 Deployments that need complete log alerting SHOULD use `static` or `byEnvironment`.
 
 ## What an operator configures today
@@ -6300,14 +6336,15 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `thanos.ruler.enabled` | `true` | Deploys the PromQL evaluator. Turning it off makes every `PrometheusRule` in the cluster inert |
 | `thanos.ruler.query.urls` | Thanos Query | Deliberately Query rather than Query Frontend. See below |
 | `thanos.ruler.alertmanagers.config` | Every replica of the bundled Alertmanager, by `dns+` lookup | Thanos's own Alertmanager configuration format, passed through |
-| `thanos.ruler.autoImportPrometheusRules.labelSelector` | `{}` | Which `PrometheusRule` resources to import. Empty means all of them |
+| `thanos.ruler.autoImportPrometheusRules.labelSelector` | `mzmon.materialize.cloud/flavor!: logql` | Which `PrometheusRule` resources to import. The default is all but the LogQL ones |
 | `loki.ruler.enabled` | `true` | Deploys the LogQL evaluator |
 | `loki.loki.rulerConfig.alertmanager_url` | Every replica of the bundled Alertmanager, by SRV lookup | Clearing it leaves the ruler evaluating recording rules and discarding alerts. The `_http._tcp.` form requires `enable_alertmanager_discovery: true` |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
 | `rules.enabled` | `true` | Installs the bundled rules that apply |
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
-| `rules.overrides` | `{}` | Per-alert `for` and labels |
+| `rules.overrides` | `{}` | Per-alert `for` and labels, for metric and log rules alike |
+| `rules.logTenants` | the static tenant | Loki tenants the gateway writes the log-derived rules into |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
@@ -6338,7 +6375,7 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 | Missing | Consequence |
 |---|---|
 | Triage of the rest of the bundled set | Most bundled rules are outside the default set until each is checked against a self-managed install |
-| Log-derived alert definitions | Panic and correctness detection is not yet expressible here |
+| A behavioural test for log rules | Loki has no counterpart to `promtool test rules`, so each log rule is checked against a live install instead |
 | Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/stable-metrics/common-alerts/) until runbooks exist |
 | A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
 | Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
@@ -8871,10 +8908,16 @@ Most of the definitions in this repo are outside that set: some await triage, an
 Materialize Cloud runs, so a self-managed install has no data behind them either way.
 
 So never reason "nothing is alerting, therefore it is healthy" without first checking the alert is installed.
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
-default set, and the Thanos ruler's own rule list says what it is evaluating.
+`pre-rendered/rules/_index.yaml` lists every rule with the capabilities it requires, whether it is in the default set,
+and its `engine`, which says which ruler evaluates it.
+
+| `engine` | Evaluated by | Its rule list | Evaluate the expression against |
+|---|---|---|---|
+| `promql` | The Thanos ruler | The Thanos ruler's `/api/v1/rules` | Thanos Query |
+| `logql` | The Loki ruler | The Loki ruler's `/loki/api/v1/rules`, under the tenant the logs are in | Loki, as a metric query |
+
 Read the definitions as *thresholds* — they are the closest thing here to "how bad is this number" — and evaluate their
-expressions yourself against Thanos when in doubt.
+expressions yourself against the backend in the table when in doubt.
 That is what the alert would have done.
 
 ## Handing it over
@@ -10617,8 +10660,9 @@ url: https://materializeinc.github.io/materialize-monitoring/reference/internal/
 
 # Authoring Alerts
 
-An alert is written once, in the query registry, and becomes a Prometheus rule through `mz-monitoring-build gen-rules`.
-The chart installs that rule as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
+An alert is written once, in the query registry, and becomes a rule through `mz-monitoring-build gen-rules`.
+An alert whose query is PromQL is installed as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
+An alert whose query is LogQL is installed as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway writes into the Loki ruler, and the Loki ruler evaluates it.
 This page is the conventions a contributor follows when adding or changing an alert, and what the tooling checks on their behalf.
 Where the alert goes once it fires is [Alert Channels]({{< relref "../../../alerting/channels.md" >}}); why the stack is shaped this way is the [alerting design doc]({{< relref "../design-docs/20260917-alerting-self-managed.md" >}}).
 
@@ -10636,9 +10680,9 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 | Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose; the file's `alertLabels` supply its `audience` |
 | Validate | `bin/mz-monitoring-check check-queries` (pre-commit) | Schema validation, including every `%%{…}` placeholder name |
 | Render | `make rules` (`mz-monitoring-build gen-rules`) | Renders through the alerting context, infers capabilities, and fails on any problem |
-| Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | One `groups:` file per registry file, and `_index.yaml` |
-| Install | `templates/alerts/prometheusrules.yaml` | Fills the placeholders from values and keeps the rules that apply |
-| Check | `make rules-check` | `promtool check rules` on several rendered scenarios, then `promtool test rules` |
+| Output | `charts/materialize-monitoring/pre-rendered/rules/` | One `groups:` file per registry file and ruler, PromQL in `prometheus/` and LogQL in `loki/`, and one `_index.yaml` listing both |
+| Install | `templates/alerts/prometheusrules.yaml`, `templates/alerts/lokirules.yaml` | Fills the placeholders from values and keeps the rules that apply, the same way for both engines |
+| Check | `make rules-check` | `promtool check rules` and a LogQL parse with `logcli` on several rendered scenarios, then `promtool test rules` |
 
 The generated files are committed, and CI fails when they are stale.
 
@@ -10649,6 +10693,7 @@ An alert belongs in the file for the people who act on it.
 | File | `audience` | Holds |
 |---|---|---|
 | `materialize-alerts.yaml` | `platform` | The Materialize deployment: environmentd, the system clusters, clusterd crashes, persist, auth and the console |
+| `materialize-log-alerts.yaml` | `platform` | The Materialize deployment, detected in its log lines: panics and correctness violations |
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
 
@@ -10714,6 +10759,9 @@ Most requirements are **inferred**.
 `gen-rules` reads the metrics an alert names and maps each through the ordered table in `packages/mzmon-lib/src/query/rules/capability.rs`, so an alert reading `cilium_*` requires `cilium` without saying so.
 A metric the table does not claim fails the build.
 
+A LogQL alert names no metrics, so nothing is inferred for it.
+Its requirements are what it declares, and the chart installs it only where the release can deliver it: a Loki ruler, the alloy-gateway, and a rule store the ruler API can write to.
+
 **`requires` declares what metric names cannot show.**
 An alert whose only metric is `up` MUST declare what it is about, since `up` exists for every target.
 An alert that depends on a label only some deployments add, such as a node label, SHOULD declare the capability that adds it.
@@ -10754,8 +10802,10 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
 | `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
-| The query exists and has exactly one PromQL expression | A rule is one expression; LogQL rules are not rendered yet |
-| The expression renders and parses | A group with one bad rule is dropped whole |
+| The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
+| A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |
+| The expression renders and parses | A group with one bad rule is dropped whole. PromQL is parsed here; LogQL is checked for shape here and parsed by `make rules-check` |
+| A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
 | Every metric has a known source | A rule reading a metric nothing produces never fires |
 | `deploymentMode` is not a label | Applicability is `requires`, not a label nothing reads |
@@ -10774,6 +10824,36 @@ The first two are checked mechanically; the rest are for the author and the revi
 7. The name SHOULD describe the condition rather than its grade, so that re-grading does not force a rename.
 8. The `summary` MUST be actionable without following the runbook link, since an air-gapped install cannot follow it.
 
+## Log-derived alerts
+
+An alert whose query is LogQL reads Materialize's log lines instead of its metrics.
+It is authored the same way, in a registry file of its own, and lands in `pre-rendered/rules/loki/`.
+It installs as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the Thanos ruler's importer leaves out and the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler through its API.
+It routes through the same Alertmanager, with the same labels, as a metric alert.
+
+**The range is the alert's duration.**
+Cloud's clicked-in Loki rules used Grafana's `$__range`, which no ruler can parse, and the alerting context refuses it.
+A log rule SHOULD be written as `count_over_time(…[<range>]) > 0` with `for: 0s`, so it fires on the first evaluation at which a matching line falls inside the range.
+The range is then how long the alert keeps firing after the last matching line, and the notes SHOULD say so.
+
+**A log rule SHOULD match on structure before text.**
+`namespace`, `app`, `container` and `level` are stream labels and belong in the selector.
+`pod` and the fields the pipeline extracts are structured metadata, which a rule filters with `| field != ""` and MAY group by.
+The pipeline already classifies a panic: a line starting `thread '…' panicked at` becomes level `CRITICAL`, with `panic_thread` and `panic_location` as structured metadata, so `materialize-panic` matches that rather than the word "panic".
+
+**A line filter matches text Materialize does not promise to keep.**
+A reworded message makes the rule silent rather than broken.
+A log rule that matches message text MUST name the source file that logs it, so a reviewer can check the message still exists.
+The durable fix is a stable error code in the log line, which the alerting design doc asks of Materialize.
+
+**A Loki rule reads one tenant.**
+The rule set installs once per tenant in `rules.logTenants`, which defaults to the pipeline's static tenant.
+Under non-static tenancy the chart cannot enumerate the tenants, and the render warns.
+
+**There is no unit test for a LogQL rule.**
+Loki has no counterpart to `promtool test rules`.
+A log rule MUST instead be evaluated against a live install before it enters the default set, once as it stands and once with its range widened over a window in which the line is known to have been logged.
+
 ## Testing an alert
 
 **Unit tests.**
@@ -10785,7 +10865,7 @@ Before an alert enters the default set, its expression SHOULD be run against a r
 `gcx metrics query` does this without cluster access.
 
 **Cloud's rules are prior art, not a source.**
-Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set) are worth reading for thresholds and history.
+Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set, where its only log-derived rules live) are worth reading for thresholds and history.
 An alert MUST NOT be copied from them verbatim: they use Cloud's namespaces, labels and job names, and some carry customer names that MUST NOT enter this repository.
 
 
@@ -11785,7 +11865,8 @@ point rather than a researched one.
     "secretName": "",
     "services": [
       "loki-distributor",
-      "loki-query-frontend"
+      "loki-query-frontend",
+      "loki-ruler"
     ]
   },
   "thanos": {
@@ -14265,9 +14346,12 @@ every replica like any other.
 Which alerting rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
-(`packages/queries/`) and installed as `PrometheusRule` resources, which the
-Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
-below.
+(`packages/queries/`) and installed as `PrometheusRule` resources, each
+labelled with its query language as `mzmon.materialize.cloud/flavor`. The
+Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
+`loki.rules.kubernetes` writes the LogQL ones into the Loki ruler, so they
+install only where this release runs both. Where they go once they fire is
+`alerting`, below.
 
 A rule installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
@@ -14275,7 +14359,7 @@ either in the **default set** or named in `selected`, and it is not named in
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
 `loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
 capabilities it requires.
 
 <table class="helm-values">
@@ -14367,6 +14451,26 @@ rules:
 `audience` one of `platform` and `workload`, so the routes still match. An
 unknown alert name fails the render, and an override for a rule that is
 not installed renders with a warning.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.logTenants</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Loki tenants the log-derived rules are written into. Empty means `pipeline.logging.tenancy.staticTenant`.
+
+A Loki rule reads one tenant's logs, and the ruler does not evaluate across
+tenants, so the gateway writes every LogQL `PrometheusRule` into each
+tenant listed here. Under the default `static` tenancy every log line is in
+`staticTenant`, and the default is right.
+
+Under `byEnvironment` each Materialize environment's logs are in a tenant
+named for its environment id, which the chart cannot know at render time.
+List those tenants here, and restate the list when an environment is
+added. Under `byNamespace` the tenant set grows with every namespace, and no
+list stays complete.
 </td>
     </tr>
     <tr>
@@ -15966,11 +16070,13 @@ never had is somewhere to send an alert: without `alertmanager_url` it
 evaluates its rules correctly and drops every alert on the floor, which is
 indistinguishable from nothing being wrong. That is what this block fixes.
 
-**Rule storage is already configured and is not here.** With
+**Rule storage is configured and is not here.** With
 `loki.storage.use_thanos_objstore` on, the subchart renders a top-level
-`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
-writes rules into that bucket yet — the chart's own log-alert definitions
-do not exist, and how they get delivered is decided with them.
+`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. The
+chart's log-derived rules are written into it through the ruler API, by
+the alloy-gateway's `loki.rules.kubernetes`, from `PrometheusRule`
+resources labelled `mzmon.materialize.cloud/flavor: logql`. A rule store
+that refuses writes, such as `local`, leaves them out.
 
 Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
 resolves. It does **not** see the umbrella's values, which is why these
@@ -17541,6 +17647,9 @@ validator warns when the two disagree.
   },
   "autoImportPrometheusRules": {
     "enabled": true,
+    "labelSelector": {
+      "mzmon.materialize.cloud/flavor!": "logql"
+    },
     "sidecar": {
       "image": {
         "registry": "docker.io",
@@ -17758,6 +17867,9 @@ resources, through the import sidecar below.
       <td class="helm-value-default"><pre>
 {
   "enabled": true,
+  "labelSelector": {
+    "mzmon.materialize.cloud/flavor!": "logql"
+  },
   "sidecar": {
     "image": {
       "registry": "docker.io",
@@ -17779,12 +17891,22 @@ A `kubectl` sidecar lists `PrometheusRule` resources every 60s, writes each
 one's `.spec` into the Ruler's rule directory, and POSTs `/-/reload` when
 the set changes. No Prometheus Operator controller is involved.
 
-**`labelSelector` is empty, so this imports every `PrometheusRule` in the
-cluster**, including any belonging to a co-resident kube-prometheus-stack.
-That is the upstream default and it is kept deliberately: it is also what
-makes a customer's own `PrometheusRule` work with no chart configuration.
-Set a selector here if this cluster runs another rule owner whose alerts
-should not reach this Alertmanager.
+**`labelSelector` imports every `PrometheusRule` in the cluster except the
+LogQL ones**, including any belonging to a co-resident
+kube-prometheus-stack. That is kept deliberately: it is what makes a
+customer's own `PrometheusRule` work with no chart configuration. Set a
+narrower selector here if this cluster runs another rule owner whose
+alerts should not reach this Alertmanager.
+
+**The exclusion is load-bearing.** The chart's log-derived rules are
+`PrometheusRule` resources too, labelled
+`mzmon.materialize.cloud/flavor: logql`, and the Thanos ruler reads every
+file it imports as PromQL; one LogQL file fails the reload, and the ruler
+keeps evaluating whatever it loaded before. The subchart joins this map
+into `key=value` pairs, so a key ending in `!` renders as `key!=value`,
+which also keeps a `PrometheusRule` carrying no flavor label. A selector
+replacing this one keeps the exclusion, or selects
+`mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
 The image is pinned rather than left on the upstream `latest`, so a default
 install does not track a floating tag. It is the only Docker Hub image the
@@ -24290,17 +24412,17 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Item | Milestone | Status |
 |---|---|---|
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
-| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Twenty-eight are in the default set**, each evaluated against both self-managed test installs without firing falsely. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
-| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL only. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
+| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
+| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
-| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. No LogQL rule and no recording rule is written yet) |
-| Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
+| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. No recording rule is written yet) |
+| Log-derived alert definitions in the query registry | OO-M2 | ✅ (`materialize-log-alerts.yaml` ports Cloud's clicked-in Loki rules by shape rather than verbatim: `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` in the default set, `trace-logging-enabled` opt-in, and the hanging-query rule dropped because its error came from the removed gRPC transport. See [Authoring Alerts](../queries/alerts/#log-derived-alerts)) |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
 | Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ✅ (twenty capabilities, **mostly inferred** from the metrics a rule reads through an ordered table, with `requires` for what names cannot show. Eight are derived from what the chart deploys; twelve are listed in `rules.capabilities`. A rule installs only where all of its capabilities are present, and a metric the table does not claim fails the build — the design doc's applicability check, with something to check against) |
 | Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | 🔨 (every rule carries `runbook_url`, pointing at its anchored entry on Common Alerts; the runbooks themselves are not written) |
-| Alert and recording-rule names added to the committed surface | OO-M2 | ✅ (`pre-rendered/rules/prometheus/_index.yaml` joins the committed-surface table and CODEOWNERS, and the `code-review` skill treats a default-set name as committed) |
+| Alert and recording-rule names added to the committed surface | OO-M2 | ✅ (`pre-rendered/rules/_index.yaml` joins the committed-surface table and CODEOWNERS, and the `code-review` skill treats a default-set name as committed) |
 | Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | 🔨 (`rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` exist, as do extra receivers and routes under `alerting`. An override sets one rule's `for` and labels, never its expression. `rules.extra` does not exist) |
 | Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | 🔨 (the scrape is on; the switch and the meta-alerts are rules, and are not written yet. `environmentd-not-scraped` covers one silence, a Materialize that has disappeared from the scrape) |
 | Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ✅ (two gossiping replicas by default, PDB of one, hard zone and soft host spread, read-only root filesystem, no ServiceAccount token, requests and a memory limit, health-endpoint probes, `cluster.label`. Both rulers now address the headless Service by DNS discovery, because gossip replicates silences and the notification log but **not alerts**, and a replica a ruler never reached cannot notify when its peer is lost. The storage question the ticket deferred is settled: the 4Gi volume stays, because gossip covers losing one replica and only the volume covers losing both, and `volumeClaimTemplates` are immutable so removing it would fail every upgrade. Verified on a live GKE install, including the upgrade landing the replicas in separate zones. Resource names are pinned to `alertmanager`, so that upgrade replaces the StatefulSet rather than scaling it. See [Alert Architecture](../../../alerting/architecture/)) |
@@ -24355,9 +24477,9 @@ The proposal keeps `severity` on the rule and puts a three-way `alerting.critica
 It ships here, and the answer is that names are committed from the release that first carries rules: `rules.disabled` names alerts, an external Alertmanager's routing matches on them, and a runbook link is built from them.
 Names churn while the default set is derived, and each rename owes a changelog entry even then.
 
-**Log-derived alerting has never been code anywhere at Materialize.**
+**Log-derived alerting had never been code anywhere at Materialize.**
 Cloud's pipeline emits PromQL rule groups, so the alerts that detect panics, correctness violations, and data-corruption patterns are clicked into Grafana — duplicated per region, drifted between copies, and carrying deployment-specific exclusions compiled into the LogQL.
-Self-managed is the first place that class can be defined and reviewed, and the port is not a transcription: the clicked-in rules use `$__range`, which is a Grafana variable that a Loki ruler cannot parse.
+Self-managed is the first place that class is defined and reviewed, in `materialize-log-alerts.yaml`, and the port was not a transcription: the clicked-in rules use `$__range`, which is a Grafana variable that a Loki ruler cannot parse.
 
 ### Profiles
 
@@ -24900,7 +25022,7 @@ There is no CI gate for this — see [why](../design-docs/20260823-deprecation-p
 | `terraform/modules/*/variables.tf`, `outputs.tf` | module inputs and outputs |
 | `charts/*/pre-rendered/dashboards/` | dashboard identities |
 | `charts/*/pre-rendered/metrics/metric-tiers.yaml` | tier names |
-| `charts/*/pre-rendered/rules/prometheus/_index.yaml` | the alert names that ship, which are in the default set, and the capability names `rules.capabilities` accepts |
+| `charts/*/pre-rendered/rules/_index.yaml` | the alert names that ship, which are in the default set, and the capability names `rules.capabilities` accepts |
 
 These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/CODEOWNERS) covers, so the review request arrives on its own.
 The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.
@@ -29039,6 +29161,16 @@ The registry already models LogQL — `env-logs` and `env-upgrade` are built on 
 
 That gets the class four things it has never had: review, a docsite entry beside the metric alerts, a single definition rendered to both the chart and, eventually, Cloud, and the ability to change a pattern in one place rather than in three regions' worth of clicked-in copies.
 
+As ported, from the fourteen clicked-in rules, which are five detectors copied per region:
+
+| Clicked-in detector | Ported as | Changed |
+|---|---|---|
+| Panic | `materialize-panic`, default set | Matches the pipeline's panic classification (`level="CRITICAL"`, `panic_location`) rather than `(?i)panic` minus a `seqno` exception, and drops the per-environment exclusions |
+| Potential data corruption errors | `data-correctness-error`, default set | Drops `invalid record multiplicity`, which Materialize no longer logs |
+| Filter pushdown correctness violation | `persist-filter-pushdown-violation`, default set | Names the system parameter that disables pushdown, where Cloud named a LaunchDarkly flag |
+| Trace logs enabled | `trace-logging-enabled`, opt-in | Scoped to the environment namespaces, because the operator logs at TRACE in normal operation |
+| Hanging query warning | Not ported | Matched an HTTP/2 error from the gRPC controller transport, which Materialize has since removed |
+
 ## Maintenance windows do not work when the customer picks the time
 
 The `docs/content/alerting/maintenance.md` page is an empty heading, and the obvious thing to put on it is wrong for this audience.
@@ -29151,12 +29283,12 @@ Work in this repository, roughly in dependency order.
 
 | Item | Why it blocks |
 |---|---|
-| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done for PromQL, through an alerting render context whose deployment-specific values are install-time placeholders. LogQL is not rendered yet |
+| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done, through an alerting render context whose deployment-specific values are install-time placeholders. One `_index.yaml` beside the two directories lists both engines' rules |
 | Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
 | Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
-| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
+| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done. The rule store is the ruler bucket. The LogQL rules are `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into it through the ruler API, once per tenant. The Thanos importer's selector excludes that flavor with a `flavor!: logql` key. A Prometheus Operator admission webhook in the same cluster still validates them as PromQL, and has to be told to skip them |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
 | `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |
 | `alerting.secrets` mounting, and the `_file` credential convention | ✅ done, through `alertmanager.extraSecretMounts` rather than `alerting.secrets` — see the note under [Notification channels](#notification-channels). Inline credentials and unmounted `*_file` paths both fail the render |
@@ -29165,11 +29297,11 @@ Work in this repository, roughly in dependency order.
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | 🔨 Every rule carries `runbook_url`, pointing for now at its entry on Common Alerts. The runbooks are not written |
-| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/prometheus/_index.yaml` is in the committed-surface table and CODEOWNERS |
+| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/_index.yaml` is in the committed-surface table and CODEOWNERS |
 | `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` are done; `extra` is not. An override sets one rule's `for` and labels, never its expression |
 | `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
-| Log-alert registry files and the LogQL render path | The class that has never been code |
+| Log-alert registry files and the LogQL render path | ✅ done for Materialize: `materialize-log-alerts.yaml`, installed per tenant in `rules.logTenants`. No `infra-log-alerts.yaml` yet, because none of the clicked-in rules is about the platform |
 | Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
 | Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
@@ -29180,7 +29312,7 @@ Work in this repository, roughly in dependency order.
 
 The kind E2E tiers can prove most of this, and the parts they cannot are worth naming rather than pretending.
 
-- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built for PromQL: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. No LogQL rules exist yet to validate.
+- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. LogQL rules are checked for shape by `gen-rules` and parsed with `logcli`'s offline mode, which uses Loki's own parser, in `make rules-check`. Neither is the ruler's own loader.
 - ✅ **Every shipped rule's metrics exist.** The applicability check, asserted as a test rather than only as a build step, so that a rule added later cannot quietly reintroduce the problem.
 - **The rulers load what the chart rendered.** Assert against each ruler's own API that the group count and names match the render, rather than asserting the ConfigMap exists. A ruler that rejected a group reports healthy.
 - **An alert reaches Alertmanager.** Install a rule that fires on `vector(1)`, assert it appears in Alertmanager's API within the evaluation and group-wait interval. This is the end-to-end assertion the whole page exists for.
@@ -29205,7 +29337,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
 - **Silences suppress notification and not state.** Silence an alert, assert no notification and a firing `ALERTS` series. This is the over-reporting behaviour the call-home level inherits, and pinning it keeps it a known property rather than a surprise.
 - **Inhibition suppresses a rollout and not a restart.** Stand up a second generation and assert the restart alerts are inhibited; restart a pod without a rollout and assert they are not. The second half is the assertion, since an inhibition rule that fires too widely is indistinguishable from one that works until the day it hides something.
-- **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus.
+- **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus. Not automated: each shipped log rule was evaluated by hand against the test installs, quiet as it stands and, for the panic rule, firing over a window holding a real panic.
 - **Not covered by any tier:** that a notification reaches a receiver. Every receiver is a third-party endpoint, and a test that posts to a real one is a test that pages somebody. A local webhook receiver proves Alertmanager's delivery path and proves nothing about a vendor's ingestion.
 
 ## Documentation to update

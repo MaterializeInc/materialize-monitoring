@@ -941,7 +941,8 @@ point rather than a researched one.
     "secretName": "",
     "services": [
       "loki-distributor",
-      "loki-query-frontend"
+      "loki-query-frontend",
+      "loki-ruler"
     ]
   },
   "thanos": {
@@ -3421,9 +3422,12 @@ every replica like any other.
 Which alerting rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
-(`packages/queries/`) and installed as `PrometheusRule` resources, which the
-Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
-below.
+(`packages/queries/`) and installed as `PrometheusRule` resources, each
+labelled with its query language as `mzmon.materialize.cloud/flavor`. The
+Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
+`loki.rules.kubernetes` writes the LogQL ones into the Loki ruler, so they
+install only where this release runs both. Where they go once they fire is
+`alerting`, below.
 
 A rule installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
@@ -3431,7 +3435,7 @@ either in the **default set** or named in `selected`, and it is not named in
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
 `loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
 capabilities it requires.
 
 <table class="helm-values">
@@ -3523,6 +3527,26 @@ rules:
 `audience` one of `platform` and `workload`, so the routes still match. An
 unknown alert name fails the render, and an override for a rule that is
 not installed renders with a warning.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.logTenants</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Loki tenants the log-derived rules are written into. Empty means `pipeline.logging.tenancy.staticTenant`.
+
+A Loki rule reads one tenant's logs, and the ruler does not evaluate across
+tenants, so the gateway writes every LogQL `PrometheusRule` into each
+tenant listed here. Under the default `static` tenancy every log line is in
+`staticTenant`, and the default is right.
+
+Under `byEnvironment` each Materialize environment's logs are in a tenant
+named for its environment id, which the chart cannot know at render time.
+List those tenants here, and restate the list when an environment is
+added. Under `byNamespace` the tenant set grows with every namespace, and no
+list stays complete.
 </td>
     </tr>
     <tr>
@@ -5122,11 +5146,13 @@ never had is somewhere to send an alert: without `alertmanager_url` it
 evaluates its rules correctly and drops every alert on the floor, which is
 indistinguishable from nothing being wrong. That is what this block fixes.
 
-**Rule storage is already configured and is not here.** With
+**Rule storage is configured and is not here.** With
 `loki.storage.use_thanos_objstore` on, the subchart renders a top-level
-`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
-writes rules into that bucket yet — the chart's own log-alert definitions
-do not exist, and how they get delivered is decided with them.
+`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. The
+chart's log-derived rules are written into it through the ruler API, by
+the alloy-gateway's `loki.rules.kubernetes`, from `PrometheusRule`
+resources labelled `mzmon.materialize.cloud/flavor: logql`. A rule store
+that refuses writes, such as `local`, leaves them out.
 
 Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
 resolves. It does **not** see the umbrella's values, which is why these
@@ -6697,6 +6723,9 @@ validator warns when the two disagree.
   },
   "autoImportPrometheusRules": {
     "enabled": true,
+    "labelSelector": {
+      "mzmon.materialize.cloud/flavor!": "logql"
+    },
     "sidecar": {
       "image": {
         "registry": "docker.io",
@@ -6914,6 +6943,9 @@ resources, through the import sidecar below.
       <td class="helm-value-default"><pre>
 {
   "enabled": true,
+  "labelSelector": {
+    "mzmon.materialize.cloud/flavor!": "logql"
+  },
   "sidecar": {
     "image": {
       "registry": "docker.io",
@@ -6935,12 +6967,22 @@ A `kubectl` sidecar lists `PrometheusRule` resources every 60s, writes each
 one's `.spec` into the Ruler's rule directory, and POSTs `/-/reload` when
 the set changes. No Prometheus Operator controller is involved.
 
-**`labelSelector` is empty, so this imports every `PrometheusRule` in the
-cluster**, including any belonging to a co-resident kube-prometheus-stack.
-That is the upstream default and it is kept deliberately: it is also what
-makes a customer's own `PrometheusRule` work with no chart configuration.
-Set a selector here if this cluster runs another rule owner whose alerts
-should not reach this Alertmanager.
+**`labelSelector` imports every `PrometheusRule` in the cluster except the
+LogQL ones**, including any belonging to a co-resident
+kube-prometheus-stack. That is kept deliberately: it is what makes a
+customer's own `PrometheusRule` work with no chart configuration. Set a
+narrower selector here if this cluster runs another rule owner whose
+alerts should not reach this Alertmanager.
+
+**The exclusion is load-bearing.** The chart's log-derived rules are
+`PrometheusRule` resources too, labelled
+`mzmon.materialize.cloud/flavor: logql`, and the Thanos ruler reads every
+file it imports as PromQL; one LogQL file fails the reload, and the ruler
+keeps evaluating whatever it loaded before. The subchart joins this map
+into `key=value` pairs, so a key ending in `!` renders as `key!=value`,
+which also keeps a `PrometheusRule` carrying no flavor label. A selector
+replacing this one keeps the exclusion, or selects
+`mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
 The image is pinned rather than left on the upstream `latest`, so a default
 install does not track a floating tag. It is the only Docker Hub image the

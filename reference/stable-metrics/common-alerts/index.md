@@ -1996,6 +1996,115 @@ Labels:
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">40</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
 </span></span></code></pre></div>
 
+## materialize-log-alerts
+
+<p>Log-derived alerting rules for Materialize.</p>
+<p>Each alert matches a line Materialize logs when something has gone wrong that
+its metrics do not show: a process panicking, or an invariant a dataflow relies
+on for correct results failing. They are LogQL, evaluated by the Loki ruler
+against the logs the pipeline collects, and route through the same
+Alertmanager as the metric alerts.</p>
+<p><strong>A match is on the log line&rsquo;s text</strong>, and that text is not a contract.
+Materialize can reword a message in any release, and a reworded message makes
+the rule silent rather than broken. Each alert names the source of the line it
+matches, so a contributor can check it still exists.</p>
+<p><strong>The window is the alert&rsquo;s duration.</strong> A rule fires on the first evaluation at
+which a matching line falls inside its range and <code>for</code> is <code>0s</code>, so the range
+is how long the alert keeps firing after the last matching line, not how long
+the condition must persist.</p>
+<p>The label contract these read is documented under
+<a href="../../../logs-and-events/querying/">Logs and Events</a>: <code>namespace</code>, <code>app</code>,
+<code>container</code> and <code>level</code> are stream labels; <code>pod</code> and the pipeline&rsquo;s panic
+fields are structured metadata, which a rule may still group by.</p>
+
+<h4 id="materialize-panic">materialize-panic
+  <a class="anchor" href="#materialize-panic">#</a>
+</h4>
+A Materialize process panicked. The pod&rsquo;s logs from just before the restart hold the panic message and backtrace.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> materialize</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+</p>
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app, pod, panic_location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    {<span style="color:#960050;background-color:#1e0010">${mzDeploymentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}, level<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">CRITICAL</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010">|</span> panic_location <span style="color:#f92672">!=</span> &#34;&#34;
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">5m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="data-correctness-error">data-correctness-error
+  <a class="anchor" href="#data-correctness-error">#</a>
+</h4>
+Materialize logged a dataflow invariant violation, so results from the affected objects may be incorrect. Contact Materialize support.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> compute</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+</p>
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    {<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}, level<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">ERROR</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010">|~</span> &#34;<span style="color:#e6db74">(?i)(non-positive accumulation|negative accumulation|negative multiplicit(y|ies)|non-positive multiplicity|invalid negative unsigned aggregation|invalid data in source|net-zero records with non-zero accumulation|non-monotonic input to monotonictop1)</span>&#34;
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">15m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="persist-filter-pushdown-violation">persist-filter-pushdown-violation
+  <a class="anchor" href="#persist-filter-pushdown-violation">#</a>
+</h4>
+Persist filter pushdown skipped data a query needed. Disable it with <code>ALTER SYSTEM SET persist_stats_filter_enabled = false</code> and contact Materialize support.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> persist</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+</p>
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    {<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010">|=</span> &#34;<span style="color:#e6db74">persist filter pushdown correctness violation</span>&#34;
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">15m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="trace-logging-enabled">trace-logging-enabled
+  <a class="anchor" href="#trace-logging-enabled">#</a>
+</h4>
+A Materialize component has logged at TRACE level for 30m, which multiplies log volume. Reset it with <code>ALTER SYSTEM RESET log_filter</code>.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> materialize</li>
+        <li><strong>severity:</strong> notice</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+</p>
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    {<span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}, level<span style="color:#960050;background-color:#1e0010">=</span>&#34;<span style="color:#e6db74">TRACE</span>&#34;<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">10m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+
 ## materialize-workload-alerts
 
 <p>Alerting rules for the workloads running on Materialize.</p>
