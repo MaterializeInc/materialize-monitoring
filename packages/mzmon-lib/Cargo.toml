@@ -13,7 +13,7 @@ jsonschema = { version = "0.57.0", default-features = false }
 # rendered PromQL and collect the metric names + label matchers each query
 # touches. Mirrors the `promql_parser` Python binding the registry was ported
 # from (same GreptimeTeam parser under the hood).
-promql-parser = "0.10.0"
+promql-parser = "0.11.0"
 # Compiles `metricPattern` override globs into anchored regexes matched against
 # metric names during importance roll-up.
 regex = "1.11.4"
