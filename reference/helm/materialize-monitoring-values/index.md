@@ -8465,6 +8465,23 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+]</pre>
+</td>
+      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+
+The node pool, by whichever label the cluster's provisioner sets — Karpenter,
+an EKS managed node group, a GKE node pool or an AKS agent pool — and the
+instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
+by all three. One series per node, so the cost is negligible; add a label here
+rather than `nodes=[*]`, which copies every label on every node.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>

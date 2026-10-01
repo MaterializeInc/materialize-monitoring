@@ -5,8 +5,8 @@
 
 # Available Dashboards
 
-Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
-Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+Thirteen dashboards ship today: five scoped to a Materialize environment (`env-*`), and eight to the platform underneath it (`infra-*`).
+Two of the eight watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
@@ -406,6 +406,97 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
       <td>
         <a href="/materialize-monitoring/dashboards/grafana/infra-cloud.json?xxhash=41720f670e80e137" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
         <br /><small>UID <code>mz-mon-infra-cloud</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Infrastructure Autoscaling (`infra-autoscaling`)
+
+Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
+Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+
+It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+- **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics](/materialize-monitoring/metrics/collecting/cloud-provider-metrics/) are enabled for them.
+
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/dashboards/grafana/infra-autoscaling.json?xxhash=a0d6ff29eb206fc2" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-autoscaling</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Karpenter (`infra-karpenter`)
+
+How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
+It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
+
+- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/dashboards/grafana/infra-karpenter.json?xxhash=305c39452d44f821" download="mz-mon-infra-karpenter.json"><code>infra-karpenter.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-karpenter</code></small>
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>infra</code><br />

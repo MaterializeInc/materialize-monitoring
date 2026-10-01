@@ -3313,7 +3313,7 @@ The result is written beside every other metric, with the same retention, the sa
 A provider series is therefore joinable with `mz_persist_*` in a single expression.
 A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
 
-The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws them, with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws the database and bucket pulls, and **Infrastructure Autoscaling** (`infra-autoscaling`) the node and quota pulls on its Cloud Capacity tab, each with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
 
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
@@ -3326,8 +3326,10 @@ The [external-dependency design](../../../reference/internal/design-docs/2026092
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
 charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
 sets on this page are that file's; change them there, not here first. packages/queries/infra-cloud.yaml and
-packages/dashboards/src/grafana/infra_cloud/ draw them, so a metric added to a pull reaches no panel until
-those follow, and a metric removed leaves a panel empty. The numbers on this page
+packages/dashboards/src/grafana/infra_cloud/ draw the database and bucket pulls, and
+packages/queries/infra-autoscaling.yaml and infra_autoscaling/cloud.rs the EKS, Compute Engine and AKS
+pulls, so a metric added to a pull reaches no panel until those follow, and a metric removed leaves a panel
+empty. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, and on 2026-09-29 against the AKS one, with Alloy v1.20.0 locally and
 v1.19.2 in-cluster, and are the ones to re-measure if the exporters are bumped. The Azure call counts
@@ -3578,7 +3580,7 @@ The scrape of it is clustered, so one replica owns it and each provider is calle
 ## Which destinations receive it
 
 Each provider assigns its families a tier through `metricImportance`, which defaults to `extended`.
-The families `infra-cloud` draws are also named in the query registry, at `diagnostic`, the lowest tier.
+The families `infra-cloud` and `infra-autoscaling` draw are also named in the query registry, at `diagnostic`, the lowest tier.
 A registry tier admits a metric at that tier and above, so `metricImportance` decides for every destination floor above `diagnostic`.
 
 | Destination `minMetricImportance` | Receives provider families at the default |
@@ -4421,8 +4423,8 @@ url: https://materializeinc.github.io/materialize-monitoring/dashboards/all/inde
 
 # Available Dashboards
 
-Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
-Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+Thirteen dashboards ship today: five scoped to a Materialize environment (`env-*`), and eight to the platform underneath it (`infra-*`).
+Two of the eight watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -4545,6 +4547,31 @@ The Object Storage tab draws each bucket's billed size beside the data Materiali
 Provider data is minutes old, and bucket size a day old, so this dashboard says why a dependency is struggling rather than whether it is; `env-consensus` and `env-persist` answer the second question and are the ones to open first.
 
 {{< download-dashboards name="infra-cloud" >}}
+
+### Infrastructure Autoscaling (`infra-autoscaling`)
+
+Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
+Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+
+It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+- **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}) are enabled for them.
+
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+
+{{< download-dashboards name="infra-autoscaling" >}}
+
+### Karpenter (`infra-karpenter`)
+
+How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
+It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
+
+- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
+
+{{< download-dashboards name="infra-karpenter" >}}
 
 ## Meta monitoring (`infra-*`)
 
@@ -4892,7 +4919,9 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Seven dashboards are rendered, and `selected` decides which of them a release installs:
+Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
+These are the ones with something to know before narrowing it:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -4925,6 +4954,15 @@ Seven dashboards are rendered, and `selected` decides which of them a release in
   discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
   match nothing.
   `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
+- **Infrastructure Autoscaling** (`infra-autoscaling` → `mz-mon-infra-autoscaling`), matched by the default `infra-*` pattern.
+  Its Node Pools tab groups nodes by labels that kube-state-metrics publishes only when its
+  `metricLabelsAllowlist` names them.
+  The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
+  reads empty.
+- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), also matched by the default `infra-*` pattern.
+  It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
+  row saying why it is empty.
+  Leave it out of `selected` on GKE and AKS if that row is noise.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
@@ -8829,6 +8867,8 @@ Ordered so the cheapest question that could explain everything comes first.
    *Infrastructure Node Detail* → Summary, for the node the pods are on.
    Memory pressure, disk pressure, a cordon, or requests at 100% will make Materialize look broken while nothing about
    Materialize is broken.
+   A replica with no node at all is a pod waiting for one: *Infrastructure Autoscaling* → Pending Pods says why, and
+   whether the autoscaler or the cloud is the reason.
 4. **Is it the metadata database or object storage?**
    *Materialize Consensus (Metadata)* → Overview, then *Materialize Persist (Storage)* → Overview.
    Every write Materialize makes commits to the metadata database and uploads to the bucket, so a failing dependency
@@ -8855,6 +8895,8 @@ Logs are the most detailed and least structured evidence you have, and without a
 | Did a rollout do this, and has the new generation caught up | Materialize Upgrade |
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
+| Is a replica waiting for a node, and can the cluster grow | Infrastructure Autoscaling |
+| Is Karpenter launching nodes, and what keeps it from removing them | Karpenter |
 | Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
 | Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
 | Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |
@@ -9235,12 +9277,17 @@ It runs as a non-root, read-only-rootfs pod using upstream's own distroless `reg
 Three cases still need you:
 
 - **`helm uninstall --no-hooks`** skips it, by definition.
-- **Deleting the CRDs release first** removes the resource types, and the hook fails on an unknown type — no kubectl flag suppresses that. With the CRDs gone the custom resources went with them, so `--no-hooks` is the right response.
+- **Deleting the CRDs by hand first** removes the resource types, and the hook fails on an unknown type — no kubectl flag suppresses that. With the CRDs gone the custom resources went with them, so `--no-hooks` is the right response.
+  Uninstalling the CRDs release does not do this; see below.
 - **`cleanup.grafanaOperator.enabled: false`** restores the old behaviour.
 
+> [!NOTE]
+>   Uninstalling the CRDs release (`materialize-monitoring-crds`, or `enable_monitoring_crds` in the Terraform module) leaves the CRDs.
+>   Every one carries `helm.sh/resource-policy: keep`, so neither `helm uninstall` nor `terraform destroy` removes them, or any custom resource.
+
 > [!WARNING]
->   The same trap is worse one level up. Deleting the CRDs release (`materialize-monitoring-crds`, or `enable_monitoring_crds = true` in the Terraform module) cascades to **every** `Grafana*` and `Prometheus*` custom resource in the cluster, including ones this stack did not create.
->   With finalizers still pending, the CRD itself hangs in `Terminating`, which blocks re-installing the CRDs as well as removing them.
+>   Removing the CRDs is a separate `kubectl delete crd`, and that cascades to **every** `Grafana*` and `Prometheus*` custom resource in the cluster, including ones this stack did not create.
+>   Do it last, after the release is gone: with finalizers still pending, the CRD itself hangs in `Terminating`, which blocks re-installing the CRDs as well as removing them.
 
 ## Ordered teardown, by hand
 
@@ -19425,6 +19472,23 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+]</pre>
+</td>
+      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+
+The node pool, by whichever label the cluster's provisioner sets — Karpenter,
+an EKS managed node group, a GKE node pool or an AKS agent pool — and the
+instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
+by all three. One series per node, so the cost is negligible; add a label here
+rather than `nodes=[*]`, which copies every label on every node.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -20165,7 +20229,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, and `infra-cloud.yaml`, the cloud provider pull — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
@@ -21156,16 +21220,9 @@ Set false when the cluster already has them from elsewhere — kube-prometheus-s
 platform team that owns CRDs centrally — since Terraform would otherwise fail trying to
 create objects it does not own.
 
-Note the teardown blast radius: destroying this release deletes the CRDs, which cascades to
-every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the cluster,
-including ones this stack did not create. It is a separate `helm_release` so it can be
-targeted independently (`-target=module.monitoring.helm_release.crds`).
-
-The Grafana custom resources still have to go before grafana-operator does, or their
-finalizers have no remover and the CRDs wedge in Terminating. The chart's `pre-delete` hook
-handles that ordering now — but it lives in the *main* release, so destroying this one first
-takes the resource types out from under it. Destroy in the module's own order, and see the
-"Uninstalling" page in the docs.
+Every CRD carries `helm.sh/resource-policy: keep`, so destroying this release, or turning
+this off later, leaves the CRDs and every custom resource in the cluster in place. Removing
+the CRDs is a deliberate step of its own; see the "Uninstalling" page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
     </tr>
@@ -22514,6 +22571,13 @@ Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window
   The per-panel "Min interval" (`minStep`) is a local override of the same value, but the datasource setting is the
   correct global fix.
 
+**In the query registry, write `%%{interval}`, `%%{range}` and `%%{rangeWindow}`, never Grafana's variables inside a
+range selector.** Metric extraction renders the registry with fixed windows and cannot parse `[$__rate_interval]`,
+`[$__range]` or `$__range_s`, so it skips the whole query with a warning, and a family only that query reads is left out
+of `metric-tiers.yaml` — which keeps it from every filtered destination while every dashboard test passes.
+`gen-metric-tiers` prints the skipped queries; `make metric-tiers` hides them. There is no parameter for the range in
+seconds: `infra.autoscaling.nodes.added` compares against `offset %%{rangeWindow}` instead of `time() - $__range_s`.
+
 ### Filtering cAdvisor metrics
 
 The `%%{cAdvisorFilter}` parameter expands to `namespace=~"$mzNamespaceList",container!="",container!="POD"`. This
@@ -22848,6 +22912,20 @@ Things that have surprised us during development; worth knowing before touching 
 - **A ratio of two rates is `NaN` over a window with no calls**, and Grafana applies `noValue` per field, so the panel's
   empty-state text lands in the legend beside the series. Mean latencies on the dependency dashboards are wrapped in
   `(…) >= 0`, which drops the `NaN` points.
+- **Karpenter's controller-runtime families need `app="karpenter"`.** `controller_runtime_*`, `workqueue_*`,
+  `client_go_*`, `aws_sdk_go_*` and `leader_election_*` carry no prefix, and the EBS CSI driver and the Load Balancer
+  Controller publish them too. Only the leader replica publishes `karpenter_*` at all; the standby publishes the
+  runtime families and `karpenter_build_info`.
+- **Some Karpenter `_count` names are gauges**: `karpenter_scheduler_unschedulable_pods_count`,
+  `karpenter_cluster_state_node_count` and every `operator_*_status_condition_count`. They are not a histogram's count.
+- **`aws_sdk_go_request_total`'s `service` label arrives as `exported_service`**, because the scrape stamps the
+  Kubernetes Service name on `service`. Any metric with its own `service`, `namespace`, `pod` or `job` label collides the
+  same way on a ServiceMonitor that does not honor labels.
+- **`karpenter_cloudprovider_instance_type_offering_available` is 0 for about half its series at rest**: every
+  instance type not sold in a zone, and every reserved-capacity offering. A capacity refusal is a drop over time, which
+  is why `infra-karpenter` draws the zones offering each type rather than a table of zeros.
+- **`RegisteredNode` does not mean a node joined.** The node controller emits it for every node whenever it starts,
+  which on a managed control plane happens without notice. Count joins from `kube_node_info` instead.
 
 ## Logs dashboard conventions
 
@@ -22964,7 +23042,8 @@ Two things worth keeping if this pattern spreads:
 
 ## Rendering a row on a discovered variable
 
-**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows.**
+**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows,
+`infra-autoscaling`'s Cloud Capacity tab and every row of `infra-karpenter`.**
 `Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
@@ -22977,7 +23056,8 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Five rules, the first four learned from `infra-net` and the fifth from its first shipped bug:
+Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from
+`infra-karpenter`:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -23000,6 +23080,10 @@ Five rules, the first four learned from `infra-net` and the fifth from its first
   in. `infra-net` shipped with `.+` as its dataplane's "All" and showed "No Dataplane Metrics" on every cluster until it
   was removed; `test_support::assert_row_conditions_can_read_all` now guards both dashboards. A discovery variable no
   query reads has no use for a custom value in the first place.
+- **Match what the detection returns, never `.+`.** A single-value variable whose query found nothing can reach a row
+  condition as the word `undefined`, which `.+` matches, so the rows render on a cluster without the thing they need
+  and the fallback hides. `infra-karpenter` matches the literal `karpenter` that `up{app="karpenter"}` discovers, and a
+  test asserts that no string an unset variable stringifies to contains it.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -23247,6 +23331,19 @@ and `node-debug.yaml` back this dashboard unchanged — at the cost of a name th
 Loki knows the node a third way again, as **structured metadata** on journal lines, so the journal filters in the
 pipeline (`| node=...`) rather than in the selector; node *events* match on the involved object's name with
 `kind="Node"`.
+
+## Node pools across provisioners
+
+`%%{nodePools}` is every node, valued 1 and labelled `node`, `pool`, `instance_type` and `zone`, read from
+`kube_node_labels`. The pool is whichever label the node's provisioner sets — `karpenter.sh/nodepool`,
+`eks.amazonaws.com/nodegroup`, `cloud.google.com/gke-nodepool` or `kubernetes.azure.com/agentpool` — and `unpooled`
+when none is set. Count it directly, or join a per-node series onto it with `* on (node) group_left (pool)`; its outer
+`max by` already removes kube-state-metrics replicas' duplicates.
+
+**kube-state-metrics 2.x publishes no `kube_node_labels` at all without an allowlist**, so the chart's
+`kube-state-metrics.metricLabelsAllowlist` is what makes the family exist, not just what fills it. A chart test pins the
+flag. An install from before it has every per-pool panel empty, and those panels say so rather than showing
+`unpooled`.
 
 **The node families are vetted.** `node-health` and `node-debug` were authored before any dashboard used them and were
 long flagged as unreviewed. All 87 of their expressions were run against a live cluster while this was built and all 87
@@ -23718,6 +23815,7 @@ Adding `infra-alloy` took the dashboards release from 441,572 to 551,100 bytes, 
 Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzipped, then base64-encoded.
 The three external-dependency dashboards — `env-persist` (122 KB), `env-consensus` (137 KB) and `infra-cloud`
 (122 KB) — took it to 683,928 bytes, 65%, measured the same way.
+`infra-autoscaling` (153 KB) and `infra-karpenter` (137 KB) took it from 691,288 to 794,244 bytes, 76%.
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
@@ -24353,7 +24451,7 @@ Both questions the family raised are settled:
   `env-logs` opens on the Materialize namespaces and `infra-logs` subtracts them, so each dashboard answers for one
   audience while still reaching the other in a click.
 
-Only the Nodes, Networking and External components rows are ticketed.
+Only the Nodes, Autoscaling, Networking and External components rows are ticketed.
 The untracked rows that remain open are backlog, tagged OO-M3.
 The "collectable today" column is what a live self-managed install actually exposes, measured rather than assumed —
 it is the difference between a dashboard we could build this week and one that needs collection work first.
@@ -24364,7 +24462,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M2 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
 | **Meta-monitoring** — every component of this stack | **Loki and Alloy shipped; Grafana, Thanos and Alertmanager outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (the Thanos Ruler now runs, but no rule set records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Alloy** is `infra-alloy` (`mz-mon-infra-alloy`, "Alloy Meta Monitoring"), the folder's second occupant, with **Overview**, **Log Pipeline**, **Metric Pipeline**, **Ingest**, **Components**, **Resources**, **Events** and **Logs** tabs, 90 panels over 86 queries in `packages/queries/infra-alloy.yaml`. It absorbs the six panel-less `infra.loki.pipeline.*` placeholders, which now have panels behind them. Its inversion is stronger than Loki's: the gateway scrapes Alloy's metrics and forwards Alloy's logs, so a gateway outage empties the dashboard and nothing inside the stack can say so. Counts that should be zero are built as `sum(A) or 0 * sum(B)` so zero and absent read differently. **Ingest** reads the gateway's three push listeners (log push, remote write, OTLP) from three vantage points, because no one of them sees everything: the gateway's own request counters by status, the remote-write senders' own queues (found by the `url` they write to, which is the only view that sees a sender that cannot connect), and the gateway's log for refused TLS handshakes, which fail before any request exists. **Events** matches Kubernetes events on the involved object's name, which reaches the DaemonSet, Deployment, ReplicaSets, autoscaler and pods alike, and the pre-install `validate-agent` / `validate-gateway` Jobs, whose failure stops an upgrade. The existing internal Alloy dashboards, mostly the upstream mixin, were read panel by panel and not ported: they compute success rates by summing `_bucket` series, scope scraped targets' `up` by the collector's own `job`, and read memory as RSS, which on a reference install put an agent at 95% of its limit while its working set was at 29%. Resources measures Go memory against `GOMEMLIMIT` instead of heap alone, which read the reference gateways at 93% rather than 62–71%. In passing, `infra-loki`'s level picker discovered from a variable that dashboard never defined, and offered nothing but "All"; it now discovers from Loki's own streams. Verified against a live install: all 111 rendered queries execute, 101 return data, and the 10 that do not are healthy-empty tables and feeds or unconfigured cases (no OTLP senders, no warning events). Every panel whose series Alloy creates only on failure draws a zero from a population that always exists, and reads no data only when nothing is collected. The dashboards release grows from 441,572 to 551,100 bytes, 53% of the 1 MiB Secret ceiling. Building it also found that the Thanos datasource declares no scrape interval, which breaks every cAdvisor `rate()` panel into points ([DEP-326](https://linear.app/materializeinc/issue/DEP-326)). **Outstanding:** Grafana (523 families), Thanos (220) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
-| **Autoscaling** — utilization, controller status, compute cost proxy | **Events, and the provider's view of instance availability.** No `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families. The provider pull now supplies, per cloud, the half no in-cluster scrape can: EC2 status checks, managed node group sizes and On-Demand vCPU usage on EKS; per-family CPU and local-SSD quota with refusals on GKE; and on AKS the managed cluster autoscaler's own four `cluster_autoscaler_*` gauges, which exist nowhere else, and each node VM's availability. See the instance-availability row under [External dependencies](#external-dependencies) | OO-M3 | ⬜ |
+| **Autoscaling** ([DEP-344](https://linear.app/materializeinc/issue/DEP-344)) — utilization, controller status, compute cost proxy | **Yes, built as two dashboards; Karpenter's scrape awaits the Terraform.** **Infrastructure Autoscaling** (`infra-autoscaling`, `mz-mon-infra-autoscaling`) asks the same two questions on every cloud — are pods waiting for a node, and can the cluster grow — with **Overview**, **Node Pools**, **Pending Pods**, **Workload Autoscaling**, **Cloud Capacity** and **Events** tabs. It groups nodes by pool across Karpenter, EKS managed node groups, GKE and AKS through a `%%{nodePools}` registry parameter over `kube_node_labels`, which kube-state-metrics 2.x does not publish at all until an allowlist names a label; the chart now names the four pool labels, the instance type and the zone. Node joins are counted from `kube_node_info` rather than `RegisteredNode` events, which repeat whenever the control plane restarts. Cloud Capacity draws the provider pull's EC2, Compute Engine quota and AKS rows, each discovered from the pull's `up`. **Karpenter** (`infra-karpenter`, `mz-mon-infra-karpenter`) is Karpenter's own account on EKS, with **Overview**, **Provisioning**, **Disruption**, **Controller** and **Events and Logs** tabs; every row renders on Karpenter's `up`, and each tab carries a fallback that says why it is empty elsewhere. Its ServiceMonitor comes from the self-managed Terraform's `karpenter` module ([materialize-terraform-self-managed#498](https://github.com/MaterializeInc/materialize-terraform-self-managed/pull/498)), which trims the per-instance-type offering families from about 61k samples to about 9k. Verified on the three test installs: every query runs, and on EKS, where that change is applied, the Karpenter rows render with data. The pool panels read empty there until the allowlist is deployed, and the provider rows until [DEP-336](https://linear.app/materializeinc/issue/DEP-336) configures the pulls. The dashboards release grows from 691,288 to 794,244 bytes, 76% of the ceiling. **Outstanding:** GKE's autoscaler visibility log, which lives only in Cloud Logging | OO-M3 | 🔨 |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M2 | ✅ |
 | **External components** — object store, consensus DB | **Yes, the client and provider halves shipped** as three dashboards rather than the one `infra-deps` the design proposed — see [External dependencies](#external-dependencies). **Materialize Persist (Storage)** (`env-persist`) and **Materialize Consensus (Metadata)** (`env-consensus`) read persist's own measurement of both dependencies and are filed under Materialize; **Infrastructure Cloud Provider** (`infra-cloud`) reads the provider pull and is filed under Infrastructure. **Still no exporter vantage point**: only 2 `postgres_exporter_*` *config* metrics land, no database statistics, and `thanos_objstore_*` is still read by nothing | OO-M2 | 🔨 |
 
@@ -24372,7 +24470,7 @@ Ordering follows what is buildable and what an operator reaches for first.
 **Nodes** and **Meta-monitoring** need no collection work and answer the two questions that block everything else — is
 the platform healthy, and is the telemetry itself trustworthy.
 **Pods** is the natural drilldown target from both, and from `env-logs`.
-**Autoscaling** is buildable now from events and the provider pull, and gains Karpenter's own view when its controller is scraped.
+**Autoscaling** was built from events, `kube_node_labels` and the provider pull, with Karpenter's own view beside it on EKS.
 **External components** is gated on the collection gap below.
 **Networking** was too, and stopped being: the gap turned out to be unscraped endpoints rather than absent ones, so the dashboard and the scrape configs landed together.
 
@@ -24384,7 +24482,8 @@ Found while surveying a live install; each is a scrape-side gap in *this* repo r
 |---|---|---|
 | ✅ **kube-state-metrics label collision** — fixed, and now asserted | *was:* Pods, Nodes, and five shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fixed by setting `honorLabels: true` on both ServiceMonitor endpoints (the vendored 8.4.0 subchart defaults them to `false`). Now asserted by `kube_state::labels_are_honored` and `kube_state::pods_are_distinguishable` in the e2e suite, which between them catch the collision's signature (`exported_*` labels) and its consequence (`kube_pod_info` collapsing to one identity). Verified against a live install *before* the fix: 15 families carrying `exported_*`, and 117 `kube_pod_info` series reporting a single pod. The three `materialize.kubernetes.*` readiness queries are `canonical` on the strength of that coverage |
 | ✅ **Alertmanager is not scraped** — fixed | *was:* Meta-monitoring | The subchart's own ServiceMonitor, on since [DEP-226](https://linear.app/materializeinc/issue/DEP-226). Both Services it renders carry identical labels, so the monitor drops the headless one's targets; without that every replica is scraped twice. Verified on a live install: one `up` series per replica, 145 families, `alertmanager_cluster_members` reading 2 |
-| No cluster-autoscaler / Karpenter scrape — AKS covered by the provider pull | Autoscaling | Distro-specific. **AKS** runs its autoscaler in the managed control plane and publishes four gauges to Azure Monitor, which `pipeline.metrics.provider.azure.aks` now pulls. **GKE** publishes no autoscaler metrics anywhere, only a visibility log in Cloud Logging and events. **Karpenter** on EKS runs in-cluster and serves `/metrics`, so it is the one that still needs a scrape |
+| No cluster-autoscaler / Karpenter scrape — AKS covered by the provider pull, Karpenter by the Terraform | Autoscaling | Distro-specific. **AKS** runs its autoscaler in the managed control plane and publishes four gauges to Azure Monitor, which `pipeline.metrics.provider.azure.aks` now pulls. **GKE** publishes no autoscaler metrics anywhere, only a visibility log in Cloud Logging and events. **Karpenter** on EKS runs in-cluster and serves `/metrics`; the self-managed Terraform's `karpenter` module creates its ServiceMonitor in [materialize-terraform-self-managed#498](https://github.com/MaterializeInc/materialize-terraform-self-managed/pull/498), in review |
+| ✅ **`kube_node_labels` absent** — fixed, and now asserted | *was:* Autoscaling (node pools) | kube-state-metrics 2.x publishes the family only for the labels `--metric-labels-allowlist` names, so without one it is missing rather than thin, and nothing else fails. The chart names each provisioner's pool label, the instance type and the zone, and a chart test asserts that and that the wildcard is never used |
 | ✅ **No CNI / NetworkPolicy metrics** — fixed for the two CNIs with monitors | *was:* Networking (policy half) | Two PodMonitors ship, for the AWS VPC CNI and for Cilium, plus a kube-proxy ScrapeConfig. All three are **self-disabling**, which is what makes it safe to deploy every one to every cluster: the pod selector matches nothing on a cluster running another vendor, and the CNI endpoints name *container ports* rather than numbers, so a vendor built without metrics yields no target instead of a scrape failing on every node forever. Each stamps a `network_component` label, which is the dashboard's whole detection mechanism. Measured rather than assumed: EKS `aws-node` serves `awscni_*` on the `metrics` port and `network_policy_drop_count_total` on the nodeagent's, both verified landing in Thanos; GKE Dataplane V2 serves nothing on `:9962` and only Hubble's own health counters on `:9965`. **kube-proxy is collected too**, from the gateway pipeline rather than from its ScrapeConfig CR: the gateway has no `prometheus.operator.scrapeconfigs` component, so the CR is a Prometheus-consumer artifact exactly as the cAdvisor one is, and the pipeline carries the same relabeling. Discovery is a server-side pod selector, so a cluster running no kube-proxy returns no targets rather than a refused connection on every node. **Still uncovered:** Calico and Azure NPM, which no monitor ships for |
 | Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not. Nothing in this chart deploys one — the [external-dependency design](../design-docs/20260920-external-dependency-monitoring/) makes it a chart component with a documented grant |
 
@@ -24444,7 +24543,7 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | On-premise object-store adapter (MinIO / Garage / Ceph) ([DEP-299](https://linear.app/materializeinc/issue/DEP-299)) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter ([DEP-300](https://linear.app/materializeinc/issue/DEP-300)) | OO-M2 | ⬜ |
 | The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | ✅ (**CloudWatch, GCP and Azure built.** `pipeline.metrics.provider.{cloudwatch,gcp,azure}` pull RDS and S3, Cloud SQL and GCS, and Flexible Server and Blob Storage, for resources named in values, never discovered. Each pull is a custom component (`declare`) in a pre-rendered, schema-validated module that deploys as-is, the repository's first; the chart renders only flat instances, one per resource on CloudWatch and one per service on GCP and Azure, which `alloy validate` checks against the declared arguments, and the metric sets are fixed in the module rather than values. Clustering is on the scrape, not the exporter: all three exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The custom-component revision re-ran there too: five instances, each owned by exactly one replica and spread across both, and all 32 series in Thanos three minutes after the roll with `instance` naming the resource. **Azure** ran on an AKS test install with a workload identity holding Monitoring Reader on the four named resources only: 23 Flexible Server series from one call per server, after a relabel `keep` trims the exporter's every-aggregation output from 84 samples, and 10 Blob Storage series across two pulls, with each of the three targets owned by one replica. Without the `azure.workload.identity/use` pod label the pull fell through to the node's identity and Resource Graph refused it, so on Azure a missing identity does show as `up == 0`; the chart warns, and the Terraform module sets the label. The Terraform identities are DEP-302) |
-| **Instance availability** on the provider pull — can the cloud supply the nodes an autoscaler asks for, and are the ones it supplied healthy | OO-M3 | 🔨 (**Pipeline built; no dashboard draws it yet.** Three pulls beside DEP-301's, named by cluster or region in values. `pipeline.metrics.provider.cloudwatch.eks.clusters` finds each cluster's nodes by the `aws:eks:cluster-name` tag EKS and Karpenter set, since they are replaced too often to name, and pulls their three status checks, the managed node groups' desired, in-service, pending and maximum sizes, and the region's On-Demand vCPU usage. `gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and each refusal. `azure.aks.clusters` pulls the managed cluster autoscaler's four gauges and every node VM's `VmAvailabilityMetric`, finding the scale sets through the cluster's node resource group with a Resource Graph join. The generator gained a typed CloudWatch `discovery` job and an expression-valued `honor_timestamps`. Proven by running the rendered components under a local Alloy against the three test installs' accounts: 26 billed metrics per EKS pull for eight nodes and a node group, 12 Cloud Monitoring calls per quota pull, 5 Azure calls for a cluster with two pools, and no warnings. Four findings shaped it: an EC2 discovery job without `dimension_name_requirements` also pulled every Auto Scaling group's aggregate in the shared account, 302 billed metrics against 26; every discovery job writes an `aws_<service>_info` series carrying all of a resource's tags, which the pull now drops; GCP quota points arrive hours apart, so that pull is stamped at the scrape like a daily S3 datapoint; and GCP's per-family quotas replace the regional `CPUS` one for C4 and C4A, which reads zero on the test install. **Not measured in-cluster**, because the test installs' gateway identities hold none of the new grants; the Terraform wrappers' values and grants are [DEP-336](https://linear.app/materializeinc/issue/DEP-336). No provider publishes a capacity-refusal metric, so stockouts remain Karpenter's and the autoscaler's to report, and neither the EC2 vCPU quota's limit nor any Azure compute quota is in its provider's monitoring API) |
+| **Instance availability** on the provider pull — can the cloud supply the nodes an autoscaler asks for, and are the ones it supplied healthy | OO-M3 | 🔨 (**Pipeline built, and drawn by `infra-autoscaling`'s Cloud Capacity tab.** Three pulls beside DEP-301's, named by cluster or region in values. `pipeline.metrics.provider.cloudwatch.eks.clusters` finds each cluster's nodes by the `aws:eks:cluster-name` tag EKS and Karpenter set, since they are replaced too often to name, and pulls their three status checks, the managed node groups' desired, in-service, pending and maximum sizes, and the region's On-Demand vCPU usage. `gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and each refusal. `azure.aks.clusters` pulls the managed cluster autoscaler's four gauges and every node VM's `VmAvailabilityMetric`, finding the scale sets through the cluster's node resource group with a Resource Graph join. The generator gained a typed CloudWatch `discovery` job and an expression-valued `honor_timestamps`. Proven by running the rendered components under a local Alloy against the three test installs' accounts: 26 billed metrics per EKS pull for eight nodes and a node group, 12 Cloud Monitoring calls per quota pull, 5 Azure calls for a cluster with two pools, and no warnings. Four findings shaped it: an EC2 discovery job without `dimension_name_requirements` also pulled every Auto Scaling group's aggregate in the shared account, 302 billed metrics against 26; every discovery job writes an `aws_<service>_info` series carrying all of a resource's tags, which the pull now drops; GCP quota points arrive hours apart, so that pull is stamped at the scrape like a daily S3 datapoint; and GCP's per-family quotas replace the regional `CPUS` one for C4 and C4A, which reads zero on the test install. **Not measured in-cluster**, because the test installs' gateway identities hold none of the new grants; the Terraform wrappers' values and grants are [DEP-336](https://linear.app/materializeinc/issue/DEP-336). No provider publishes a capacity-refusal metric, so stockouts remain Karpenter's and the autoscaler's to report, and neither the EC2 vCPU quota's limit nor any Azure compute quota is in its provider's monitoring API) |
 | Terraform: read-only provider roles on the per-cloud monitoring modules ([DEP-302](https://linear.app/materializeinc/issue/DEP-302)) | OO-M2 | 🔨 (**AWS and GCP merged; Azure outstanding.** A `provider_metrics` input on each module grants the gateway read access and names the resources in the chart values: an IRSA role holding `cloudwatch:GetMetricStatistics` and `iam:ListAccountAliases`, and `roles/monitoring.viewer` on the gateway's Google service account. Azure needs a user-assigned identity for the gateway, federated to its ServiceAccount, with Monitoring Reader scoped to each named server and storage account) |
 | The `externalDependencies:` values block and a `dependency-monitoring` profile ([DEP-303](https://linear.app/materializeinc/issue/DEP-303)) | OO-M2 | ⬜ |
 | Persist bucket `AbortIncompleteMultipartUpload` lifecycle rule, in `materialize-terraform-self-managed` ([DEP-304](https://linear.app/materializeinc/issue/DEP-304)) | OO-M2 | ⬜ |
@@ -24579,6 +24678,7 @@ This replaces the hand-rolled Prometheus + Grafana modules that repo shipped, wh
 | Remote-write destinations through Terraform ([DEP-232](https://linear.app/materializeinc/issue/DEP-232)) — `prometheus_remote_write`, its credentials, and the gateway ServiceAccount annotation SigV4 needs | OO-M1 | ✅ (a map keyed by the same destination name the chart uses, so `thanos` retunes the bundled destination rather than adding a second. Credentials go through the `mzmon-alloy-gateway-env` Secret with the module naming the variables explicitly, per DEP-204's pattern. Tier 0 asserts each declared destination reaches a component, a fan-out edge, its URL variable, and a tier variable that actually differs from `.*`) |
 | S3 account-regional namespaced buckets ([DEP-201](https://linear.app/materializeinc/issue/DEP-201)), which waited on the downstream AWS provider v6 upgrade | OO-M1 | ✅ |
 | Alerting through Terraform ([DEP-339](https://linear.app/materializeinc/issue/DEP-339)) — rule selection and overrides, routing and receivers, and the receiver credentials Secret | OO-M2 | 🔨 (the common module takes `alert_rules`, `alerting`, `alerting_receiver_secrets` and `alertmanager_namespace`. Credentials become the `alertmanager-receivers` Secret rather than Helm values, and the plan fails when a receiver reads a key that is not supplied. Tier 0 asserts each input lands in the render, including the preset by its effect. **Outstanding:** the per-cloud wrappers in `materialize-terraform-self-managed` mirroring the inputs, after a release) |
+| Downstream components' ServiceMonitors, and a `monitoring-crds` module that installs the CRDs before anything that renders one ([materialize-terraform-self-managed#498](https://github.com/MaterializeInc/materialize-terraform-self-managed/pull/498)) | OO-M3 | 🔨 (in review. Karpenter, the Load Balancer Controller, the EBS CSI driver, NodeLocal DNS, cert-manager, Ory and metrics-server. A ServiceMonitor cannot be applied before its CRD, so the CRDs move ahead of all of them) |
 
 The module ships as part of the **`materialize-monitoring` component**, not as a component of its own — one version stream covering two artifacts, so `?ref=materialize-monitoring/vX.Y.Z` installs chart `vX.Y.Z` and there is no mapping to maintain between our own two surfaces.
 The module derives its chart version from the chart's own `Chart.yaml`, so that coupling is structural rather than a convention someone maintains on each bump.
@@ -25915,12 +26015,13 @@ module "monitoring" {
 ### CRDs are a flag
 
 Folded into the common module as `enable_monitoring_crds` (default `true`), driving a second `helm_release` installed ahead of the main one, which sets `skip_crds = true`.
-A separate module bought nothing: a resource inside a module is still addressable as `module.monitoring.helm_release.crds`, so the teardown blast radius stays targetable without a module boundary.
+A separate module bought nothing: a resource inside a module is still addressable as `module.monitoring.helm_release.crds`, so the release stays targetable without a module boundary.
 
 The flag exists for the one case that matters — a cluster where prometheus-operator or grafana-operator CRDs are already managed by someone else (kube-prometheus-stack, a platform team), where Terraform would otherwise fail trying to create objects it does not own.
 Per-group toggles pass through to the CRDs chart's own tags for the partial case.
 
-The teardown caveat still needs stating in the module README: destroying the CRDs release cascades to every `GrafanaDashboard`, `GrafanaDatasource`, `PrometheusRule`, and `PodMonitor` in the cluster, including customer-authored ones.
+This section once said destroying the CRDs release cascades to every `GrafanaDashboard`, `GrafanaDatasource`, `PrometheusRule`, and `PodMonitor` in the cluster.
+It does not: every CRD in the chart carries `helm.sh/resource-policy: keep`, so a destroy leaves them, and removing them is a deliberate `kubectl delete crd`.
 
 ## Cloud wrapper modules
 

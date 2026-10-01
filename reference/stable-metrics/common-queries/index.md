@@ -2379,6 +2379,670 @@ Warning-and-worse lines per minute from the selected collectors.
   </div>
 </div>
 
+## infra-autoscaling
+
+<p>How the cluster&rsquo;s nodes follow its pods, whatever does the following.</p>
+<p>Three things add nodes to a Materialize deployment, depending on the cloud:
+Karpenter on EKS, and the managed cluster autoscaler on GKE and AKS. They
+expose nothing in common, so everything here is read from what every
+cluster has instead:</p>
+<ul>
+<li><strong>kube-state-metrics</strong> says how many pods are waiting for a node, how
+many nodes there are, and how full each is to the scheduler.</li>
+<li><strong>Kubernetes events</strong> say what each autoscaler decided: Karpenter&rsquo;s
+<code>Nominated</code> and <code>Launched</code>, the cluster autoscaler&rsquo;s <code>TriggeredScaleUp</code>
+and <code>NotTriggerScaleUp</code>, the scheduler&rsquo;s <code>FailedScheduling</code>, and the node
+lifecycle&rsquo;s <code>RegisteredNode</code> and <code>DeletingNode</code>.</li>
+<li><strong>The cloud provider pull</strong> says whether the cloud could supply the nodes
+asked for: EC2 status checks and node-group sizes, Compute Engine quota,
+and on AKS the managed autoscaler&rsquo;s own gauges. It is opt-in, and its rows
+render only where a provider is pulled.</li>
+</ul>
+<p>Karpenter&rsquo;s own metrics, which say far more on EKS, are the Karpenter
+dashboard&rsquo;s (<code>infra-karpenter.yaml</code>).</p>
+<h2 id="node-pools">Node pools<a class="anchor" href="#node-pools">#</a></h2>
+<p><code>%%{nodePools}</code> gives every node its pool, instance type and zone, from
+<code>kube_node_labels</code>. The pool is whichever label the node&rsquo;s provisioner
+sets: a Karpenter NodePool, an EKS managed node group, a GKE node pool or an
+AKS agent pool. kube-state-metrics publishes those labels only because the
+chart&rsquo;s <code>metricLabelsAllowlist</code> names them, and publishes no
+<code>kube_node_labels</code> at all without it.</p>
+<h2 id="deduplication">Deduplication<a class="anchor" href="#deduplication">#</a></h2>
+<p>Every kube-state-metrics family here is read through <code>max by</code> its own
+identity first, because each extra kube-state-metrics replica reports every
+object again. The same shape <code>infra-nodes.yaml</code> uses.</p>
+<h2 id="provider-lookback">Provider lookback<a class="anchor" href="#provider-lookback">#</a></h2>
+<p>Provider samples arrive with the pull, every five minutes by default, so
+they are read through <code>last_over_time(...[15m])</code> and never rated over
+<code>$__rate_interval</code>; <code>infra-cloud.yaml</code> explains why.</p>
+
+<h4 id="infra.autoscaling.pods.pending">infra.autoscaling.pods.pending
+  <a class="anchor" href="#infra.autoscaling.pods.pending">#</a>
+</h4>
+Pods in the Pending phase right now, across the cluster.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pods.pending-tabs" id="infra.autoscaling.pods.pending-tab-0" checked>
+  <label for="infra.autoscaling.pods.pending-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_phase{phase<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pods.unscheduled">infra.autoscaling.pods.unscheduled
+  <a class="anchor" href="#infra.autoscaling.pods.unscheduled">#</a>
+</h4>
+Pods the scheduler has not placed on any node, because no node has
+room for them or satisfies their constraints.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pods.unscheduled-tabs" id="infra.autoscaling.pods.unscheduled-tab-0" checked>
+  <label for="infra.autoscaling.pods.unscheduled-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_scheduled{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">false</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.count">infra.autoscaling.nodes.count
+  <a class="anchor" href="#infra.autoscaling.nodes.count">#</a>
+</h4>
+Nodes in the cluster.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.count-tabs" id="infra.autoscaling.nodes.count-tab-0" checked>
+  <label for="infra.autoscaling.nodes.count-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_info<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.not_ready">infra.autoscaling.nodes.not_ready
+  <a class="anchor" href="#infra.autoscaling.nodes.not_ready">#</a>
+</h4>
+Nodes whose kubelet is not reporting Ready.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.not_ready-tabs" id="infra.autoscaling.nodes.not_ready-tab-0" checked>
+  <label for="infra.autoscaling.nodes.not_ready-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_status_condition{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Ready</span>&#34;, status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">true</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.added">infra.autoscaling.nodes.added
+  <a class="anchor" href="#infra.autoscaling.nodes.added">#</a>
+</h4>
+Nodes in the cluster now that were not at the start of the selected
+time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.added-tabs" id="infra.autoscaling.nodes.added-tab-0" checked>
+  <label for="infra.autoscaling.nodes.added-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_info<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">unless</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_info <span style="color:#66d9ef">offset</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">rangeWindow</span>}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">count</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_info<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.removed">infra.autoscaling.nodes.removed
+  <a class="anchor" href="#infra.autoscaling.nodes.removed">#</a>
+</h4>
+Nodes that left the cluster in the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.removed-tabs" id="infra.autoscaling.nodes.removed-tab-0" checked>
+  <label for="infra.autoscaling.nodes.removed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.hpa.at_max">infra.autoscaling.hpa.at_max
+  <a class="anchor" href="#infra.autoscaling.hpa.at_max">#</a>
+</h4>
+Workloads whose HorizontalPodAutoscaler is running as many replicas
+as it is allowed to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.hpa.at_max-tabs" id="infra.autoscaling.hpa.at_max-tab-0" checked>
+  <label for="infra.autoscaling.hpa.at_max-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_current_replicas<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&gt;=</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_max_replicas<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">count</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_max_replicas<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pods.unscheduled_by_namespace">infra.autoscaling.pods.unscheduled_by_namespace
+  <a class="anchor" href="#infra.autoscaling.pods.unscheduled_by_namespace">#</a>
+</h4>
+Pods waiting for a node, by namespace.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pods.unscheduled_by_namespace-tabs" id="infra.autoscaling.pods.unscheduled_by_namespace-tab-0" checked>
+  <label for="infra.autoscaling.pods.unscheduled_by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_scheduled{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">false</span>&#34;}<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pods.pending_by_namespace">infra.autoscaling.pods.pending_by_namespace
+  <a class="anchor" href="#infra.autoscaling.pods.pending_by_namespace">#</a>
+</h4>
+Pods in the Pending phase, by namespace.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pods.pending_by_namespace-tabs" id="infra.autoscaling.pods.pending_by_namespace-tab-0" checked>
+  <label for="infra.autoscaling.pods.pending_by_namespace-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_phase{phase<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Pending</span>&#34;}<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.by_pool">infra.autoscaling.nodes.by_pool
+  <a class="anchor" href="#infra.autoscaling.nodes.by_pool">#</a>
+</h4>
+Nodes in each node pool over time.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.by_pool-tabs" id="infra.autoscaling.nodes.by_pool-tab-0" checked>
+  <label for="infra.autoscaling.nodes.by_pool-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.by_instance_type">infra.autoscaling.nodes.by_instance_type
+  <a class="anchor" href="#infra.autoscaling.nodes.by_instance_type">#</a>
+</h4>
+Nodes of each instance type over time.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.by_instance_type-tabs" id="infra.autoscaling.nodes.by_instance_type-tab-0" checked>
+  <label for="infra.autoscaling.nodes.by_instance_type-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.by_zone">infra.autoscaling.nodes.by_zone
+  <a class="anchor" href="#infra.autoscaling.nodes.by_zone">#</a>
+</h4>
+Nodes in each availability zone over time.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.by_zone-tabs" id="infra.autoscaling.nodes.by_zone-tab-0" checked>
+  <label for="infra.autoscaling.nodes.by_zone-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>zone<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.capacity.requested">infra.autoscaling.capacity.requested
+  <a class="anchor" href="#infra.autoscaling.capacity.requested">#</a>
+</h4>
+How much of the cluster&rsquo;s allocatable CPU and memory is promised to
+running pods through their requests.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.capacity.requested-tabs" id="infra.autoscaling.capacity.requested-tab-0" checked>
+  <label for="infra.autoscaling.capacity.requested-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_resource_requests{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, node<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_phase{phase<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Succeeded|Failed</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_status_allocatable{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_resource_requests{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;, node<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_phase{phase<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Succeeded|Failed</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_status_allocatable{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pools.cpu_requested">infra.autoscaling.pools.cpu_requested
+  <a class="anchor" href="#infra.autoscaling.pools.cpu_requested">#</a>
+</h4>
+The share of each node pool&rsquo;s allocatable CPU promised to running pods.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pools.cpu_requested-tabs" id="infra.autoscaling.pools.cpu_requested-tab-0" checked>
+  <label for="infra.autoscaling.pools.cpu_requested-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_resource_requests{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, node<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_phase{phase<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Succeeded|Failed</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_status_allocatable{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pools.memory_requested">infra.autoscaling.pools.memory_requested
+  <a class="anchor" href="#infra.autoscaling.pools.memory_requested">#</a>
+</h4>
+The share of each node pool&rsquo;s allocatable memory promised to running
+pods.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pools.memory_requested-tabs" id="infra.autoscaling.pools.memory_requested-tab-0" checked>
+  <label for="infra.autoscaling.pools.memory_requested-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, container, node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_resource_requests{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;, node<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_phase{phase<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Succeeded|Failed</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_status_allocatable{resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pools.not_ready">infra.autoscaling.pools.not_ready
+  <a class="anchor" href="#infra.autoscaling.pools.not_ready">#</a>
+</h4>
+Nodes not reporting Ready, by node pool.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pools.not_ready-tabs" id="infra.autoscaling.pools.not_ready-tab-0" checked>
+  <label for="infra.autoscaling.pools.not_ready-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_status_condition{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Ready</span>&#34;, status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">true</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pools.cordoned">infra.autoscaling.pools.cordoned
+  <a class="anchor" href="#infra.autoscaling.pools.cordoned">#</a>
+</h4>
+Nodes marked unschedulable, by node pool.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pools.cordoned-tabs" id="infra.autoscaling.pools.cordoned-tab-0" checked>
+  <label for="infra.autoscaling.pools.cordoned-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_spec_unschedulable<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.nodes.age">infra.autoscaling.nodes.age
+  <a class="anchor" href="#infra.autoscaling.nodes.age">#</a>
+</h4>
+Every node with its pool, instance type, zone, and how long ago it
+joined.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.nodes.age-tabs" id="infra.autoscaling.nodes.age-tab-0" checked>
+  <label for="infra.autoscaling.nodes.age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_node_created<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>node<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>pool, instance_type, zone<span style="color:#f92672">)</span> <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">nodePools</span>}
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.pods.unscheduled_list">infra.autoscaling.pods.unscheduled_list
+  <a class="anchor" href="#infra.autoscaling.pods.unscheduled_list">#</a>
+</h4>
+Each pod waiting for a node, and how long since it was created.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.pods.unscheduled_list-tabs" id="infra.autoscaling.pods.unscheduled_list-tab-0" checked>
+  <label for="infra.autoscaling.pods.unscheduled_list-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_created<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_status_scheduled{condition<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">false</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.scheduling_failures">infra.autoscaling.events.scheduling_failures
+  <a class="anchor" href="#infra.autoscaling.events.scheduling_failures">#</a>
+</h4>
+The scheduler&rsquo;s explanation for each pod it could not place, newest
+first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.scheduling_failures-tabs" id="infra.autoscaling.events.scheduling_failures-tab-0" checked>
+  <label for="infra.autoscaling.events.scheduling_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.scale_up_decisions">infra.autoscaling.events.scale_up_decisions
+  <a class="anchor" href="#infra.autoscaling.events.scale_up_decisions">#</a>
+</h4>
+What each autoscaler did about pods waiting for a node, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.scale_up_decisions-tabs" id="infra.autoscaling.events.scale_up_decisions-tab-0" checked>
+  <label for="infra.autoscaling.events.scale_up_decisions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.scheduling_failures_rate">infra.autoscaling.events.scheduling_failures_rate
+  <a class="anchor" href="#infra.autoscaling.events.scheduling_failures_rate">#</a>
+</h4>
+Scheduling failures per minute, by namespace.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.scheduling_failures_rate-tabs" id="infra.autoscaling.events.scheduling_failures_rate-tab-0" checked>
+  <label for="infra.autoscaling.events.scheduling_failures_rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas
+  <a class="anchor" href="#infra.autoscaling.hpa.replicas">#</a>
+</h4>
+Every HorizontalPodAutoscaler with its current and desired replicas
+and the bounds it scales between.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.hpa.replicas-tabs" id="infra.autoscaling.hpa.replicas-tab-0" checked>
+  <label for="infra.autoscaling.hpa.replicas-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_current_replicas<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_desired_replicas<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_min_replicas<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_max_replicas<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.hpa.share_of_max">infra.autoscaling.hpa.share_of_max
+  <a class="anchor" href="#infra.autoscaling.hpa.share_of_max">#</a>
+</h4>
+Each HorizontalPodAutoscaler&rsquo;s replicas as a share of its maximum.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.hpa.share_of_max-tabs" id="infra.autoscaling.hpa.share_of_max-tab-0" checked>
+  <label for="infra.autoscaling.hpa.share_of_max-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_status_current_replicas<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_horizontalpodautoscaler_spec_max_replicas<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.hpa.unable_to_scale">infra.autoscaling.hpa.unable_to_scale
+  <a class="anchor" href="#infra.autoscaling.hpa.unable_to_scale">#</a>
+</h4>
+HorizontalPodAutoscalers that cannot act, by the condition that
+stopped them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.hpa.unable_to_scale-tabs" id="infra.autoscaling.hpa.unable_to_scale-tab-0" checked>
+  <label for="infra.autoscaling.hpa.unable_to_scale-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>condition<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, horizontalpodautoscaler, condition<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_horizontalpodautoscaler_status_condition{condition<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">AbleToScale|ScalingActive</span>&#34;, status<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">false</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.hpa_rate">infra.autoscaling.events.hpa_rate
+  <a class="anchor" href="#infra.autoscaling.events.hpa_rate">#</a>
+</h4>
+HorizontalPodAutoscaler events per minute, by reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.hpa_rate-tabs" id="infra.autoscaling.events.hpa_rate-tab-0" checked>
+  <label for="infra.autoscaling.events.hpa_rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.hpa_stream">infra.autoscaling.events.hpa_stream
+  <a class="anchor" href="#infra.autoscaling.events.hpa_stream">#</a>
+</h4>
+HorizontalPodAutoscaler events, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.hpa_stream-tabs" id="infra.autoscaling.events.hpa_stream-tab-0" checked>
+  <label for="infra.autoscaling.events.hpa_stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.ec2.status_checks">infra.autoscaling.cloud.ec2.status_checks
+  <a class="anchor" href="#infra.autoscaling.cloud.ec2.status_checks">#</a>
+</h4>
+Cluster nodes failing an EC2 status check, by check.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.ec2.status_checks-tabs" id="infra.autoscaling.cloud.ec2.status_checks-tab-0" checked>
+  <label for="infra.autoscaling.cloud.ec2.status_checks-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_ec2_status_check_failed_system_maximum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_ec2_status_check_failed_instance_maximum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_ec2_status_check_failed_attached_ebs_maximum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.ec2.node_groups">infra.autoscaling.cloud.ec2.node_groups
+  <a class="anchor" href="#infra.autoscaling.cloud.ec2.node_groups">#</a>
+</h4>
+Each EKS managed node group&rsquo;s desired and in-service instances,
+against its maximum.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.ec2.node_groups-tabs" id="infra.autoscaling.cloud.ec2.node_groups-tab-0" checked>
+  <label for="infra.autoscaling.cloud.ec2.node_groups-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>tag_eks_nodegroup_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_autoscaling_group_desired_capacity_average[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>tag_eks_nodegroup_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_autoscaling_group_in_service_instances_average[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>tag_eks_nodegroup_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_autoscaling_group_max_size_average[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.ec2.vcpus">infra.autoscaling.cloud.ec2.vcpus
+  <a class="anchor" href="#infra.autoscaling.cloud.ec2.vcpus">#</a>
+</h4>
+On-Demand vCPUs running in the region, for the whole AWS account.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.ec2.vcpus-tabs" id="infra.autoscaling.cloud.ec2.vcpus-tab-0" checked>
+  <label for="infra.autoscaling.cloud.ec2.vcpus-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_usage_resource_count_maximum{dimension_Resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">vCPU</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.gce.cpu_quota">infra.autoscaling.cloud.gce.cpu_quota
+  <a class="anchor" href="#infra.autoscaling.cloud.gce.cpu_quota">#</a>
+</h4>
+CPUs in use against the regional quota, for each machine family.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.gce.cpu_quota-tabs" id="infra.autoscaling.cloud.gce.cpu_quota-tab-0" checked>
+  <label for="infra.autoscaling.cloud.gce.cpu_quota-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_usage{limit_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*per-project-region</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_limit{limit_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*per-project-region</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.gce.ssd_quota">infra.autoscaling.cloud.gce.ssd_quota
+  <a class="anchor" href="#infra.autoscaling.cloud.gce.ssd_quota">#</a>
+</h4>
+Local SSD in use against the regional quota, for each machine family.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.gce.ssd_quota-tabs" id="infra.autoscaling.cloud.gce.ssd_quota-tab-0" checked>
+  <label for="infra.autoscaling.cloud.gce.ssd_quota-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_usage{limit_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*per-project-region</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_limit{limit_name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*per-project-region</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.gce.refusals">infra.autoscaling.cloud.gce.refusals
+  <a class="anchor" href="#infra.autoscaling.cloud.gce.refusals">#</a>
+</h4>
+Requests Compute Engine refused for CPU or local SSD quota, per hour.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.gce.refusals-tabs" id="infra.autoscaling.cloud.gce.refusals-tab-0" checked>
+  <label for="infra.autoscaling.cloud.gce.refusals-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>{__name__<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_exceeded(_total)?</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>vm_family, location<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>{__name__<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_exceeded(_total)?</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.aks.unschedulable">infra.autoscaling.cloud.aks.unschedulable
+  <a class="anchor" href="#infra.autoscaling.cloud.aks.unschedulable">#</a>
+</h4>
+Pods AKS&rsquo;s cluster autoscaler cannot place on any existing node, the
+worst of each five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.aks.unschedulable-tabs" id="infra.autoscaling.cloud.aks.unschedulable-tab-0" checked>
+  <label for="infra.autoscaling.cloud.aks.unschedulable-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unschedulable_pods_count_maximum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.aks.state">infra.autoscaling.cloud.aks.state
+  <a class="anchor" href="#infra.autoscaling.cloud.aks.state">#</a>
+</h4>
+Whether AKS&rsquo;s cluster autoscaler considers the cluster safe to scale,
+whether scale-down is paused, and nodes it would remove.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.aks.state-tabs" id="infra.autoscaling.cloud.aks.state-tab-0" checked>
+  <label for="infra.autoscaling.cloud.aks.state-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_containerservice_managedclusters_cluster_autoscaler_cluster_safe_to_autoscale_minimum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_containerservice_managedclusters_cluster_autoscaler_scale_down_in_cooldown_maximum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unneeded_nodes_count_maximum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.cloud.aks.vms_down">infra.autoscaling.cloud.aks.vms_down
+  <a class="anchor" href="#infra.autoscaling.cloud.aks.vms_down">#</a>
+</h4>
+Node VMs Azure reports as unavailable, by scale set, at any point in
+each five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.cloud.aks.vms_down-tabs" id="infra.autoscaling.cloud.aks.vms_down-tab-0" checked>
+  <label for="infra.autoscaling.cloud.aks.vms_down-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceName, dimensionVmname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.rate_by_reason">infra.autoscaling.events.rate_by_reason
+  <a class="anchor" href="#infra.autoscaling.events.rate_by_reason">#</a>
+</h4>
+Node and autoscaler events per minute, by reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.rate_by_reason-tabs" id="infra.autoscaling.events.rate_by_reason-tab-0" checked>
+  <label for="infra.autoscaling.events.rate_by_reason-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.warnings">infra.autoscaling.events.warnings
+  <a class="anchor" href="#infra.autoscaling.events.warnings">#</a>
+</h4>
+Warning events from the autoscalers and the node lifecycle.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.warnings-tabs" id="infra.autoscaling.events.warnings-tab-0" checked>
+  <label for="infra.autoscaling.events.warnings-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.autoscaling.events.stream">infra.autoscaling.events.stream
+  <a class="anchor" href="#infra.autoscaling.events.stream">#</a>
+</h4>
+Every node and autoscaler event, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.autoscaling.events.stream-tabs" id="infra.autoscaling.events.stream-tab-0" checked>
+  <label for="infra.autoscaling.events.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+
 ## infra-cloud
 
 <p>What the cloud provider publishes about the managed services a Materialize
@@ -3052,6 +3716,666 @@ count against the subscription&rsquo;s API limits.
 </span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;<span style="color:#e6db74">other</span>&#34;, &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;&#34;
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
+  </div>
+</div>
+
+## infra-karpenter
+
+<p>Karpenter&rsquo;s own account of provisioning and disruption, from the metrics its
+controller publishes and the events it records.</p>
+<p>Karpenter adds nodes on EKS in the self-managed Terraform: it watches for
+pods the scheduler cannot place, launches an EC2 instance that fits them,
+and later removes or replaces nodes that are empty, underused, drifted from
+their NodePool&rsquo;s spec, or being interrupted by AWS. Everything it does to a
+node goes through a NodeClaim, one per instance.</p>
+<p>The controller runs two replicas and only the leader does any work, so most
+families here come from one pod. Counters restart on a leader change; every
+query reads them through <code>rate</code> or <code>increase</code>, which tolerates that.</p>
+<h2 id="scrape">Scrape<a class="anchor" href="#scrape">#</a></h2>
+<p>The chart&rsquo;s ServiceMonitor is enabled by the Terraform&rsquo;s <code>karpenter</code> module.
+It drops the offering price estimates and per-instance-type CPU and memory,
+which describe every instance type in the region rather than the cluster,
+and keeps offering availability only for the node pools&rsquo; instance types.
+Karpenter&rsquo;s generic families (<code>controller_runtime_*</code>, <code>workqueue_*</code>,
+<code>client_go_*</code>, <code>aws_sdk_go_*</code>) carry no <code>karpenter_</code> prefix, so they are
+scoped by <code>app=&quot;karpenter&quot;</code>, which the gateway sets from the pod&rsquo;s name label.</p>
+<h2 id="names-ending-in-_count">Names ending in <code>_count</code><a class="anchor" href="#names-ending-in-_count">#</a></h2>
+<p><code>karpenter_scheduler_unschedulable_pods_count</code> and the
+<code>operator_*_status_condition_count</code> families are gauges, not the counts of a
+histogram.</p>
+<h2 id="rare-events">Rare events<a class="anchor" href="#rare-events">#</a></h2>
+<p>NodeClaims are created and removed a few times a day, so their duration
+histograms are read over an hour rather than <code>$__rate_interval</code>, which would
+leave the panel mostly empty.</p>
+
+<h4 id="infra.karpenter.health.nodepools_not_ready">infra.karpenter.health.nodepools_not_ready
+  <a class="anchor" href="#infra.karpenter.health.nodepools_not_ready">#</a>
+</h4>
+NodePools that are not Ready.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.nodepools_not_ready-tabs" id="infra.karpenter.health.nodepools_not_ready-tab-0" checked>
+  <label for="infra.karpenter.health.nodepools_not_ready-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>operator_nodepool_status_condition_count{type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Ready</span>&#34;, status<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">True</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">count</span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>operator_nodepool_status_condition_count{type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Ready</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.health.nodes">infra.karpenter.health.nodes
+  <a class="anchor" href="#infra.karpenter.health.nodes">#</a>
+</h4>
+Nodes Karpenter manages, in the selected NodePools.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.nodes-tabs" id="infra.karpenter.health.nodes-tab-0" checked>
+  <label for="infra.karpenter.health.nodes-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodes_allocatable{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">!=</span>&#34;&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.health.pods_unplaceable">infra.karpenter.health.pods_unplaceable
+  <a class="anchor" href="#infra.karpenter.health.pods_unplaceable">#</a>
+</h4>
+Pods Karpenter could not find or create a node for in its last
+scheduling pass.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.pods_unplaceable-tabs" id="infra.karpenter.health.pods_unplaceable-tab-0" checked>
+  <label for="infra.karpenter.health.pods_unplaceable-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_scheduler_unschedulable_pods_count{controller<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">provisioner</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.health.launch_errors">infra.karpenter.health.launch_errors
+  <a class="anchor" href="#infra.karpenter.health.launch_errors">#</a>
+</h4>
+Instance launches EC2 refused in the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.launch_errors-tabs" id="infra.karpenter.health.launch_errors-tab-0" checked>
+  <label for="infra.karpenter.health.launch_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_cloudprovider_errors_total{method<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Create</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_build_info<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.health.disrupted">infra.karpenter.health.disrupted
+  <a class="anchor" href="#infra.karpenter.health.disrupted">#</a>
+</h4>
+NodeClaims Karpenter removed or replaced in the selected time range, in
+the selected NodePools.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.disrupted-tabs" id="infra.karpenter.health.disrupted-tab-0" checked>
+  <label for="infra.karpenter.health.disrupted-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_nodeclaims_disrupted_total{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_build_info<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.health.synced">infra.karpenter.health.synced
+  <a class="anchor" href="#infra.karpenter.health.synced">#</a>
+</h4>
+Whether Karpenter&rsquo;s view of the cluster&rsquo;s nodes and pods is in step
+with Kubernetes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.synced-tabs" id="infra.karpenter.health.synced-tab-0" checked>
+  <label for="infra.karpenter.health.synced-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_cluster_state_synced<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.health.version">infra.karpenter.health.version
+  <a class="anchor" href="#infra.karpenter.health.version">#</a>
+</h4>
+The Karpenter version running.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.health.version-tabs" id="infra.karpenter.health.version-tab-0" checked>
+  <label for="infra.karpenter.health.version-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_build_info<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.nodes.by_nodepool">infra.karpenter.nodes.by_nodepool
+  <a class="anchor" href="#infra.karpenter.nodes.by_nodepool">#</a>
+</h4>
+Karpenter&rsquo;s nodes in each NodePool over time.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.nodes.by_nodepool-tabs" id="infra.karpenter.nodes.by_nodepool-tab-0" checked>
+  <label for="infra.karpenter.nodes.by_nodepool-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_name, nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodes_allocatable{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">!=</span>&#34;&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.nodepools.cpu">infra.karpenter.nodepools.cpu
+  <a class="anchor" href="#infra.karpenter.nodepools.cpu">#</a>
+</h4>
+CPU each NodePool&rsquo;s nodes provide, against the limit the NodePool sets.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.nodepools.cpu-tabs" id="infra.karpenter.nodepools.cpu-tab-0" checked>
+  <label for="infra.karpenter.nodepools.cpu-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_limit{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">cpu</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.nodepools.memory">infra.karpenter.nodepools.memory
+  <a class="anchor" href="#infra.karpenter.nodepools.memory">#</a>
+</h4>
+Memory each NodePool&rsquo;s nodes provide, against the limit the NodePool
+sets.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.nodepools.memory-tabs" id="infra.karpenter.nodepools.memory-tab-0" checked>
+  <label for="infra.karpenter.nodepools.memory-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_usage{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_limit{resource_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.utilization">infra.karpenter.utilization
+  <a class="anchor" href="#infra.karpenter.utilization">#</a>
+</h4>
+The share of Karpenter&rsquo;s nodes&rsquo; allocatable CPU, memory and pod slots
+that pods have requested.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.utilization-tabs" id="infra.karpenter.utilization-tab-0" checked>
+  <label for="infra.karpenter.utilization-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_cluster_utilization_percent{resource_type<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">cpu|memory|pods</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">100</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.conditions">infra.karpenter.conditions
+  <a class="anchor" href="#infra.karpenter.conditions">#</a>
+</h4>
+Every condition on each NodePool and EC2NodeClass, and its current
+status.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.conditions-tabs" id="infra.karpenter.conditions-tab-0" checked>
+  <label for="infra.karpenter.conditions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>kind, name, type, status, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  operator_status_condition_count{kind<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">NodePool|EC2NodeClass</span>&#34;}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.created">infra.karpenter.provisioning.created
+  <a class="anchor" href="#infra.karpenter.provisioning.created">#</a>
+</h4>
+NodeClaims created per hour, by NodePool and reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.created-tabs" id="infra.karpenter.provisioning.created-tab-0" checked>
+  <label for="infra.karpenter.provisioning.created-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_nodeclaims_created_total{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.errors">infra.karpenter.provisioning.errors
+  <a class="anchor" href="#infra.karpenter.provisioning.errors">#</a>
+</h4>
+Errors from EC2 per hour, by error type and operation.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.errors-tabs" id="infra.karpenter.provisioning.errors-tab-0" checked>
+  <label for="infra.karpenter.provisioning.errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>error, method<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_cloudprovider_errors_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.offerings">infra.karpenter.provisioning.offerings
+  <a class="anchor" href="#infra.karpenter.provisioning.offerings">#</a>
+</h4>
+Zones where each of the node pools&rsquo; instance types can be launched, by
+capacity type.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.offerings-tabs" id="infra.karpenter.provisioning.offerings-tab-0" checked>
+  <label for="infra.karpenter.provisioning.offerings-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type, capacity_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_type, capacity_type, zone<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_cloudprovider_instance_type_offering_available{capacity_type<span style="color:#f92672">!=</span>&#34;<span style="color:#e6db74">reserved</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.pods_waiting">infra.karpenter.provisioning.pods_waiting
+  <a class="anchor" href="#infra.karpenter.provisioning.pods_waiting">#</a>
+</h4>
+Pods waiting for Karpenter: the ones it cannot place, and the queue for
+its next scheduling pass.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.pods_waiting-tabs" id="infra.karpenter.provisioning.pods_waiting-tab-0" checked>
+  <label for="infra.karpenter.provisioning.pods_waiting-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>karpenter_scheduler_unschedulable_pods_count{controller<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">provisioner</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>controller<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_scheduler_queue_depth<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.startup">infra.karpenter.provisioning.startup
+  <a class="anchor" href="#infra.karpenter.provisioning.startup">#</a>
+</h4>
+How long pods that needed a new node took to start running, from when
+the scheduler gave up on existing nodes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.startup-tabs" id="infra.karpenter.provisioning.startup-tab-0" checked>
+  <label for="infra.karpenter.provisioning.startup-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.5</span>, <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_pods_provisioning_startup_duration_seconds_bucket[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>, <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_pods_provisioning_startup_duration_seconds_bucket[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.stages">infra.karpenter.provisioning.stages
+  <a class="anchor" href="#infra.karpenter.provisioning.stages">#</a>
+</h4>
+How long NodeClaims took to reach each stage of launching, at the 99th
+percentile over the last hour.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.stages-tabs" id="infra.karpenter.provisioning.stages-tab-0" checked>
+  <label for="infra.karpenter.provisioning.stages-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>type, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_status_condition_transition_seconds_bucket{type<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Launched|Registered|Initialized</span>&#34;, karpenter_sh_nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.scheduling_duration">infra.karpenter.provisioning.scheduling_duration
+  <a class="anchor" href="#infra.karpenter.provisioning.scheduling_duration">#</a>
+</h4>
+How long each of Karpenter&rsquo;s scheduling passes takes, at the 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.scheduling_duration-tabs" id="infra.karpenter.provisioning.scheduling_duration-tab-0" checked>
+  <label for="infra.karpenter.provisioning.scheduling_duration-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>controller, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_scheduler_scheduling_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.provisioning.cloud_latency">infra.karpenter.provisioning.cloud_latency
+  <a class="anchor" href="#infra.karpenter.provisioning.cloud_latency">#</a>
+</h4>
+How long Karpenter&rsquo;s calls to AWS take, by operation, at the 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.provisioning.cloud_latency-tabs" id="infra.karpenter.provisioning.cloud_latency-tab-0" checked>
+  <label for="infra.karpenter.provisioning.cloud_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>method, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_cloudprovider_duration_seconds_bucket<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.disrupted">infra.karpenter.disruption.disrupted
+  <a class="anchor" href="#infra.karpenter.disruption.disrupted">#</a>
+</h4>
+NodeClaims removed or replaced per hour, by NodePool and reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.disrupted-tabs" id="infra.karpenter.disruption.disrupted-tab-0" checked>
+  <label for="infra.karpenter.disruption.disrupted-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_nodeclaims_disrupted_total{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.decisions">infra.karpenter.disruption.decisions
+  <a class="anchor" href="#infra.karpenter.disruption.decisions">#</a>
+</h4>
+Disruptions Karpenter decided on per hour, by reason and action.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.decisions-tabs" id="infra.karpenter.disruption.decisions-tab-0" checked>
+  <label for="infra.karpenter.disruption.decisions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason, decision<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_voluntary_disruption_decisions_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.eligible">infra.karpenter.disruption.eligible
+  <a class="anchor" href="#infra.karpenter.disruption.eligible">#</a>
+</h4>
+Nodes Karpenter considers candidates for disruption, by reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.eligible-tabs" id="infra.karpenter.disruption.eligible-tab-0" checked>
+  <label for="infra.karpenter.disruption.eligible-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_voluntary_disruption_eligible_nodes<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.budget">infra.karpenter.disruption.budget
+  <a class="anchor" href="#infra.karpenter.disruption.budget">#</a>
+</h4>
+Nodes each NodePool&rsquo;s disruption budget allows removing right now, by
+reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.budget-tabs" id="infra.karpenter.disruption.budget-tab-0" checked>
+  <label for="infra.karpenter.disruption.budget-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>nodepool, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>karpenter_nodepools_allowed_disruptions{nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.blocked">infra.karpenter.disruption.blocked
+  <a class="anchor" href="#infra.karpenter.disruption.blocked">#</a>
+</h4>
+Why Karpenter is leaving nodes in place, from its <code>DisruptionBlocked</code>
+and <code>Unconsolidatable</code> events per five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.blocked-tabs" id="infra.karpenter.disruption.blocked-tab-0" checked>
+  <label for="infra.karpenter.disruption.blocked-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.blocked_stream">infra.karpenter.disruption.blocked_stream
+  <a class="anchor" href="#infra.karpenter.disruption.blocked_stream">#</a>
+</h4>
+Karpenter&rsquo;s blocked-disruption events, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.blocked_stream-tabs" id="infra.karpenter.disruption.blocked_stream-tab-0" checked>
+  <label for="infra.karpenter.disruption.blocked_stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.evictions">infra.karpenter.disruption.evictions
+  <a class="anchor" href="#infra.karpenter.disruption.evictions">#</a>
+</h4>
+Pod evictions Karpenter requested per minute, by response.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.evictions-tabs" id="infra.karpenter.disruption.evictions-tab-0" checked>
+  <label for="infra.karpenter.disruption.evictions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_nodes_eviction_requests_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.termination">infra.karpenter.disruption.termination
+  <a class="anchor" href="#infra.karpenter.disruption.termination">#</a>
+</h4>
+How long NodeClaims took to terminate, from the decision to the
+instance gone, at the 99th percentile over the last hour.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.termination-tabs" id="infra.karpenter.disruption.termination-tab-0" checked>
+  <label for="infra.karpenter.disruption.termination-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>operator_nodeclaim_termination_duration_seconds_bucket{karpenter_sh_nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.disruption.consolidation_timeouts">infra.karpenter.disruption.consolidation_timeouts
+  <a class="anchor" href="#infra.karpenter.disruption.consolidation_timeouts">#</a>
+</h4>
+Consolidation searches that ran out of time, per hour.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.disruption.consolidation_timeouts-tabs" id="infra.karpenter.disruption.consolidation_timeouts-tab-0" checked>
+  <label for="infra.karpenter.disruption.consolidation_timeouts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>consolidation_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_voluntary_disruption_consolidation_timeouts_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.nodes.age">infra.karpenter.nodes.age
+  <a class="anchor" href="#infra.karpenter.nodes.age">#</a>
+</h4>
+Each of Karpenter&rsquo;s nodes, with its NodePool, instance type, zone and
+age.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.nodes.age-tabs" id="infra.karpenter.nodes.age-tab-0" checked>
+  <label for="infra.karpenter.nodes.age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>node_name, nodepool, instance_type, zone<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  karpenter_nodes_current_lifetime_seconds{nodepool<span style="color:#f92672">!=</span>&#34;&#34;, nodepool<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$karpenterNodePool</span>&#34;}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.interruption.received">infra.karpenter.interruption.received
+  <a class="anchor" href="#infra.karpenter.interruption.received">#</a>
+</h4>
+Notices Karpenter read from its interruption queue per hour, by type.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.interruption.received-tabs" id="infra.karpenter.interruption.received-tab-0" checked>
+  <label for="infra.karpenter.interruption.received-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>message_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>karpenter_interruption_received_messages_total<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">3600</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.interruption.queue_delay">infra.karpenter.interruption.queue_delay
+  <a class="anchor" href="#infra.karpenter.interruption.queue_delay">#</a>
+</h4>
+How long notices waited in the interruption queue before Karpenter read
+them, at the 99th percentile over the last hour.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.interruption.queue_delay-tabs" id="infra.karpenter.interruption.queue_delay-tab-0" checked>
+  <label for="infra.karpenter.interruption.queue_delay-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>karpenter_interruption_message_queue_duration_seconds_bucket[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.reconcile_errors">infra.karpenter.controller.reconcile_errors
+  <a class="anchor" href="#infra.karpenter.controller.reconcile_errors">#</a>
+</h4>
+Reconcile errors per minute, by controller.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.reconcile_errors-tabs" id="infra.karpenter.controller.reconcile_errors-tab-0" checked>
+  <label for="infra.karpenter.controller.reconcile_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>controller<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>controller_runtime_reconcile_errors_total{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">karpenter</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.workqueue">infra.karpenter.controller.workqueue
+  <a class="anchor" href="#infra.karpenter.controller.workqueue">#</a>
+</h4>
+Items waiting in each of Karpenter&rsquo;s work queues.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.workqueue-tabs" id="infra.karpenter.controller.workqueue-tab-0" checked>
+  <label for="infra.karpenter.controller.workqueue-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>workqueue_depth{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">karpenter</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.aws_errors">infra.karpenter.controller.aws_errors
+  <a class="anchor" href="#infra.karpenter.controller.aws_errors">#</a>
+</h4>
+AWS API calls that did not succeed per minute, by service, action and status.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.aws_errors-tabs" id="infra.karpenter.controller.aws_errors-tab-0" checked>
+  <label for="infra.karpenter.controller.aws_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>exported_service, action, code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>aws_sdk_go_request_total{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">karpenter</span>&#34;, code<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..|412</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.kube_errors">infra.karpenter.controller.kube_errors
+  <a class="anchor" href="#infra.karpenter.controller.kube_errors">#</a>
+</h4>
+Kubernetes API calls that did not succeed per minute, by method and status.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.kube_errors-tabs" id="infra.karpenter.controller.kube_errors-tab-0" checked>
+  <label for="infra.karpenter.controller.kube_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>method, code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>client_go_request_total{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">karpenter</span>&#34;, code<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">2..</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.leader">infra.karpenter.controller.leader
+  <a class="anchor" href="#infra.karpenter.controller.leader">#</a>
+</h4>
+Which Karpenter replica holds the leader lease.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.leader-tabs" id="infra.karpenter.controller.leader-tab-0" checked>
+  <label for="infra.karpenter.controller.leader-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>leader_election_master_status{app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">karpenter</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.cpu">infra.karpenter.controller.cpu
+  <a class="anchor" href="#infra.karpenter.controller.cpu">#</a>
+</h4>
+CPU each Karpenter replica uses, in cores.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.cpu-tabs" id="infra.karpenter.controller.cpu-tab-0" checked>
+  <label for="infra.karpenter.controller.cpu-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>container_cpu_usage_seconds_total{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">controller</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">karpenter-.+</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.controller.memory">infra.karpenter.controller.memory
+  <a class="anchor" href="#infra.karpenter.controller.memory">#</a>
+</h4>
+Memory each Karpenter replica holds, against its limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.controller.memory-tabs" id="infra.karpenter.controller.memory-tab-0" checked>
+  <label for="infra.karpenter.controller.memory-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>container_memory_working_set_bytes{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">controller</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">karpenter-.+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>kube_pod_container_resource_limits{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">controller</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">karpenter-.+</span>&#34;, resource<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">memory</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.events.rate_by_reason">infra.karpenter.events.rate_by_reason
+  <a class="anchor" href="#infra.karpenter.events.rate_by_reason">#</a>
+</h4>
+Karpenter&rsquo;s events per minute, by reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.events.rate_by_reason-tabs" id="infra.karpenter.events.rate_by_reason-tab-0" checked>
+  <label for="infra.karpenter.events.rate_by_reason-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.events.stream">infra.karpenter.events.stream
+  <a class="anchor" href="#infra.karpenter.events.stream">#</a>
+</h4>
+Karpenter&rsquo;s events, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.events.stream-tabs" id="infra.karpenter.events.stream-tab-0" checked>
+  <label for="infra.karpenter.events.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.logs.rate">infra.karpenter.logs.rate
+  <a class="anchor" href="#infra.karpenter.logs.rate">#</a>
+</h4>
+Karpenter&rsquo;s log lines per minute, by level.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.logs.rate-tabs" id="infra.karpenter.logs.rate-tab-0" checked>
+  <label for="infra.karpenter.logs.rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.karpenter.logs.problems">infra.karpenter.logs.problems
+  <a class="anchor" href="#infra.karpenter.logs.problems">#</a>
+</h4>
+Karpenter&rsquo;s warning and error log lines, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.karpenter.logs.problems-tabs" id="infra.karpenter.logs.problems-tab-0" checked>
+  <label for="infra.karpenter.logs.problems-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
   </div>
 </div>
 
