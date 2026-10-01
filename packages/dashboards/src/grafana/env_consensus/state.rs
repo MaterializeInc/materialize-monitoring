@@ -75,7 +75,7 @@ fn live(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn held(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Versions Held by Collection")
+    Panel::timeseries("Versions Held by Object")
         .query(
             q.get("materialize.consensus.state.held")
                 .legend("{{shard}}"),

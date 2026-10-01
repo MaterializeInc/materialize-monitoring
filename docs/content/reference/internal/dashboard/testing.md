@@ -47,7 +47,16 @@ rather than updating the fixture.
 
 ## Allow-listed divergences
 
-Both parity allow-lists — shell fields and queries — are checked **in both directions**.
+The parity suite records deliberate divergences in four lists:
+
+| List | Records |
+|---|---|
+| `ALLOWED` | dashboard shell fields |
+| `QUERY_DIVERGENCES` | panels whose registry query differs from the baseline's expression |
+| `RETITLED` | panels retitled after the port, each with the title it carries now |
+| `RELABELED_COLUMNS` | table column headers renamed after the port, applied to the baseline before transformations are compared |
+
+Each is checked **in both directions**.
 An entry that no longer diverges fails too, so the list cannot rot into a set of stale excuses.
 
 That bidirectional check is what proved the four registry fixes landed: twenty-one entries went stale at once, and the

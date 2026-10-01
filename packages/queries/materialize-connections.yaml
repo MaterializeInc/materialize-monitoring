@@ -16,9 +16,10 @@ queries:
         Open SQL sessions, split into `system` (Materialize's internal probing —
         a few are always present) and `user` (client connections).
       degraded: |
-        A `user` count that climbs and never settles is the classic
-        leaked-connection signal; cross-check whether query activity rose to
-        match, or whether connections are just accumulating idle.
+        A `user` count that climbs and never settles usually means a client is
+        opening connections and never closing them; cross-check whether query
+        activity rose to match, or whether connections are just accumulating
+        idle.
       notes: Environment-scoped — the cluster/replica selectors don't narrow it.
     promQL: |
       sum by (session_type) (mz_active_sessions{%%{mzEnvironmentFilter}})

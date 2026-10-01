@@ -507,7 +507,7 @@ queries:
       degraded: |
         The persist bucket far above Materialize's line is storage nothing is
         using: object versions or soft-deleted objects the bucket's policy
-        retains, aborted multipart uploads, or data Materialize leaked. On
+        retains, aborted multipart uploads, or data Materialize orphaned. On
         GCS, _GCS: Reclaimable Data_ separates the first two. A bucket that
         only ever grows is a lifecycle rule that is missing or a compactor
         that has stopped.

@@ -1654,7 +1654,7 @@ spec:
 
           **Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.
 
-          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, anything leaked, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size.
+          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size.
         id: 1005
         links: []
         title: Data Stored
@@ -2041,7 +2041,7 @@ spec:
                   spec:
                     expr: |
                       sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: leaked
+                    legendFormat: orphaned
                     qryType: 1
                     query: |
                       sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
@@ -2052,9 +2052,9 @@ spec:
         description: |-
           **What this environment's data in object storage is for.**
 
-          **Nominal:** Almost all of it is current data: files the latest state of each collection refers to, and the rollups that summarize that state.
+          **Nominal:** Almost all of it is current data: files the latest state of each object refers to, and the rollups that summarize that state.
 
-          **Degraded:** _Held for readers_ is data a reader still needs from an older state; growth there points at a stuck reader, named on _Data Held for Readers by Collection_. _Uploads in flight_ is written but not yet committed. _Leaked_ is data nothing refers to that cleanup missed, which is billed and does nothing.
+          **Degraded:** _Held for readers_ is data a reader still needs from an older state; growth there points at a stuck reader, named on _Data Held for Readers by Object_. _Uploads in flight_ is written but not yet committed. _Orphaned_ is data nothing refers to that cleanup missed, which is billed and does nothing.
 
           Materialize's own accounting, recomputed periodically rather than on every write.
         id: 1027
@@ -2116,7 +2116,7 @@ spec:
 
           **Nominal:** Grows with the data you keep, and falls when you drop objects or compaction consolidates updates.
 
-          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, anything leaked, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size.
+          This is what Materialize needs, not what the bucket holds. The bucket also holds data kept only for readers, uploads in flight, orphaned data, and whatever the provider retains for versioning or soft delete — _Storage_ breaks down the first three, and the Infrastructure Cloud Provider dashboard has the bucket's own size.
         id: 1025
         links: []
         title: Data Stored
@@ -2173,16 +2173,16 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The ten collections keeping the most data only because a reader still needs an older version of it.**
+          **The ten objects keeping the most data only because a reader still needs an older version of it.**
 
           **Nominal:** Small and changing: readers move forward and release what they held.
 
-          **Degraded:** A collection whose held data only grows has a reader stuck in the past, and its storage will keep growing until that reader moves or its lease expires. The same reader holds old state in the metadata database, on Materialize Consensus under _State and Cleanup -> Versions Held by Collection_.
+          **Degraded:** An object whose held data only grows has a reader stuck in the past, and its storage will keep growing until that reader moves or its lease expires. The same reader holds old state in the metadata database, on Materialize Consensus under _State and Cleanup -> Versions Held by Object_.
 
           Translate a shard id to an object with `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
         id: 1029
         links: []
-        title: Data Held for Readers by Collection
+        title: Data Held for Readers by Object
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -2251,14 +2251,14 @@ spec:
                   renameByName:
                     Value: stored
         description: |-
-          **The ten collections using the most object storage, now.**
+          **The ten objects using the most object storage, now.**
 
           **Nominal:** Your largest sources and materialized views.
 
           Translate a shard id to an object with `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`, or list sizes by object with `SELECT * FROM mz_catalog.mz_recent_storage_usage ORDER BY size_bytes DESC`.
         id: 1028
         links: []
-        title: Largest Collections
+        title: Largest Objects
         vizConfig:
           group: table
           kind: VizConfig
@@ -2300,7 +2300,7 @@ spec:
                   spec:
                     expr: |
                       sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: leaked
+                    legendFormat: orphaned
                     qryType: 1
                     query: |
                       sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
@@ -2313,10 +2313,10 @@ spec:
 
           **Nominal:** Zero, or close to it.
 
-          **Degraded:** Leaked data is billed and never read. A little accumulates when a process is killed mid-write; a steadily growing amount is worth raising with Materialize support.
+          **Degraded:** Orphaned data is billed and never read. A little accumulates when a process is killed mid-write; a steadily growing amount is worth raising with Materialize support.
         id: 1026
         links: []
-        title: Leaked Data
+        title: Orphaned Data
         vizConfig:
           group: stat
           kind: VizConfig
@@ -2880,7 +2880,7 @@ spec:
                             name: storage-held
                       maxColumnCount: 2
                       rowHeightMode: tall
-                  title: By Collection
+                  title: By Object
           title: Storage
   links: []
   liveNow: false

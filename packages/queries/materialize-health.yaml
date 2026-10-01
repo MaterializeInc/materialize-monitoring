@@ -150,15 +150,15 @@ queries:
     stability: best-effort
     description:
       summary: |
-        The worst lag seen anywhere in the environment over the
-        selected window — how far the most-behind collection's output trailed
+        The worst freshness seen anywhere in the environment over the
+        selected window — how far the most-behind object's output trailed
         real time. A top-level freshness pointer.
       degraded: |
-        Climbing toward an hour means some collection is falling behind; drill
-        into per-cluster and per-collection freshness to find which, and into
+        Climbing toward an hour means some object is falling behind; drill
+        into per-cluster and per-object freshness to find which, and into
         hydration / source health for why.
       notes: |
-        Not-yet-hydrated collections are excluded (they report the sentinel and
+        Not-yet-hydrated objects are excluded (they report the sentinel and
         surface as "currently hydrating"). This is the peak over the window, so
         it reflects the worst moment rather than the current value.
     promQL: |

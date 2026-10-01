@@ -64,9 +64,9 @@ spec:
         description: |-
           **Metadata database calls per second, by operation.**
 
-          **Nominal:** `consensus_cas` — commits — is nearly all of it. `consensus_scan` reads a collection's recent history and `consensus_truncate` deletes history nothing needs any more, both at a few per second.
+          **Nominal:** `consensus_cas` — commits — is nearly all of it. `consensus_scan` reads an object's recent history and `consensus_truncate` deletes history nothing needs any more, both at a few per second.
 
-          **Degraded:** A step change in commits without a matching change in the number of collections usually means something is being rewritten in a loop — a collection that cannot settle.
+          **Degraded:** A step change in commits without a matching change in the number of objects usually means something is being rewritten in a loop — an object that cannot settle.
         id: 1012
         links: []
         title: Operations by Type
@@ -126,7 +126,7 @@ spec:
         description: |-
           **Bytes per second exchanged with the metadata database, by operation.**
 
-          **Nominal:** Small — the state record of a collection is kilobytes, not data. A commit writes one; a scan reads several.
+          **Nominal:** Small — the state record of an object is kilobytes, not data. A commit writes one; a scan reads several.
 
           **Degraded:** Rising commit bytes with a steady commit rate means the state records themselves are growing, which the _State and Cleanup_ tab explains.
         id: 1014
@@ -464,9 +464,9 @@ spec:
         description: |-
           **Commits that lost a race with another writer and were retried, per second, by process.**
 
-          **Nominal:** A trickle. Several processes write the same collections, so the odd conflict is expected and costs one retry.
+          **Nominal:** A trickle. Several processes write the same objects, so the odd conflict is expected and costs one retry.
 
-          **Degraded:** A burst during an upgrade is the two generations overlapping, and stops when the old one is retired. A sustained high rate outside a rollout means two processes are fighting over the same collections — usually a replica that should have been shut down and was not.
+          **Degraded:** A burst during an upgrade is the two generations overlapping, and stops when the old one is retired. A sustained high rate outside a rollout means two processes are fighting over the same objects — usually a replica that should have been shut down and was not.
         id: 1017
         links: []
         title: Write Conflicts by Process
@@ -808,7 +808,7 @@ spec:
                   spec:
                     expr: |
                       count(group by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: collections
+                    legendFormat: objects
                     qryType: 1
                     query: |
                       count(group by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
@@ -817,16 +817,16 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Durable collections in this environment — each one a stream of commits to the metadata database.**
+          **Durable objects in this environment — each one a stream of commits to the metadata database.**
 
           **Nominal:** Grows with what you create. The system catalog alone is around a hundred.
 
-          Metadata database sizing guidance is stated in continuously updated objects: roughly 4,500 for the smallest recommended instance and 18,000 for the default. This count is an upper bound on that, since it also includes collections that rarely change.
+          Metadata database sizing guidance is stated in continuously updated objects: roughly 4,500 for the smallest recommended instance and 18,000 for the default. This count is an upper bound on that, since it also includes objects that rarely change.
 
           List them with `SELECT s.shard_id, o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id`.
         id: 1006
         links: []
-        title: Durable Collections
+        title: Durable Objects
         vizConfig:
           group: stat
           kind: VizConfig
@@ -1051,7 +1051,7 @@ spec:
         description: |-
           **Commits to the metadata database per second — the load this environment puts on it.**
 
-          **Nominal:** Steady. It scales with the number of durable collections that are being updated, not with data volume or query rate, and an idle environment already commits dozens of times a second.
+          **Nominal:** Steady. It scales with the number of durable objects that are being updated, not with data volume or query rate, and an idle environment already commits dozens of times a second.
 
           This is the number the metadata database is sized against. See _Operations -> Load_ for where it comes from.
         id: 1005
@@ -1484,7 +1484,7 @@ spec:
 
           **Nominal:** Nothing drawn above zero.
 
-          **Degraded:** `consensus_cas` failing is writes failing. `consensus_scan` and `consensus_head` failing are reads of a collection's state, which every process does when it opens one — failures there on their own often mean a process that is starting up cannot reach the database. Timestamp oracle failures stop every query from being assigned a timestamp.
+          **Degraded:** `consensus_cas` failing is writes failing. `consensus_scan` and `consensus_head` failing are reads of an object's state, which every process does when it opens one — failures there on their own often mean a process that is starting up cannot reach the database. Timestamp oracle failures stop every query from being assigned a timestamp.
         id: 1009
         links: []
         title: Failed Operations by Type
@@ -1662,7 +1662,7 @@ spec:
 
           **Degraded:** One process far above the rest is that process's network path — its node, its zone, or a proxy in the way. Every process high at once is the database, or a database that is not in the cluster's region.
 
-          A gauge the client refreshes on its own schedule, so it can lag the latency panels by a few seconds.
+          A gauge the client refreshes on its own schedule, so it can trail the latency panels by a few seconds.
         id: 1008
         links: []
         title: Round-Trip Time by Process
@@ -2520,16 +2520,16 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The ten collections holding the most old state versions, which cleanup cannot delete until whatever is reading them moves on.**
+          **The ten objects holding the most old state versions, which cleanup cannot delete until whatever is reading them moves on.**
 
           **Nominal:** Hundreds at most, and moving.
 
-          **Degraded:** A collection whose count only ever grows has a reader stuck in the past: a subscription or a replica that is not keeping up, or one that went away without releasing its hold. Its hold is released when the reader's lease expires.
+          **Degraded:** An object whose count only ever grows has a reader stuck in the past: a subscription or a replica that is not keeping up, or one that went away without releasing its hold. Its hold is released when the reader's lease expires.
 
           Translate a shard id to an object with `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
         id: 1028
         links: []
-        title: Versions Held by Collection
+        title: Versions Held by Object
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -2581,11 +2581,11 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Readers whose lease on a collection expired, per second.**
+          **Readers whose lease on an object expired, per second.**
 
           **Nominal:** Occasional, around restarts: a process that goes away without saying so has its leases expire instead.
 
-          **Degraded:** Steady expirations with no restarts mean readers are being starved — a process too busy to renew its leases. Each expiry releases the old state versions that reader was holding, so this is also what un-sticks _Versions Held by Collection_.
+          **Degraded:** Steady expirations with no restarts mean readers are being starved — a process too busy to renew its leases. Each expiry releases the old state versions that reader was holding, so this is also what un-sticks _Versions Held by Object_.
         id: 1030
         links: []
         title: Expired Reader Leases
@@ -2639,13 +2639,13 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **State versions currently stored in the metadata database, summed across every collection — roughly the number of rows persist keeps there.**
+          **State versions currently stored in the metadata database, summed across every object — roughly the number of rows persist keeps there.**
 
-          **Nominal:** Flat, at a few hundred per collection.
+          **Nominal:** Flat, at a few hundred per object.
 
           **Degraded:** Steady growth is the backlog that _Versions Written and Deleted_ shows as a gap. It is not urgent on its own, but it is the database's storage and vacuum load growing without anything new being stored.
 
-          Measured at each collection's last cleanup, so it moves in steps.
+          Measured at each object's last cleanup, so it moves in steps.
         id: 1027
         links: []
         title: Versions Stored
@@ -2724,7 +2724,7 @@ spec:
 
           **Nominal:** The two lines on top of each other: every commit adds a version, and cleanup deletes the ones nothing needs any more.
 
-          **Degraded:** Written staying above deleted for hours means the table persist writes to is growing. The usual cause is a reader holding old versions — _Versions Held by Collection_ names it. On PostgreSQL a growing table is also more work for autovacuum, which is how this eventually shows up as commit latency.
+          **Degraded:** Written staying above deleted for hours means the table persist writes to is growing. The usual cause is a reader holding old versions — _Versions Held by Object_ names it. On PostgreSQL a growing table is also more work for autovacuum, which is how this eventually shows up as commit latency.
         id: 1026
         links: []
         title: Versions Written and Deleted

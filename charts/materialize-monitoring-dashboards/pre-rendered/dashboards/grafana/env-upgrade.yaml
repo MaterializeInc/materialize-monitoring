@@ -230,16 +230,16 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections each generation is tracking — the denominator for hydration, and the shape of a new generation building out its dataflows.**
+          **Objects each generation is tracking — the denominator for hydration, and the shape of a new generation building out its dataflows.**
 
           **Nominal:** Both generations converging on the same count. The new one is meant to end up serving what the old one served.
 
           **Unhealthy:** A new generation whose count settles well below the old one's. It did not build every dataflow, so promoting it would lose what is missing.
 
-          Counts every collection reporting a wallclock lag, hydrated or not, which is what makes it the denominator for _Hydration -> Hydrating Collections by Generation_.
+          Counts every object reporting a freshness reading, hydrated or not, which is what makes it the denominator for _Hydration -> Hydrating Objects by Generation_.
         id: 1016
         links: []
-        title: Collections by Generation
+        title: Objects by Generation
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -691,7 +691,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections still rebuilding their in-memory state, split by generation — the panel that answers whether a new generation is ready to promote.**
+          **Objects still rebuilding their in-memory state, split by generation — the panel that answers whether a new generation is ready to promote.**
 
           **Nominal:** Nothing for the serving generation. A new generation starts high and drains toward zero as its dataflows rebuild from persisted storage; that descent *is* the rollout making progress.
 
@@ -699,16 +699,16 @@ spec:
 
           **Unhealthy:** A count that stops falling while still above zero. Something cannot finish hydrating, and the rollout will not complete on its own. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
 
-          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection that has not produced any results yet. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
+          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts objects whose freshness reads the `u64::MAX` sentinel (`> 1e15`) — an object that has not produced any results yet. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
 
-          **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every collection 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
+          **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every object 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
 
-          A generation drops out only when it has no collections at all, which is true of a brand-new one for its first moments and of one that has been torn down.
+          A generation drops out only when it has no objects at all, which is true of a brand-new one for its first moments and of one that has been torn down.
 
-          `instance_id!=""` is load-bearing — it keeps this to collections attached to a compute instance.
+          `instance_id!=""` is load-bearing — it keeps this to objects attached to a compute instance.
         id: 1015
         links: []
-        title: Hydrating Collections by Generation
+        title: Hydrating Objects by Generation
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -716,7 +716,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: No collections reporting for the selected generations
+                noValue: No objects reporting for the selected generations
               overrides: []
             options:
               legend:
@@ -784,7 +784,7 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Collections still rebuilding their in-memory state, split by generation — the panel that answers whether a new generation is ready to promote.**
+          **Objects still rebuilding their in-memory state, split by generation — the panel that answers whether a new generation is ready to promote.**
 
           **Nominal:** Nothing for the serving generation. A new generation starts high and drains toward zero as its dataflows rebuild from persisted storage; that descent *is* the rollout making progress.
 
@@ -792,13 +792,13 @@ spec:
 
           **Unhealthy:** A count that stops falling while still above zero. Something cannot finish hydrating, and the rollout will not complete on its own. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
 
-          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts collections parked at the wallclock-lag `u64::MAX` sentinel (`> 1e15`) — a collection that has not produced any results yet. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
+          **A proxy, not a hydration state.** Self-managed Materialize exposes no hydration-state metric, so this counts objects whose freshness reads the `u64::MAX` sentinel (`> 1e15`) — an object that has not produced any results yet. Retire it once a real hydration metric exists. It is the same signal the environment overview reports as "Currently Hydrating", split by generation instead of summed across both sides of a rollout.
 
-          **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every collection 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
+          **`> bool` rather than a filtering `>`.** A filtering comparison drops the series that do not match, so `count` emits no sample at all once a generation finishes hydrating — the line stops instead of reaching zero, and a stat reducing on the last non-null value goes on showing the last count it saw, indefinitely. `> bool` scores every object 1 or 0 and `sum` adds them, so the series stays present and lands on zero, which is the descent this panel exists to show. The environment overview's unsplit version gets the same effect with `or vector(0)`; that appends a series carrying no labels, which is unusable once the panel groups by generation.
 
-          A generation drops out only when it has no collections at all, which is true of a brand-new one for its first moments and of one that has been torn down.
+          A generation drops out only when it has no objects at all, which is true of a brand-new one for its first moments and of one that has been torn down.
 
-          `instance_id!=""` is load-bearing — it keeps this to collections attached to a compute instance.
+          `instance_id!=""` is load-bearing — it keeps this to objects attached to a compute instance.
         id: 1011
         links: []
         title: Currently Hydrating
@@ -813,7 +813,7 @@ spec:
                   mode: shades
                 decimals: 0
                 min: 0
-                noValue: No collections reporting for the selected generations
+                noValue: No objects reporting for the selected generations
               overrides: []
             options:
               colorMode: none
@@ -877,18 +877,18 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The worst lag in each generation — how far behind real time its most-lagged collection is.**
+          **The worst freshness in each generation — how far behind real time its least fresh object is.**
 
           **Nominal:** Seconds, and comparable between generations. A new generation that has hydrated should track the old one closely.
 
-          **Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it is producing results — but it is not keeping up, so promoting it would move traffic onto staler data.
+          **Unhealthy:** A new generation whose freshness stays far behind the serving one's. It has hydrated — it is producing results — but it is not keeping up, so promoting it would move traffic onto staler data.
 
-          Hydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that are *producing results*, and that one counts the collections that do not.
+          Hydrating objects are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Objects by Generation_ complementary: this one covers the objects that are *producing results*, and that one counts the objects that do not.
 
           The metric is a summary carrying only `quantile` `0` and `1`, so `quantile="1"` is the worst case rather than a percentile.
         id: 1017
         links: []
-        title: Worst-Case Lag by Generation
+        title: Worst-Case Freshness by Generation
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -965,18 +965,18 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Total lag split by generation *and* cluster — which cluster in which generation is carrying the lag.**
+          **Total freshness split by generation *and* cluster — which cluster in which generation is furthest behind.**
 
           **Nominal:** Every series low, or a new generation's series descending toward its counterpart in the old one.
 
           **Unhealthy:** One cluster's series flat and high while its siblings descend. That is a cluster-shaped problem — under-provisioned, or holding one expensive dataflow — rather than a rollout-shaped one, and it names the cluster to look at.
 
-          The breakdown behind `materialize.generations.lag.total`. The aggregate answers "is this generation catching up"; this answers "where is what is left", which is the next question whenever the answer to the first is "not yet".
+          The breakdown behind _Total Freshness by Generation_. The aggregate answers "is this generation catching up"; this answers "where is what is left", which is the next question whenever the answer to the first is "not yet".
 
-          Reading it during a rollout means comparing a cluster against *itself* across generations rather than against the other clusters: absolute totals depend on how many collections a cluster carries, so the pairing that matters is `gen N / u1` beside `gen N+1 / u1`.
+          Reading it during a rollout means comparing a cluster against *itself* across generations rather than against the other clusters: absolute totals depend on how many objects a cluster carries, so the pairing that matters is `gen N / u1` beside `gen N+1 / u1`.
         id: 1019
         links: []
-        title: Total Lag by Generation and Cluster
+        title: Total Freshness by Generation and Cluster
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1053,20 +1053,20 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Every hydrated collection's lag in each generation, added together — how far behind the generation is in total.**
+          **Every hydrated object's freshness in each generation, added together — how far behind the generation is in total.**
 
           **Nominal:** A new generation's total falling toward the serving generation's as it catches up.
 
           **Unhealthy:** A new generation whose total stops falling well above the old one's. It is producing results but is not closing the gap, so promoting it would move traffic onto staler data.
 
-          **The panel that actually shows a rollout finishing.** The worst-case lag beside it is dominated by whichever single collection is furthest behind, so it stays high and jumpy while the generation is in fact catching up. The total falls steadily as collection after collection converges, which is the shape an operator is waiting to see before promoting.
+          **The panel that actually shows a rollout finishing.** The worst-case freshness beside it is dominated by whichever single object is furthest behind, so it stays high and jumpy while the generation is in fact catching up. The total falls steadily as object after object converges, which is the shape an operator is waiting to see before promoting.
 
-          Complementary to _Hydration_ in the same way as the rest of this file: collections not yet producing results are excluded here (`< 1e9`) and counted there, so a rollout reads as one curve descending on that tab while this one descends here.
+          Complementary to _Hydration_ in the same way as the rest of this file: objects not yet producing results are excluded here (`< 1e9`) and counted there, so a rollout reads as one curve descending on that tab while this one descends here.
 
-          Deduplicated across replicas by the inner `max`, like _Collections by Generation_ — a collection on two replicas would otherwise be added twice, and two replicas is the normal shape mid- rollout.
+          Deduplicated across replicas by the inner `max`, like _Objects by Generation_ — an object on two replicas would otherwise be added twice, and two replicas is the normal shape mid- rollout.
         id: 1018
         links: []
-        title: Total Lag by Generation
+        title: Total Freshness by Generation
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1334,18 +1334,18 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **The worst lag in each generation — how far behind real time its most-lagged collection is.**
+          **The worst freshness in each generation — how far behind real time its least fresh object is.**
 
           **Nominal:** Seconds, and comparable between generations. A new generation that has hydrated should track the old one closely.
 
-          **Unhealthy:** A new generation whose lag stays far above the serving one's. It has hydrated — it is producing results — but it is not keeping up, so promoting it would move traffic onto staler data.
+          **Unhealthy:** A new generation whose freshness stays far behind the serving one's. It has hydrated — it is producing results — but it is not keeping up, so promoting it would move traffic onto staler data.
 
-          Hydrating collections are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Collections by Generation_ complementary: this one covers the collections that are *producing results*, and that one counts the collections that do not.
+          Hydrating objects are excluded (`< 1e9`), since their sentinel would swamp every real reading. That makes this and _Hydration -> Hydrating Objects by Generation_ complementary: this one covers the objects that are *producing results*, and that one counts the objects that do not.
 
           The metric is a summary carrying only `quantile` `0` and `1`, so `quantile="1"` is the worst case rather than a percentile.
         id: 1012
         links: []
-        title: Worst-Case Lag
+        title: Worst-Case Freshness
         vizConfig:
           group: stat
           kind: VizConfig

@@ -61,7 +61,7 @@ queries:
         Live SUBSCRIBE sessions — long-running queries that stream updates to a
         client as data changes. A handful of `system` subscribes are
         Materialize's own internal probes; a persistently climbing `user` count
-        is a classic leaked-connection signal.
+        usually means a client is opening subscribes and never closing them.
       notes: Environment-scoped.
     promQL: |
       sum by (session_type) (mz_active_subscribes{%%{mzEnvironmentFilter}})
@@ -88,7 +88,7 @@ queries:
     stability: best-effort
     description:
       summary: |
-        Collections still rebuilding their in-memory state — a live
+        Objects still rebuilding their in-memory state — a live
         hydration-queue proxy. After a restart, replica creation, or some DDL, a
         dataflow has to rebuild from persisted storage before it can serve, and
         until it does it produces no results.
@@ -102,7 +102,7 @@ queries:
         with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.
       notes: |
         Stopgap, not a real signal: self-managed has no hydration-state metric,
-        so this counts collections parked at the wallclock-lag u64::MAX sentinel
+        so this counts objects whose freshness reads the u64::MAX sentinel
         (> 1e15) as a proxy. Deprecate this query once an actual hydration-state
         metric exists.
     promQL:
@@ -126,13 +126,13 @@ queries:
     stability: best-effort
     description:
       summary: |
-        Collections waiting in each replica's hydration queue. environmentd
+        Objects waiting in each replica's hydration queue. environmentd
         schedules hydration in batches; a backlog means work is arriving faster
         than the replica can rebuild it.
       nominal: "0 — nothing is waiting to hydrate."
       unhealthy: |
         Sustained non-zero means the replica is undersized for its workload, or
-        one slow-hydrating collection is holding up the line behind it.
+        one slow-hydrating object is holding up the line behind it.
     promQL:
       template: |
         sum by (instance_id, replica_id) (
@@ -148,15 +148,15 @@ queries:
     stability: experimental
     description:
       summary: |
-        The 15 collections that took longest to finish hydrating. Hydration time
+        The 15 objects that took longest to finish hydrating. Hydration time
         scales with the size of the state being rebuilt, so large materialized
         views and indexes naturally top the list.
       notes: |
-        The per-collection hydration-time metric is cloud-only, so this is blank
+        The per-object hydration-time metric is cloud-only, so this is blank
         on self-managed. Get it from SQL instead: `SELECT object_id, time_ns/1e9
         AS seconds FROM mz_internal.mz_compute_hydration_times ORDER BY time_ns
         DESC`. The live metric-side proxy for what's behind is
-        materialize.compute.freshness.top_collections.
+        _Freshness -> Least Fresh Objects_.
     promQL:
       template: |
         topk(15,
@@ -179,21 +179,21 @@ queries:
     stability: best-effort
     description:
       summary: |
-        How far behind real time each cluster's most-lagged collection is — the
+        How far behind real time each cluster's least fresh object is — the
         worst-case freshness across every index, materialized view, and source
         on the cluster.
       nominal: |
         Low and flat, sub-second to a few seconds, for a cluster keeping up.
       degraded: |
-        A sustained climb means a collection can't keep pace with its input — an
+        A sustained climb means an object can't keep pace with its input — an
         under-provisioned cluster or an expensive dataflow. A sharp spike that
         decays on its own is normal re-hydration after a restart or DDL, not a
         problem.
       notes: |
         The catalog cluster (s2) sits a couple seconds back as its baseline.
-        Collections that have not produced results yet report a sentinel and are
-        excluded here. For which collection is responsible, see
-        materialize.compute.freshness.top_collections.
+        Objects that have not produced results yet report a sentinel and are
+        excluded here. For which object is responsible, see
+        _Least Fresh Objects_ (in this row).
     promQL:
       template: |
         max by (instance_id) (
@@ -203,18 +203,18 @@ queries:
         - name: mzClusterName
           args: ["instance_id"]
     # The `< 1e9` sentinel exclusion is a value filter Datadog cannot express,
-    # so not-yet-hydrated collections are included here.
+    # so not-yet-hydrated objects are included here.
     datadogQuery: |
       max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, quantile:1} by {instance_id}
   - id: materialize.compute.freshness.lag_total_by_cluster
     stability: best-effort
     description:
       summary: |
-        The lag of every collection on each cluster, added together — one number
-        for how far behind the cluster is in total.
+        The freshness of every object on each cluster, added together — one
+        number for how far behind the cluster is in total.
       nominal: |
         Low and flat. The absolute value is not comparable between clusters, since
-        a cluster with more collections has more to add up; the *shape* is what
+        a cluster with more objects has more to add up; the *shape* is what
         this panel is for.
       degraded: |
         A climb that does not come back down. A rise that decays steadily is a
@@ -223,25 +223,25 @@ queries:
       notes: |
         **Read this beside the worst-case panel rather than instead of it.** The
         max says whether anything is behind; this says how much is behind in
-        total, and the two answer different questions. When a hundred collections
+        total, and the two answer different questions. When a hundred objects
         rehydrate and fifty of them catch up, the max barely moves — it is still
         reporting whichever one is furthest behind — while this halves. That
         descent is the clearest picture of hydration progress the metrics can
         give, and it is invisible in the max.
 
-        **Deduplicated across replicas.** A collection served by several replicas
+        **Deduplicated across replicas.** An object served by several replicas
         reports once per replica, so the inner `max` picks the worst reading per
-        collection before the outer `sum` adds collections together. Without it a
+        object before the outer `sum` adds objects together. Without it a
         two-replica cluster would report double, which is exactly the shape a
         blue/green rollout has.
 
-        Collections that have not produced results yet report the `u64::MAX` sentinel
+        Objects that have not produced results yet report the `u64::MAX` sentinel
         and are excluded (`< 1e9`) — including them would swamp the total by
         nineteen orders of magnitude. They are counted by the hydration panels
-        instead, so the two are complementary: this totals the collections that
+        instead, so the two are complementary: this totals the objects that
         are *producing results*, those count the ones that are not.
         Datadog cannot express that value filter, so its query includes
-        not-yet-hydrated collections and can overstate the total badly.
+        not-yet-hydrated objects and can overstate the total badly.
     promQL:
       template: |
         sum by (instance_id) (
@@ -253,7 +253,7 @@ queries:
         - name: mzClusterName
           args: ["instance_id"]
     # The `< 1e9` sentinel exclusion is a value filter Datadog cannot express, so
-    # not-yet-hydrated collections are included there — which for a *sum* is far
+    # not-yet-hydrated objects are included there — which for a *sum* is far
     # more distorting than for the max beside it.
     datadogQuery: |
       sum:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, instance_id:%%{mzClusterList}, quantile:1} by {instance_id}
@@ -261,14 +261,14 @@ queries:
     stability: best-effort
     description:
       summary: |
-        The 15 collections whose results are furthest behind real time —
-        the per-collection breakdown behind the per-cluster freshness lag,
+        The 15 objects whose results are furthest behind real time —
+        the per-object breakdown behind _Worst Freshness by Cluster_,
         labeled by object name.
       notes: |
-        Idle or still-hydrating collections report a sentinel and are filtered
-        out; check hydration state directly in SQL if a collection you expect is
-        missing. Catalog (s2) collections commonly appear with a small,
-        expected baseline lag.
+        Idle or still-hydrating objects report a sentinel and are filtered
+        out; check hydration state directly in SQL if an object you expect is
+        missing. Catalog (s2) objects commonly appear with a small,
+        expected baseline freshness of a few seconds.
     promQL:
       template: |
         topk(15,
@@ -421,8 +421,8 @@ queries:
     stability: best-effort
     description:
       summary: |
-        Row counts of arrangements for Materialize's internal system collections
-        (collection id starts with `s`). These back the catalog and internal
+        Row counts of arrangements for Materialize's internal system objects
+        (object id starts with `s`). These back the catalog and internal
         probes, not user data, so they shouldn't grow with your workload —
         unexpected growth here can point at a Materialize bug.
     promQL:
@@ -444,9 +444,9 @@ queries:
     stability: best-effort
     description:
       summary: |
-        Row counts of arrangements for your compute objects (collection id starts
+        Row counts of arrangements for your compute objects (object id starts
         with `u`) — the row count of every user index and materialized view, and
-        the primary driver of cluster memory. Growth on a collection tracks the
+        the primary driver of cluster memory. Growth on an object tracks the
         size of its underlying data.
     promQL:
       template: |
@@ -464,11 +464,11 @@ queries:
     stability: best-effort
     description:
       summary: |
-        Row counts of transient (collection id `t*`) and uncategorized (`none`)
+        Row counts of transient (object id `t*`) and uncategorized (`none`)
         arrangements — short-lived intermediates from query optimization and
         dataflow execution. Normally small and ephemeral.
       unhealthy: |
-        Sustained non-trivial entries here can mean a stuck or leaked dataflow
+        Sustained non-trivial entries here can mean a stuck or orphaned dataflow
         holding intermediate state it should have released.
     promQL: |
       max by (collection_id) (

@@ -405,7 +405,7 @@ label_replace(mz_object_info{materialize_cloud_organization_name=~"$environmentN
 
     #[test]
     fn composing_both_joins_parses() {
-        // Most-Lagged Collections applies object *and* cluster enrichment, which
+        // Least Fresh Objects applies object *and* cluster enrichment, which
         // is why cluster_name is not just called `name`.
         let expr = with_object_name("up", "collection_id", None, ENV);
         let expr = with_cluster_name(&expr, "instance_id", ENV);
