@@ -660,12 +660,14 @@ certificates:
       secretName: ""
     loki:
       enabled: null
-      # The two Loki Services this chart's own URLs dial. Intra-Loki hops
-      # (distributor to ingester, the memberlist ring) are a separate trust
-      # boundary and are not covered here.
+      # The Loki Services this chart's own clients dial: the gateway writes logs
+      # to the distributor and rules to the ruler, and Grafana reads through
+      # the query frontend. Intra-Loki hops (distributor to ingester, the
+      # memberlist ring) are a separate trust boundary and are not covered here.
       services:
         - loki-distributor
         - loki-query-frontend
+        - loki-ruler
       extraDnsNames: []
       extraIpAddresses: []
       secretName: ""

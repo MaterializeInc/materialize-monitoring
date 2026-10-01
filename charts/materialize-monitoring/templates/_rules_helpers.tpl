@@ -23,12 +23,13 @@ mzmon.materialize.cloud/flavor
 
 {{- /*
 Whether this release delivers LogQL rules: it runs the Loki ruler they are for,
-and the alloy-gateway whose `loki.rules.kubernetes` writes them into it.
+the alloy-gateway whose `loki.rules.kubernetes` writes them into it, and a rule
+store the ruler API can write to (`mzmon.loki.ruler.store` is not `local`).
 
 Returns a truthy string if so and an empty one if not.
 */}}
 {{- define "mzmon.rules.logRuleSync.enabled" }}
-  {{- if and ( include "mzmon.loki.ruler.enabled" $ ) ( include "mzmon.alloyGateway.enabled" $ ) }}
+  {{- if and ( include "mzmon.loki.ruler.enabled" $ ) ( include "mzmon.alloyGateway.enabled" $ ) ( ne ( include "mzmon.loki.ruler.store" $ ) "local" ) }}
     {{- "true" }}
   {{- end }}
 {{- end }}
@@ -438,7 +439,7 @@ Validation for the rules surface.
     {{- range $name := ( $values.selected | default list ) }}
       {{- with ( get $index.rules $name ) }}
         {{- if and ( eq ( .engine | default "promql" ) "logql" ) ( not $logRuleSync ) }}
-          {{- $warnings = append $warnings ( printf "rules.selected names %q, a LogQL rule, but this release does not run both the Loki ruler it is for and the alloy-gateway that delivers it, so it is not installed." $name ) }}
+          {{- $warnings = append $warnings ( printf "rules.selected names %q, a LogQL rule, but this release cannot deliver it: that needs the Loki ruler, the alloy-gateway, and a rule store the ruler API can write to. It is not installed." $name ) }}
         {{- end }}
         {{- $missing := list }}
         {{- range .requires }}

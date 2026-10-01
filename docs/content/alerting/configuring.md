@@ -37,7 +37,7 @@ A rule installs when all of the following hold:
 | Every capability the rule requires is present | derived from what the chart deploys, plus `rules.capabilities` |
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
-| A log-derived rule also needs the release's Loki ruler and alloy-gateway | `loki.ruler.enabled`, `alloy-gateway.enabled` |
+| A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
 The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
@@ -165,11 +165,13 @@ It writes each one's groups into the Loki ruler through the ruler API, which sto
 Its Loki rule namespaces are prefixed `mzmon`.
 It removes the ones whose `PrometheusRule` is gone and leaves every other namespace alone, so a rule written to the API by anything else survives.
 
-The rule store MUST accept writes, and the render fails when it is `local`.
 Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
-The gateway addresses the ruler with the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`.
+The gateway addresses the Service that serves the ruler in Loki's deployment mode: `loki-ruler` when distributed, `loki-backend` when simple-scalable, and `loki` for a single binary.
+It uses the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`, and the chart's Loki certificate names `loki-ruler`.
 
-A log-derived rule installs only where the release runs both the Loki ruler and the gateway.
+A log-derived rule installs only where the release runs the Loki ruler and the gateway, and where the ruler's rule store accepts writes.
+A `local` store does not; that is what a filesystem-only Loki gets, such as the `loki-test` profile.
+There the log-derived rules are left out and the render warns.
 
 **A Loki rule group belongs to one tenant**, and the ruler does not evaluate across tenants.
 The gateway writes the log-derived rules into each tenant in `rules.logTenants`, which defaults to `pipeline.logging.tenancy.staticTenant`.

@@ -258,9 +258,10 @@ label may not.
 Every gateway replica runs these blocks. The component does not cluster, and
 each write sets a whole rule group, so the replicas converge on the same set.
 
-The address follows the Loki destination's TLS, since the bundled Loki serves one
-scheme on every component and the destination is how the gateway already talks
-to it.
+The address is the Service that serves the ruler in Loki's deployment mode
+(`mzmon.loki.ruler.service`), with the scheme and TLS settings of the Loki
+destination: the bundled Loki serves one scheme and one certificate on every
+component, and `certificates.components.loki.services` names the ruler.
 
 Usage:
   {{- include "mzmon.alloyGateway.pipeline.lokiRules" $ }}
@@ -268,7 +269,7 @@ Usage:
 {{- define "mzmon.alloyGateway.pipeline.lokiRules" }}
   {{- if ( include "mzmon.rules.logRuleSync.enabled" $ ) }}
     {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
-    {{- $ruler := printf "http://%s-ruler.%s.svc:3100" ( $.Values.loki.fullnameOverride | default "loki" ) ( include "mzmon.loki.namespace" $ ) }}
+    {{- $ruler := printf "http://%s.%s.svc:3100" ( include "mzmon.loki.ruler.service" $ ) ( include "mzmon.loki.namespace" $ ) }}
     {{- $address := include "mzmon.alloy.destUrl" ( dict "url" $ruler "tls" $lokiDest.tls ) }}
     {{- range $i, $tenant := ( include "mzmon.rules.logTenants" $ | fromYamlArray ) }}
 

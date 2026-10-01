@@ -185,7 +185,7 @@ tests:
           path: data["config.alloy"]
           pattern: 'loki\.rules\.kubernetes'
 
-  - it: warns that a selected log rule needs the Loki ruler and the gateway
+  - it: warns that a selected log rule cannot be delivered
     template: templates/NOTES.txt
     set:
       loki.enabled: false
@@ -193,7 +193,7 @@ tests:
       rules.selected: [trace-logging-enabled]
     asserts:
       - matchRegexRaw:
-          pattern: 'rules.selected names "trace-logging-enabled", a LogQL rule, but this release does not run both the Loki ruler'
+          pattern: 'rules.selected names "trace-logging-enabled", a LogQL rule, but this release cannot deliver it'
 
   - it: installs no log rules when rules are off
     template: templates/alerts/lokirules.yaml
@@ -203,24 +203,68 @@ tests:
       - hasDocuments:
           count: 0
 
-  # A rule store that refuses writes leaves the gateway's writes failing and the
-  # ruler empty.
-  - it: fails when the ruler's store refuses writes
-    template: templates/validate.yaml
+  # A `local` rule store refuses the ruler API's writes, so the rules are left
+  # out rather than installed where the gateway cannot deliver them, and the
+  # render says so: a missing rule reads exactly like a quiet one.
+  - it: installs no log rules when the ruler's store refuses writes
+    template: templates/alerts/lokirules.yaml
     set:
       loki.loki.structuredConfig.ruler_storage.backend: local
     asserts:
-      - failedTemplate:
-          errorPattern: "loki.loki.structuredConfig.ruler_storage.backend is local, a rule store the ruler API cannot write to"
+      - hasDocuments:
+          count: 0
 
-  - it: checks the legacy store when the Thanos objstore client is off
-    template: templates/validate.yaml
+  - it: leaves the sync out of the gateway when the store refuses writes
+    template: templates/pipelines/cm-alloy-gateway.yaml
     set:
-      loki.loki.storage.use_thanos_objstore: false
-      loki.loki.rulerConfig.storage.type: local
+      loki.loki.structuredConfig.ruler_storage.backend: local
     asserts:
-      - failedTemplate:
-          errorPattern: "loki.loki.rulerConfig.storage.type is local"
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'loki\.rules\.kubernetes'
+
+  - it: warns that a local rule store leaves the log rules out
+    template: templates/NOTES.txt
+    set:
+      loki.loki.structuredConfig.ruler_storage.backend: local
+    asserts:
+      - matchRegexRaw:
+          pattern: "The Loki ruler's rule store is local"
+
+  # Without the Thanos objstore client the subchart derives the legacy store,
+  # and a filesystem-only Loki gets `local`, as the test profile does.
+  - it: resolves the legacy store the way the subchart does
+    template: templates/alerts/lokirules.yaml
+    values:
+      - ../profiles/loki-test.values.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: stays quiet about the store when it accepts writes
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "rule store is local"
+
+  # The ruler answers on a different Service in each deployment mode.
+  - it: addresses the backend target under simple-scalable Loki
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.deploymentMode: SimpleScalable
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'address = "http://loki-backend\.test-monitoring\.svc:3100"'
+
+  - it: addresses the single binary under monolithic Loki
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      loki.deploymentMode: SingleBinary
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'address = "http://loki\.test-monitoring\.svc:3100"'
 
   # --- the Thanos import ----------------------------------------------------
 
