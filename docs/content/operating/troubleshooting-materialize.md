@@ -180,10 +180,16 @@ Most of the definitions in this repo are outside that set: some await triage, an
 Materialize Cloud runs, so a self-managed install has no data behind them either way.
 
 So never reason "nothing is alerting, therefore it is healthy" without first checking the alert is installed.
-`pre-rendered/rules/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
-default set, and the Thanos ruler's own rule list says what it is evaluating.
+`pre-rendered/rules/_index.yaml` lists every rule with the capabilities it requires, whether it is in the default set,
+and its `engine`, which says which ruler evaluates it.
+
+| `engine` | Evaluated by | Its rule list | Evaluate the expression against |
+|---|---|---|---|
+| `promql` | The Thanos ruler | The Thanos ruler's `/api/v1/rules` | Thanos Query |
+| `logql` | The Loki ruler | The Loki ruler's `/loki/api/v1/rules`, under the tenant the logs are in | Loki, as a metric query |
+
 Read the definitions as *thresholds* — they are the closest thing here to "how bad is this number" — and evaluate their
-expressions yourself against Thanos when in doubt.
+expressions yourself against the backend in the table when in doubt.
 That is what the alert would have done.
 
 ## Handing it over

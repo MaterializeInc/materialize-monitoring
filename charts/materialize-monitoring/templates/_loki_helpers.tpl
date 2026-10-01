@@ -533,10 +533,11 @@ Usage:
     {{- $warnings = append $warnings ( printf "pipeline.logging.tenancy.tenantMap sets %s to byNamespace, so every Materialize namespace is its own Loki tenant and the tenant set changes as namespaces are created. A Loki rule group is per tenant and the ruler does not evaluate across them, so log alerting cannot be complete under this mode. Prefer `static` or `byEnvironment` where log alerting matters." ( join ", " ( sortAlpha $dynamic ) ) ) }}
   {{- end }}
 
-  {{- /* The chart's LogQL rules reach the ruler only through the rules sidecar,
-         writing into a folder that a local rule store reads. Take away any
-         piece and the ruler loads nothing and reports healthy, which reads
-         exactly like a deployment with nothing wrong in its logs. */}}
+  {{- /* The chart's LogQL rules reach the ruler through its API: the gateway's
+         `loki.rules.kubernetes` writes each group into the rule store. A store
+         that refuses writes, `local`, leaves the ruler evaluating nothing while
+         reporting healthy, which reads exactly like a deployment with nothing
+         wrong in its logs. */}}
   {{- $index := include "mzmon.rules.index" $ | fromYaml }}
   {{- $logRules := list }}
   {{- range $name := ( include "mzmon.rules.installed" $ | fromYamlArray ) }}
@@ -545,34 +546,17 @@ Usage:
     {{- end }}
   {{- end }}
   {{- if $logRules }}
-    {{- $why := printf "The %d log-derived rules this release installs (%s) would never reach the Loki ruler." ( len $logRules ) ( join ", " $logRules ) }}
-    {{- $sidecar := dig "sidecar" "rules" dict $values }}
-    {{- $folder := dig "folder" "" $sidecar | toString }}
-    {{- if not ( dig "ruler" "sidecar" false $values ) }}
-      {{- $errors = append $errors ( printf "loki.ruler.sidecar is false, so no rules sidecar runs beside the ruler. %s Turn it on, or disable the rules (rules.disabled)." $why ) }}
-    {{- end }}
-    {{- if not ( dig "enabled" false $sidecar ) }}
-      {{- $errors = append $errors ( printf "loki.sidecar.rules.enabled is false. %s" $why ) }}
-    {{- end }}
-    {{- if not ( has ( dig "resource" "both" $sidecar | toString ) ( list "configmap" "both" ) ) }}
-      {{- $errors = append $errors ( printf "loki.sidecar.rules.resource is %q, but the chart delivers its rules as ConfigMaps. %s Set it to configmap." ( dig "resource" "" $sidecar | toString ) $why ) }}
-    {{- end }}
-    {{- if not ( dig "folderAnnotation" "" $sidecar ) }}
-      {{- $errors = append $errors ( printf "loki.sidecar.rules.folderAnnotation is empty, so the sidecar writes every rule file into %s itself rather than into a tenant's directory, where the ruler does not look. %s Set it to k8s-sidecar-target-directory." $folder $why ) }}
-    {{- end }}
-    {{- $store := dict }}
+    {{- $store := "" }}
     {{- $storePath := "" }}
     {{- if dig "loki" "storage" "use_thanos_objstore" false $values }}
-      {{- $rs := dig "loki" "structuredConfig" "ruler_storage" dict $values }}
-      {{- $store = dict "type" ( dig "backend" "" $rs ) "dir" ( dig "local" "directory" "" $rs ) }}
-      {{- $storePath = "loki.loki.structuredConfig.ruler_storage (backend, local.directory)" }}
+      {{- $store = dig "loki" "structuredConfig" "ruler_storage" "backend" "" $values | toString }}
+      {{- $storePath = "loki.loki.structuredConfig.ruler_storage.backend" }}
     {{- else }}
-      {{- $rs := dig "loki" "rulerConfig" "storage" dict $values }}
-      {{- $store = dict "type" ( dig "type" "" $rs ) "dir" ( dig "local" "directory" "" $rs ) }}
-      {{- $storePath = "loki.loki.rulerConfig.storage (type, local.directory)" }}
+      {{- $store = dig "loki" "rulerConfig" "storage" "type" "" $values | toString }}
+      {{- $storePath = "loki.loki.rulerConfig.storage.type" }}
     {{- end }}
-    {{- if or ( ne ( $store.type | toString ) "local" ) ( ne ( $store.dir | toString ) $folder ) }}
-      {{- $errors = append $errors ( printf "%s is %q, %q, but the rules sidecar writes into %q (loki.sidecar.rules.folder), so the ruler reads a different store. %s Use a local store on that directory." $storePath ( $store.type | toString ) ( $store.dir | toString ) $folder $why ) }}
+    {{- if eq $store "local" }}
+      {{- $errors = append $errors ( printf "%s is local, a rule store the ruler API cannot write to. The alloy-gateway delivers the %d log-derived rules this release installs (%s) through that API, so the ruler would never load them. Leave the rule store on the ruler bucket, or disable the rules (rules.disabled)." $storePath ( len $logRules ) ( join ", " $logRules ) ) }}
     {{- end }}
   {{- end }}
 

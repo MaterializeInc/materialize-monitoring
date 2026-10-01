@@ -11,7 +11,7 @@ params:
 
 An alert is written once, in the query registry, and becomes a rule through `mz-monitoring-build gen-rules`.
 An alert whose query is PromQL is installed as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
-An alert whose query is LogQL is installed as a ConfigMap the Loki ruler loads, and the Loki ruler evaluates it.
+An alert whose query is LogQL is installed as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway writes into the Loki ruler, and the Loki ruler evaluates it.
 This page is the conventions a contributor follows when adding or changing an alert, and what the tooling checks on their behalf.
 Where the alert goes once it fires is [Alert Channels]({{< relref "../../../alerting/channels.md" >}}); why the stack is shaped this way is the [alerting design doc]({{< relref "../design-docs/20260917-alerting-self-managed.md" >}}).
 
@@ -109,7 +109,7 @@ Most requirements are **inferred**.
 A metric the table does not claim fails the build.
 
 A LogQL alert names no metrics, so nothing is inferred for it.
-Its requirements are what it declares, and the chart installs it only where the release runs the Loki ruler.
+Its requirements are what it declares, and the chart installs it only where the release runs the Loki ruler and the alloy-gateway that delivers it.
 
 **`requires` declares what metric names cannot show.**
 An alert whose only metric is `up` MUST declare what it is about, since `up` exists for every target.
@@ -152,6 +152,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
 | The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
+| A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |
 | The expression renders and parses | A group with one bad rule is dropped whole. PromQL is parsed here; LogQL is checked for shape here and parsed by `make rules-check` |
 | A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
@@ -175,7 +176,8 @@ The first two are checked mechanically; the rest are for the author and the revi
 ## Log-derived alerts
 
 An alert whose query is LogQL reads Materialize's log lines instead of its metrics.
-It is authored the same way, lands in `pre-rendered/rules/loki/`, and installs as a ConfigMap in the Loki namespace, which the Loki subchart's rules sidecar writes into the ruler's local rule store.
+It is authored the same way, in a registry file of its own, and lands in `pre-rendered/rules/loki/`.
+It installs as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the Thanos ruler's importer leaves out and the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler through its API.
 It routes through the same Alertmanager, with the same labels, as a metric alert.
 
 **The range is the alert's duration.**

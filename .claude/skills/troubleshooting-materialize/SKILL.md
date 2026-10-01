@@ -62,7 +62,7 @@ interpretation of a metric that has one written down.
 only where the deployment has what each needs; most definitions are not
 installed. Never conclude "nothing is alerting, so it is fine" without checking
 the alert is in `pre-rendered/rules/_index.yaml`'s default set and the
-ruler is evaluating it. Evaluate the alert's own expression instead; that is what
+ruler its `engine` names (Thanos for `promql`, Loki for `logql`) is evaluating it. Evaluate the alert's own expression instead; that is what
 it would have done.
 
 **Confirm a label before building on it.** `count by (<label>) (<metric>)` costs

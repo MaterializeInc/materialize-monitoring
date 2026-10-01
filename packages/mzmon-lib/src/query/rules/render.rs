@@ -194,6 +194,29 @@ pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>>
         }
     }
 
+    // The chart names each `PrometheusRule` after its registry file, so a file
+    // holding both engines' alerts would render two objects with one name.
+    let mut engines_by_source: IndexMap<&str, BTreeSet<RuleEngine>> = IndexMap::new();
+    for rule in &rules {
+        engines_by_source
+            .entry(&rule.source)
+            .or_default()
+            .insert(rule.engine);
+    }
+    for rule in &rules {
+        if rule.engine == RuleEngine::LogQl && engines_by_source[rule.source.as_str()].len() > 1 {
+            errors.push(RuleError {
+                alert: rule.alert.clone(),
+                message: format!(
+                    "`{}` holds PromQL and LogQL alerts, and each registry file installs as one \
+                     `PrometheusRule` per ruler under the file's name; move the LogQL alerts to \
+                     their own file, such as `materialize-log-alerts.yaml`",
+                    rule.source
+                ),
+            });
+        }
+    }
+
     if errors.is_empty() {
         // Group by source file while keeping each file's own order.
         let mut by_source: IndexMap<String, Vec<RenderedRule>> = IndexMap::new();
@@ -392,15 +415,26 @@ fn check_promql_expr(expr: &str, problems: &mut Vec<String>) {
 /// The shape matters beyond syntax: a log query, rather than a metric query,
 /// parses and is refused by the ruler when it loads the group.
 fn check_logql_expr(expr: &str, problems: &mut Vec<String>) {
-    if let Err(message) = check_balanced(expr) {
+    let code = match strip_strings(expr) {
+        Ok(code) => code,
+        Err(message) => {
+            problems.push(format!(
+                "the rendered expression is not valid LogQL: {message}"
+            ));
+            return;
+        }
+    };
+    if let Err(message) = check_balanced(&code) {
         problems.push(format!(
             "the rendered expression is not valid LogQL: {message}"
         ));
     }
-    if !expr.contains('{') {
+    // On the expression with its strings emptied: `|= "[5m]"` is a line
+    // filter that happens to look like a range, not a range.
+    if !code.contains('{') {
         problems.push("the expression has no stream selector (`{…}`)".into());
     }
-    if !LOGQL_RANGE.is_match(expr) {
+    if !LOGQL_RANGE.is_match(&code) {
         problems.push(
             "the expression has no range (such as `[5m]`), so it is a log query rather than a \
              metric query, and a ruler evaluates only the second. The range is how long a matching \
@@ -411,28 +445,45 @@ fn check_logql_expr(expr: &str, problems: &mut Vec<String>) {
     check_tokens(expr, problems);
 }
 
-/// That every bracket in `expr` closes, outside string literals. LogQL strings
-/// are `"…"` with backslash escapes, or raw `` `…` ``.
-fn check_balanced(expr: &str) -> Result<(), String> {
-    let mut open: Vec<char> = Vec::new();
+/// `expr` with the contents of every string literal removed, keeping the
+/// quotes, so what is left is the expression's structure. LogQL strings are
+/// `"…"` with backslash escapes, or raw `` `…` ``.
+fn strip_strings(expr: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(expr.len());
     let mut chars = expr.chars();
     while let Some(c) = chars.next() {
         match c {
-            '"' => loop {
-                match chars.next() {
-                    Some('\\') => {
-                        chars.next();
+            '"' => {
+                out.push_str("\"\"");
+                loop {
+                    match chars.next() {
+                        Some('\\') => {
+                            chars.next();
+                        }
+                        Some('"') => break,
+                        Some(_) => {}
+                        None => return Err("a `\"` string is not closed".into()),
                     }
-                    Some('"') => break,
-                    Some(_) => {}
-                    None => return Err("a `\"` string is not closed".into()),
                 }
-            },
+            }
             '`' => {
+                out.push_str("``");
                 if !chars.any(|c| c == '`') {
                     return Err("a `` ` `` string is not closed".into());
                 }
             }
+            _ => out.push(c),
+        }
+    }
+    Ok(out)
+}
+
+/// That every bracket in `code`, an expression with its strings emptied by
+/// [`strip_strings`], closes.
+fn check_balanced(code: &str) -> Result<(), String> {
+    let mut open: Vec<char> = Vec::new();
+    for c in code.chars() {
+        match c {
             '(' | '{' | '[' => open.push(c),
             ')' | '}' | ']' => {
                 let expected = match c {
@@ -1105,7 +1156,8 @@ mod tests {
     /// Parse `expr` with Loki's own LogQL parser, through `logcli`'s offline
     /// `--stdin` mode, when it is installed; `make rules-check` does the same
     /// in CI. A metric query parses and is then refused as unsupported over
-    /// stdin, so only a parse error is a failure.
+    /// stdin, and that refusal is what distinguishes it from a log query, which
+    /// runs and which a ruler would refuse.
     fn assert_logcli_parses(name: &str, expr: &str) {
         use std::process::{Command, Stdio};
         let Ok(output) = Command::new("logcli")
@@ -1120,6 +1172,10 @@ mod tests {
         assert!(
             !stderr.contains("parse error"),
             "Loki's parser rejected {name}: {stderr}\n{expr}"
+        );
+        assert!(
+            stderr.contains("Query: not supported"),
+            "Loki parsed {name} as a log query, not a metric query: {stderr}\n{expr}"
         );
     }
 
@@ -1212,9 +1268,42 @@ mod tests {
         ));
         assert!(has(&errs, "not valid LogQL"), "{errs:?}");
         // A bracket inside a string is not one.
-        assert!(check_balanced(r#"sum(count_over_time({a="b"} |~ "[(" [5m]))"#).is_ok());
-        assert!(check_balanced(r#"sum(count_over_time({a="b"} |~ `\)` [5m]))"#).is_ok());
-        assert!(check_balanced(r#"sum(count_over_time({a="b\"} [5m]))"#).is_err());
+        let balanced = |e: &str| strip_strings(e).and_then(|code| check_balanced(&code));
+        assert!(balanced(r#"sum(count_over_time({a="b"} |~ "[(" [5m]))"#).is_ok());
+        assert!(balanced(r#"sum(count_over_time({a="b"} |~ `\)` [5m]))"#).is_ok());
+        assert!(balanced(r#"sum(count_over_time({a="b\"} [5m]))"#).is_err());
+    }
+
+    #[test]
+    fn a_range_inside_a_string_is_not_a_range() {
+        // A log query whose line filter looks like a range parses, and the
+        // ruler refuses it.
+        let errs = errors(&log_alert(
+            "x",
+            r#"{%%{mzEnvironmentNamespaceFilter}} |= "[5m]""#,
+            "",
+        ));
+        assert!(
+            has(&errs, "log query rather than a metric query"),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn a_file_is_promql_or_logql_not_both() {
+        let yaml = format!(
+            "{}{}",
+            alert("metric-alert", LABELS, "mz_a > 0", ""),
+            log_alert(
+                "log-alert",
+                r#"sum(count_over_time({%%{mzEnvironmentNamespaceFilter}} |= "boom" [5m])) > 0"#,
+                ""
+            ),
+        );
+        let errs = render_rules(&registry(&yaml)).expect_err("mixed file");
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].alert, "log-alert");
+        assert!(errs[0].message.contains("holds PromQL and LogQL alerts"));
     }
 
     #[test]
@@ -1239,25 +1328,34 @@ mod tests {
 
     #[test]
     fn each_engine_writes_its_own_file_and_one_index_lists_both() {
-        let yaml = format!(
-            "{}{}",
-            alert("metric-alert", LABELS, "mz_a > 0", ""),
+        let mut registry = registry(&alert("metric-alert", LABELS, "mz_a > 0", ""));
+        let logs = format!(
+            "description: test\nmetricImportanceHint: essential\nalertLabels: {{audience: platform}}\nalerts:\n{}",
             log_alert(
                 "log-alert",
                 r#"sum(count_over_time({%%{mzEnvironmentNamespaceFilter}} |= "boom" [5m])) > 0"#,
                 ""
-            ),
+            )
         );
-        let set = render_rules(&registry(&yaml)).unwrap();
+        registry
+            .load_from(
+                RegistryDoc::from_yaml_str(&logs).unwrap(),
+                Some("test-log-alerts"),
+            )
+            .unwrap();
+        let set = render_rules(&registry).unwrap();
+        assert_eq!(set.sources(RuleEngine::PromQl), vec!["test-alerts"]);
+        assert_eq!(set.sources(RuleEngine::LogQl), vec!["test-log-alerts"]);
         let prom = set
             .rule_file_yaml(RuleEngine::PromQl, "test-alerts")
             .unwrap();
         let loki = set
-            .rule_file_yaml(RuleEngine::LogQl, "test-alerts")
+            .rule_file_yaml(RuleEngine::LogQl, "test-log-alerts")
             .unwrap();
         assert!(prom.contains("metric-alert") && !prom.contains("log-alert"));
         assert!(loki.contains("log-alert") && !loki.contains("metric-alert"));
         let index = set.index_yaml().unwrap();
+        assert!(index.contains("file: loki/test-log-alerts.yaml"), "{index}");
         assert!(index.contains("metric-alert:") && index.contains("log-alert:"));
     }
 

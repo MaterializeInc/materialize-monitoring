@@ -234,6 +234,58 @@ Usage:
 
   {{- /* Output rendered destination */}}
   {{- include "mzmon.alloyGateway.pipeline.destination" $ }}
+
+  {{- /* Deliver the LogQL alerting rules to the Loki ruler */}}
+  {{- include "mzmon.alloyGateway.pipeline.lokiRules" $ }}
+{{- end }}
+
+{{/*
+Deliver the LogQL alerting rules to the bundled Loki ruler.
+
+The chart's log-derived rules are PrometheusRules labelled
+`mzmon.materialize.cloud/flavor: logql` (`templates/alerts/lokirules.yaml`).
+`loki.rules.kubernetes` watches them and writes their groups into the ruler
+through its API, under Loki rule namespaces prefixed `mzmon`. It removes the
+namespaces it wrote whose PrometheusRule is gone and leaves every other one
+alone, so rules written to the API by anything else survive. A deployment's own
+LogQL PrometheusRule carrying the label is delivered the same way.
+
+**One block per tenant** in `mzmon.rules.logTenants`, because a Loki rule group
+belongs to one tenant and the component writes as one. The component label is
+the tenant's position rather than its id, which may hold characters an Alloy
+label may not.
+
+Every gateway replica runs these blocks. The component does not cluster, and
+each write sets a whole rule group, so the replicas converge on the same set.
+
+The address follows the Loki destination's TLS, since the bundled Loki serves one
+scheme on every component and the destination is how the gateway already talks
+to it.
+
+Usage:
+  {{- include "mzmon.alloyGateway.pipeline.lokiRules" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.pipeline.lokiRules" }}
+  {{- if ( include "mzmon.rules.logRuleSync.enabled" $ ) }}
+    {{- $lokiDest := $.Values.pipeline.logging.gateway.destination.loki }}
+    {{- $ruler := printf "http://%s-ruler.%s.svc:3100" ( $.Values.loki.fullnameOverride | default "loki" ) ( include "mzmon.loki.namespace" $ ) }}
+    {{- $address := include "mzmon.alloy.destUrl" ( dict "url" $ruler "tls" $lokiDest.tls ) }}
+    {{- range $i, $tenant := ( include "mzmon.rules.logTenants" $ | fromYamlArray ) }}
+
+loki.rules.kubernetes {{ printf "tenant_%d" $i | quote }} {
+    address = {{ $address | quote }}
+    tenant_id = {{ $tenant | quote }}
+    loki_namespace_prefix = "mzmon"
+
+    rule_selector {
+        match_labels = {
+            {{ include "mzmon.rules.flavorLabel" $ | quote }} = "logql",
+        }
+    }
+      {{- include "mzmon.alloy.tlsConfig" ( dict "tls" $lokiDest.tls "indent" 4 ) }}
+}
+    {{- end }}
+  {{- end }}
 {{- end }}
 
 {{/*

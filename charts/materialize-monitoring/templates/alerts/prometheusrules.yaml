@@ -7,12 +7,12 @@ registry file. Each file is filled in and filtered by `mzmon.rules.groups`, and
 whatever is left is emitted as one PrometheusRule. A file with nothing left
 emits nothing.
 
-The one consumer of a PrometheusRule in this stack is the Thanos ruler's import
-sidecar (`thanos.ruler.autoImportPrometheusRules`); a Prometheus Operator in the
-same cluster would also pick these up, which is what the `part-of` label is for.
-The LogQL rules are not PrometheusRules, for the same reason: every consumer of
-the kind parses its expressions as PromQL. They go to the Loki ruler from
-`lokirules.yaml`.
+These are read by the Thanos ruler's import sidecar
+(`thanos.ruler.autoImportPrometheusRules`); a Prometheus Operator in the same
+cluster would also pick these up, which is what the `part-of` label is for. Each
+carries `mzmon.materialize.cloud/flavor: promql`. The LogQL rules are
+PrometheusRules too, labelled `logql`, which the importer's selector leaves out
+(`lokirules.yaml`).
 */}}
 {{- if .Values.rules.enabled }}
 {{- range $path, $_ := $.Files.Glob "pre-rendered/rules/prometheus/*.yaml" }}
@@ -29,6 +29,7 @@ metadata:
     {{- include "mzmon.labels" $ | nindent 4 }}
     app.kubernetes.io/part-of: materialize-monitoring
     app.kubernetes.io/component: alerting-rules
+    {{ include "mzmon.rules.flavorLabel" $ }}: promql
 spec:
   groups:
     {{- toYaml $doc.groups | nindent 4 }}

@@ -145,7 +145,7 @@
     },
     {
       "customType": "regex",
-      "description": "Update renovate-annotated versions in the vendoring scripts under bin/. Same annotation convention as the Dockerfile and workflow managers, but the variable name is unconstrained: these pins are git refs (`FSDK_REF`), not `*_VERSION`/`*_TAG` values, so the Dockerfile manager's name suffix would never match. Renovate moves only the pin -- the `auto-format` label on these PRs is what re-runs the script so the vendored output lands in the same PR.",
+      "description": "Update renovate-annotated versions in the scripts under bin/: the vendoring scripts' git refs, and the checker images `check-rules.sh` runs (promtool, logcli). Same annotation convention as the Dockerfile and workflow managers, but the variable name is unconstrained: the vendoring pins are git refs (`FSDK_REF`), not `*_VERSION`/`*_TAG` values, so the Dockerfile manager's name suffix would never match. Renovate moves only the pin -- the `auto-format` label on these PRs is what re-runs the script so the vendored output lands in the same PR.",
       "managerFilePatterns": ["/^bin/.+\\.sh$/"],
       "matchStrings": [
         "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z_][A-Za-z0-9_]*=[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"

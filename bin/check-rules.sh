@@ -9,7 +9,8 @@
 # A rule the ruler rejects is dropped along with its whole group, and nothing
 # reports it; a rule that parses but can never fire looks exactly like one with
 # nothing to report. So this renders the chart once per scenario, extracts each
-# PrometheusRule's groups and each Loki rule ConfigMap's rule file, and runs:
+# PrometheusRule's groups, the PromQL and LogQL ones apart by their
+# `mzmon.materialize.cloud/flavor` label, and runs:
 #
 #   * `promtool check rules` over every scenario's PromQL rules, so the filled-in
 #     rules parse under each shape of values;
@@ -50,9 +51,13 @@ DOCKER=${DOCKER:-docker}
 PROMTOOL=${PROMTOOL:-}
 LOGCLI=${LOGCLI:-}
 # Keep in step with the promtool the cargo-test job installs (.github/workflows/test.yaml).
-PROM_IMAGE=${PROM_IMAGE:-quay.io/prometheus/prometheus:v3.12.0}
+# renovate: datasource=docker packageName=quay.io/prometheus/prometheus
+PROM_VERSION=v3.12.0
+PROM_IMAGE=${PROM_IMAGE:-quay.io/prometheus/prometheus:${PROM_VERSION}}
 # Keep in step with the Loki the chart runs (the loki subchart's appVersion).
-LOGCLI_IMAGE=${LOGCLI_IMAGE:-docker.io/grafana/logcli:3.7.6}
+# renovate: datasource=docker packageName=grafana/logcli
+LOGCLI_VERSION=3.7.6
+LOGCLI_IMAGE=${LOGCLI_IMAGE:-docker.io/grafana/logcli:${LOGCLI_VERSION}}
 CHART_DIR=${CHART_DIR:-charts/materialize-monitoring}
 SCENARIO_DIR="${CHART_DIR}/tests/rules"
 BASE_PROFILE="${CHART_DIR}/profiles/azure-example.values.yaml"
@@ -67,9 +72,10 @@ else
     _require_progs "${HELM}" "${DOCKER}" yq
 fi
 
-# Render one scenario and write each PrometheusRule's spec to
+# Render one scenario and write each PromQL PrometheusRule's spec to
 # $WORK_DIR/<name>/<registry-file>.yaml, named after the registry file it came
-# from so the unit tests can name it in `rule_files`.
+# from so the unit tests can name it in `rule_files`, and each LogQL one's to
+# $WORK_DIR/<name>.loki/<registry-file>.yaml.
 function _extract() {
     local name=$1
     shift
@@ -83,32 +89,31 @@ function _extract() {
         cat "${out}.err" >&2
         return 1
     fi
-    local rules='select(.kind == "PrometheusRule")'
-    local resource
-    while IFS= read -r resource; do
-        # yq separates documents with `---`, which is not a name.
-        if [ -z "${resource}" ] || [ "${resource}" = "---" ]; then
-            continue
+    mkdir -p "${out}.loki"
+    local flavor='.metadata.labels["mzmon.materialize.cloud/flavor"]'
+    local kind dir rules resource
+    for kind in promql logql; do
+        if [ "${kind}" = "logql" ]; then
+            dir="${out}.loki"
+            rules="select(.kind == \"PrometheusRule\" and ${flavor} == \"logql\")"
+        else
+            dir="${out}"
+            rules="select(.kind == \"PrometheusRule\" and ${flavor} != \"logql\")"
         fi
-        # The resource is `<fullname>-<registry file stem>`.
-        yq -r "${rules} | select(.metadata.name == \"${resource}\") | .spec" "${out}.render.yaml" \
-            >"${out}/${resource#mzmon-}.yaml"
-    done < <(yq -r "${rules} | .metadata.name" "${out}.render.yaml")
+        while IFS= read -r resource; do
+            # yq separates documents with `---`, which is not a name.
+            if [ -z "${resource}" ] || [ "${resource}" = "---" ]; then
+                continue
+            fi
+            # The resource is `<fullname>-<registry file stem>`.
+            yq -r "${rules} | select(.metadata.name == \"${resource}\") | .spec" "${out}.render.yaml" \
+                >"${dir}/${resource#mzmon-}.yaml"
+        done < <(yq -r "${rules} | .metadata.name" "${out}.render.yaml")
+    done
     if [ -z "$(ls -A "${out}")" ]; then
-        _error "scenario '${name}' rendered no PrometheusRule"
+        _error "scenario '${name}' rendered no PromQL PrometheusRule"
         return 1
     fi
-    # Each Loki rule ConfigMap holds one rule file, keyed by its registry file,
-    # once per tenant; one tenant's copy is enough to parse.
-    mkdir -p "${out}.loki"
-    local file
-    while IFS= read -r file; do
-        if [ -z "${file}" ] || [ "${file}" = "---" ]; then
-            continue
-        fi
-        yq -r "select(.kind == \"ConfigMap\" and .metadata.labels.loki_rule != null) | .data[\"${file}\"] | select(. != null)" \
-            "${out}.render.yaml" | yq -r 'select(. != null)' >"${out}.loki/${file}"
-    done < <(yq -r 'select(.kind == "ConfigMap" and .metadata.labels.loki_rule != null) | .data | keys | .[]' "${out}.render.yaml" | sort -u)
 }
 
 function _promtool() {
@@ -127,9 +132,9 @@ function _promtool() {
 }
 
 # Parse one LogQL expression with Loki's parser. `logcli --stdin` evaluates a
-# query against lines on stdin with no Loki, and parses it first: a metric query
-# that parses is then refused as unsupported over stdin, so only a parse error is
-# a failure.
+# query against lines on stdin with no Loki, and parses it first. A metric query
+# that parses is then refused as unsupported over stdin, and that refusal is what
+# tells it apart from a log query, which runs, and which a ruler refuses.
 function _logcli_parse() {
     local expr=$1
     local out
@@ -140,6 +145,10 @@ function _logcli_parse() {
     fi
     if printf '%s' "${out}" | grep -q "parse error"; then
         printf '%s\n' "${out}" >&2
+        return 1
+    fi
+    if ! printf '%s' "${out}" | grep -q "Query: not supported"; then
+        printf 'parsed as a log query, not a metric query: %s\n' "${out}" >&2
         return 1
     fi
 }
@@ -173,7 +182,7 @@ done
 
 _info "checking rendered LogQL rules with logcli from ${LOGCLI:-${LOGCLI_IMAGE}}"
 if [ -z "$(ls -A "${WORK_DIR}/all.loki")" ]; then
-    _error "scenario 'all' rendered no Loki rule ConfigMap"
+    _error "scenario 'all' rendered no LogQL PrometheusRule"
     status=1
 fi
 for name in "${scenarios[@]}"; do
@@ -185,7 +194,7 @@ for name in "${scenarios[@]}"; do
             alert=$(yq -r "[.groups[].rules[]][${i}].alert" "${f}")
             expr=$(yq -r "[.groups[].rules[]][${i}].expr" "${f}")
             _logcli_parse "${expr}" || {
-                _error "Loki's parser rejected ${alert} as rendered for '${name}' (${PROG})"
+                _error "${alert} as rendered for '${name}' is not a rule the Loki ruler would load (${PROG})"
                 status=1
             }
         done
