@@ -76,7 +76,7 @@ groups:
         between refreshes, and a collection nobody reads may stay frozen for
         months. Across a large fleet those are most of the clusters an
         absolute threshold catches, so select this where freshness matters.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-falling-behind
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-falling-behind
   - alert: cluster-stale
     expr: |-
       (
@@ -138,7 +138,7 @@ groups:
         lagging collections.
 
         Not in the default set, for the reasons cluster-falling-behind gives.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-stale
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-stale
 - name: hydration
   rules:
   - alert: cluster-hydration-stuck
@@ -196,7 +196,7 @@ groups:
 
         Counts only collections that no replica has hydrated, so a restart of
         one replica of several does not fire it.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-hydration-stuck
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-hydration-stuck
 - name: cluster_resources
   rules:
   - alert: cluster-memory-near-limit
@@ -267,7 +267,7 @@ groups:
         its limit, because spilling to swap is the design, so it cannot be used
         here. Measured as the maximum over 15m: heap can climb fast enough that
         an average stays under the threshold until the kill.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-memory-near-limit
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-memory-near-limit
   - alert: cluster-memory-high
     expr: |-
       (
@@ -334,7 +334,7 @@ groups:
         Not in the default set. What 40% means depends on how much swap a size
         has against its RAM, which varies by deployment, so evaluate it against
         your sizes before selecting it.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-memory-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-memory-high
   - alert: cluster-cpu-high
     expr: |-
       (
@@ -453,7 +453,7 @@ groups:
 
         Not in the default set: a batch workload can run at its limit by
         design, so select this for clusters where saturation is a problem.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-cpu-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-cpu-high
   - alert: cluster-replica-oomkilled
     expr: |-
       (
@@ -575,7 +575,7 @@ groups:
         scratch. Size the cluster up, or find what grew in
         `mz_internal.mz_dataflow_arrangement_sizes`. Repeated kills leave the
         cluster unable to finish hydrating.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-replica-oomkilled
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-replica-oomkilled
 - name: sources
   rules:
   - alert: source-disconnected
@@ -603,4 +603,4 @@ groups:
         Not in the default set yet: neither test install runs a source, so it
         has not been seen to fire. It catches an unreachable upstream, not every
         way a source can stall; the freshness alerts catch the rest.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#source-disconnected
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#source-disconnected

@@ -44,7 +44,8 @@ use crate::query::stability::Stability;
 
 /// Where an alert's `runbook_url` points until runbooks exist: its own entry on
 /// the generated Common Alerts page, whose headings are anchored by alert name.
-pub const COMMON_ALERTS_URL: &str = "https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/";
+pub const COMMON_ALERTS_URL: &str =
+    "https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/";
 
 /// The severities the chart's routing presets know how to route.
 pub const SEVERITIES: &[&str] = &["critical", "warning", "notice"];

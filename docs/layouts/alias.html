@@ -1,0 +1,18 @@
+{{- /*
+  Overrides Hugo's embedded alias template so a redirect keeps its #fragment.
+  The embedded one is a bare meta refresh, which drops the fragment, and GitHub
+  Pages has no server-side redirects to fall back on. Every bundled alert's
+  runbook_url is an anchor on Common Alerts, so rules already installed from an
+  older chart would otherwise land at the top of the page after a move.
+*/ -}}
+<!DOCTYPE html>
+<html lang="{{ site.Language.Locale }}">
+  <head>
+    <title>{{ .Permalink }}</title>
+    <link rel="canonical" href="{{ .Permalink }}">
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <script>location.replace({{ .Permalink }} + location.hash);</script>
+    <noscript><meta http-equiv="refresh" content="0; url={{ .Permalink }}"></noscript>
+  </head>
+</html>

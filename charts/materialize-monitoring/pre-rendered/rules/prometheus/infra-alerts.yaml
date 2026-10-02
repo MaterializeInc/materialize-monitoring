@@ -25,7 +25,7 @@ groups:
 
         Above ~70% used, plan a capacity increase and pace or cancel heavy write
         workloads (large materialized views, sinks, bulk inserts/deletes).
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-disk-usage-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-disk-usage-critical
   - alert: crdb-disk-usage-high
     expr: |-
       max(
@@ -41,7 +41,7 @@ groups:
       description: |-
         Pace or cancel heavy write workloads and plan a capacity increase before
         utilization climbs further. Keep steady-state utilization below ~60%.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-disk-usage-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-disk-usage-high
   - alert: crdb-disk-usage-elevated
     expr: |-
       max(
@@ -54,7 +54,7 @@ groups:
       audience: platform
     annotations:
       summary: CockroachDB disk usage is above 30% and worth keeping an eye on.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-disk-usage-elevated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-disk-usage-elevated
   - alert: crdb-cpu-usage-critical
     expr: |-
       max(
@@ -71,7 +71,7 @@ groups:
         Sustained CPU saturation spikes query latency and triggers admission
         control, which throttles lower-priority work. Identify and cancel or pace
         the heaviest workloads; increase node size if saturation persists.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-cpu-usage-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-cpu-usage-critical
   - alert: crdb-cpu-usage-high
     expr: |-
       max(
@@ -87,7 +87,7 @@ groups:
       description: |-
         Look for heavy or runaway queries; consider node resizing if the load is
         legitimate and sustained.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-cpu-usage-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-cpu-usage-high
   - alert: crdb-query-latency
     expr: |-
       histogram_quantile(0.95,
@@ -106,7 +106,7 @@ groups:
         Elevated CRDB latency propagates to Materialize catalog and timestamp
         operations. Check for CPU saturation, disk stalls, or LSM read
         amplification as the underlying cause.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-query-latency
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-query-latency
   - alert: crdb-lsm-read-amplification-critical
     expr: max(crdb_dedicated_rocksdb_read_amplification) > 150
     for: 15m
@@ -120,7 +120,7 @@ groups:
         Heavy writes (materialized views, Iceberg sinks) are outpacing compaction
         and reads slow dramatically. Cancel or throttle the heavy write workload;
         setting heavy jobs to background QoS lets compaction catch up.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-lsm-read-amplification-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-lsm-read-amplification-critical
   - alert: crdb-lsm-read-amplification-high
     expr: max(crdb_dedicated_rocksdb_read_amplification) > 50
     for: 1h
@@ -130,7 +130,7 @@ groups:
       audience: platform
     annotations:
       summary: CockroachDB LSM read amplification is elevated (>50), a sign writes may be outpacing compaction.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-lsm-read-amplification-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-lsm-read-amplification-high
   - alert: crdb-ranges-unavailable
     expr: max(crdb_dedicated_ranges_unavailable) > 0
     for: 1h
@@ -144,7 +144,7 @@ groups:
         Unavailable ranges mean some data cannot be served. Check for dead or
         flapping nodes and disk stalls; a persistently impaired node may need
         replacement.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-ranges-unavailable
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-ranges-unavailable
   - alert: crdb-ranges-underreplicated
     expr: max(crdb_dedicated_ranges_underreplicated) > 0
     for: 1h
@@ -157,7 +157,7 @@ groups:
       description: |-
         Under-replication reduces fault tolerance. It often self-heals as nodes
         recover; if it persists, investigate node health.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-ranges-underreplicated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-ranges-underreplicated
   - alert: crdb-sql-memory-rapid-growth
     expr: |-
       max by (node_id) (
@@ -173,7 +173,7 @@ groups:
       description: |-
         Find and cancel the runaway session before nodes OOM (an OOM cascade can
         crash-loop the cluster). Scale up node size if memory pressure is legitimate.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-sql-memory-rapid-growth
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-sql-memory-rapid-growth
   - alert: crdb-sql-memory-pressure-high
     expr: |-
       max by (node_id) (
@@ -190,7 +190,7 @@ groups:
       audience: platform
     annotations:
       summary: CockroachDB distsql memory exceeds 18% of node RAM, indicating high user-query memory pressure.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-sql-memory-pressure-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-sql-memory-pressure-high
   - alert: crdb-write-intent-accumulation-critical
     expr: max(crdb_dedicated_intentcount) > 10 * 1000 * 1000
     for: 10m
@@ -204,7 +204,7 @@ groups:
         Large-scope transactions are holding locks too long and causing contention.
         Find and cancel the offending transaction; break bulk operations into
         smaller batches to avoid accumulating intents.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-write-intent-accumulation-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-write-intent-accumulation-critical
   - alert: crdb-write-intent-accumulation-high
     expr: max(crdb_dedicated_intentcount) > 10 * 1000 * 1000
     for: 5m
@@ -214,7 +214,7 @@ groups:
       audience: platform
     annotations:
       summary: CockroachDB write-intent count has exceeded 10M, a sign of large transactions accumulating locks.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-write-intent-accumulation-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-write-intent-accumulation-high
   - alert: crdb-backup-missing
     expr: |-
       (
@@ -230,7 +230,7 @@ groups:
       description: |-
         Confirm the backup schedule exists and its recent jobs are succeeding;
         investigate backup job errors if they are failing.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#crdb-backup-missing
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#crdb-backup-missing
 - name: cilium
   rules:
   - alert: cilium-bpf-map-pressure
@@ -245,7 +245,7 @@ groups:
       audience: platform
     annotations:
       summary: A Cilium BPF map is filling up, which will cause networking issues if left unaddressed.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cilium-bpf-map-pressure
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cilium-bpf-map-pressure
   - alert: cilium-drop-rate-elevated
     expr: |-
       max by (direction, reason, pod) (
@@ -258,7 +258,7 @@ groups:
       audience: platform
     annotations:
       summary: Cilium is dropping more packets than expected, which can indicate networking issues.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cilium-drop-rate-elevated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cilium-drop-rate-elevated
 - name: coredns
   rules:
   - alert: coredns-slow-queries
@@ -275,7 +275,7 @@ groups:
       audience: platform
     annotations:
       summary: CoreDNS p99 request latency is above 500ms, which can cause or accompany broader outages.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#coredns-slow-queries
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#coredns-slow-queries
 - name: node_unreachable
   rules:
   - alert: node-unreachable
@@ -287,7 +287,7 @@ groups:
       audience: platform
     annotations:
       summary: A Kubernetes node is marked unreachable, which may indicate a node or network problem.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#node-unreachable
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#node-unreachable
 - name: hpa
   rules:
   - alert: k8s-horizontalpodautoscaler-replicas-critical
@@ -306,7 +306,7 @@ groups:
       description: |-
         Once an HPA is pinned at max replicas it can no longer absorb load. Raise
         the maximum, or address the workload driving the scale-up.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-horizontalpodautoscaler-replicas-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-horizontalpodautoscaler-replicas-critical
   - alert: k8s-horizontalpodautoscaler-replicas-high
     expr: |-
       (
@@ -320,7 +320,7 @@ groups:
       audience: platform
     annotations:
       summary: A HorizontalPodAutoscaler is above 70% of its maximum replicas.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-horizontalpodautoscaler-replicas-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-horizontalpodautoscaler-replicas-high
 - name: k8s_disk
   rules:
   - alert: k8s-container-disk-usage
@@ -336,7 +336,7 @@ groups:
       audience: platform
     annotations:
       summary: A container filesystem is above 70% usage and should be cleaned up or resized.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-container-disk-usage
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-container-disk-usage
   - alert: k8s-node-disk-pressure
     expr: |-
       max by (node) (
@@ -349,7 +349,7 @@ groups:
       audience: platform
     annotations:
       summary: A Kubernetes node is under disk pressure, which can cause pods to fail scheduling or be evicted.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-node-disk-pressure
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-node-disk-pressure
   - alert: k8s-volume-usage
     expr: |-
       100 * (
@@ -367,7 +367,7 @@ groups:
       audience: platform
     annotations:
       summary: A Kubernetes persistent volume is above 70% usage and should be cleaned up or resized.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-volume-usage
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-volume-usage
 - name: loki
   rules:
   - alert: alloy-log-drops
@@ -386,7 +386,7 @@ groups:
         Check the drop `reason`: deadline_exceeded / rate_limited / stream_limit_exceeded
         all point at Loki being unable to accept the write volume. Check the
         alloy-gateway autoscaler and Loki ingestion health.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#alloy-log-drops
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#alloy-log-drops
   - alert: loki-push-err-high
     expr: |-
       100 * (
@@ -407,7 +407,7 @@ groups:
       description: |-
         429s indicate ingestion rate limits; 5xx indicate a Loki component failure.
         Inspect distributor logs and pod health.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#loki-push-err-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#loki-push-err-high
   - alert: loki-panics
     expr: |-
       sum by (namespace, job) (
@@ -420,7 +420,7 @@ groups:
       audience: platform
     annotations:
       summary: A Loki component has panicked.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#loki-panics
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#loki-panics
   - alert: loki-req-duration-high
     expr: |-
       histogram_quantile(0.95,
@@ -435,7 +435,7 @@ groups:
       audience: platform
     annotations:
       summary: Loki p95 request duration is above 1s (excluding tail/long-poll routes).
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#loki-req-duration-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#loki-req-duration-high
   - alert: loki-req-err-high
     expr: |-
       100 * (
@@ -453,7 +453,7 @@ groups:
       audience: platform
     annotations:
       summary: Loki read requests are returning 10%+ 5xx errors.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#loki-req-err-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#loki-req-err-high
   - alert: loki-writer-err-high
     expr: |-
       100 * (
@@ -471,7 +471,7 @@ groups:
       audience: platform
     annotations:
       summary: Loki write requests are erroring for 10%+ of requests.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#loki-writer-err-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#loki-writer-err-high
 - name: metric_collection
   rules:
   - alert: clusterd-metrics-missing
@@ -486,7 +486,7 @@ groups:
       audience: platform
     annotations:
       summary: All metrics for a Materialize pod have been missing for 60m — the scrape target is likely down.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#clusterd-metrics-missing
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#clusterd-metrics-missing
   - alert: critical-metrics-missing
     expr: |-
       (
@@ -504,7 +504,7 @@ groups:
       audience: platform
     annotations:
       summary: More than 30% of a critical scrape job's targets have been down for 30m.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#critical-metrics-missing
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#critical-metrics-missing
   - alert: logging-collection-down
     expr: (sum(rate(loki_distributor_bytes_received_total[5m])) or vector(0)) == 0
     for: 15m
@@ -514,7 +514,7 @@ groups:
       audience: platform
     annotations:
       summary: Loki has received no logs for 15m — log collection is down.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#logging-collection-down
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#logging-collection-down
 - name: deployment
   rules:
   - alert: k8s-deployment-unavailable-critical
@@ -532,7 +532,7 @@ groups:
       description: |-
         The deployment has no available replicas. Describe it and inspect its
         pods for scheduling, image, or crash-loop problems.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-deployment-unavailable-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-deployment-unavailable-critical
   - alert: k8s-deployment-unavailable-warning
     expr: |-
       group by (deployment, namespace) (
@@ -545,7 +545,7 @@ groups:
       audience: platform
     annotations:
       summary: An important supporting deployment is unavailable.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-deployment-unavailable-warning
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-deployment-unavailable-warning
   - alert: k8s-deployment-unavailable-notice
     expr: |-
       group by (deployment, namespace) (
@@ -558,7 +558,7 @@ groups:
       audience: platform
     annotations:
       summary: A non-essential deployment is unavailable.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-deployment-unavailable-notice
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-deployment-unavailable-notice
 - name: daemonset
   rules:
   - alert: k8s-daemonset-saturating-cpu
@@ -577,7 +577,7 @@ groups:
       audience: platform
     annotations:
       summary: Daemonsets are requesting nearly all the CPU reserved for them, squeezing clusterd headroom.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-daemonset-saturating-cpu
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-daemonset-saturating-cpu
   - alert: k8s-daemonset-saturating-mem
     expr: |-
       (
@@ -594,7 +594,7 @@ groups:
       audience: platform
     annotations:
       summary: Daemonsets are requesting nearly all the memory reserved for them, squeezing clusterd headroom.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-daemonset-saturating-mem
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-daemonset-saturating-mem
   - alert: k8s-daemonset-high-cpu
     expr: |-
       (
@@ -611,7 +611,7 @@ groups:
       audience: platform
     annotations:
       summary: Daemonsets are approaching the CPU budget reserved for them.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-daemonset-high-cpu
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-daemonset-high-cpu
 - name: file_descriptors
   rules:
   - alert: container-file-descriptors-critical
@@ -631,7 +631,7 @@ groups:
       audience: platform
     annotations:
       summary: A core container's open file descriptors are above 70% of its limit and it may be killed.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#container-file-descriptors-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#container-file-descriptors-critical
   - alert: container-file-descriptors-warning
     expr: |-
       100 * (
@@ -649,7 +649,7 @@ groups:
       audience: platform
     annotations:
       summary: A non-core container's open file descriptors are above 70% of its limit and it may be killed.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#container-file-descriptors-warning
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#container-file-descriptors-warning
   - alert: container-file-descriptors-elevated
     expr: |-
       100 * (
@@ -665,7 +665,7 @@ groups:
       audience: platform
     annotations:
       summary: A container's open file descriptors are above 20% of its limit.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#container-file-descriptors-elevated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#container-file-descriptors-elevated
 - name: infra_cpu
   rules:
   - alert: infra-pod-high-cpu-ratio
@@ -685,7 +685,7 @@ groups:
       audience: platform
     annotations:
       summary: A vector pod has used more than its full CPU request for 6h and may be throttled.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-pod-high-cpu-ratio
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-pod-high-cpu-ratio
   - alert: infra-pods-high-cpu-ratio
     expr: |-
       (
@@ -703,7 +703,7 @@ groups:
       audience: platform
     annotations:
       summary: An infra pod is using more than its full CPU request and may be throttled.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-pods-high-cpu-ratio
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-pods-high-cpu-ratio
 - name: infra_memory
   rules:
   - alert: infra-memory-high
@@ -723,7 +723,7 @@ groups:
       audience: platform
     annotations:
       summary: An important infra container is above 80% memory usage.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-memory-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-memory-high
   - alert: infra-memory-elevated
     expr: |-
       100 * (
@@ -741,7 +741,7 @@ groups:
       audience: platform
     annotations:
       summary: A supporting infra container is above 80% memory usage.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-memory-elevated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-memory-elevated
   - alert: infra-oomkill-core-systems
     expr: |-
       sum by (container, namespace, pod) (
@@ -760,7 +760,7 @@ groups:
       description: |-
         The container was killed for exceeding its memory limit within the last
         3h. Repeated OOM kills indicate an under-provisioned limit or a leak.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-oomkill-core-systems
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-oomkill-core-systems
   - alert: infra-oomkill-important-systems
     expr: |-
       sum by (container, namespace, pod) (
@@ -776,7 +776,7 @@ groups:
       audience: platform
     annotations:
       summary: An important infra container has been OOMKilled.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-oomkill-important-systems
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-oomkill-important-systems
   - alert: infra-oomkill-nonessential-systems
     expr: |-
       sum by (container, namespace, pod) (
@@ -792,7 +792,7 @@ groups:
       audience: platform
     annotations:
       summary: A non-essential infra container has been OOMKilled.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#infra-oomkill-nonessential-systems
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#infra-oomkill-nonessential-systems
 - name: infra_pod_health
   rules:
   - alert: k8s-infra-pod-pending-too-long
@@ -807,7 +807,7 @@ groups:
       audience: platform
     annotations:
       summary: An infra pod has been Pending for 20m — the cluster may be unhealthy or out of capacity.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#k8s-infra-pod-pending-too-long
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#k8s-infra-pod-pending-too-long
   - alert: pod-restart-rate-high
     expr: |-
       avg by (container, namespace) (
@@ -820,7 +820,7 @@ groups:
       audience: platform
     annotations:
       summary: An important infra container is restarting frequently, which may indicate a crash loop.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#pod-restart-rate-high
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#pod-restart-rate-high
   - alert: pod-restart-rate-high-nonessential
     expr: |-
       avg by (container, namespace) (
@@ -833,7 +833,7 @@ groups:
       audience: platform
     annotations:
       summary: A non-essential infra container is restarting frequently, which may indicate a crash loop.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#pod-restart-rate-high-nonessential
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#pod-restart-rate-high-nonessential
   - alert: pods-stuck-in-waiting
     expr: |-
       sum by (namespace, pod) (
@@ -847,7 +847,7 @@ groups:
       audience: platform
     annotations:
       summary: A pod has been stuck in Waiting for over 10m, which can indicate a scheduling or resource problem.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#pods-stuck-in-waiting
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#pods-stuck-in-waiting
 - name: egress_gateway
   rules:
   - alert: egress-traffic-missing-metrics
@@ -867,7 +867,7 @@ groups:
       audience: platform
     annotations:
       summary: Egress-gateway node throughput metrics are missing, which may indicate an egress-gateway problem.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#egress-traffic-missing-metrics
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#egress-traffic-missing-metrics
   - alert: excessive-egress-traffic
     expr: |-
       sum by (node) (
@@ -884,7 +884,7 @@ groups:
       audience: platform
     annotations:
       summary: An egress-gateway node has very high traffic, which may indicate traffic is not routing through the internet gateway.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#excessive-egress-traffic
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#excessive-egress-traffic
   - alert: high-egress-traffic
     expr: |-
       sum by (node) (
@@ -901,7 +901,7 @@ groups:
       audience: platform
     annotations:
       summary: An egress-gateway node is above 90% of its allowed traffic and may soon exceed capacity.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#high-egress-traffic
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#high-egress-traffic
   - alert: low-egress-traffic
     expr: |-
       sum by (node) (
@@ -918,7 +918,7 @@ groups:
       audience: platform
     annotations:
       summary: An egress-gateway node has unusually low traffic, which may indicate the gateway is unhealthy.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#low-egress-traffic
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#low-egress-traffic
   - alert: no-egress-traffic
     expr: |-
       (
@@ -935,4 +935,4 @@ groups:
       audience: platform
     annotations:
       summary: An egress-gateway node has had no traffic for 5m, which may indicate external traffic is blocked.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#no-egress-traffic
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#no-egress-traffic

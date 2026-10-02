@@ -1,5 +1,5 @@
 ---
 title: "Helm"
-weight: 30
+weight: 10
 bookCollapseSection: true
 ---

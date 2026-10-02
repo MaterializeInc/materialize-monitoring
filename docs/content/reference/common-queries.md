@@ -1,6 +1,8 @@
 ---
 title: "Common Queries"
-weight: 30
+weight: 41
+aliases:
+  - /reference/stable-metrics/common-queries/
 ---
 
 # Common Queries

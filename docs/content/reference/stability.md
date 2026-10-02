@@ -1,6 +1,6 @@
 ---
 title: "Stability Guarantees and Deprecation Policy"
-weight: 35
+weight: 31
 # custom parameters
 params:
   author: Heather Lapointe

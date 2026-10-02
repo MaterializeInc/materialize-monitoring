@@ -6,7 +6,7 @@ weight: 20
 # Datadog Translations
 
 Every query in `packages/queries/` carries a `datadogQuery` alongside its `promQL`.
-They render side by side as tabs on [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}); this
+They render side by side as tabs on [Common Queries]({{< relref "../../common-queries.md" >}}); this
 page is the conventions behind them, for whoever is adding or correcting one.
 
 These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has

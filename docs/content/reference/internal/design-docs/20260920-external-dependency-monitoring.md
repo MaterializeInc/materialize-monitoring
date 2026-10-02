@@ -979,7 +979,7 @@ Tier 3 is where the provider pull can be proven against a real account, which is
 - `operating/production-best-practices.md` — which vantage points to configure per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
 - `architecture.md` — the dependency surface is not described anywhere; the page starts at the chart.
 - `reference/internal/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
-- `reference/stable-metrics/` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
+- `reference/list-metrics.md` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
 - `reference/internal/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
 - `reference/internal/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
 - The **CockroachDB alert descriptions**, which should say which flavor they target. They currently read as general CockroachDB coverage.

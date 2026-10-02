@@ -52,7 +52,7 @@ groups:
         The environment has been failing basic connection checks for 5m (past the
         grace period after pod start). Check environmentd health and reachability,
         and network path to the environment.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#env-uptime-sla
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#env-uptime-sla
   - alert: env-uptime-slo
     expr: |-
       (
@@ -98,7 +98,7 @@ groups:
       description: |-
         Early warning of the same condition as env-uptime-sla, at a shorter
         duration. If it persists it will escalate to critical.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#env-uptime-slo
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#env-uptime-slo
   - alert: envd-simplest-query
     expr: |-
       (
@@ -138,7 +138,7 @@ groups:
       description: |-
         The engine is failing the most basic query path. Inspect environmentd
         logs for crashes, stalls, or resource exhaustion.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#envd-simplest-query
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#envd-simplest-query
   - alert: env-query-views-critical
     expr: |-
       (
@@ -179,7 +179,7 @@ groups:
         A query that touches object storage has been failing for 15m — the engine
         may be unhealthy or unable to reach its storage backend. Check environmentd
         logs and object-storage connectivity.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#env-query-views-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#env-query-views-critical
   - alert: env-query-views-warning
     expr: |-
       (
@@ -219,7 +219,7 @@ groups:
       description: |-
         Early warning of the same condition as env-query-views-critical, at a
         shorter duration.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#env-query-views-warning
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#env-query-views-warning
   - alert: clusterd-not-receiving-commands
     expr: |-
       (
@@ -271,7 +271,7 @@ groups:
       description: |-
         environmentd may have failed to connect to the replica, or the replica is
         stuck. Check the environmentd↔clusterd connection and the replica's health.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#clusterd-not-receiving-commands
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#clusterd-not-receiving-commands
   - alert: storage-collection-finalization-stuck
     expr: |-
       (
@@ -311,7 +311,7 @@ groups:
       description: |-
         Shard finalization is a background cleanup step; a sustained outstanding
         count suggests it is not making progress. Check storage controller logs.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#storage-collection-finalization-stuck
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#storage-collection-finalization-stuck
   - alert: environmentd-down
     expr: |-
       max by (namespace, materialize_cloud_organization_name, pod) (
@@ -329,7 +329,7 @@ groups:
         SQL nor the console. Check the environmentd pod's status, events and
         logs. A pod that is running but not answering is usually wedged or
         starved of CPU.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-down
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environmentd-down
   - alert: environmentd-not-scraped
     expr: absent(up{job=~".*/.*materialize-environmentd"})
     for: 10m
@@ -348,7 +348,7 @@ groups:
 
         Fires only when no environmentd is scraped anywhere. With several
         environments, one of them vanishing is not covered.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-not-scraped
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environmentd-not-scraped
   - alert: envd-terminated
     expr: |-
       (
@@ -390,7 +390,7 @@ groups:
         deterministic crashing query or an engine bug. Pull the environment's
         environmentd logs around the termination (look for stack-overflow
         signatures) and correlate with recent query activity.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#envd-terminated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#envd-terminated
   - alert: environmentd-high-cpu
     expr: |-
       (
@@ -438,7 +438,7 @@ groups:
       description: |-
         Sustained high CPU can slow query planning and coordination. Look for
         heavy or runaway workloads; consider resizing if the load is legitimate.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-high-cpu
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environmentd-high-cpu
   - alert: environmentd-high-memory
     expr: |-
       (
@@ -489,7 +489,7 @@ groups:
         Approaching the memory limit risks an OOM kill. If the usage is legitimate
         the pod's memory request/limit may need raising; otherwise investigate the
         workload driving it.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-high-memory
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environmentd-high-memory
   - alert: environmentd-cpu-throttled
     expr: |-
       (
@@ -528,7 +528,7 @@ groups:
       audience: platform
     annotations:
       summary: An environmentd container is being CPU throttled more than 50% of the time.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-cpu-throttled
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environmentd-cpu-throttled
   - alert: environmentd-memory-elevated
     expr: |-
       (
@@ -575,7 +575,7 @@ groups:
       audience: platform
     annotations:
       summary: An environmentd is above 80% memory usage (lower-severity companion to environmentd-high-memory).
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environmentd-memory-elevated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environmentd-memory-elevated
 - name: auth
   rules:
   - alert: auth-errors
@@ -618,7 +618,7 @@ groups:
         A high rate of non-2xx/401 auth responses usually points at the auth
         provider or the network path to it. Users may see dropped or reset
         connections.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#auth-errors
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#auth-errors
   - alert: auth-refresh-failures
     expr: |-
       avg(
@@ -634,7 +634,7 @@ groups:
       description: |-
         Token refreshes are returning 401s, which can surface to users as sessions
         being dropped. Check the auth provider and the refresh path.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#auth-refresh-failures
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#auth-refresh-failures
 - name: console
   rules:
   - alert: console-errors
@@ -669,7 +669,7 @@ groups:
         A sustained console error rate above 2% affecting multiple environments
         suggests a platform-wide issue rather than a single environment. Check
         console and environmentd health.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#console-errors
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#console-errors
 - name: persist
   rules:
   - alert: persist-failures
@@ -701,7 +701,7 @@ groups:
         Persist retries most transient errors, so a sustained failure rate points
         at object storage or metadata-database (consensus) trouble. The `metric`
         label names the specific failure counter.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#persist-failures
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#persist-failures
 - name: environment_health
   rules:
   - alert: clusterd-error-kill
@@ -751,7 +751,7 @@ groups:
       description: |-
         Exit codes 135/137/166/167 are expected (OOM/graceful/sentinel); any other
         code on a restarted clusterd points at a crash. Check the clusterd logs.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#clusterd-error-kill
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#clusterd-error-kill
   - alert: system-cluster-terminated
     expr: |-
       (
@@ -788,7 +788,7 @@ groups:
       audience: platform
     annotations:
       summary: A system cluster was unexpectedly terminated — this should not happen.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-terminated
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#system-cluster-terminated
   - alert: system-cluster-high-memory
     expr: |-
       (
@@ -835,7 +835,7 @@ groups:
       audience: platform
     annotations:
       summary: A system cluster is above 80% memory usage — this should not happen for system clusters.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-high-memory
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#system-cluster-high-memory
   - alert: clusterd-expiration-7d
     expr: |-
       (
@@ -873,7 +873,7 @@ groups:
       description: |-
         Replica expiration is a bounded lease; let it lapse and the replica is torn
         down. Renew or reconfigure the replica before it expires.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#clusterd-expiration-7d
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#clusterd-expiration-7d
   - alert: swap-cluster-oom
     expr: |-
       increase(
@@ -909,7 +909,7 @@ groups:
       description: |-
         An OOM kill despite swap headroom suggests a sharp allocation spike rather
         than gradual growth. Check the workload that ran just before the kill.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#swap-cluster-oom
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#swap-cluster-oom
   - alert: environment-pod-pending-critical
     expr: |-
       (
@@ -955,7 +955,7 @@ groups:
       description: |-
         Kubernetes cannot schedule the pod. Usually insufficient node capacity or
         an unsatisfiable scheduling constraint; describe the pod to see the reason.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environment-pod-pending-critical
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environment-pod-pending-critical
   - alert: environment-pod-pending
     expr: |-
       (
@@ -992,7 +992,7 @@ groups:
       audience: platform
     annotations:
       summary: An environment pod has been Pending for 15m — the cluster may be unhealthy or out of capacity.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#environment-pod-pending
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#environment-pod-pending
   - alert: cluster-replica-not-ready
     expr: |-
       (
@@ -1118,7 +1118,7 @@ groups:
         old is left out, because a new replica waiting on a node is the
         pending-pod alerts' to report, and on a busy fleet it is nearly every
         not-ready window there is.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#cluster-replica-not-ready
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-replica-not-ready
   - alert: certificate-not-ready
     expr: |-
       (
@@ -1158,7 +1158,7 @@ groups:
       description: |-
         The environment cannot serve TLS until its certificate is ready. Check the
         certificate's issuer and the cert-manager logs for the blocking condition.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#certificate-not-ready
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#certificate-not-ready
   - alert: console-query-latency
     expr: |-
       (
@@ -1206,7 +1206,7 @@ groups:
       description: |-
         The catalog cluster (s2) is answering console queries slowly. Check the
         catalog cluster's load and health.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#console-query-latency
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#console-query-latency
 - name: system_clusters
   rules:
   - alert: system-cluster-falling-behind
@@ -1267,7 +1267,7 @@ groups:
         Catalog and introspection answers are behind, so the console and `SHOW`
         commands show a stale picture. Check the cluster's replica for CPU or
         memory pressure, and environmentd's logs for slow catalog transactions.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-falling-behind
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#system-cluster-falling-behind
   - alert: system-cluster-stale
     expr: |-
       (
@@ -1326,7 +1326,7 @@ groups:
         The catalog and introspection data the console reads is far behind.
         Check the replica's CPU and memory, whether it is restarting, and
         environmentd's logs.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-stale
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#system-cluster-stale
   - alert: system-cluster-hydration-stuck
     expr: |-
       (
@@ -1380,7 +1380,7 @@ groups:
 
         Counts only collections that no replica has hydrated, so a restart of
         one replica of several does not fire it.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-hydration-stuck
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#system-cluster-hydration-stuck
   - alert: system-cluster-memory-near-limit
     expr: |-
       (
@@ -1449,7 +1449,7 @@ groups:
         its limit, because spilling to swap is the design, so it cannot be used
         here. Measured as the maximum over 15m: heap can climb fast enough that
         an average stays under the threshold until the kill.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#system-cluster-memory-near-limit
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#system-cluster-memory-near-limit
 - name: release_health
   rules:
   - alert: new-clusterd-restarts
@@ -1479,7 +1479,7 @@ groups:
         A clusterd generation that had been stable for over a day started
         restarting after a new generation rolled out — a sign the release may be
         unhealthy. Compare the new and previous generations.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#new-clusterd-restarts
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#new-clusterd-restarts
 - name: external_uptime
   rules:
   - alert: external-env-uptime
@@ -1521,7 +1521,7 @@ groups:
       description: |-
         The external prober cannot reach the environment even though internal
         checks may pass — points at ingress, DNS, or network-path problems.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-env-uptime
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#external-env-uptime
   - alert: external-env-uptime-failed
     expr: |-
       (
@@ -1558,7 +1558,7 @@ groups:
       audience: platform
     annotations:
       summary: New external connections to environmentd are failing, per the external uptime checker.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-env-uptime-failed
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#external-env-uptime-failed
   - alert: external-uptime-checker-not-calling
     expr: |-
       sum by (connection_type, namespace) (
@@ -1571,7 +1571,7 @@ groups:
       audience: platform
     annotations:
       summary: The external uptime checker has stopped making calls — the checker itself may be down.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#external-uptime-checker-not-calling
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#external-uptime-checker-not-calling
 - name: launchdarkly
   rules:
   - alert: launchdarkly-stale-sse
@@ -1612,7 +1612,7 @@ groups:
       audience: platform
     annotations:
       summary: The last LaunchDarkly server-side event is more than 40 minutes old — flag updates may not be reaching environmentd.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#launchdarkly-stale-sse
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#launchdarkly-stale-sse
   - alert: launchdarkly-stale-cse
     expr: |-
       (
@@ -1651,4 +1651,4 @@ groups:
       audience: platform
     annotations:
       summary: The last LaunchDarkly client-side event is more than 40 minutes old — client analytics may be stale.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#launchdarkly-stale-cse
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#launchdarkly-stale-cse
