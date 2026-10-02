@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Dashboards (Helm chart) v0.20.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.31.0 (Unreleased)
 
 _Changes Pending_
@@ -42,9 +46,28 @@ _Changes Pending_
 * Included Prometheus Scrapers @ v0.4.0..v0.5.0
 * Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
-## Dashboards (Helm chart) v0.19.0 (Unreleased)
+## Dashboards (Helm chart) v0.19.0
 
-_Changes Pending_
+* dashboards: say object, freshness, and orphaned instead of collection, lag, and leaked
+    * [materialize-monitoring#435](https://github.com/MaterializeInc/materialize-monitoring/pull/435)
+    * Dashboard panels now use Materialize's product terms: _object_ for collection, _freshness_ for lag, and _orphaned_ for leaked persist data. Several panel titles on `env-top`, `env-upgrade`, `env-persist`, and `env-consensus` changed accordingly; dashboard UIDs and queries did not.
+
+### Dependencies
+
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate hyper-util to v0.1.21
+        * [materialize-monitoring#404](https://github.com/MaterializeInc/materialize-monitoring/pull/404)
+        * [`v0.1.21`](https://redirect.github.com/hyperium/hyper-util/blob/HEAD/CHANGELOG.md#0121-2026-09-24)
+    * Update Rust crate jsonschema to 0.58.0
+        * [materialize-monitoring#407](https://github.com/MaterializeInc/materialize-monitoring/pull/407)
+        * [`v0.58.2`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0582---2026-09-28)
+        * [`v0.58.1`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0581---2026-09-26)
+        * [`v0.58.0`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0580---2026-09-25)
+    * Renovate: unblock pending updates, automerge crates, split lock files; DEP-324 pin subchart images
+        * [materialize-monitoring#446](https://github.com/MaterializeInc/materialize-monitoring/pull/446)
+        * Every subchart image the chart renders under its shipped profiles is now pinned in `values.yaml` (`loki.loki.image`, `loki.lokiCanary.image`, `loki.memcached.image`, `loki.memcachedExporter.image`, `loki.sidecar.image`, `thanos.global.image`, `grafana-operator.image`, `kube-state-metrics.image`, `metrics-server.image`, `grafana.initChownData.image`). Rendered images are unchanged. These are the subcharts' own value paths, so existing overrides keep applying.
+    * docs: flatten reference/stable-metrics into reference, and reorder by use
+        * [materialize-monitoring#442](https://github.com/MaterializeInc/materialize-monitoring/pull/442)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.29.0
 
