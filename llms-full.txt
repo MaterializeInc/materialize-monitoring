@@ -56,8 +56,10 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 
 * [materialize-monitoring values]({{< relref "reference/helm/materialize-monitoring-values.md" >}}) — the generated Helm values reference.
 * [Terraform variables]({{< relref "reference/terraform/materialize-monitoring-variables.md" >}}) — the generated module variable reference.
-* [Reference Metrics]({{< relref "reference/stable-metrics/list-metrics.md" >}}) — the metrics the dashboards depend on, plus [common queries]({{< relref "reference/stable-metrics/common-queries.md" >}}) and [common alerts]({{< relref "reference/stable-metrics/common-alerts.md" >}}).
 * [Compatibility]({{< relref "reference/compatibility.md" >}}) — supported versions of Materialize, Grafana, GKE, and the Terraform modules.
+* [Common Alerts]({{< relref "reference/common-alerts.md" >}}) — the bundled alerting rules, and the page each alert's `runbook_url` points at.
+* [Common Queries]({{< relref "reference/common-queries.md" >}}) — the PromQL behind the dashboard panels.
+* [List of Metrics]({{< relref "reference/list-metrics.md" >}}) — the metrics the dashboards depend on.
 * [Custom Resource Definitions]({{< relref "reference/crds.md" >}}) — the custom resources the stack reads and relies on.
 * [Changelog]({{< relref "reference/changelog.md" >}}) — per-component release history.
 
@@ -918,7 +920,7 @@ This stack does **not** ship ServiceMonitors for Materialize itself — those li
 
 ##### DIY scraping {#diy-scraping}
 The "I'll scrape `environmentd` and `clusterd` myself" path.
-Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/stable-metrics/).
+Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/list-metrics/).
 Source-side defaults are kept minimal specifically so this path stays viable.
 
 ##### Materialize Cloud {#materialize-cloud}
@@ -2599,9 +2601,9 @@ Not every backend should receive every metric.
 Every metric in the registry is classified by *importance* — how likely you are to want it — independent of which backend you use.
 The levels, from most to least important, are **essential**, **recommended**, **extended**, and **diagnostic**.
 A fifth value, **all**, is a firehose meaning "everything scraped, including metrics the registry has not classified."
-The tier definitions and the full membership of each tier live in [the metric list](../../reference/stable-metrics/list-metrics/).
+The tier definitions and the full membership of each tier live in [the metric list](../../reference/list-metrics/).
 
-<!-- The tier *definitions* live in reference/stable-metrics/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
+<!-- The tier *definitions* live in reference/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
 
 Each destination picks a floor with `minMetricImportance`.
 The filter is cumulative — a floor keeps that tier **and every tier more important than it**:
@@ -3138,9 +3140,9 @@ Thanos Query presents a Prometheus-compatible API, so anything that speaks PromQ
 Most questions are already answered by a query someone wrote for a dashboard.
 Two reference pages carry them, both generated from the same query registry the dashboards are built from:
 
-- **[Common Queries](../../reference/stable-metrics/common-queries/)** — the PromQL behind the shipped dashboard panels, and the best starting point for a new panel or an ad-hoc investigation. Each query also renders a **Datadog** tab beside its PromQL.
-- **[Common Alerts](../../reference/stable-metrics/common-alerts/)** — alerting expressions with thresholds and severities.
-- **[List of Metrics](../../reference/stable-metrics/list-metrics/)** — the metric families those queries draw on.
+- **[Common Queries](../../reference/common-queries/)** — the PromQL behind the shipped dashboard panels, and the best starting point for a new panel or an ad-hoc investigation. Each query also renders a **Datadog** tab beside its PromQL.
+- **[Common Alerts](../../reference/common-alerts/)** — alerting expressions with thresholds and severities.
+- **[List of Metrics](../../reference/list-metrics/)** — the metric families those queries draw on.
 
 > [!WARNING]
 >   Common Alerts is **reference material, not a shipped rule set**. The expressions are sound but the thresholds are not universal, and the chart does not currently install them as `PrometheusRule` resources. Adopt them selectively rather than wholesale.
@@ -4434,7 +4436,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
-The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/stable-metrics/common-queries.md" >}}) is the query material to build one yourself.
+The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -5809,7 +5811,7 @@ url: https://materializeinc.github.io/materialize-monitoring/dashboards/datadog/
 
 What exists today is the query material to build one yourself.
 
-[Common Queries]({{< relref "../reference/stable-metrics/common-queries.md" >}}) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
+[Common Queries]({{< relref "../reference/common-queries.md" >}}) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
 
 > [!WARNING]
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
@@ -6246,7 +6248,7 @@ The remaining work is described in the [alerting design doc](../../reference/int
 The chart ships alerting rules for Materialize and for the platform under it.
 The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
 The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
-[Common Alerts](../../reference/stable-metrics/common-alerts/) lists every one, with what it detects.
+[Common Alerts](../../reference/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
 
@@ -6446,7 +6448,7 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 |---|---|
 | Triage of the rest of the bundled set | Most bundled rules are outside the default set until each is checked against a self-managed install |
 | A behavioural test for log rules | Loki has no counterpart to `promtool test rules`, so each log rule is checked against a live install instead |
-| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/stable-metrics/common-alerts/) until runbooks exist |
+| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/common-alerts/) until runbooks exist |
 | A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
 | Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
 
@@ -10208,7 +10210,7 @@ Adding or changing a query has effects beyond the query itself:
   reaches the rendered dashboards on the next `make dashboards`.
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
-  [Reference Metrics]({{< relref "../../stable-metrics/list-metrics.md" >}}).
+  [Reference Metrics]({{< relref "../../list-metrics.md" >}}).
 - **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
   This is why a new query can change what a deployment ships to a metered backend.
@@ -10227,7 +10229,7 @@ Adding or changing a query has effects beyond the query itself:
   An alert's query renders through its own context and is held to stricter checks than a panel's; see
   [Authoring Alerts]({{< relref "alerts.md" >}}).
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
-  renders [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}) from it.
+  renders [Common Queries]({{< relref "../../common-queries.md" >}}) from it.
   There is no generated intermediate to refresh.
 
 Both generated outputs declare `packages/queries/*.yaml` as a prerequisite, so `make metrics` rebuilds them after a query change.
@@ -10950,59 +10952,6 @@ Before an alert enters the default set, its expression SHOULD be run against a r
 **Cloud's rules are prior art, not a source.**
 Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set, where its only log-derived rules live) are worth reading for thresholds and history.
 An alert MUST NOT be copied from them verbatim: they use Cloud's namespaces, labels and job names, and some carry customer names that MUST NOT enter this repository.
-
-
---------------------------------------------------------------------------------
-title: "List of Metrics"
-url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/list-metrics/index.md
---------------------------------------------------------------------------------
-
-# List of Metrics
-
-This has the list of metrics which are available for usage.
-In many systems, only a subset of metrics get stored based
-on how they would be used.
-
-## Metric Tiers
-
-Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
-For that, see [Stability Guarantees and Deprecation Policy](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
-
-
-Metrics are grouped by "metricImportance" levels (mzmon-specific).
-These levels guide which metrics are prioritized in
-metric stores which have limited capacity.
-
-The **essential** metrics are the set of metrics that
-are critical and you would always want to have available.
-These are used in alerting.
-
-The **recommended** metrics are the set of metrics that
-are used in dashboards and are generally desirable for
-troubleshooting.
-
-The **extended** set of metrics are used for optional/experimental
-dashboards.
-
-The **diagnostic** set of metrics are used for in-depth
-troubleshooting and analysis.
-
-In our `materialize-monitoring` configuration, we also
-provide an **all** min-importance for including
-absolutely everything.
-This is recommended if you have cheaper metric storage
-like our bundled Thanos provider.
-
-## Essential Metrics
-
-> [!WARNING]
-> FIXME: Some links for alerts mistakenly point at the common-queries page.
-
-{{% list-metrics importance="essential" %}}
-
-## Recommended Metrics
-
-{{% list-metrics importance="recommended" %}}
 
 
 --------------------------------------------------------------------------------
@@ -20267,7 +20216,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `content/`: authored Markdown
       * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/internal/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
       * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
-      * `reference/`: `helm/`, `terraform/` (generated variable reference), `stable-metrics/`, `crds.md`, `changelog.md`, and `internal/` (this section — `dashboard/`, `pipelines/`, `design-docs/`, plus `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
+      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `internal/` (this section — `dashboard/`, `pipelines/`, `design-docs/`, plus `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`
@@ -21803,7 +21752,7 @@ url: https://materializeinc.github.io/materialize-monitoring/reference/internal/
 # Datadog Translations
 
 Every query in `packages/queries/` carries a `datadogQuery` alongside its `promQL`.
-They render side by side as tabs on [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}); this
+They render side by side as tabs on [Common Queries]({{< relref "../../common-queries.md" >}}); this
 page is the conventions behind them, for whoever is adding or correcting one.
 
 These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has
@@ -23634,48 +23583,87 @@ one `selector.rs` per dashboard, and the prose lives on the registry query.
 
 
 --------------------------------------------------------------------------------
-title: "Common Alerts"
-url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/index.md
+title: "Compatibility"
+url: https://materializeinc.github.io/materialize-monitoring/reference/compatibility/index.md
 --------------------------------------------------------------------------------
 
-# Common Alerts
+# Release Compatibility
 
-These are the alerting rules the chart bundles, generated from the query registry.
-Each is installed only where the deployment has the capabilities it requires, and only the default set installs without
-being selected; see [Configuring Alerting]({{< relref "../../alerting/configuring.md" >}}#the-bundled-rules).
+This shows the compatibility of materialize-monitoring with various
+technologies.
 
-> [!WARNING]
-> Rules outside the default set have not all been checked against a self-managed install.
-> Evaluate one against the deployment before relying on it.
+It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
+For what we guarantee about our own names, and the notice you get before one changes, see [Stability Guarantees and Deprecation Policy](../stability/).
 
-{{% list-alerts %}}
+## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
+| materialize-terraform-self-managed | materialize-monitoring | Clouds | Observability default |
+|---|---|---|---|
+| v11.0.0+ | 0.17.0 | AWS, GCP, Azure | **On** — `enable_observability` defaults to `true` |
+| v10.0.0 – v10.1.1 | 0.12.0 – 0.15.0 | AWS, GCP, Azure | Off — opt-in |
+| ≤ v9.0.2 | none (a vendored copy of the `env-top` dashboard only) | — | — |
 
---------------------------------------------------------------------------------
-title: "Common Queries"
-url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-queries/index.md
---------------------------------------------------------------------------------
+The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.
 
-# Common Queries
+v11 made the monitoring stack **opt-out rather than opt-in** and completed the per-cloud rollout, so Azure no longer uses the previous Prometheus + Grafana modules.
 
-These queries are used in various dashboards and may be a good
-starting point for a dashboard developer or for someone looking
-into particulars of a dashboard.
+## [Kubernetes](https://kubernetes.io/)
 
-> [!TIP]
-> The underlined values in each query are placeholders, and they are editable.
-> Click one, type your environment's value, and every other occurrence of that placeholder on the page follows — so copying a query gives you something you can paste straight into Prometheus.
-> Press Enter to commit an edit or Escape to discard it.
->
-> You can also set placeholders up front by naming them in this page's URL:
->
->     ?mzSqlPrefix=v2_mz_&mzNamespaceList=materialize-prod
->
-> The two directions are the same mechanism: editing in place rewrites the URL to match, so once the page reads the way you want, the address bar holds a link you can bookmark or share.
-> Only placeholders you have changed appear there, and a customized value is underlined with a solid rather than a dashed line.
-> Reload without the query string to get the defaults back.
+**We support the non-EOL Kubernetes releases — v1.34 and newer.**
 
-{{% list-queries %}}
+The charts declare `kubeVersion: ">=1.27.0-0"`, but that is a floor rather than a support statement: older releases *may* work and are not supported.
+
+Cloud-provided distributions offering extended support past a release's upstream EOL are supported on a **best-effort** basis, and may run into issues.
+
+## [Materialize product](https://github.com/MaterializeInc/materialize)
+
+Dashboards (v0.8.0+) generally require the `mz_object_info` metric introduced in `v26.29.0`,
+however they will gracefully degrade without it.
+
+The **`env-upgrade`** dashboard requires **`v26.41.0`** for its operator signals: the reconciliation metrics
+(`orchestratord_reconciliations_total` and friends) and the Kubernetes events the operator publishes for reconciliation
+failures and `Materialize` lifecycle transitions.
+
+It degrades rather than breaking on an older release, and not uniformly — the floor is narrower than the dashboard:
+
+| Tab | On a release older than `v26.41.0` |
+|---|---|
+| Generations | **Fully working.** Every panel reads metrics that predate it, and the blue/green split comes from pod names rather than anything the operator newly exports. |
+| Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
+| Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
+
+Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
+dashboard table shows.
+
+Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
+
+## [Grafana](https://grafana.com/)
+
+Dashboards (v0.8.0+) require Grafana v13+ for the dashboard schema v2.
+Grafana v12 is generally known to work, but may run into issues.
+
+## [Google Kubernetes Engine (GKE)](https://cloud.google.com/kubernetes-engine)
+
+GKE works generally with the dashboards. Managed collection ([enabling it](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#enable-mgdcoll-gke)) is on by default from v1.27 and provides the `PodMonitoring` CRDs the GMP scrapers use.
+
+**Container metrics no longer depend on what GMP exposes.**
+The Alloy gateway scrapes `/metrics/cadvisor` on every kubelet itself, which yields a fuller set than GMP's default
+collection.
+That is what retired the GCP-specific dashboard variants: there is now one render per dashboard, carrying the same
+`container_*` and `kube_*` families and percentage-based panels everywhere.
+See [Container metrics from the kubelet](../../metrics/scraping/#kubelet).
+
+## [Google Cloud Monitoring Dashboards](https://cloud.google.com/monitoring/dashboards)
+
+Importing Grafana dashboards into Google Cloud Monitoring is not yet fully supported.
+
+The shipped dashboards do have some improvements but there are
+still some known issues:
+* `$__range` and `$__rate_interval` need to be replaced with constants
+* Horizontal bar charts are not rendered
+* Tabs and rows are not supported, so there is no layout
+* Switch variables are not supported (e.g. "show system clusters")
+  * This breaks the downstream cluster selector variable
 
 
 --------------------------------------------------------------------------------
@@ -23994,87 +23982,21 @@ dependent components are shown within a release.
 
 
 --------------------------------------------------------------------------------
-title: "Compatibility"
-url: https://materializeinc.github.io/materialize-monitoring/reference/compatibility/index.md
+title: "Common Alerts"
+url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/index.md
 --------------------------------------------------------------------------------
 
-# Release Compatibility
+# Common Alerts
 
-This shows the compatibility of materialize-monitoring with various
-technologies.
+These are the alerting rules the chart bundles, generated from the query registry.
+Each is installed only where the deployment has the capabilities it requires, and only the default set installs without
+being selected; see [Configuring Alerting]({{< relref "../alerting/configuring.md" >}}#the-bundled-rules).
 
-It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
-For what we guarantee about our own names, and the notice you get before one changes, see [Stability Guarantees and Deprecation Policy](../stability/).
+> [!WARNING]
+> Rules outside the default set have not all been checked against a self-managed install.
+> Evaluate one against the deployment before relying on it.
 
-## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
-
-| materialize-terraform-self-managed | materialize-monitoring | Clouds | Observability default |
-|---|---|---|---|
-| v11.0.0+ | 0.17.0 | AWS, GCP, Azure | **On** — `enable_observability` defaults to `true` |
-| v10.0.0 – v10.1.1 | 0.12.0 – 0.15.0 | AWS, GCP, Azure | Off — opt-in |
-| ≤ v9.0.2 | none (a vendored copy of the `env-top` dashboard only) | — | — |
-
-The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.
-
-v11 made the monitoring stack **opt-out rather than opt-in** and completed the per-cloud rollout, so Azure no longer uses the previous Prometheus + Grafana modules.
-
-## [Kubernetes](https://kubernetes.io/)
-
-**We support the non-EOL Kubernetes releases — v1.34 and newer.**
-
-The charts declare `kubeVersion: ">=1.27.0-0"`, but that is a floor rather than a support statement: older releases *may* work and are not supported.
-
-Cloud-provided distributions offering extended support past a release's upstream EOL are supported on a **best-effort** basis, and may run into issues.
-
-## [Materialize product](https://github.com/MaterializeInc/materialize)
-
-Dashboards (v0.8.0+) generally require the `mz_object_info` metric introduced in `v26.29.0`,
-however they will gracefully degrade without it.
-
-The **`env-upgrade`** dashboard requires **`v26.41.0`** for its operator signals: the reconciliation metrics
-(`orchestratord_reconciliations_total` and friends) and the Kubernetes events the operator publishes for reconciliation
-failures and `Materialize` lifecycle transitions.
-
-It degrades rather than breaking on an older release, and not uniformly — the floor is narrower than the dashboard:
-
-| Tab | On a release older than `v26.41.0` |
-|---|---|
-| Generations | **Fully working.** Every panel reads metrics that predate it, and the blue/green split comes from pod names rather than anything the operator newly exports. |
-| Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
-| Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
-
-Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
-dashboard table shows.
-
-Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
-
-## [Grafana](https://grafana.com/)
-
-Dashboards (v0.8.0+) require Grafana v13+ for the dashboard schema v2.
-Grafana v12 is generally known to work, but may run into issues.
-
-## [Google Kubernetes Engine (GKE)](https://cloud.google.com/kubernetes-engine)
-
-GKE works generally with the dashboards. Managed collection ([enabling it](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#enable-mgdcoll-gke)) is on by default from v1.27 and provides the `PodMonitoring` CRDs the GMP scrapers use.
-
-**Container metrics no longer depend on what GMP exposes.**
-The Alloy gateway scrapes `/metrics/cadvisor` on every kubelet itself, which yields a fuller set than GMP's default
-collection.
-That is what retired the GCP-specific dashboard variants: there is now one render per dashboard, carrying the same
-`container_*` and `kube_*` families and percentage-based panels everywhere.
-See [Container metrics from the kubelet](../../metrics/scraping/#kubelet).
-
-## [Google Cloud Monitoring Dashboards](https://cloud.google.com/monitoring/dashboards)
-
-Importing Grafana dashboards into Google Cloud Monitoring is not yet fully supported.
-
-The shipped dashboards do have some improvements but there are
-still some known issues:
-* `$__range` and `$__rate_interval` need to be replaced with constants
-* Horizontal bar charts are not rendered
-* Tabs and rows are not supported, so there is no layout
-* Switch variables are not supported (e.g. "show system clusters")
-  * This breaks the downstream cluster selector variable
+{{% list-alerts %}}
 
 
 --------------------------------------------------------------------------------
@@ -24150,6 +24072,86 @@ is clean.
 plain `make` can consider them up to date and skip rendering — which would make the check vacuous.
 Deleting the outputs first does not fix it either: removing files inside a directory target updates that directory's
 mtime, making it look *newer* than its prerequisites rather than missing.
+
+
+--------------------------------------------------------------------------------
+title: "Common Queries"
+url: https://materializeinc.github.io/materialize-monitoring/reference/common-queries/index.md
+--------------------------------------------------------------------------------
+
+# Common Queries
+
+These queries are used in various dashboards and may be a good
+starting point for a dashboard developer or for someone looking
+into particulars of a dashboard.
+
+> [!TIP]
+> The underlined values in each query are placeholders, and they are editable.
+> Click one, type your environment's value, and every other occurrence of that placeholder on the page follows — so copying a query gives you something you can paste straight into Prometheus.
+> Press Enter to commit an edit or Escape to discard it.
+>
+> You can also set placeholders up front by naming them in this page's URL:
+>
+>     ?mzSqlPrefix=v2_mz_&mzNamespaceList=materialize-prod
+>
+> The two directions are the same mechanism: editing in place rewrites the URL to match, so once the page reads the way you want, the address bar holds a link you can bookmark or share.
+> Only placeholders you have changed appear there, and a customized value is underlined with a solid rather than a dashed line.
+> Reload without the query string to get the defaults back.
+
+{{% list-queries %}}
+
+
+--------------------------------------------------------------------------------
+title: "List of Metrics"
+url: https://materializeinc.github.io/materialize-monitoring/reference/list-metrics/index.md
+--------------------------------------------------------------------------------
+
+# List of Metrics
+
+This has the list of metrics which are available for usage.
+In many systems, only a subset of metrics get stored based
+on how they would be used.
+
+## Metric Tiers
+
+Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
+For that, see [Stability Guarantees and Deprecation Policy](../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
+
+
+Metrics are grouped by "metricImportance" levels (mzmon-specific).
+These levels guide which metrics are prioritized in
+metric stores which have limited capacity.
+
+The **essential** metrics are the set of metrics that
+are critical and you would always want to have available.
+These are used in alerting.
+
+The **recommended** metrics are the set of metrics that
+are used in dashboards and are generally desirable for
+troubleshooting.
+
+The **extended** set of metrics are used for optional/experimental
+dashboards.
+
+The **diagnostic** set of metrics are used for in-depth
+troubleshooting and analysis.
+
+In our `materialize-monitoring` configuration, we also
+provide an **all** min-importance for including
+absolutely everything.
+This is recommended if you have cheaper metric storage
+like our bundled Thanos provider.
+
+## Essential Metrics
+
+> [!WARNING]
+> FIXME: Some links for alerts mistakenly point at the common-queries page.
+
+{{% list-metrics importance="essential" %}}
+
+## Recommended Metrics
+
+{{% list-metrics importance="recommended" %}}
 
 
 --------------------------------------------------------------------------------
@@ -24721,7 +24723,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Item | Milestone | Status |
 |---|---|---|
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
-| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
+| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../common-alerts/) until runbooks exist) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
@@ -27780,7 +27782,7 @@ That last one is exactly right and is the model this proposal generalizes: **gua
 **Metric importance tiers, which are not stability.**
 `essential / recommended / extended / diagnostic / all` drive the Helm gateway's per-destination allowlists via the generated `metric-tiers.yaml`.
 They answer "is this worth storing", not "may I depend on this".
-They are the *only* one of the two axes currently visible to customers, on [List of Metrics](../../../stable-metrics/list-metrics/). Stability is invisible there, which was the earlier draft's complaint — but on the [consumer-chain](#where-the-surface-exits) reading that is fine: `stability` governs internal expectations, and what a customer needs published is the policy, not a per-query badge.
+They are the *only* one of the two axes currently visible to customers, on [List of Metrics](../../../list-metrics/). Stability is invisible there, which was the earlier draft's complaint — but on the [consumer-chain](#where-the-surface-exits) reading that is fine: `stability` governs internal expectations, and what a customer needs published is the policy, not a per-query badge.
 
 **A prefix-parameterization capability — but no deprecation precedent.**
 Queries template their metric prefix as `%%{mzSqlPrefix}`, the tier regexes match `(?:v2_)?mz_`, and dashboards stamp which prefix they were rendered for in a `monitoring.materialize.cloud/sql-metric-prefix` annotation.
@@ -28063,7 +28065,7 @@ The policy itself has landed; what remains is the cleanup it enables and the one
 - [Versioning](../../versioning/) — the policy of record, and a pointer from "How versions are synced".
 - [Releasing](../../releasing/) — the release-process check, next to the release-notes section it reuses.
 - [Compatibility](../../../compatibility/) — say that it is the disclosure venue for the coordinated and passthrough surfaces. It already maps `materialize-terraform-self-managed` and Materialize versions to ours, so it is the natural place for the three-stream picture.
-- [List of Metrics](../../../stable-metrics/list-metrics/) — stability alongside importance, and a note that the two axes are different questions.
+- [List of Metrics](../../../list-metrics/) — stability alongside importance, and a note that the two axes are different questions.
 - [Roadmap](../../roadmap/#versioning-changelog-and-releases) — link this doc from the DEP-127 bullet.
 
 ## Open questions
@@ -29683,7 +29685,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **`alerting/architecture.md`** — ✅ written, as the section's landing page: the notifier's shape, why the rulers
   address every replica, state, and failure modes.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.
-- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
+- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
 - **`operating/runbooks/`** — a new section, one page per shipped alert, and the convention that a stable runbook graduates to the product documentation.
 - **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
   for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
@@ -29813,7 +29815,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Client TLS and auth types on every destination | ✅ Shipped | `tls.{ca,cert,key}` plus `*File` carriers; `none` / `basicAuth` / `bearer` / `oauth2` / `sigv4` |
 | Gateway server-side TLS on all four ingest ports | ✅ Shipped | `pipeline.{logging,metrics}.gateway.server.tls`, `profiles/mtls.values.yaml` and the phase overlays |
 | Certificate issuance and renewal | ✅ Shipped | `templates/certificates.yaml`, `certificates.enabled`; renewal measured across five rotations |
-| Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../stable-metrics/common-alerts/) |
+| Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
 | **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
 | **Logs to more than one destination** | ❌ Missing | One `loki.write "destination"`, one `egress` seam — [BYOC's blocking row](../20260813-byoc-observability/#chart-side-prerequisites) |
@@ -29952,7 +29954,7 @@ It is also the level that **nothing currently produces**.
 ### Nothing evaluates alerting rules today
 
 The alert definitions exist and are good.
-They live in the query registry and render to the docsite as [Common Alerts](../../../stable-metrics/common-alerts/).
+They live in the query registry and render to the docsite as [Common Alerts](../../../common-alerts/).
 They are not evaluated anywhere in a default install:
 
 - `charts/materialize-monitoring/templates/alerts/` contains no templates.
@@ -31245,7 +31247,7 @@ Tier 3 is where the provider pull can be proven against a real account, which is
 - `operating/production-best-practices.md` — which vantage points to configure per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
 - `architecture.md` — the dependency surface is not described anywhere; the page starts at the chart.
 - `reference/internal/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
-- `reference/stable-metrics/` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
+- `reference/list-metrics.md` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
 - `reference/internal/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
 - `reference/internal/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
 - The **CockroachDB alert descriptions**, which should say which flavor they target. They currently read as general CockroachDB coverage.

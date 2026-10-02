@@ -12,7 +12,7 @@
 
 What exists today is the query material to build one yourself.
 
-[Common Queries](/materialize-monitoring/reference/stable-metrics/common-queries/) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
+[Common Queries](/materialize-monitoring/reference/common-queries/) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
 
 > [!WARNING]
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.

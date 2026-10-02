@@ -16,7 +16,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/reference/compatibility/#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
-The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/reference/internal/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/reference/stable-metrics/common-queries/) is the query material to build one yourself.
+The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/reference/internal/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 

@@ -51,8 +51,10 @@ They appear in the sidebar because the sections exist; the [Roadmap](/materializ
 
 * [materialize-monitoring values](/materialize-monitoring/reference/helm/materialize-monitoring-values/) — the generated Helm values reference.
 * [Terraform variables](/materialize-monitoring/reference/terraform/materialize-monitoring-variables/) — the generated module variable reference.
-* [Reference Metrics](/materialize-monitoring/reference/stable-metrics/list-metrics/) — the metrics the dashboards depend on, plus [common queries](/materialize-monitoring/reference/stable-metrics/common-queries/) and [common alerts](/materialize-monitoring/reference/stable-metrics/common-alerts/).
 * [Compatibility](/materialize-monitoring/reference/compatibility/) — supported versions of Materialize, Grafana, GKE, and the Terraform modules.
+* [Common Alerts](/materialize-monitoring/reference/common-alerts/) — the bundled alerting rules, and the page each alert's `runbook_url` points at.
+* [Common Queries](/materialize-monitoring/reference/common-queries/) — the PromQL behind the dashboard panels.
+* [List of Metrics](/materialize-monitoring/reference/list-metrics/) — the metrics the dashboards depend on.
 * [Custom Resource Definitions](/materialize-monitoring/reference/crds/) — the custom resources the stack reads and relies on.
 * [Changelog](/materialize-monitoring/reference/changelog/) — per-component release history.
 
