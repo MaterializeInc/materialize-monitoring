@@ -381,6 +381,8 @@ Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window
 > ```
 >
 > Keep `timeInterval` in sync with the actual `scrape_interval`.
+  The chart's own Thanos datasource derives it from the pipeline's slowest scrape; see
+  [Thanos declares the slowest scrape interval](/materialize-monitoring/preview/claude-loki-ruler-sharding-issue-d01603/dashboards/grafana/architecture/#thanos-declares-the-slowest-scrape-interval).
   Diagnose a suspected mismatch with `count_over_time(<metric>[1m])` — if it returns `1`, the scrape interval is ≥60s
   and a `[1m]` rate window can't compute.
   The per-panel "Min interval" (`minStep`) is a local override of the same value, but the datasource setting is the

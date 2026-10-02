@@ -2232,6 +2232,14 @@ kubectl create secret generic materialize-sql-monitor \
   --from-literal=password=
 ```
 
+### Telling the four SQL endpoints apart
+
+The four endpoints share one port, so the Prometheus Operator `PodMonitor` gives all four the same `job`, `instance`, `pod` and `endpoint`.
+Each endpoint therefore copies its path into a `metrics_path` label, as kube-prometheus-stack does for the kubelet's several paths.
+Without it, the four endpoints' `up` and `scrape_*` series are one series written four times per scrape interval.
+A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
+The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see
@@ -5047,12 +5055,13 @@ the one matching its engine.
 The same requirement follows: **exactly one Loki-type datasource must be marked default**, or every panel on those
 tabs renders empty.
 
-The chart ships two, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
+The chart ships three, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
 
 | Datasource | Type | UID | In-cluster endpoint | Notes |
 |---|---|---|---|---|
-| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
+| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos`; declares a scrape interval — see below |
 | Loki | `loki` | `mzmon-loki` | `http://loki-gateway.<namespace>.svc:8080` | The Loki gateway; carries a tenant header — see below |
+| Alertmanager | `alertmanager` | `mzmon-alertmanager` | `http://alertmanager.<namespace>.svc.cluster.local:9093` | Read and written by Grafana's alerting UI; `https` when `alerting.server.tls` is on |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
 `<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
@@ -5084,6 +5093,18 @@ connections:
 ```
 
 Datasources are provisioned with `editable: false` and re-pushed every `resyncPeriod`, the same as dashboards.
+
+### Thanos declares the slowest scrape interval
+
+Grafana sizes `$__rate_interval` from the datasource's scrape interval, `jsonData.timeInterval`, and assumes 15s when it is unset.
+That makes the window one minute, which holds a single sample of a 60s scrape, and `rate()` over a single sample returns nothing.
+The gateway scrapes cAdvisor and kube-proxy every 60s, so every container CPU panel would draw scattered points.
+
+The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubelet.scrapeInterval` and `pipeline.metrics.kubeProxy.scrapeInterval`.
+Metrics scraped faster than that get a coarser minimum step and still draw.
+`connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
+The render warns about an override shorter than the chart's value, since that brings the scattered points back.
+The [style guidelines]({{< relref "../../reference/internal/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 
@@ -6363,9 +6384,17 @@ Rule results reach every metric destination the gateway fans out to, rather than
 The ruler holds no PersistentVolumeClaim.
 And forwarding alert state off-cluster becomes possible at all, because that forwarding happens at the gateway.
 
-Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream subchart models no `remoteWrite` key.
-**That argument is load-bearing.**
-A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
+Stateless mode is the subchart's `thanos.ruler.remoteWrite`.
+With it, the ruler is passed `--remote-write.config-file` and no `--objstore.config-file`, so it runs no block shipper.
+Setting `remoteWrite.enabled: false` reverts the ruler to a local TSDB, which the render warns about.
+
+The remote-write configuration targets the alloy-gateway, and the chart renders it as a Secret that `remoteWrite.secretName` names.
+The chart renders it rather than passing it through `remoteWrite.config`, because the gateway's address depends on the gateway's namespace and TLS mode, and the subchart cannot read either.
+There are two Secrets, one per TLS mode, and `profiles/mtls.values.yaml` selects the TLS one.
+A deployment MAY name a Secret of its own instead, or set `secretName: ""` with `createSecret: true` and its own `config`; the render's checks against the gateway then no longer apply.
+
+Before the subchart modeled it, the chart reached stateless mode through `thanos.ruler.extraArgs` and a `remote-write` entry in `extraVolumes` and `extraVolumeMounts`.
+An override that still restates either entry fails the render, because the subchart now renders both itself: Thanos refuses the repeated flag, and the API server refuses the repeated volume name.
 
 ## Every bundled rule is a `PrometheusRule`
 
@@ -9680,9 +9709,9 @@ Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare
 Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
 
 Both rulers also remote-write rule results, including the `ALERTS` series, to the gateway's metrics listener on 9090, which the profile moves to TLS.
-The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` ConfigMap.
-The profile points the ruler at the TLS one.
-The ruler reads that file once at startup, so switching ConfigMaps, which changes its pod template, is what rolls it onto TLS.
+The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` Secret.
+The profile points `thanos.ruler.remoteWrite.secretName` at the TLS one.
+The ruler reads that file once at startup, so switching Secrets, which changes its pod template, is what rolls it onto TLS.
 The names also carry a revision, which is bumped whenever the contents change, so a chart upgrade rolls the ruler onto new contents too.
 The Loki ruler's is in its subchart's values, so the profile restates its URL as https and adds a `tls_config`.
 Both present their own component's certificate from phase 1, so phase 3 can require one in any rollout order.
@@ -12071,7 +12100,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
 </td>
     </tr>
     <tr>
@@ -14071,7 +14100,16 @@ because what it stored is the literal placeholder text.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).
+
+`timeInterval` is the scrape interval Grafana assumes when it sizes
+`$__rate_interval`. The chart sets it to the slower of
+`pipeline.metrics.kubelet.scrapeInterval` and
+`pipeline.metrics.kubeProxy.scrapeInterval` (60s by default). `rate()`
+needs two samples in its window, and with Grafana's own 15s assumption
+the window is one minute, which holds one sample of a 60s scrape.
+Set it here only when this datasource reads metrics scraped more slowly
+than that; the render warns about a shorter one.
 </td>
     </tr>
     <tr>
@@ -17978,7 +18016,6 @@ validator warns when the two disagree.
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
     "--label=cluster=\"$(CLUSTER_NAME)\""
   ],
   "extraEnv": [
@@ -17994,24 +18031,12 @@ validator warns when the two disagree.
   ],
   "extraVolumeMounts": [
     {
-      "mountPath": "/etc/thanos/remote-write.yaml",
-      "name": "remote-write",
-      "readOnly": true,
-      "subPath": "remote-write.yaml"
-    },
-    {
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
     }
   ],
   "extraVolumes": [
-    {
-      "configMap": {
-        "name": "thanos-ruler-remote-write-v2"
-      },
-      "name": "remote-write"
-    },
     {
       "name": "mzmon-tls",
       "secret": {
@@ -18033,6 +18058,10 @@ validator warns when the two disagree.
     "urls": [
       "http://thanos-query:9090"
     ]
+  },
+  "remoteWrite": {
+    "enabled": true,
+    "secretName": "thanos-ruler-remote-write-v2"
   },
   "replicaCount": 2,
   "resources": {
@@ -18164,8 +18193,8 @@ lists `example-alerts.yaml` as a required property**, so neither
 `rules: {}` (which would not clear a subchart default anyway) nor
 `example-alerts.yaml: null` renders — the second fails schema validation
 before any template runs. A rule file declaring no groups is the only
-spelling that both satisfies the schema and evaluates nothing. Fixing that
-upstream is on the same list as the missing `remoteWrite` key.
+spelling that both satisfies the schema and evaluates nothing, until the
+schema is fixed upstream.
 
 The render fails if the example rule comes back.
 
@@ -18238,22 +18267,15 @@ advice applies: keep it within one minor of your API server.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.remoteWrite</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
-  "--label=cluster=\"$(CLUSTER_NAME)\""
-]</pre>
+{
+  "enabled": true,
+  "secretName": "thanos-ruler-remote-write-v2"
+}</pre>
 </td>
       <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
-
-**The subchart models no `remoteWrite` key**, and its StatefulSet passes
-`--objstore.config-file` unconditionally, so stateless is reached by
-pointing `extraArgs` at a ConfigMap the umbrella renders
-(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
-tracked; until it lands, **this flag is load-bearing** — drop it and the
-Ruler silently reverts to a local TSDB.
 
 Three reasons stateless is the right mode here, in ascending order of how
 much they matter. It removes a stateful workload. It puts rule results on
@@ -18263,16 +18285,41 @@ interaction. And it is what makes alert state forwardable: a Ruler shipping
 blocks puts `ALERTS` in Thanos and out of reach of every gateway
 destination except Thanos.
 
-The residue is that the Ruler still starts a block shipper against the
-object store. With an agent WAL and no blocks in the data directory it
-scans every 30s and uploads nothing.
+With `enabled`, the subchart passes `--remote-write.config-file` and drops
+`--objstore.config-file`, so the Ruler runs no block shipper. The
+configuration targets the alloy-gateway's metrics listener, and **the
+chart renders it as a Secret** (`templates/thanos-ruler-remote-write.yaml`)
+rather than through `config`, because the gateway's address follows
+umbrella values that the subchart's `tpl` cannot read.
 
-**`--label=cluster` is load-bearing too.** It is an external label, which
-the Ruler adds to every alert it sends that does not already carry
-`cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
-Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-chart renders from `clusterName`. Both flags have to survive
-an override of this list; the render warns when either goes missing.
+`secretName` is one of two Secrets the chart renders, `-tls` for when
+`pipeline.metrics.gateway.server.tls` is on, which
+`profiles/mtls.values.yaml` selects and the render enforces. The Ruler
+reads the file once at startup, so the names carry the mode and a
+revision: switching Secrets changes the pod template, which is what rolls
+it.
+
+Writing elsewhere means naming another Secret here, or setting
+`secretName: ""` with `createSecret: true` and the configuration in
+`config`. The render's gateway checks then no longer apply.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--label=cluster=\"$(CLUSTER_NAME)\""
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra Ruler flags.
+
+**`--label=cluster` is load-bearing.** It is an external label, which the
+Ruler adds to every alert it sends that does not already carry `cluster`,
+and to every sample it writes. `$(CLUSTER_NAME)` is expanded by Kubernetes
+from `extraEnv` below, which reads the `ruler-env` ConfigMap the chart
+renders from `clusterName`. It has to survive an override of this list;
+the render warns when it goes missing.
 </td>
     </tr>
     <tr>
@@ -18300,12 +18347,6 @@ an override of this list; the render warns when either goes missing.
       <td class="helm-value-default"><pre>
 [
   {
-    "configMap": {
-      "name": "thanos-ruler-remote-write-v2"
-    },
-    "name": "remote-write"
-  },
-  {
     "name": "mzmon-tls",
     "secret": {
       "optional": true,
@@ -18314,21 +18355,14 @@ an override of this list; the render warns when either goes missing.
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
-
-`remote-write` is the plaintext variant of the Ruler's remote-write
-configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
-name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
-the render enforces. The Ruler reads the file once at startup, so the names
-carry the mode and a revision: switching ConfigMaps changes the pod
-template, which is what rolls it.
+      <td class="helm-value-desc">The Thanos certificate, for the Ruler's TLS clients.
 
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
 `alerting.server.tls` is on and to the gateway when its metrics listener
 serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
 so the same values work before issuance, during it and after.
-This is a list: restate both entries when adding one.
+This is a list: restate the entry when adding one.
 </td>
     </tr>
     <tr>
@@ -22728,6 +22762,8 @@ Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window
 > ```
 >
 > Keep `timeInterval` in sync with the actual `scrape_interval`.
+  The chart's own Thanos datasource derives it from the pipeline's slowest scrape; see
+  [Thanos declares the slowest scrape interval]({{< relref "../../../dashboards/grafana/architecture.md" >}}#thanos-declares-the-slowest-scrape-interval).
   Diagnose a suspected mismatch with `count_over_time(<metric>[1m])` — if it returns `1`, the scrape interval is ≥60s
   and a `[1m]` rate window can't compute.
   The per-panel "Min interval" (`minStep`) is a local override of the same value, but the datasource setting is the
@@ -24945,12 +24981,13 @@ The Alertmanager the rulers notify now routes by severity and preset to whatever
 and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
 
-Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
-Each is worked around in `values.yaml` with the reasoning recorded at the line.
+Three subchart gaps were found in the wiring and owed upstream fixes to `thanos-community/helm-charts`.
+The first is fixed upstream and adopted.
+The other two are worked around in `values.yaml`, with the reasoning recorded at the line.
 
 | Gap | Workaround |
 |---|---|
-| `thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally | Stateless is reached through `extraArgs` plus a ConfigMap the umbrella renders. The ruler still starts a block shipper against the object store, which scans an agent WAL and uploads nothing. Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`); moving onto it is [DEP-329](https://linear.app/materializeinc/issue/DEP-329) |
+| ~~`thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally~~ | ✅ Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`) and adopted with [DEP-329](https://linear.app/materializeinc/issue/DEP-329). The ruler no longer passes `--objstore.config-file`, so no block shipper runs. The umbrella still renders the remote-write configuration, as the Secret `remoteWrite.secretName` names, because the gateway's address follows umbrella values the subchart's `tpl` cannot read |
 | The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
 | The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
 
@@ -27852,7 +27889,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
 | ~~Modeled `connections.datasources.*.tls` for Grafana → backends~~ **Shipped** and verified against a live Grafana: `tls.caPem` (inline; a CA is public material) or `tls.caSecret` (a `valuesFrom` reference). Neither is defaulted, because an https datasource with no CA fails as an empty dashboard — the render refuses it. **Cluster finding, now fixed:** grafana-operator's `valuesFrom` substitutes into a `${...}` placeholder that must already exist at the target path **and must be named for the `secretKeyRef` key** — `${ca.crt}`, not a token of the chart's choosing. The chart emitted `${tlsCACert}`, so nothing substituted and Grafana stored the literal, reporting `failed to parse TLS CA PEM certificate` at query time while the CR, the operator log and `secureJsonFields` all looked correct. The placeholder is now derived from the key, `caSecret.name` is `tpl`-rendered so a profile can name a release-dependent Secret, and `mtls.values.yaml` wires Grafana's own certificate Secret with no operator action. Verified on grafana-operator v5.24.0 at tier 2. Grafana → Thanos Query is not shipped: Query has no `--http.tls-*` flags, only an experimental `--http.config` that would also TLS its probe endpoints | — | 2 |
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
-| ~~Rulers' remote-write to the gateway over TLS~~ **Shipped** ([DEP-323](https://linear.app/materializeinc/issue/DEP-323)). The chart renders the Thanos ruler's remote-write configuration as a plaintext and a TLS ConfigMap, and `mtls.values.yaml` mounts the TLS one. The ruler reads the file once at startup and the subchart's pod annotations are static, so switching ConfigMaps is the only way to roll it; changed contents alone never reached a running ruler. `mtls.values.yaml` also restates the Loki ruler's client. Both present from phase 1. Until this, a Thanos ruler under the mTLS profiles failed every write with `certificate signed by unknown authority`, and the gateway logged a handshake error per attempt | profiles | 3 |
+| ~~Rulers' remote-write to the gateway over TLS~~ **Shipped** ([DEP-323](https://linear.app/materializeinc/issue/DEP-323)). The chart renders the Thanos ruler's remote-write configuration as a plaintext and a TLS ConfigMap, and `mtls.values.yaml` mounts the TLS one. The ruler reads the file once at startup and the subchart's pod annotations are static, so switching ConfigMaps is the only way to roll it; changed contents alone never reached a running ruler. `mtls.values.yaml` also restates the Loki ruler's client. Both present from phase 1. Until this, a Thanos ruler under the mTLS profiles failed every write with `certificate signed by unknown authority`, and the gateway logged a handshake error per attempt. The two ConfigMaps became Secrets with [DEP-329](https://linear.app/materializeinc/issue/DEP-329), named by `thanos.ruler.remoteWrite.secretName`, which is what the profile now switches | profiles | 3 |
 | ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
@@ -29300,6 +29337,9 @@ Stateless is correct here for three reasons, in ascending order of how much they
 It exposes `ruler.extraArgs`, so `--remote-write.config` is reachable, and reaching it that way leaves the PVC and the objstore flag configured for a mode the ruler is no longer in.
 Modeling stateless ruler properly is a prerequisite rather than a values trick, and it is the kind of subchart gap this repository has fixed upstream before.
 
+**Update:** thanos 0.44.0 models it as `ruler.remoteWrite`, and the chart moved onto it with [DEP-329](https://linear.app/materializeinc/issue/DEP-329).
+The ruler no longer passes `--objstore.config-file`.
+
 ### Alertmanager runs HA by default
 
 **Decision: two replicas with gossip enabled, in the default configuration rather than behind a hardening profile.**
@@ -29816,7 +29856,7 @@ Work in this repository, roughly in dependency order.
 | Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
 | Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
-| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
+| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | ✅ done. thanos 0.44.0 models `ruler.remoteWrite`, and [DEP-329](https://linear.app/materializeinc/issue/DEP-329) moved the ruler onto it: no `--objstore.config-file`, no block shipper, the PVC off. The umbrella renders the remote-write Secret it names, because the gateway's address follows umbrella values |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done. The rule store is the ruler bucket. The LogQL rules are `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into it through the ruler API, once per tenant. The Thanos importer's selector excludes that flavor with a `flavor!: logql` key. A Prometheus Operator admission webhook in the same cluster still validates them as PromQL, and has to be told to skip them |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
 | `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |

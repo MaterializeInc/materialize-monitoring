@@ -124,9 +124,17 @@ Rule results reach every metric destination the gateway fans out to, rather than
 The ruler holds no PersistentVolumeClaim.
 And forwarding alert state off-cluster becomes possible at all, because that forwarding happens at the gateway.
 
-Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream subchart models no `remoteWrite` key.
-**That argument is load-bearing.**
-A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
+Stateless mode is the subchart's `thanos.ruler.remoteWrite`.
+With it, the ruler is passed `--remote-write.config-file` and no `--objstore.config-file`, so it runs no block shipper.
+Setting `remoteWrite.enabled: false` reverts the ruler to a local TSDB, which the render warns about.
+
+The remote-write configuration targets the alloy-gateway, and the chart renders it as a Secret that `remoteWrite.secretName` names.
+The chart renders it rather than passing it through `remoteWrite.config`, because the gateway's address depends on the gateway's namespace and TLS mode, and the subchart cannot read either.
+There are two Secrets, one per TLS mode, and `profiles/mtls.values.yaml` selects the TLS one.
+A deployment MAY name a Secret of its own instead, or set `secretName: ""` with `createSecret: true` and its own `config`; the render's checks against the gateway then no longer apply.
+
+Before the subchart modeled it, the chart reached stateless mode through `thanos.ruler.extraArgs` and a `remote-write` entry in `extraVolumes` and `extraVolumeMounts`.
+An override that still restates either entry fails the render, because the subchart now renders both itself: Thanos refuses the repeated flag, and the API server refuses the repeated volume name.
 
 ## Every bundled rule is a `PrometheusRule`
 
