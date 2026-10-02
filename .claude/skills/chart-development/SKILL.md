@@ -152,8 +152,21 @@ subchart's own `values.yaml` defaults**. A few non-obvious consequences:
   pulling the same image, reads it from `values.yaml` rather than the vendored
   `Chart.yaml` (`bin/check-alertmanager-config.sh` does). The registry profiles
   under `profiles/registry/` repoint `repository` and leave `tag` alone, so the
-  pin stays in one place. Grafana and Alertmanager follow this; the others
-  still inherit and are converted as they are touched.
+  pin stays in one place.
+  Every image the chart renders under its shipped profiles follows this.
+  The images still at subchart defaults are ones no profile turns on, such as
+  Grafana's dashboard sidecar and image renderer, plus the Loki
+  StatefulSet-recreate Job's `kubectl`, whose tag tracks the cluster's
+  Kubernetes version on purpose.
+  - **Set `registry` wherever the subchart reads one.** Renovate only sees a
+    block whose key ends in `image` and that has `repository` and `tag`.
+    It resolves a block with no `registry`, and no host in `repository`,
+    against Docker Hub.
+    A `quay.io` image pinned without `registry` is looked up in the wrong place.
+  - **Pinning is not the same as moving independently.** When an image has to
+    move in step with its chart, pin it anyway and add a `groupName` rule to
+    `renovate.json`. grafana-operator is the case: its CRDs are vendored from
+    the chart, so the image and the chart land in one PR.
 
 ## Helm Template Best Practices
 

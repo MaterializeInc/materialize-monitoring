@@ -36,7 +36,9 @@ annotations:
 # `grafana-operator.crds.immutable=true` so they stay out of its release
 # manifest, and we vendor a deflated copy here (a local subchart resolved by
 # path) so this chart owns their lifecycle. Regenerate that copy with
-# `make grafana-operator-crds` after bumping the vendored operator.
+# `make grafana-operator-crds` after bumping the vendored operator. The
+# auto-format workflow runs it on labeled PRs that touch a Chart.yaml or
+# Chart.lock, which covers Renovate's operator bumps.
 #
 # Dependency versions are exact rather than `^` ranges, so Chart.lock is a
 # function of this file alone and Renovate owns the bumping. See the umbrella

@@ -54,7 +54,8 @@ LOGCLI=${LOGCLI:-}
 # renovate: datasource=docker packageName=quay.io/prometheus/prometheus
 PROM_VERSION=v3.12.0
 PROM_IMAGE=${PROM_IMAGE:-quay.io/prometheus/prometheus:${PROM_VERSION}}
-# Keep in step with the Loki the chart runs (the loki subchart's appVersion).
+# Keep in step with the Loki the chart runs (`loki.loki.image.tag` in the
+# chart's values.yaml). Renovate groups the two.
 # renovate: datasource=docker packageName=grafana/logcli
 LOGCLI_VERSION=3.7.8
 LOGCLI_IMAGE=${LOGCLI_IMAGE:-docker.io/grafana/logcli:${LOGCLI_VERSION}}
