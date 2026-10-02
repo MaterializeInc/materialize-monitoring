@@ -55,15 +55,20 @@ tests:
 
   # --- stateless mode -------------------------------------------------------
 
-  # The subchart models no `remoteWrite` key and passes `--objstore.config-file`
-  # unconditionally, so stateless is reached through `extraArgs`. That makes the
-  # flag load-bearing in a way a reader of `values.yaml` would not assume.
+  # The subchart's `remoteWrite.enabled` passes `--remote-write.config-file` and
+  # drops `--objstore.config-file`, so the ruler runs no block shipper against
+  # an agent WAL that never holds a block.
   - it: runs the Thanos ruler stateless, remote-writing to the gateway
     template: ../charts/thanos/templates/ruler/statefulset.yaml
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+          content: "--remote-write.config-file=/etc/thanos/remote-write.yml"
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: "--objstore.config-file=/etc/thanos/objstore.yml"
+      - notExists:
+          path: spec.template.spec.volumes[?(@.name == "objstore")]
       # No block storage means no volumeClaimTemplates and an emptyDir instead.
       - isNull:
           path: spec.volumeClaimTemplates
@@ -73,16 +78,34 @@ tests:
             name: data
             emptyDir: {}
 
-  - it: mounts the remote-write config the umbrella renders
+  # The subchart cannot render the configuration itself, because the gateway's
+  # address follows umbrella values its `tpl` cannot read. So it mounts the
+  # Secret the umbrella renders.
+  - it: mounts the remote-write Secret the umbrella renders
     template: ../charts/thanos/templates/ruler/statefulset.yaml
     asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: remote-write
+            secret:
+              secretName: thanos-ruler-remote-write-v2
+              items:
+                - key: remote-write.yml
+                  path: remote-write.yml
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: remote-write
-            mountPath: /etc/thanos/remote-write.yaml
-            subPath: remote-write.yaml
+            mountPath: /etc/thanos/remote-write.yml
+            subPath: remote-write.yml
             readOnly: true
+
+  - it: renders no remote-write Secret of the subchart's own
+    template: ../charts/thanos/templates/ruler/secret-remote-write.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
 
   - it: points the ruler's remote-write at the gateway's receive_http listener
     template: templates/thanos-ruler-remote-write.yaml
@@ -90,12 +113,14 @@ tests:
       path: metadata.name
       value: thanos-ruler-remote-write-v2
     asserts:
+      - isKind:
+          of: Secret
       - matchRegex:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"'
 
-  # The ConfigMap is the ruler's, so it follows Thanos rather than the release.
-  - it: renders the remote-write ConfigMaps into the Thanos namespace
+  # The Secret is the ruler's, so it follows Thanos rather than the release.
+  - it: renders the remote-write Secrets into the Thanos namespace
     set:
       thanos.namespaceOverride: thanos-ns
     template: templates/thanos-ruler-remote-write.yaml
@@ -104,7 +129,21 @@ tests:
           path: metadata.namespace
           value: thanos-ns
 
-  - it: skips the remote-write ConfigMap when the Thanos ruler is off
+  # Under `split-namespace` the gateway moves too, and the address follows it
+  # with no override, which is why the umbrella renders this at all.
+  - it: follows the gateway into its own namespace
+    set:
+      alloy-gateway.namespaceOverride: gateway-ns
+    template: templates/thanos-ruler-remote-write.yaml
+    documentSelector:
+      path: metadata.name
+      value: thanos-ruler-remote-write-v2
+    asserts:
+      - matchRegex:
+          path: stringData["remote-write.yml"]
+          pattern: 'url: "http://alloy-gateway\.gateway-ns\.svc\.cluster\.local:9090/api/v1/metrics/write"'
+
+  - it: skips the remote-write Secrets when the Thanos ruler is off
     set:
       thanos.ruler.enabled: false
     template: templates/thanos-ruler-remote-write.yaml
@@ -112,11 +151,11 @@ tests:
       - hasDocuments:
           count: 0
 
-  # `thanos.ruler.extraVolumes` mounts this ConfigMap unconditionally, so gating
-  # the ConfigMap on the gateway would leave every Ruler pod in FailedMount on a
-  # metrics-only install — losing alert evaluation, not just remote-write, which
-  # is the opposite of what the validator promises for this shape.
-  - it: still renders both remote-write ConfigMaps when the gateway is disabled
+  # The subchart mounts this Secret unconditionally in stateless mode, so
+  # gating it on the gateway would leave every Ruler pod in FailedMount on a
+  # metrics-only install — losing alert evaluation, not just remote-write,
+  # which is the opposite of what the validator promises for this shape.
+  - it: still renders both remote-write Secrets when the gateway is disabled
     set:
       tags.default: false
       tags.thanos: true
@@ -141,12 +180,9 @@ tests:
       tags.alertmanager: true
     template: ../charts/thanos/templates/ruler/statefulset.yaml
     asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: remote-write
-            configMap:
-              name: thanos-ruler-remote-write-v2
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "remote-write")].secret.secretName
+          value: thanos-ruler-remote-write-v2
 
   # --- evaluation target ----------------------------------------------------
 
@@ -270,14 +306,97 @@ tests:
       - matchRegexRaw:
           pattern: "thanos.ruler and loki.ruler are enabled but Alertmanager is not"
 
-  - it: warns when the remote-write flag is dropped from extraArgs
+  - it: warns when the Thanos ruler is taken out of stateless mode
     set:
-      thanos.ruler.extraArgs:
-        - --log.level=debug
+      thanos.ruler.remoteWrite.enabled: false
     template: NOTES.txt
     asserts:
       - matchRegexRaw:
-          pattern: "no longer carries --remote-write.config-file"
+          pattern: "thanos.ruler.remoteWrite.enabled is false, so the ruler runs with its own TSDB"
+
+  # Before the subchart modeled stateless mode, the chart reached it through
+  # these three lists, and its own docs told anyone overriding them to restate
+  # the entries. Each such override now collides with what the subchart renders.
+  - it: refuses an extraArgs override that still passes the remote-write flag
+    set:
+      thanos.ruler.extraArgs:
+        - --remote-write.config-file=/etc/thanos/remote-write.yaml
+        - --label=cluster="$(CLUSTER_NAME)"
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.ruler.extraArgs carries --remote-write.config-file=/etc/thanos/remote-write.yaml. The subchart passes --remote-write.config-file itself"
+
+  - it: refuses an extraVolumes override that still carries the remote-write ConfigMap
+    set:
+      thanos.ruler.extraVolumes:
+        - name: remote-write
+          configMap:
+            name: thanos-ruler-remote-write-v2
+        - name: mzmon-tls
+          secret:
+            secretName: mzmon-thanos-tls
+            optional: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.ruler.extraVolumes carries the volume remote-write, the remote-write ConfigMap this chart rendered before the subchart modeled stateless mode"
+
+  - it: refuses an extraVolumeMounts override that still mounts the remote-write volume
+    set:
+      thanos.ruler.extraVolumeMounts:
+        - name: remote-write
+          mountPath: /etc/thanos/remote-write.yaml
+          subPath: remote-write.yaml
+          readOnly: true
+        - name: mzmon-tls
+          mountPath: /etc/mzmon/tls
+          readOnly: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.ruler.extraVolumeMounts mounts the remote-write volume at /etc/thanos/remote-write.yaml"
+
+  # `secretName` wins over `createSecret` in the subchart, so the subchart
+  # would render a second Secret under the chart's own name.
+  - it: refuses createSecret while secretName is still the chart's
+    set:
+      thanos.ruler.remoteWrite.createSecret: true
+      thanos.ruler.remoteWrite.config: |
+        remote_write:
+          - url: http://elsewhere:9090/api/v1/write
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "thanos.ruler.remoteWrite.createSecret is true but thanos.ruler.remoteWrite.secretName is thanos-ruler-remote-write-v2"
+
+  # An operator's own configuration is theirs to get right; the chart checks
+  # only the two Secrets it renders, so neither of these trips the TLS check.
+  - it: accepts an operator's own remote-write configuration
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      thanos.ruler.remoteWrite.secretName: ""
+      thanos.ruler.remoteWrite.createSecret: true
+      thanos.ruler.remoteWrite.config: |
+        remote_write:
+          - url: http://elsewhere:9090/api/v1/write
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: accepts a remote-write Secret the operator manages
+    values:
+      - ../profiles/mtls.values.yaml
+    set:
+      certificates.enabled: true
+      certificates.internal.selfSigned.enabled: true
+      thanos.ruler.remoteWrite.secretName: my-remote-write
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
 
   - it: warns when the Loki ruler has no Alertmanager URL
     set:
@@ -516,7 +635,7 @@ tests:
   - it: warns when an override drops either ruler's cluster stamp
     set:
       thanos.ruler.extraArgs:
-        - --remote-write.config-file=/etc/thanos/remote-write.yaml
+        - --log.level=debug
       loki.loki.rulerConfig.alert_relabel_configs: []
     template: NOTES.txt
     asserts:
@@ -539,13 +658,13 @@ tests:
           path: data["config.yaml"]
           pattern: "url: http://alloy-gateway\\.test-monitoring\\.svc\\.k8s\\.internal:9090/api/v1/metrics/write"
 
-  - it: follows global.clusterDomain in both Thanos remote-write ConfigMaps
+  - it: follows global.clusterDomain in both Thanos remote-write Secrets
     set:
       global.clusterDomain: k8s.internal
     template: templates/thanos-ruler-remote-write.yaml
     asserts:
       - matchRegex:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           pattern: 'url: "https?://alloy-gateway\.test-monitoring\.svc\.k8s\.internal:9090/api/v1/metrics/write"'
 
   # The upstream StatefulSet hardcodes --alert.label-drop and ranges extraArgs
@@ -560,7 +679,7 @@ tests:
           content: "--alert.label-drop=ruler_replica"
       - contains:
           path: spec.template.spec.containers[0].args
-          content: "--remote-write.config-file=/etc/thanos/remote-write.yaml"
+          content: '--label=cluster="$(CLUSTER_NAME)"'
 
   # --- split-namespace ------------------------------------------------------
 
@@ -627,10 +746,10 @@ tests:
       value: thanos-ruler-remote-write-v2
     asserts:
       - matchRegex:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           pattern: 'url: "http://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"'
       - notMatchRegex:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           pattern: "tls_config"
 
   # Presented from phase 1, which the listener ignores until phase 2, so phase
@@ -642,11 +761,11 @@ tests:
       value: thanos-ruler-remote-write-v2-tls
     asserts:
       - matchRegex:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           pattern: 'url: "https://alloy-gateway\.test-monitoring\.svc\.cluster\.local:9090/api/v1/metrics/write"\n\s+remote_timeout: 30s\n\s+tls_config:\n\s+ca_file: /etc/mzmon/tls/ca\.crt\n\s+cert_file: /etc/mzmon/tls/tls\.crt\n\s+key_file: /etc/mzmon/tls/tls\.key\n'
 
   # The ruler reads the file once at startup, so the profile switches which
-  # ConfigMap it mounts: a changed volume rolls the pod, and changed contents
+  # Secret it mounts: a changed volume rolls the pod, and changed contents
   # would not.
   - it: mounts the TLS remote-write variant in the Thanos ruler once the listener serves TLS
     values:
@@ -656,12 +775,9 @@ tests:
       certificates.internal.selfSigned.enabled: true
     template: ../charts/thanos/templates/ruler/statefulset.yaml
     asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: remote-write
-            configMap:
-              name: thanos-ruler-remote-write-v2-tls
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "remote-write")].secret.secretName
+          value: thanos-ruler-remote-write-v2-tls
 
   - it: refuses a Thanos ruler left on the plaintext variant when the listener serves TLS
     values:
@@ -669,32 +785,19 @@ tests:
     set:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
-      thanos.ruler.extraVolumes:
-        - name: remote-write
-          configMap:
-            name: thanos-ruler-remote-write-v2
-        - name: mzmon-tls
-          secret:
-            secretName: mzmon-thanos-tls
+      thanos.ruler.remoteWrite.secretName: thanos-ruler-remote-write-v2
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "thanos.ruler.extraVolumes mounts ConfigMap thanos-ruler-remote-write-v2 as the Thanos ruler's remote-write configuration, but the gateway's metrics listener serves https"
+          errorPattern: "thanos.ruler.remoteWrite.secretName is thanos-ruler-remote-write-v2, but the gateway's metrics listener serves https"
 
   - it: refuses a Thanos ruler on the TLS variant when the listener is plaintext
     set:
-      thanos.ruler.extraVolumes:
-        - name: remote-write
-          configMap:
-            name: thanos-ruler-remote-write-v2-tls
-        - name: mzmon-tls
-          secret:
-            secretName: mzmon-thanos-tls
-            optional: true
+      thanos.ruler.remoteWrite.secretName: thanos-ruler-remote-write-v2-tls
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "mounts ConfigMap thanos-ruler-remote-write-v2-tls as the Thanos ruler's remote-write configuration, but the gateway's metrics listener serves http \\(pipeline.metrics.gateway.server.tls.enabled is false\\), which is thanos-ruler-remote-write-v2\\."
+          errorPattern: "thanos.ruler.remoteWrite.secretName is thanos-ruler-remote-write-v2-tls, but the gateway's metrics listener serves http \\(pipeline.metrics.gateway.server.tls.enabled is false\\), which is thanos-ruler-remote-write-v2\\."
 
   - it: remote-writes from the Loki ruler over TLS, presenting its certificate, once the listener serves TLS
     values:
@@ -792,10 +895,8 @@ tests:
       certificates.enabled: true
       certificates.internal.selfSigned.enabled: true
       thanos.ruler.extraVolumeMounts:
-        - name: remote-write
-          mountPath: /etc/thanos/remote-write.yaml
-          subPath: remote-write.yaml
-          readOnly: true
+        - name: scratch
+          mountPath: /scratch
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
@@ -866,7 +967,7 @@ tests:
     template: templates/thanos-ruler-remote-write.yaml
     asserts:
       - notMatchRegex:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           pattern: "write_relabel_configs"
 
   # The Loki ruler's `instance` is a constant for the Thanos ruler's reason
@@ -948,12 +1049,12 @@ tests:
       - notMatchRegexRaw:
           pattern: "enable_sharding is off"
 
-  # --- the ConfigMap's revision ---------------------------------------------
+  # --- the Secret's revision ------------------------------------------------
 
   # The ruler reads its remote-write file once at startup, and nothing rolls it
-  # when a ConfigMap's contents change. A new name does, so the names carry a
+  # when a Secret's contents change. A new name does, so the names carry a
   # revision. **If this test fails because the contents changed, bump the
-  # revision in `mzmon.thanos.ruler.remoteWriteConfigMapName`, `values.yaml`
+  # revision in `mzmon.thanos.ruler.remoteWriteSecretName`, `values.yaml`
   # and `profiles/mtls.values.yaml`, then update the expected names here.**
   # Updating only the expected contents leaves every running ruler on the old
   # file until something else restarts it.
@@ -964,7 +1065,7 @@ tests:
       value: thanos-ruler-remote-write-v2
     asserts:
       - equal:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           value: |
             remote_write:
               - name: alloy-gateway
@@ -984,7 +1085,7 @@ tests:
       value: thanos-ruler-remote-write-v2-tls
     asserts:
       - equal:
-          path: data["remote-write.yaml"]
+          path: stringData["remote-write.yml"]
           value: |
             remote_write:
               - name: alloy-gateway
@@ -1001,19 +1102,12 @@ tests:
                   max_samples_per_send: 500
                   batch_send_deadline: 5s
 
-  # A deployment that restated `thanos.ruler.extraVolumes` with an earlier
-  # revision's name would mount a ConfigMap the chart no longer renders.
-  - it: refuses a Thanos ruler mounting an earlier revision's remote-write ConfigMap
+  # A deployment that restated `thanos.ruler.remoteWrite.secretName` with an
+  # earlier revision's name would mount a Secret the chart no longer renders.
+  - it: refuses a Thanos ruler naming an earlier revision's remote-write Secret
     set:
-      thanos.ruler.extraVolumes:
-        - name: remote-write
-          configMap:
-            name: thanos-ruler-remote-write
-        - name: mzmon-tls
-          secret:
-            secretName: mzmon-thanos-tls
-            optional: true
+      thanos.ruler.remoteWrite.secretName: thanos-ruler-remote-write-v1
     template: templates/validate.yaml
     asserts:
       - failedTemplate:
-          errorPattern: "mounts ConfigMap thanos-ruler-remote-write as the Thanos ruler's remote-write configuration, which this chart does not render; the current one is thanos-ruler-remote-write-v2\\."
+          errorPattern: "thanos.ruler.remoteWrite.secretName is thanos-ruler-remote-write-v1, which this chart does not render; the current one is thanos-ruler-remote-write-v2\\."

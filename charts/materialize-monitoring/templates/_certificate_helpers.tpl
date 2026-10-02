@@ -331,7 +331,7 @@ Usage:
   {{- if ( include "mzmon.thanos.ruler.enabled" $ ) }}
     {{- $checks = append $checks ( dict
         "component" "alloy-gateway"
-        "path" "the Thanos ruler's remote-write (thanos-ruler-remote-write)"
+        "path" "the Thanos ruler's remote-write (thanos.ruler.remoteWrite.secretName)"
         "url" ( include "mzmon.alloyGateway.remoteWriteUrl" $ ) ) }}
   {{- end }}
   {{- if ( include "mzmon.loki.ruler.enabled" $ ) }}

@@ -423,12 +423,13 @@ The Alertmanager the rulers notify now routes by severity and preset to whatever
 and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
 
-Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
-Each is worked around in `values.yaml` with the reasoning recorded at the line.
+Three subchart gaps were found in the wiring and owed upstream fixes to `thanos-community/helm-charts`.
+The first is fixed upstream and adopted.
+The other two are worked around in `values.yaml`, with the reasoning recorded at the line.
 
 | Gap | Workaround |
 |---|---|
-| `thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally | Stateless is reached through `extraArgs` plus a ConfigMap the umbrella renders. The ruler still starts a block shipper against the object store, which scans an agent WAL and uploads nothing. Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`); moving onto it is [DEP-329](https://linear.app/materializeinc/issue/DEP-329) |
+| ~~`thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally~~ | ✅ Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`) and adopted with [DEP-329](https://linear.app/materializeinc/issue/DEP-329). The ruler no longer passes `--objstore.config-file`, so no block shipper runs. The umbrella still renders the remote-write configuration, as the Secret `remoteWrite.secretName` names, because the gateway's address follows umbrella values the subchart's `tpl` cannot read |
 | The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
 | The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
 

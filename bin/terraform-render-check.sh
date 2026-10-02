@@ -665,14 +665,15 @@ with open(path) as f:
             for c in doc["spec"]["template"]["spec"]["containers"]:
                 if c["name"] == "alertmanager":
                     args = c.get("args") or []
-        if doc.get("kind") == "ConfigMap" and str(name).startswith("thanos-ruler-remote-write"):
-            thanos_rw[name] = (yaml.safe_load(data["remote-write.yaml"]) or {}).get("remote_write") or []
+        if doc.get("kind") == "Secret" and str(name).startswith("thanos-ruler-remote-write"):
+            for body in (doc.get("stringData") or {}).values():
+                thanos_rw[name] = (yaml.safe_load(body) or {}).get("remote_write") or []
         # The chart renders a plaintext and a TLS variant; what matters is the
         # one the Ruler mounts.
         if doc.get("kind") == "StatefulSet" and name == "thanos-ruler":
             for v in doc["spec"]["template"]["spec"].get("volumes") or []:
-                if str((v.get("configMap") or {}).get("name", "")).startswith("thanos-ruler-remote-write"):
-                    thanos_cm = v["configMap"]["name"]
+                if v.get("name") == "remote-write":
+                    thanos_cm = (v.get("secret") or {}).get("secretName")
         if doc.get("kind") == "ConfigMap" and name == "loki" and "config.yaml" in data:
             cfg = yaml.safe_load(data["config.yaml"]) or {}
             loki_rw = (((cfg.get("ruler") or {}).get("remote_write") or {}).get("clients") or {})
@@ -704,13 +705,14 @@ for who, clients in (("Thanos ruler", thanos_rw.get(thanos_cm) if thanos_cm else
             sys.exit(1)
         # The gateway's OTLP bridge refuses samples without job and instance.
         # The Loki ruler fills them itself; the gateway fills the Thanos
-        # ruler's, because a replace in Thanos's write_relabel_configs panics it.
+        # ruler's, because a replace in Thanos's write_relabel_configs that
+        # reads a label panics it.
         filled = {str(r.get("target_label")) for r in c.get("write_relabel_configs") or []}
         if who == "Loki ruler" and not {"job", "instance"} <= filled:
             print(f"{who} remote-writes without filling job and instance, which the gateway refuses (fills: {sorted(filled)})")
             sys.exit(1)
         if who == "Thanos ruler" and c.get("write_relabel_configs"):
-            print(f"{who} has write_relabel_configs, and Thanos panics on a replace in them at startup")
+            print(f"{who} has write_relabel_configs, and Thanos panics on a replace in them that reads a label")
             sys.exit(1)
     report.append(f"{who} remote-writes over TLS")
 print(", ".join(report) or "nothing to check")

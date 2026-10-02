@@ -146,8 +146,11 @@ raises-extend-require-match-for = ["RuntimeError"]
 ignore-variadic-names = true
 
 [tool.ruff.lint.flake8-copyright]
-# Only used when `--select CPY --preview` is used
+# CPY001 left preview in ruff 0.16, so `select = ["ALL"]` enforces it.
+# The year is optional so that the house header the Rust sources carry passes:
+# `Copyright Materialize, Inc. and contributors. All rights reserved.`
 author = "Materialize, Inc."
+notice-rgx = '(?i)Copyright\s+((?:\(C\)|©)\s+)?(\d{4}((-|,\s)\d{4})*\s+)?'
 
 [tool.ruff.lint.pycodestyle]
 ignore-overlong-task-comments = true

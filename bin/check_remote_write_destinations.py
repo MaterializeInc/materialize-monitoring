@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright Materialize, Inc. and contributors. All rights reserved.
 """Assert every Prometheus remote-write destination the module declared actually lands.
 
 Called from `bin/terraform-render-check.sh` with the destinations the module call

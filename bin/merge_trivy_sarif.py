@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright Materialize, Inc. and contributors. All rights reserved.
 """Merge Trivy SARIF reports into a single deduplicated SARIF run.
 
 Called from `bin/security-scan.sh` for both report modes.

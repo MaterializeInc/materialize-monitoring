@@ -216,8 +216,7 @@ pub async fn rulers_remote_write_current(ctx: &Ctx, thanos_ruler: bool) -> Resul
                     bail!(
                         "no remote-write queue metrics from the Thanos ruler in Thanos. It runs \
                          stateless, so it always has a queue; either it is not scraped or it is \
-                         no longer remote-writing (check --remote-write.config-file in \
-                         thanos.ruler.extraArgs)"
+                         no longer remote-writing (check thanos.ruler.remoteWrite)"
                     );
                 }
                 for s in &series {

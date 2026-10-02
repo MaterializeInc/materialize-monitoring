@@ -724,6 +724,9 @@ materialize:
       # -- Override for default labels to copy from the pod into metrics
       targetLabels: []
       # -- Override for default metric endpoints
+      # The defaults share one port, so each copies `__metrics_path__` into
+      # `metrics_path` with a `relabelings` entry. A replacement keeps that on
+      # every endpoint, or their `up` and `scrape_*` series collide.
       metricEndpoints: []
     secret:
       create: true
@@ -2052,7 +2055,17 @@ connections:
         # -- SNI to send, when it differs from the URL host.
         serverName: ""
       # -- Extra `jsonData`, merged over the chart's defaults
-      # (`prometheusType: Thanos`, `httpMethod: POST`).
+      # (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).
+      # @raw
+      #
+      # `timeInterval` is the scrape interval Grafana assumes when it sizes
+      # `$__rate_interval`. The chart sets it to the slower of
+      # `pipeline.metrics.kubelet.scrapeInterval` and
+      # `pipeline.metrics.kubeProxy.scrapeInterval` (60s by default). `rate()`
+      # needs two samples in its window, and with Grafana's own 15s assumption
+      # the window is one minute, which holds one sample of a 60s scrape.
+      # Set it here only when this datasource reads metrics scraped more slowly
+      # than that; the render warns about a shorter one.
       # @default -- `{}`
       jsonData: {}
       # -- Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this
@@ -3458,6 +3471,23 @@ loki:
         - "0.0.0.0/0"
 
   loki:
+    # -- Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+    # @raw
+    #
+    # So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+    # instead of only when a chart release happens to carry a new `appVersion`.
+    # Every Loki component runs this image unless its own `image` overrides it.
+    # The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+    # the two so that they move together.
+    #
+    # In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+    # image, this one included. The profiles under `profiles/registry/` repoint
+    # `registry` and `repository` and keep this tag.
+    image:
+      registry: docker.io
+      repository: grafana/loki
+      tag: "3.7.6"
+
     storage:
       # -- Bucket names for object storage.
       # These are required to be populated.
@@ -4120,6 +4150,31 @@ loki:
         prometheus.io/service-monitor: "false"
         monitoring.materialize.cloud/scrape-scheme: plaintext
 
+  # The three images below have their tags set in the subchart's own
+  # `values.yaml` rather than from `appVersion`. They are restated here because
+  # Renovate reads this file and never the vendored subchart's, so a tag left
+  # upstream only moves when the whole chart does.
+  memcached:
+    # -- Memcached image for both caches, pinned here rather than left at the subchart's default.
+    image:
+      registry: docker.io
+      repository: library/memcached
+      tag: 1.6.45-alpine
+  memcachedExporter:
+    # -- Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+    image:
+      registry: docker.io
+      repository: prom/memcached-exporter
+      tag: v0.17.0
+  sidecar:
+    # -- Rules sidecar image, pinned here rather than left at the subchart's default.
+    # It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads
+    # rule ConfigMaps into the single binary's ruler.
+    image:
+      registry: docker.io
+      repository: kiwigrid/k8s-sidecar
+      tag: 2.10.1
+
   monitoring:
     serviceMonitor:
       # -- Enable a ServiceMonitor for the loki microservices.
@@ -4149,6 +4204,12 @@ loki:
   # is a first-class requirement for us.
   lokiCanary:
     enabled: true
+    # -- Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate.
+    # Loki publishes the two from one release, so the tags match.
+    image:
+      registry: docker.io
+      repository: grafana/loki-canary
+      tag: "3.7.6"
     kind: Deployment
     lokiurl: loki-query-frontend:3100
     push: false
@@ -4190,6 +4251,19 @@ thanos:
   global:
     # -- Scheduling priority for every Thanos pod. See the Priority classes section.
     priorityClassName: monitoring-scalable
+    # -- Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+    # @raw
+    #
+    # So Renovate bumps Thanos on its own cadence, with Thanos's own release
+    # notes, instead of only when a chart release happens to carry a new
+    # `appVersion`. The subchart has no per-component image, so this one tag
+    # moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+    # The profiles under `profiles/registry/` repoint `registry` and
+    # `repository` and keep this tag.
+    image:
+      registry: quay.io
+      repository: thanos/thanos
+      tag: v0.42.4
     objstore:
       createSecret: true
       secretName: thanos-objstore-config
@@ -4827,8 +4901,8 @@ thanos:
     # `rules: {}` (which would not clear a subchart default anyway) nor
     # `example-alerts.yaml: null` renders — the second fails schema validation
     # before any template runs. A rule file declaring no groups is the only
-    # spelling that both satisfies the schema and evaluates nothing. Fixing that
-    # upstream is on the same list as the missing `remoteWrite` key.
+    # spelling that both satisfies the schema and evaluates nothing, until the
+    # schema is fixed upstream.
     #
     # The render fails if the example rule comes back.
     #
@@ -4894,13 +4968,6 @@ thanos:
     # -- Run stateless: remote-write rule results, keep no TSDB.
     # @raw
     #
-    # **The subchart models no `remoteWrite` key**, and its StatefulSet passes
-    # `--objstore.config-file` unconditionally, so stateless is reached by
-    # pointing `extraArgs` at a ConfigMap the umbrella renders
-    # (`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
-    # tracked; until it lands, **this flag is load-bearing** — drop it and the
-    # Ruler silently reverts to a local TSDB.
-    #
     # Three reasons stateless is the right mode here, in ascending order of how
     # much they matter. It removes a stateful workload. It puts rule results on
     # the same path as every other series in this stack, rather than making the
@@ -4909,18 +4976,37 @@ thanos:
     # blocks puts `ALERTS` in Thanos and out of reach of every gateway
     # destination except Thanos.
     #
-    # The residue is that the Ruler still starts a block shipper against the
-    # object store. With an agent WAL and no blocks in the data directory it
-    # scans every 30s and uploads nothing.
+    # With `enabled`, the subchart passes `--remote-write.config-file` and drops
+    # `--objstore.config-file`, so the Ruler runs no block shipper. The
+    # configuration targets the alloy-gateway's metrics listener, and **the
+    # chart renders it as a Secret** (`templates/thanos-ruler-remote-write.yaml`)
+    # rather than through `config`, because the gateway's address follows
+    # umbrella values that the subchart's `tpl` cannot read.
     #
-    # **`--label=cluster` is load-bearing too.** It is an external label, which
-    # the Ruler adds to every alert it sends that does not already carry
-    # `cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
-    # Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-    # chart renders from `clusterName`. Both flags have to survive
-    # an override of this list; the render warns when either goes missing.
+    # `secretName` is one of two Secrets the chart renders, `-tls` for when
+    # `pipeline.metrics.gateway.server.tls` is on, which
+    # `profiles/mtls.values.yaml` selects and the render enforces. The Ruler
+    # reads the file once at startup, so the names carry the mode and a
+    # revision: switching Secrets changes the pod template, which is what rolls
+    # it.
+    #
+    # Writing elsewhere means naming another Secret here, or setting
+    # `secretName: ""` with `createSecret: true` and the configuration in
+    # `config`. The render's gateway checks then no longer apply.
+    remoteWrite:
+      enabled: true
+      secretName: thanos-ruler-remote-write-v2
+
+    # -- Extra Ruler flags.
+    # @raw
+    #
+    # **`--label=cluster` is load-bearing.** It is an external label, which the
+    # Ruler adds to every alert it sends that does not already carry `cluster`,
+    # and to every sample it writes. `$(CLUSTER_NAME)` is expanded by Kubernetes
+    # from `extraEnv` below, which reads the `ruler-env` ConfigMap the chart
+    # renders from `clusterName`. It has to survive an override of this list;
+    # the render warns when it goes missing.
     extraArgs:
-      - --remote-write.config-file=/etc/thanos/remote-write.yaml
       - --label=cluster="$(CLUSTER_NAME)"
 
     # -- The cluster name, for `--label=cluster` in `extraArgs`.
@@ -4931,36 +5017,22 @@ thanos:
             name: ruler-env
             key: CLUSTER_NAME
 
-    # -- Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
+    # -- The Thanos certificate, for the Ruler's TLS clients.
     # @raw
-    #
-    # `remote-write` is the plaintext variant of the Ruler's remote-write
-    # configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
-    # name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
-    # the render enforces. The Ruler reads the file once at startup, so the names
-    # carry the mode and a revision: switching ConfigMaps changes the pod
-    # template, which is what rolls it.
     #
     # `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
     # `certificates` is on. The Ruler presents it to Alertmanager when
     # `alerting.server.tls` is on and to the gateway when its metrics listener
     # serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
     # so the same values work before issuance, during it and after.
-    # This is a list: restate both entries when adding one.
+    # This is a list: restate the entry when adding one.
     extraVolumes:
-      - name: remote-write
-        configMap:
-          name: thanos-ruler-remote-write-v2
       - name: mzmon-tls
         secret:
           secretName: mzmon-thanos-tls
           optional: true
 
     extraVolumeMounts:
-      - name: remote-write
-        mountPath: /etc/thanos/remote-write.yaml
-        subPath: remote-write.yaml
-        readOnly: true
       - name: mzmon-tls
         mountPath: /etc/mzmon/tls
         readOnly: true
@@ -5039,6 +5111,19 @@ grafana-operator:
   fullnameOverride: "grafana-operator"
   # -- Namespace override.
   namespaceOverride: null
+  # -- Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+  # @raw
+  #
+  # Unlike the other pins, this one is not meant to move on its own. The
+  # operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+  # and upstream releases the chart and the image under one version. Renovate
+  # groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+  # The pin is what lets Renovate see the image, and lets the registry profiles
+  # repoint `registry` and `repository` while keeping the tag.
+  image:
+    registry: ghcr.io
+    repository: grafana/grafana-operator
+    tag: v5.24.0
   # -- CRD behavior.
   # The Grafana Operator CRDs are owned by the `materialize-monitoring-crds`
   # chart, which vendors a deflated copy of them. The operator chart offers no
@@ -5241,6 +5326,16 @@ grafana:
     size: 10Gi
     accessModes:
       - ReadWriteOnce
+
+  initChownData:
+    # -- Image for the chown init container, pinned here rather than left at the subchart's default.
+    # It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`).
+    # Pinned so Renovate sees it: Renovate reads this file and never the vendored
+    # subchart's `values.yaml`.
+    image:
+      registry: docker.io
+      repository: library/busybox
+      tag: "1.38.0"
 
   # -- Deployment update strategy.
   # Must be `Recreate` alongside a `ReadWriteOnce` PersistentVolume; see
@@ -5871,6 +5966,14 @@ kube-state-metrics:
   # enabled: true
   # -- Scheduling priority. See the Priority classes section.
   priorityClassName: monitoring-scalable
+  # -- kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`.
+  # So Renovate bumps it on its own cadence, with its own release notes. The
+  # subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim.
+  # `global.imageRegistry` outranks `registry` in this chart.
+  image:
+    registry: registry.k8s.io
+    repository: kube-state-metrics/kube-state-metrics
+    tag: v2.20.0
   # -- Node labels copied onto `kube_node_labels`, as `label_<key>` with every
   # character outside `[a-zA-Z0-9_]` mapped to `_`.
   # @raw
@@ -6274,6 +6377,14 @@ metrics-server:
   # enabled: true
   # -- Number of replicas for metrics-server.
   replicas: 1
+
+  # -- metrics-server image, pinned here rather than inherited from the subchart's `appVersion`.
+  # So Renovate bumps it on its own cadence, with its own release notes. Like
+  # Alertmanager, this chart's `repository` carries the registry host, and the
+  # subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
+  image:
+    repository: registry.k8s.io/metrics-server/metrics-server
+    tag: v0.9.0
 
   # -- Pod security context.
   # The subchart ships an empty one beside an already locked-down container
