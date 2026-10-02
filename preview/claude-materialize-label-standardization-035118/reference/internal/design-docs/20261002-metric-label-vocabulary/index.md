@@ -704,54 +704,54 @@ The second is whether Cloud sets `spec.environmentName` to the name a customer s
 ## Upstream work
 
 Work in **`MaterializeInc/materialize`**, in the order [above](#the-order-keeps-it-invisible).
-None of it is ticketed yet.
+Tracked in the **Metric label standardization** milestone of the CLOM project, with the upstream review in [SQL-754](https://linear.app/materializeinc/issue/SQL-754).
 The metrics owners are the SQL team's Improve Prometheus Metrics project, with persist's families coordinated with the persist team.
 
 | Item | Why | Order |
 |---|---|---|
-| orchestratord adds `materialize.cloud/environment-id` to `default_labels()` | The only route for `environment_id` onto every series; everything environment-scoped waits on it | 1, additive |
-| orchestratord emits `mz_environment_info{environment_id, environment_name, environment_namespace}`, one series per resource | The environment's name, available while environmentd is down | 1, additive |
-| Label lint over `doc/user/data/metrics.yml`, reading the vocabulary | Stops the vocabulary eroding one metric at a time | 1 |
-| Reserved check on postprocessor labels and on metric-sink user labels | Two label sources the lint cannot see | 1 |
-| `add_replica_labels` replaces rather than appends | A latent duplicate label name the day any clusterd series carries `cluster_id` | 2 |
-| `cluster` → `server_name` on the two compute families | Reserved collision | 3 |
-| Remove `honeycomb` from the persist failure counters | A vendor hint with one constant value | 3 |
-| `instance_id` and `compute_instance` → `cluster_id` | The largest family of aliases | 4, after the alias ships here |
-| `_info` payload labels entity-qualified: `cluster_name`, `replica_name`, `object_name`, `object_type`, `source_type`, `sink_type`, `cluster_size`, `replica_size` | Two info joins in one expression | 4 |
-| `global_id` → `collection_id` on `mz_object_info` | One name for a collection's id | 4 |
-| `shard` → `shard_id`, persist `name` → `shard_name` | One name for a shard across persist and storage; coordinated with persist's cardinality work so the two land as one change per family | 4 |
-| `version` → `build_version` on the start-time and metadata families | Datadog-reserved; one name across components | 4 |
-| `source` qualified per family | Datadog-reserved and a catalog noun | 4, with each owning team |
-| `mz_dataflow_wallclock_lag_seconds` as a real histogram or summary | Retires the `quantile` exception | Independent |
-| An optional, mutable `spec.environmentName` on the `Materialize` resource, read by `mz_environment_info` in preference to `metadata.name` | A display name a person can change without recreating the resource | Independent; a CRD change |
-| `/metrics/public` stops appending `cluster_name` and `replica_name` to every federated series | [Ids on series, names on `_info`](#ids-on-series-names-on-_info); a cluster rename splits every series it touches | After the info joins are the norm |
-| orchestratord's per-resource reconciliation metrics carry `environment_id` | `env-upgrade`'s Reconciliation tab could then scope to one environment | Could; a change to the shared `k8s-controller` crate |
+| orchestratord adds `materialize.cloud/environment-id` to `default_labels()` ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The only route for `environment_id` onto every series; everything environment-scoped waits on it | 1, additive |
+| orchestratord emits `mz_environment_info{environment_id, environment_name, environment_namespace}`, one series per resource ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The environment's name, available while environmentd is down | 1, additive |
+| Label lint over `doc/user/data/metrics.yml`, reading the vocabulary ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Stops the vocabulary eroding one metric at a time | 1 |
+| Reserved check on postprocessor labels and on metric-sink user labels ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Two label sources the lint cannot see | 1 |
+| `add_replica_labels` replaces rather than appends ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)) | A latent duplicate label name the day any clusterd series carries `cluster_id` | 2 |
+| `cluster` → `server_name` on the two compute families ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)) | Reserved collision | 3 |
+| Remove `honeycomb` from the persist failure counters ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)) | A vendor hint with one constant value | 3 |
+| `instance_id` and `compute_instance` → `cluster_id` ([DEP-357](https://linear.app/materializeinc/issue/DEP-357)) | The largest family of aliases | 4, after the alias ships here |
+| `_info` payload labels entity-qualified: `cluster_name`, `replica_name`, `object_name`, `object_type`, `source_type`, `sink_type`, `cluster_size`, `replica_size` ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)) | Two info joins in one expression | 4 |
+| `global_id` → `collection_id` on `mz_object_info` ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)) | One name for a collection's id | 4 |
+| `shard` → `shard_id`, persist `name` → `shard_name` ([DEP-362](https://linear.app/materializeinc/issue/DEP-362)) | One name for a shard across persist and storage; coordinated with persist's cardinality work so the two land as one change per family | 4 |
+| `version` → `build_version` on the start-time and metadata families ([DEP-362](https://linear.app/materializeinc/issue/DEP-362)) | Datadog-reserved; one name across components | 4 |
+| `source` qualified per family ([DEP-362](https://linear.app/materializeinc/issue/DEP-362)) | Datadog-reserved and a catalog noun | 4, with each owning team |
+| `mz_dataflow_wallclock_lag_seconds` as a real histogram or summary ([DEP-364](https://linear.app/materializeinc/issue/DEP-364)) | Retires the `quantile` exception | Independent |
+| An optional, mutable `spec.environmentName` on the `Materialize` resource, read by `mz_environment_info` in preference to `metadata.name` ([DEP-363](https://linear.app/materializeinc/issue/DEP-363)) | A display name a person can change without recreating the resource | Independent; a CRD change |
+| `/metrics/public` stops appending `cluster_name` and `replica_name` to every federated series ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)) | [Ids on series, names on `_info`](#ids-on-series-names-on-_info); a cluster rename splits every series it touches | After the info joins are the norm |
+| orchestratord's per-resource reconciliation metrics carry `environment_id` ([DEP-365](https://linear.app/materializeinc/issue/DEP-365)) | `env-upgrade`'s Reconciliation tab could then scope to one environment | Could; a change to the shared `k8s-controller` crate |
 
 ## Chart-side prerequisites
 
 Work in **this** repo.
 Ordered roughly by dependency.
-None of this is ticketed yet; [DEP-207](https://linear.app/materializeinc/issue/DEP-207) is the umbrella.
+Tracked in the same milestone, gated on design acceptance in [DEP-346](https://linear.app/materializeinc/issue/DEP-346); [DEP-207](https://linear.app/materializeinc/issue/DEP-207) is the umbrella.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` | The single source every other row generates from | **Blocking** |
-| **The `cluster` move and the `honeycomb` drop** on the clusterd monitor | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
-| **Target-alias rendering** in the transpiler, per flavor | `podTargetLabels` cannot rename, so clusterd's ids cannot reach `cluster_id` without it | **Blocking** for clusterd |
-| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` | The aliases themselves | **Blocking** |
-| **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
-| **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
-| **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
-| **Compatibility declaration** of the operator version that sets the pod label | The switch is safe only above it | **Blocking** for the switch |
-| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes` | Covers operators that predate the upstream info metric | Could |
-| **Agent writes `environment_id`** as log structured metadata from the same pod label | One environment key across both engines | Should |
-| **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names | Step 3 of the overlap | **Blocking** for retiring aliases |
-| **Alert rules aggregate by both names** through the window, with the promtool tests updated | No alert loses a label inside the window | **Blocking** for the registry migration |
-| **Registry check** rejecting a reserved label as a matcher on a Materialize metric, and a retired alias anywhere | Keeps the registry on the vocabulary | Should |
-| **Generated label-contract page** from `labels.yaml`, merged with the alerting design's owed label contract | One contract for routing and for queries | Should |
+| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The single source every other row generates from | **Blocking** |
+| **The `cluster` move and the `honeycomb` drop** on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)) | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
+| **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so clusterd's ids cannot reach `cluster_id` without it | **Blocking** for clusterd |
+| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The aliases themselves | **Blocking** |
+| **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
+| **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
+| **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
+| **Compatibility declaration** of the operator version that sets the pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | The switch is safe only above it | **Blocking** for the switch |
+| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric | Could |
+| **Agent writes `environment_id`** as log structured metadata from the same pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | One environment key across both engines | Should |
+| **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | Step 3 of the overlap | **Blocking** for retiring aliases |
+| **Alert rules aggregate by both names** through the window, with the promtool tests updated ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | No alert loses a label inside the window | **Blocking** for the registry migration |
+| **Registry check** rejecting a reserved label as a matcher on a Materialize metric, and a retired alias anywhere ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | Keeps the registry on the vocabulary | Should |
+| **Generated label-contract page** from `labels.yaml`, merged with the alerting design's owed label contract ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | One contract for routing and for queries | Should |
 | **`kube_pod_labels` adopts the canonical names** when [DEP-253](https://linear.app/materializeinc/issue/DEP-253) lands, with `materialize.cloud/environment-id` in its allowlist and a metric alias on the kube-state-metrics monitor | Otherwise its join keys are `label_cluster_environmentd_materialize_cloud_cluster_id` and `label_materialize_cloud_organization_name`, two more spellings | Should, with DEP-253 |
 | **E2E assertions** below | The failure mode is a rule that renders and does nothing | Should |
-| **Alias retirement** after 30 days: `labeldrop` and the allowlist trimmed | Step 5 | Not blocking |
+| **Alias retirement** after 30 days: `labeldrop` and the allowlist trimmed ([DEP-360](https://linear.app/materializeinc/issue/DEP-360)) | Step 5 | Not blocking |
 
 ## Testing
 

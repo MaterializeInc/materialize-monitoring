@@ -5,7 +5,7 @@ Storage Requirements# Using Thanos or Loki (both enabled by default) requires ob
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
 Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta property="og:locale" content="en_us"><meta property="og:type" content="article"><meta property="article:section" content="reference"><meta itemprop=name content="materialize-monitoring values"><meta itemprop=description content="materialize-monitoring Helm Reference# Unified observability stack for Materialize: Alloy-based pipeline, optional bundled backends (Loki / Thanos / Grafana / Alertmanager), and the dashboards / alerts / rules that consume the Materialize metrics surface.
 Source Code# https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring Requirements# Kubernetes: >=1.27.0-0
-Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="33444"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/favicon.png><link rel=manifest href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/book.min.0e69cfa099664e75ec44ee4fedb3c13923120915dbc4cd611d48d113b36143f2.css integrity="sha256-DmnPoJlmTnXsRO5P7bPBOSMSCRXbxM1hHUjRE7NhQ/I=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/en.search.min.4b70a9711e497da8f00131d9fec870118959860af2ddd2e3f19b8a6b1892e46c.js integrity="sha256-S3CpcR5JfajwATHZ/shwEYlZhgry3dLj8ZuKaxiS5Gw=" crossorigin=anonymous></script><link rel=alternate type=application/rss+xml href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/helm/materialize-monitoring-values/index.xml title="materialize-monitoring Documentation"><link rel=alternate type=text/markdown href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/helm/materialize-monitoring-values/index.md title="Markdown version"><link rel=describedby type=text/plain href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/llms.txt title=llms.txt></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
+Storage Requirements# Using Thanos or Loki (both enabled by default) requires object storage (such as an AWS S3 bucket) for long-term storage."><meta itemprop=wordCount content="34198"><title>materialize-monitoring values | materialize-monitoring Documentation</title><link rel=icon href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/favicon.png><link rel=manifest href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/manifest.json><link rel=canonical href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/helm/materialize-monitoring-values/><link rel=stylesheet href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/book.min.0e69cfa099664e75ec44ee4fedb3c13923120915dbc4cd611d48d113b36143f2.css integrity="sha256-DmnPoJlmTnXsRO5P7bPBOSMSCRXbxM1hHUjRE7NhQ/I=" crossorigin=anonymous><script defer type=module src=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/en.search.min.cee4a3aaa224f17a4fcc254403e0290e561527aba91804c233cac95a0cf6394a.js integrity="sha256-zuSjqqIk8XpPzCVEA+ApDlYVJ6upGATCM8rJWgz2OUo=" crossorigin=anonymous></script><link rel=alternate type=application/rss+xml href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/helm/materialize-monitoring-values/index.xml title="materialize-monitoring Documentation"><link rel=alternate type=text/markdown href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/helm/materialize-monitoring-values/index.md title="Markdown version"><link rel=describedby type=text/plain href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/llms.txt title=llms.txt></head><body dir=ltr class="book-kind-page book-type-reference"><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><header class=site-header role=banner><div class=site-header-inner><a class=site-header-logo href=https://materialize.com/ aria-label=Materialize><svg class="logo-link svelte-ju9vo9" width="161" height="29" viewBox="0 0 161 29" fill="none"><g><path d="M54.0797 6.44507V21.2633h2.5758V11.0613H56.793l4.0953 10.1585h1.9246L66.9081 11.083H67.0456V21.2633h2.5758V6.44507H66.3365L61.9374 17.1825H61.7637L57.3646 6.44507H54.0797z" fill="var(--important)"/><path d="M75.6269 21.4875C77.3706 21.4875 78.4125 20.6699 78.89 19.7366h.0869v1.5267h2.5179V13.8252c0-2.9376-2.39489999999999-3.8203-4.5149-3.8203-2.33710000000001.0-4.1315 1.0419-4.7103 3.0678L74.7152 13.42C74.9757 12.6603 75.7137 12.0091 76.9944 12.0091 78.2099 12.0091 78.8756 12.6314 78.8756 13.7239V13.7673C78.8756 14.5198 78.0869 14.556 76.1261 14.7658 73.9699 14.9974 71.9078 15.6413 71.9078 18.1448 71.9078 20.3299 73.5069 21.4875 75.6269 21.4875zM76.307 19.5629C75.2144 19.5629 74.433 19.0637 74.433 18.1014 74.433 17.0956 75.3085 16.676 76.4806 16.5096 77.168 16.4155 78.5427 16.2419 78.8828 15.9669v1.3096C78.8828 18.5138 77.8843 19.5629 76.307 19.5629z" fill="var(--important)"/><path d="M89.6781 10.1496H87.4857V7.48697H84.8665V10.1496H83.2892v2.0259H84.8665v6.1791C84.852 20.4456 86.3715 21.4731 88.3395 21.4152 89.0848 21.3935 89.5985 21.2488 89.8807 21.1547L89.4393 19.1071C89.2946 19.1433 88.9979 19.2084 88.6724 19.2084c-.658499999999989.0-1.1867-.2315-1.1867-1.2879v-5.745H89.6781V10.1496z" fill="var(--important)"/><path d="M96.6693 21.4803C99.2596 21.4803 101.04 20.2141 101.503 18.2822L99.057 18.0073C98.7025 18.9479 97.8342 19.4399 96.7055 19.4399 95.0124 19.4399 93.8909 18.3257 93.8692 16.4227h7.7418V15.6196c0-3.8999-2.3442-5.6147-5.0792-5.6147C93.3483 10.0049 91.2717 12.342 91.2717 15.7716 91.2717 19.259 93.3193 21.4803 96.6693 21.4803zm-2.7929-6.823C93.956 13.2391 95.0052 12.0453 96.568 12.0453c1.505.0 2.518 1.0998 2.5324 2.612H93.8764z" fill="var(--important)"/><path d="M103.827 21.2633h2.619V14.7296C106.446 13.3187 107.51 12.3202 108.95 12.3202 109.391 12.3202 109.941 12.3998 110.165 12.4722V10.0628C109.926 10.0194 109.514 9.99043 109.225 9.99043 107.951 9.99043 106.888 10.714 106.482 12.0019H106.367V10.1496H103.827V21.2633z" fill="var(--important)"/><path d="M111.905 21.2633h2.62V10.1496h-2.62V21.2633zM113.222 8.57229c.832000000000008.0 1.512-.63672 1.512-1.41815C114.734 6.36548 114.054 5.72876 113.222 5.72876 112.383 5.72876 111.703 6.36548 111.703 7.15414 111.703 7.93557 112.383 8.57229 113.222 8.57229z" fill="var(--important)"/><path d="M120.416 21.4875C122.16 21.4875 123.202 20.6699 123.679 19.7366H123.766v1.5267h2.518V13.8252c0-2.9376-2.39500000000001-3.8203-4.515-3.8203-2.337.0-4.131 1.0419-4.71000000000001 3.0678L119.504 13.42C119.765 12.6603 120.503 12.0091 121.784 12.0091 122.999 12.0091 123.665 12.6314 123.665 13.7239V13.7673C123.665 14.5198 122.876 14.556 120.915 14.7658 118.759 14.9974 116.697 15.6413 116.697 18.1448c0 2.1851 1.599 3.3427 3.71899999999999 3.3427zM121.096 19.5629C120.004 19.5629 119.222 19.0637 119.222 18.1014c0-1.0058.876000000000005-1.4254 2.048-1.5918C121.957 16.4155 123.332 16.2419 123.672 15.9669v1.3096C123.672 18.5138 122.674 19.5629 121.096 19.5629z" fill="var(--important)"/><path d="M131.537 6.44507h-2.619V21.2633h2.619V6.44507z" fill="var(--important)"/><path d="M134.23 21.2633h2.62V10.1496h-2.62V21.2633zM135.547 8.57229c.831999999999994.0 1.512-.63672 1.512-1.41815C137.059 6.36548 136.379 5.72876 135.547 5.72876 134.708 5.72876 134.028 6.36548 134.028 7.15414 134.028 7.93557 134.708 8.57229 135.547 8.57229z" fill="var(--important)"/><path d="M139.398 21.2633h9.124V19.0926H142.878V18.9986L148.334 11.9368V10.1496H139.586v2.1706H145.129V12.4143L139.398 19.5991v1.6642z" fill="var(--important)"/><path d="M155.586 21.4803C158.176 21.4803 159.956 20.2141 160.419 18.2822L157.973 18.0073C157.619 18.9479 156.751 19.4399 155.622 19.4399 153.929 19.4399 152.807 18.3257 152.786 16.4227H160.528V15.6196c0-3.8999-2.345-5.6147-5.07999999999998-5.6147C152.265 10.0049 150.188 12.342 150.188 15.7716c0 3.4874 2.048 5.7087 5.39800000000003 5.7087zM152.793 14.6573C152.872 13.2391 153.922 12.0453 155.484 12.0453c1.505.0 2.518 1.0998 2.53299999999999 2.612H152.793z" fill="var(--important)"/></g><path class="bar1 svelte-ju9vo9" d="M8.52478 28.5217c-2.74376.0-5.48752.0-8.231282.0C.0489163 28.5217.0 28.4728.0 28.2327c0-2.7304.0-5.4653.0-8.2046C.182324 20.0281.257922 20.2015.369096 20.3082 2.99872 22.9201 5.62389 25.5393 8.24462 28.166 8.35135 28.2594 8.51589 28.335 8.52478 28.5217z" fill="var(--important)"/><path class="bar3 svelte-ju9vo9" d="M25.0894 20.4296C25.7698 21.1766 26.4857 21.8837 27.2284 22.5641 27.3218 22.6708 27.4107 22.7864 27.513 22.8887c1.2674 1.2674 2.5436 2.5214 3.8066 3.7933C31.9199 27.2912 32.5691 27.8559 33.0983 28.523H23.8932C23.7998 28.4118 23.7108 28.2962 23.6086 28.1939c-1.509-1.5001-3.0195-3.0046-4.5315-4.5136C13.9276 18.5455 8.77655 13.4108 3.62403 8.27608 2.42335 7.07985 1.25826 5.8525.00866699 4.71853V.685153c1.60534301.0 3.21513301.0 4.82492301.0C4.9615.680522 5.0889.703552 5.20709.75267 5.32528.801787 5.43147.875836 5.51842.969757 9.76673 5.20324 14.018 9.43673 18.2722 13.6702 18.3555 13.7519 18.4431 13.8291 18.5346 13.9015c1.2496 1.2584 2.4947 2.5258 3.7532 3.7799C23.2128 18.6063 24.1555 19.5135 25.0894 20.4296z" fill="var(--important)"/><path class="bar5 svelte-ju9vo9" d="M33.1117 28.5223C32.5691 27.8552 31.9199 27.2904 31.3329 26.6812c-1.2629-1.2718-2.5392-2.5258-3.8066-3.7932C27.424 22.7857 27.3351 22.6701 27.2417 22.5634c0-.191300000000002.0-.378.0-.569300000000002.0-6.4866.0-12.97612.0-19.46866C27.236 2.18135 27.3634 1.84836 27.5975 1.59603 27.8461 1.25748 28.1812.99211 28.5678.82779 28.9543.66347 29.378.606263 29.7942.662177 30.9727.751116 32.1645.697753 33.3518.662177 33.7164.662177 33.7965.76001 33.7965 1.10687c0 6.51032.0 13.01023.0 19.49983.0 2.4636.0 4.9287.0 7.3953C33.7965 28.1754 33.7965 28.3488 33.8232 28.5223H33.1117z" fill="var(--important)" fill-opacity=".7"/><path class="bar2 svelte-ju9vo9" d="M0 16.9643V7.77246C.137855 7.80359.209006 7.92366.297945 8.01704L3.13954 10.8231C8.37507 16.0438 13.6106 21.2645 18.8461 26.4852 19.5132 27.1522 20.2202 27.7881 20.8206 28.5219h-9.223C11.5976 28.3885 11.4687 28.3307 11.3886 28.2506c-3.22254-3.2196-6.45102-6.4362-9.68542-9.6498C1.16656 18.0238.597942 17.4774.0 16.9643H0z" fill="var(--important)"/><path class="bar4 svelte-ju9vo9" d="M25.089 20.4288C24.1551 19.5127 23.2124 18.6055 22.2874 17.6806c-1.2585-1.2541-2.5036-2.5214-3.7532-3.7799.0-.978300000000001.0-1.9522.0-2.9306C18.5244 10.8702 18.5369 10.7693 18.5707 10.6747 18.6045 10.5802 18.6589 10.4942 18.7298 10.4232l6.1235-6.09233C24.9022 4.28195 24.9645 4.24193 25.0089 4.2019 25.1468 4.25082 25.1068 4.3531 25.1068 4.4287c0 5.26221.0 10.5229.0 15.7822C25.1054 20.2838 25.0995 20.3566 25.089 20.4288v0z" fill="var(--important)" fill-opacity=".7"/></svg></a><nav class=site-header-nav aria-label=Primary><a href=https://materialize.com/docs/>Main Docs</a>
 <a class=active href=https://materializeinc.github.io/materialize-monitoring/preview/claude-materialize-label-standardization-035118/ aria-current=page>o11y</a></nav></div></header><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/><span>materialize-monitoring Documentation</span></a></h2><div class="book-search hidden"><input id=book-search-input type=text placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><script>document.querySelector(".book-search").classList.remove("hidden")</script><ul><li><a href=/materialize-monitoring/preview/claude-materialize-label-standardization-035118/vision/>Vision</a></li><li><input type=checkbox id=section-d8603fc439af14929dcab7034cbdf060 class=toggle>
 <label for=section-d8603fc439af14929dcab7034cbdf060 class=flex><a role=button>Getting Started</a>
@@ -47,7 +47,7 @@ and the dashboards / alerts / rules that consume the Materialize
 metrics surface.</p><h2 id=source-code>Source Code<a class=anchor href=#source-code>#</a></h2><ul><li><a href=https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring rel=external class=github-source-link>https://github.com/MaterializeInc/materialize-monitoring/tree/main/charts/materialize-monitoring</a></li></ul><h2 id=requirements>Requirements<a class=anchor href=#requirements>#</a></h2><p>Kubernetes: <code>>=1.27.0-0</code></p><h3 id=storage-requirements>Storage Requirements<a class=anchor href=#storage-requirements>#</a></h3><p>Using Thanos or Loki (both enabled by default) requires
 object storage (such as an AWS S3 bucket) for long-term storage.</p><p>In development, Thanos may use a PVC for less-reliable storage.
 Loki however will not run without object storage.
-You may consider Garage or RustFS or MinIO for manually provisioned object storage.</p><h2 id=included-subcharts>Included Subcharts<a class=anchor href=#included-subcharts>#</a></h2><table><thead><tr><th>Repository</th><th>Name</th><th>Version</th></tr></thead><tbody><tr><td><a href=https://grafana.github.io/helm-charts rel=external class=external-link>https://grafana.github.io/helm-charts</a></td><td>alloy(alloy-agent)</td><td>1.13.0</td></tr><tr><td><a href=https://grafana.github.io/helm-charts rel=external class=external-link>https://grafana.github.io/helm-charts</a></td><td>alloy(alloy-gateway)</td><td>1.13.0</td></tr><tr><td><a href=https://kubernetes-sigs.github.io/metrics-server rel=external class=external-link>https://kubernetes-sigs.github.io/metrics-server</a></td><td>metrics-server</td><td>3.14.0</td></tr><tr><td><a href=https://github.com/grafana-community/helm-charts rel=external class=external-link>oci://ghcr.io/grafana-community/helm-charts</a></td><td>grafana</td><td>12.11.1</td></tr><tr><td><a href=https://github.com/grafana-community/helm-charts rel=external class=external-link>oci://ghcr.io/grafana-community/helm-charts</a></td><td>loki</td><td>18.11.0</td></tr><tr><td><a href=https://github.com/grafana/helm-charts rel=external class=external-link>oci://ghcr.io/grafana/helm-charts</a></td><td>grafana-operator</td><td>5.24.0</td></tr><tr><td><a href=https://github.com/prometheus-community/helm-charts rel=external class=external-link>oci://ghcr.io/prometheus-community/charts</a></td><td>alertmanager</td><td>1.42.0</td></tr><tr><td><a href=https://github.com/prometheus-community/helm-charts rel=external class=external-link>oci://ghcr.io/prometheus-community/charts</a></td><td>kube-state-metrics</td><td>8.4.0</td></tr><tr><td><a href=https://github.com/prometheus-community/helm-charts rel=external class=external-link>oci://ghcr.io/prometheus-community/charts</a></td><td>prometheus-node-exporter(node-exporter)</td><td>4.56.1</td></tr><tr><td><a href=https://github.com/thanos-community/helm-charts rel=external class=external-link>oci://ghcr.io/thanos-community/helm-charts</a></td><td>thanos</td><td>0.46.0</td></tr></tbody></table><h2 id=values>Values<a class=anchor href=#values>#</a></h2><h3 id=globals>Globals<a class=anchor href=#globals>#</a></h3><p>Values that are passed to all subcharts</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>global<wbr>.imageRegistry</td><td class=helm-value-type>string</td><td class=helm-value-default><code>""</code></td><td class=helm-value-desc>Override the registry for all images in this chart and its subcharts. Leave empty to use upstream defaults.</td></tr><tr><td class=helm-value-key>global<wbr>.imagePullSecrets</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+You may consider Garage or RustFS or MinIO for manually provisioned object storage.</p><h2 id=included-subcharts>Included Subcharts<a class=anchor href=#included-subcharts>#</a></h2><table><thead><tr><th>Repository</th><th>Name</th><th>Version</th></tr></thead><tbody><tr><td><a href=https://grafana.github.io/helm-charts rel=external class=external-link>https://grafana.github.io/helm-charts</a></td><td>alloy(alloy-agent)</td><td>1.13.0</td></tr><tr><td><a href=https://grafana.github.io/helm-charts rel=external class=external-link>https://grafana.github.io/helm-charts</a></td><td>alloy(alloy-gateway)</td><td>1.13.0</td></tr><tr><td><a href=https://kubernetes-sigs.github.io/metrics-server rel=external class=external-link>https://kubernetes-sigs.github.io/metrics-server</a></td><td>metrics-server</td><td>3.14.0</td></tr><tr><td><a href=https://github.com/grafana-community/helm-charts rel=external class=external-link>oci://ghcr.io/grafana-community/helm-charts</a></td><td>grafana</td><td>12.11.2</td></tr><tr><td><a href=https://github.com/grafana-community/helm-charts rel=external class=external-link>oci://ghcr.io/grafana-community/helm-charts</a></td><td>loki</td><td>18.11.0</td></tr><tr><td><a href=https://github.com/grafana/helm-charts rel=external class=external-link>oci://ghcr.io/grafana/helm-charts</a></td><td>grafana-operator</td><td>5.24.0</td></tr><tr><td><a href=https://github.com/prometheus-community/helm-charts rel=external class=external-link>oci://ghcr.io/prometheus-community/charts</a></td><td>alertmanager</td><td>1.42.0</td></tr><tr><td><a href=https://github.com/prometheus-community/helm-charts rel=external class=external-link>oci://ghcr.io/prometheus-community/charts</a></td><td>kube-state-metrics</td><td>8.4.0</td></tr><tr><td><a href=https://github.com/prometheus-community/helm-charts rel=external class=external-link>oci://ghcr.io/prometheus-community/charts</a></td><td>prometheus-node-exporter(node-exporter)</td><td>4.56.1</td></tr><tr><td><a href=https://github.com/thanos-community/helm-charts rel=external class=external-link>oci://ghcr.io/thanos-community/helm-charts</a></td><td>thanos</td><td>0.46.0</td></tr></tbody></table><h2 id=values>Values<a class=anchor href=#values>#</a></h2><h3 id=globals>Globals<a class=anchor href=#globals>#</a></h3><p>Values that are passed to all subcharts</p><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>global<wbr>.imageRegistry</td><td class=helm-value-type>string</td><td class=helm-value-default><code>""</code></td><td class=helm-value-desc>Override the registry for all images in this chart and its subcharts. Leave empty to use upstream defaults.</td></tr><tr><td class=helm-value-key>global<wbr>.imagePullSecrets</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Image pull secrets for this chart's own workloads and for the subcharts that read a global. Not all of them do.
 Reaches this chart's own workloads, plus Thanos, Grafana, kube-state-metrics
 and node-exporter. It does **not** reach every subchart on its own, because
@@ -480,7 +480,7 @@ forgotten here fails the render rather than the handshake.</p><p>Each entry take
 }</pre></td><td class=helm-value-desc>ServiceMonitor/PodMonitor configuration for environmentd-sql</td></tr><tr><td class=helm-value-key>materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Deploy a PodMonitor to collect Materialize metrics.</td></tr><tr><td class=helm-value-key>materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.selector</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {}</pre></td><td class=helm-value-desc>Override for default selector</td></tr><tr><td class=helm-value-key>materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.targetLabels</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Override for default labels to copy from the pod into metrics</td></tr><tr><td class=helm-value-key>materialize<wbr>.environmentdSQL<wbr>.serviceMonitor<wbr>.metricEndpoints</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
-[]</pre></td><td class=helm-value-desc>Override for default metric endpoints</td></tr><tr><td class=helm-value-key>materialize<wbr>.clusterd<wbr>.serviceMonitor</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+[]</pre></td><td class=helm-value-desc>Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.</td></tr><tr><td class=helm-value-key>materialize<wbr>.clusterd<wbr>.serviceMonitor</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
   "metricEndpoints": [],
@@ -968,7 +968,14 @@ because what it stored is the literal placeholder text.</p></td></tr><tr><td cla
   "keyKey": "tls.key",
   "secretName": ""
 }</pre></td><td class=helm-value-desc>Present a client certificate as well. Only useful against a backend that requires one; Loki cannot (its port is probed by the kubelet), so this is here for an external backend that does.</td></tr><tr><td class=helm-value-key>connections<wbr>.datasources<wbr>.thanos<wbr>.tls<wbr>.serverName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>""</code></td><td class=helm-value-desc>SNI to send, when it differs from the URL host.</td></tr><tr><td class=helm-value-key>connections<wbr>.datasources<wbr>.thanos<wbr>.jsonData</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
-{}</pre></td><td class=helm-value-desc>Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).</td></tr><tr><td class=helm-value-key>connections<wbr>.datasources<wbr>.thanos<wbr>.secureJsonData</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{}</pre></td><td class=helm-value-desc>Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).<p><code>timeInterval</code> is the scrape interval Grafana assumes when it sizes
+<code>$__rate_interval</code>. The chart sets it to the slower of
+<code>pipeline.metrics.kubelet.scrapeInterval</code> and
+<code>pipeline.metrics.kubeProxy.scrapeInterval</code> (60s by default). <code>rate()</code>
+needs two samples in its window, and with Grafana&rsquo;s own 15s assumption
+the window is one minute, which holds one sample of a 60s scrape.
+Set it here only when this datasource reads metrics scraped more slowly
+than that; the render warns about a shorter one.</p></td></tr><tr><td class=helm-value-key>connections<wbr>.datasources<wbr>.thanos<wbr>.secureJsonData</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {}</pre></td><td class=helm-value-desc>Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this renders into the release manifest.</td></tr><tr><td class=helm-value-key>connections<wbr>.datasources<wbr>.thanos<wbr>.valuesFrom</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 []</pre></td><td class=helm-value-desc>Secret- or ConfigMap-sourced field injection, passed through to the `GrafanaDatasource`. This is the supported way to supply credentials.<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none><code class=language-yaml data-lang=yaml><span style=display:flex><span><span style=color:#f92672>valuesFrom</span>:
 </span></span><span style=display:flex><span>  - <span style=color:#f92672>targetPath</span>: <span style=color:#ae81ff>secureJsonData.basicAuthPassword</span>
@@ -1721,7 +1728,18 @@ is not a policy, it is a copy of the cluster&rsquo;s inventory that goes stale.<
     443,
     80
   ]
-}</pre></td><td class=helm-value-desc>Outgoing traffic from loki to the object store. This is usually unrestricted, even in many production settings. Adjust if you have a VPCEndpoint in front of S3/STS or are using a non-standard port.</td></tr><tr><td class=helm-value-key>loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Outgoing traffic from loki to the object store. This is usually unrestricted, even in many production settings. Adjust if you have a VPCEndpoint in front of S3/STS or are using a non-standard port.</td></tr><tr><td class=helm-value-key>loki<wbr>.loki<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre></td><td class=helm-value-desc>Loki image, pinned here rather than inherited from the subchart's `appVersion`.<p>So Renovate bumps Loki on its own cadence, with Loki&rsquo;s own release notes,
+instead of only when a chart release happens to carry a new <code>appVersion</code>.
+Every Loki component runs this image unless its own <code>image</code> overrides it.
+The canary is pinned separately in <code>lokiCanary.image</code>, and Renovate groups
+the two so that they move together.</p><p>In the Loki chart, <code>global.imageRegistry</code> outranks the <code>registry</code> of every
+image, this one included. The profiles under <code>profiles/registry/</code> repoint
+<code>registry</code> and <code>repository</code> and keep this tag.</p></td></tr><tr><td class=helm-value-key>loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "chunks": "\u003cREPLACE-ME\u003e",
   "ruler": "\u003cREPLACE-ME\u003e"
@@ -1779,6 +1797,7 @@ is not a policy, it is a copy of the cluster&rsquo;s inventory that goes stale.<
   "alertmanager_url": "http://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}",
   "enable_alertmanager_discovery": true,
   "enable_alertmanager_v2": true,
+  "enable_sharding": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
   "remote_write": {
@@ -1804,7 +1823,7 @@ is not a policy, it is a copy of the cluster&rsquo;s inventory that goes stale.<
           },
           {
             "regex": "",
-            "replacement": "${POD_NAME}",
+            "replacement": "loki-ruler",
             "source_labels": [
               "instance"
             ],
@@ -1828,7 +1847,11 @@ resources labelled <code>mzmon.materialize.cloud/flavor: logql</code>. A rule st
 that refuses writes, such as <code>local</code>, leaves them out.</p><p>Everything here is <code>tpl</code>-evaluated by the subchart, so <code>.Release.*</code>
 resolves. It does <strong>not</strong> see the umbrella&rsquo;s values, which is why these
 addresses are spelled out rather than built from the helpers the Thanos
-side uses — and why <code>split-namespace</code> overrides both of them.</p></td></tr><tr><td class=helm-value-key>loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+side uses — and why <code>split-namespace</code> overrides both of them.</p></td></tr><tr><td class=helm-value-key>loki<wbr>.loki<wbr>.rulerConfig<wbr>.enable_sharding</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Divide the rule groups between the ruler replicas, so each group is evaluated by one of them.<p>Without it every replica loads every group: each alert is sent once per
+replica, and each recording-rule sample is written once per replica.</p><p>The replicas divide the groups through a hash ring. Loki puts every ring
+on memberlist when <code>memberlist.join_members</code> is set, which the subchart
+does, so the ruler&rsquo;s ring rides the same gossip cluster as the rest of
+Loki and needs no configuration of its own.</p><table><thead><tr><th>A replica</th><th>Its groups move to the others</th></tr></thead><tbody><tr><td>Stops cleanly (rollout, eviction, drain)</td><td>Within one evaluation, because it leaves the ring on the way out</td></tr><tr><td>Is lost without stopping (node failure)</td><td>After two <code>heartbeat_timeout</code>s (two minutes by default), when the others forget it. The groups are not evaluated until then</td></tr></tbody></table></td></tr><tr><td class=helm-value-key>loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "clients": {
     "gateway": {
@@ -1852,7 +1875,7 @@ side uses — and why <code>split-namespace</code> overrides both of them.</p></
         },
         {
           "regex": "",
-          "replacement": "${POD_NAME}",
+          "replacement": "loki-ruler",
           "source_labels": [
             "instance"
           ],
@@ -2030,7 +2053,7 @@ that holds Loki&rsquo;s own HTTP port at phase 2.</p></td></tr><tr><td class=hel
     "cpu": "200m",
     "memory": "512Mi"
   }
-}</pre></td><td class=helm-value-desc>Resources for the index-gateway.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store. The evaluation and notification wiring lives in `loki.loki.rulerConfig`; this switch only decides whether the component is deployed.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Keep a PVC for the ruler (unlike the other components, which are ephemeral). Rule definitions come from object storage, but the ruler's remote-write WAL buffers recording-rule samples when the metric store is unreachable — genuinely useful durability in the run-up to an incident, exactly when you don't want to drop derived signals.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.podDisruptionBudget</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+}</pre></td><td class=helm-value-desc>Resources for the index-gateway.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable the ruler. The ruler evaluates LogQL alerting and recording rules. Recording-rule samples are remote-written back through alloy-gateway to the metric store. The evaluation and notification wiring lives in `loki.loki.rulerConfig`; this switch only decides whether the component is deployed.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.replicas</td><td class=helm-value-type>int</td><td class=helm-value-default><code>2</code></td><td class=helm-value-desc>Replicas. Two, for availability. They divide the rule groups between them rather than each evaluating all of them; see `loki.loki.rulerConfig.enable_sharding`.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Keep a PVC for the ruler (unlike the other components, which are ephemeral). Rule definitions come from object storage, but the ruler's remote-write WAL buffers recording-rule samples when the metric store is unreachable — genuinely useful durability in the run-up to an incident, exactly when you don't want to drop derived signals.</td></tr><tr><td class=helm-value-key>loki<wbr>.ruler<wbr>.podDisruptionBudget</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
   "minAvailable": 1
@@ -2050,16 +2073,8 @@ that holds Loki&rsquo;s own HTTP port at phase 2.</p></td></tr><tr><td class=hel
         "name": "ruler-env"
       }
     }
-  },
-  {
-    "name": "POD_NAME",
-    "valueFrom": {
-      "fieldRef": {
-        "fieldPath": "metadata.name"
-      }
-    }
   }
-]</pre></td><td class=helm-value-desc>The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.</td></tr><tr><td class=helm-value-key>loki<wbr>.chunksCache</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td><td class=helm-value-desc>Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.</td></tr><tr><td class=helm-value-key>loki<wbr>.chunksCache<wbr>.service<wbr>.labels</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+]</pre></td><td class=helm-value-desc>The cluster name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. A list: restate it when adding another.</td></tr><tr><td class=helm-value-key>loki<wbr>.chunksCache</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"allocatedMemory":2048, "priorityClassName":"monitoring-scalable", "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td><td class=helm-value-desc>Chunk cache (memcached). Default allocation is sized for very large installs; we shrink it to match our volumes. The results cache keeps its upstream default. `priorityClassName` is repeated on both caches because the memcached StatefulSet template reads its component key only — `loki.global` does not reach it.</td></tr><tr><td class=helm-value-key>loki<wbr>.chunksCache<wbr>.service<wbr>.labels</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "monitoring.materialize.cloud/scrape-scheme": "plaintext",
   "prometheus.io/service-monitor": "false"
@@ -2067,7 +2082,22 @@ that holds Loki&rsquo;s own HTTP port at phase 2.</p></td></tr><tr><td class=hel
 {
   "monitoring.materialize.cloud/scrape-scheme": "plaintext",
   "prometheus.io/service-monitor": "false"
-}</pre></td><td class=helm-value-desc>Keep the cache out of the subchart's ServiceMonitor, as above.</td></tr><tr><td class=helm-value-key>loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable a ServiceMonitor for the loki microservices.<p><strong>Plaintext exporters are excluded from it.</strong> The subchart renders a
+}</pre></td><td class=helm-value-desc>Keep the cache out of the subchart's ServiceMonitor, as above.</td></tr><tr><td class=helm-value-key>loki<wbr>.memcached<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre></td><td class=helm-value-desc>Memcached image for both caches, pinned here rather than left at the subchart's default.</td></tr><tr><td class=helm-value-key>loki<wbr>.memcachedExporter<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre></td><td class=helm-value-desc>Memcached exporter image for both caches, pinned here rather than left at the subchart's default.</td></tr><tr><td class=helm-value-key>loki<wbr>.sidecar<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre></td><td class=helm-value-desc>Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.</td></tr><tr><td class=helm-value-key>loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td><td class=helm-value-type>bool</td><td class=helm-value-default><code>true</code></td><td class=helm-value-desc>Enable a ServiceMonitor for the loki microservices.<p><strong>Plaintext exporters are excluded from it.</strong> The subchart renders a
 single ServiceMonitor covering everything it labels, with one <code>scheme</code>
 shared by every target. Four of those targets never speak TLS whatever
 Loki is configured to do — the canary&rsquo;s own <code>/metrics</code> server, the two
@@ -2080,7 +2110,12 @@ a canary to fail.</p><p>Each of the four therefore carries
 excludes, plus a <code>monitoring.materialize.cloud/scrape-scheme: plaintext</code>
 opt-in that this chart&rsquo;s own monitor selects on
 (<code>templates/scrapers/monitor-loki-plaintext.yaml</code>). The split is
-unconditional so the two modes share one code path.</p></td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td><td class=helm-value-desc>End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary<wbr>.service<wbr>.labels</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+unconditional so the two modes share one code path.</p></td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary</td><td class=helm-value-type>h5</td><td class=helm-value-default><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td><td class=helm-value-desc>End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.</td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre></td><td class=helm-value-desc>Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.</td></tr><tr><td class=helm-value-key>loki<wbr>.lokiCanary<wbr>.service<wbr>.labels</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "monitoring.materialize.cloud/scrape-scheme": "plaintext",
   "prometheus.io/service-monitor": "false"
@@ -2091,7 +2126,17 @@ cover the rest of Loki: it renders from its own template rather than
 `loki.defaults` does not either. Left unset it runs at priority 0 —
 *below* ordinary workloads — so the first node under pressure evicts the
 end-to-end write→read check, which is exactly the signal you want during
-the incident that caused the pressure.</td></tr></tbody></table><h4 id=thanos>Thanos<a class=anchor href=#thanos>#</a></h4><p>Bundled Thanos backend for long-term metrics.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/thanos-community/helm-charts/tree/master/charts/thanos rel=external class=external-link>https://github.com/thanos-community/helm-charts/tree/master/charts/thanos</a></li><li><a href=https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml rel=external class=external-link>https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>thanos<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"thanos"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>thanos<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority for every Thanos pod. See the Priority classes section.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.pdb</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+the incident that caused the pressure.</td></tr></tbody></table><h4 id=thanos>Thanos<a class=anchor href=#thanos>#</a></h4><p>Bundled Thanos backend for long-term metrics.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/thanos-community/helm-charts/tree/master/charts/thanos rel=external class=external-link>https://github.com/thanos-community/helm-charts/tree/master/charts/thanos</a></li><li><a href=https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml rel=external class=external-link>https://github.com/thanos-community/helm-charts/blob/master/charts/thanos/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>thanos<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"thanos"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>thanos<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority for every Thanos pod. See the Priority classes section.</td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre></td><td class=helm-value-desc>Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.<p>So Renovate bumps Thanos on its own cadence, with Thanos&rsquo;s own release
+notes, instead of only when a chart release happens to carry a new
+<code>appVersion</code>. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under <code>profiles/registry/</code> repoint <code>registry</code> and
+<code>repository</code> and keep this tag.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.global<wbr>.pdb</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
   "maxUnavailable": 1
@@ -2660,7 +2705,6 @@ validator warns when the two disagree.</p></td></tr><tr><td class=helm-value-key
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
     "--label=cluster=\"$(CLUSTER_NAME)\""
   ],
   "extraEnv": [
@@ -2676,24 +2720,12 @@ validator warns when the two disagree.</p></td></tr><tr><td class=helm-value-key
   ],
   "extraVolumeMounts": [
     {
-      "mountPath": "/etc/thanos/remote-write.yaml",
-      "name": "remote-write",
-      "readOnly": true,
-      "subPath": "remote-write.yaml"
-    },
-    {
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
     }
   ],
   "extraVolumes": [
-    {
-      "configMap": {
-        "name": "thanos-ruler-remote-write-v2"
-      },
-      "name": "remote-write"
-    },
     {
       "name": "mzmon-tls",
       "secret": {
@@ -2715,6 +2747,10 @@ validator warns when the two disagree.</p></td></tr><tr><td class=helm-value-key
     "urls": [
       "http://thanos-query:9090"
     ]
+  },
+  "remoteWrite": {
+    "enabled": true,
+    "secretName": "thanos-ruler-remote-write-v2"
   },
   "replicaCount": 2,
   "resources": {
@@ -2797,8 +2833,8 @@ lists <code>example-alerts.yaml</code> as a required property</strong>, so neith
 <code>rules: {}</code> (which would not clear a subchart default anyway) nor
 <code>example-alerts.yaml: null</code> renders — the second fails schema validation
 before any template runs. A rule file declaring no groups is the only
-spelling that both satisfies the schema and evaluates nothing. Fixing that
-upstream is on the same list as the missing <code>remoteWrite</code> key.</p><p>The render fails if the example rule comes back.</p><p>The chart&rsquo;s own rules do not arrive here. They arrive as <code>PrometheusRule</code>
+spelling that both satisfies the schema and evaluates nothing, until the
+schema is fixed upstream.</p><p>The render fails if the example rule comes back.</p><p>The chart&rsquo;s own rules do not arrive here. They arrive as <code>PrometheusRule</code>
 resources, through the import sidecar below.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.autoImportPrometheusRules</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": true,
@@ -2843,29 +2879,37 @@ entrypoint is <code>/bin/sh /scripts/import.sh</code>, and the script shells out
 <code>kubectl</code>; the distroless build has neither a shell nor curl, so it
 crash-loops immediately. The same applies to any hardened <code>kubectl</code> image —
 see the note in <code>profiles/registry/</code>.</p><p>The minor tracks the cleanup hook&rsquo;s kubectl, and the same version-skew
-advice applies: keep it within one minor of your API server.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.extraArgs</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
-[
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
-  "--label=cluster=\"$(CLUSTER_NAME)\""
-]</pre></td><td class=helm-value-desc>Run stateless: remote-write rule results, keep no TSDB.<p><strong>The subchart models no <code>remoteWrite</code> key</strong>, and its StatefulSet passes
-<code>--objstore.config-file</code> unconditionally, so stateless is reached by
-pointing <code>extraArgs</code> at a ConfigMap the umbrella renders
-(<code>templates/thanos-ruler-remote-write.yaml</code>). Fixing that upstream is
-tracked; until it lands, <strong>this flag is load-bearing</strong> — drop it and the
-Ruler silently reverts to a local TSDB.</p><p>Three reasons stateless is the right mode here, in ascending order of how
+advice applies: keep it within one minor of your API server.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.remoteWrite</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "enabled": true,
+  "secretName": "thanos-ruler-remote-write-v2"
+}</pre></td><td class=helm-value-desc>Run stateless: remote-write rule results, keep no TSDB.<p>Three reasons stateless is the right mode here, in ascending order of how
 much they matter. It removes a stateful workload. It puts rule results on
 the same path as every other series in this stack, rather than making the
 Ruler a second writer into object storage with its own compaction
 interaction. And it is what makes alert state forwardable: a Ruler shipping
 blocks puts <code>ALERTS</code> in Thanos and out of reach of every gateway
-destination except Thanos.</p><p>The residue is that the Ruler still starts a block shipper against the
-object store. With an agent WAL and no blocks in the data directory it
-scans every 30s and uploads nothing.</p><p><strong><code>--label=cluster</code> is load-bearing too.</strong> It is an external label, which
-the Ruler adds to every alert it sends that does not already carry
-<code>cluster</code>, and to every sample it writes. <code>$(CLUSTER_NAME)</code> is expanded by
-Kubernetes from <code>extraEnv</code> below, which reads the <code>ruler-env</code> ConfigMap the
-chart renders from <code>clusterName</code>. Both flags have to survive
-an override of this list; the render warns when either goes missing.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.extraEnv</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+destination except Thanos.</p><p>With <code>enabled</code>, the subchart passes <code>--remote-write.config-file</code> and drops
+<code>--objstore.config-file</code>, so the Ruler runs no block shipper. The
+configuration targets the alloy-gateway&rsquo;s metrics listener, and <strong>the
+chart renders it as a Secret</strong> (<code>templates/thanos-ruler-remote-write.yaml</code>)
+rather than through <code>config</code>, because the gateway&rsquo;s address follows
+umbrella values that the subchart&rsquo;s <code>tpl</code> cannot read.</p><p><code>secretName</code> is one of two Secrets the chart renders, <code>-tls</code> for when
+<code>pipeline.metrics.gateway.server.tls</code> is on, which
+<code>profiles/mtls.values.yaml</code> selects and the render enforces. The Ruler
+reads the file once at startup, so the names carry the mode and a
+revision: switching Secrets changes the pod template, which is what rolls
+it.</p><p>Writing elsewhere means naming another Secret here, or setting
+<code>secretName: ""</code> with <code>createSecret: true</code> and the configuration in
+<code>config</code>. The render&rsquo;s gateway checks then no longer apply.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.extraArgs</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+[
+  "--label=cluster=\"$(CLUSTER_NAME)\""
+]</pre></td><td class=helm-value-desc>Extra Ruler flags.<p><strong><code>--label=cluster</code> is load-bearing.</strong> It is an external label, which the
+Ruler adds to every alert it sends that does not already carry <code>cluster</code>,
+and to every sample it writes. <code>$(CLUSTER_NAME)</code> is expanded by Kubernetes
+from <code>extraEnv</code> below, which reads the <code>ruler-env</code> ConfigMap the chart
+renders from <code>clusterName</code>. It has to survive an override of this list;
+the render warns when it goes missing.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.extraEnv</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 [
   {
     "name": "CLUSTER_NAME",
@@ -2879,29 +2923,18 @@ an override of this list; the render warns when either goes missing.</p></td></t
 ]</pre></td><td class=helm-value-desc>The cluster name, for `--label=cluster` in `extraArgs`.</td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.extraVolumes</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 [
   {
-    "configMap": {
-      "name": "thanos-ruler-remote-write-v2"
-    },
-    "name": "remote-write"
-  },
-  {
     "name": "mzmon-tls",
     "secret": {
       "optional": true,
       "secretName": "mzmon-thanos-tls"
     }
   }
-]</pre></td><td class=helm-value-desc>Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.<p><code>remote-write</code> is the plaintext variant of the Ruler&rsquo;s remote-write
-configuration. When <code>pipeline.metrics.gateway.server.tls</code> is on it has to
-name the <code>-tls</code> variant instead, which <code>profiles/mtls.values.yaml</code> does and
-the render enforces. The Ruler reads the file once at startup, so the names
-carry the mode and a revision: switching ConfigMaps changes the pod
-template, which is what rolls it.</p><p><code>mzmon-thanos-tls</code> is the certificate the chart issues for Thanos when
+]</pre></td><td class=helm-value-desc>The Thanos certificate, for the Ruler's TLS clients.<p><code>mzmon-thanos-tls</code> is the certificate the chart issues for Thanos when
 <code>certificates</code> is on. The Ruler presents it to Alertmanager when
 <code>alerting.server.tls</code> is on and to the gateway when its metrics listener
 serves TLS, and trusts its <code>ca.crt</code>. Mounted unconditionally and optionally,
 so the same values work before issuance, during it and after.
-This is a list: restate both entries when adding one.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+This is a list: restate the entry when adding one.</p></td></tr><tr><td class=helm-value-key>thanos<wbr>.ruler<wbr>.persistence</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "enabled": false
 }</pre></td><td class=helm-value-desc>No PVC. The data directory holds the remote-write WAL and nothing else.<p>The Loki ruler keeps a volume for the same WAL, on the argument that
@@ -2949,7 +2982,17 @@ Revisit when recording rules land.</p></td></tr><tr><td class=helm-value-key>tha
 every rule and Alertmanager deduplicates, so co-locating them costs a
 simultaneous loss rather than a quorum. A Ruler that cannot schedule is a
 Ruler that is not evaluating, which is the worse outcome.</p><p><code>controller-revision-hash</code> because this is a StatefulSet; Deployments in
-this file use <code>pod-template-hash</code>.</p></td></tr></tbody></table><h4 id=grafana-operator>Grafana Operator<a class=anchor href=#grafana-operator>#</a></h4><p>Bundled Grafana-operator for managing Grafana instances.</p><p>Upstream references:</p><ul><li><a href=https://grafana.github.io/grafana-operator/docs/installation/helm/#values rel=external class=external-link>https://grafana.github.io/grafana-operator/docs/installation/helm/#values</a></li><li><a href=https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml rel=external class=external-link>https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>grafana-operator<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Scalable tier: while the operator is down, dashboard and datasource reconciliation stops, but Grafana keeps serving what it already has.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"grafana-operator"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.crds</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+this file use <code>pod-template-hash</code>.</p></td></tr></tbody></table><h4 id=grafana-operator>Grafana Operator<a class=anchor href=#grafana-operator>#</a></h4><p>Bundled Grafana-operator for managing Grafana instances.</p><p>Upstream references:</p><ul><li><a href=https://grafana.github.io/grafana-operator/docs/installation/helm/#values rel=external class=external-link>https://grafana.github.io/grafana-operator/docs/installation/helm/#values</a></li><li><a href=https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml rel=external class=external-link>https://github.com/grafana/grafana-operator/blob/master/deploy/helm/grafana-operator/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>grafana-operator<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section. Scalable tier: while the operator is down, dashboard and datasource reconciliation stops, but Grafana keeps serving what it already has.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.fullnameOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"grafana-operator"</code></td><td class=helm-value-desc>Standard Helm full-name override. We use a static name for deterministic relations.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.namespaceOverride</td><td class=helm-value-type>string</td><td class=helm-value-default><code>nil</code></td><td class=helm-value-desc>Namespace override.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre></td><td class=helm-value-desc>Operator image, pinned here rather than inherited from the subchart's `appVersion`.<p>Unlike the other pins, this one is not meant to move on its own. The
+operator&rsquo;s CRDs are vendored from the subchart (<code>make grafana-operator-crds</code>),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in <code>Chart.yaml</code> so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint <code>registry</code> and <code>repository</code> while keeping the tag.</p></td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.crds</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "immutable": true
 }</pre></td><td class=helm-value-desc>CRD behavior. The Grafana Operator CRDs are owned by the `materialize-monitoring-crds` chart, which vendors a deflated copy of them. The operator chart offers no way to skip its own CRDs outright — `immutable` only chooses where they come from — so keep this `true`: that keeps them out of this chart's release manifest and leaves them install-only, which `helm install --skip-crds` drops entirely. Setting it `false` makes this chart template and upgrade the CRDs itself, fighting the CRDs chart for ownership.</td></tr><tr><td class=helm-value-key>grafana-operator<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
@@ -3055,7 +3098,12 @@ Off by default. Turning it on survives restarts but caps you at one replica
 `deploymentStrategy.type: Recreate` — a rolling update otherwise deadlocks
 with the new pod waiting for a volume the old pod has not released. Both are
 enforced at render time. The `grafana-pvc` profile is the assembled version.<p>Prefer PostgreSQL (<code>grafana-postgres</code>) wherever a database is available: it
-is the only option that lifts both constraints.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.deploymentStrategy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+is the only option that lifts both constraints.</p></td></tr><tr><td class=helm-value-key>grafana<wbr>.initChownData<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre></td><td class=helm-value-desc>Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.</td></tr><tr><td class=helm-value-key>grafana<wbr>.deploymentStrategy</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "type": "RollingUpdate"
 }</pre></td><td class=helm-value-desc>Deployment update strategy. Must be `Recreate` alongside a `ReadWriteOnce` PersistentVolume; see `persistence`.</td></tr><tr><td class=helm-value-key>grafana<wbr>.service</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
@@ -3480,7 +3528,12 @@ see Alert Channels.</p><p>Unset, the links name the pod&rsquo;s own address, whi
 outside the cluster but harmless. Set this when Alertmanager is exposed,
 behind authentication, to the address operators reach it at. A path is
 fine: <code>extraArgs.web.route-prefix</code> keeps the endpoints at <code>/</code>, so an
-ingress serving a sub-path strips the prefix before forwarding.</p></td></tr></tbody></table><h4 id=kube-state-metrics>Kube State Metrics<a class=anchor href=#kube-state-metrics>#</a></h4><p>kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml rel=external class=external-link>https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>kube-state-metrics<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.</td></tr><tr><td class=helm-value-key>kube-state-metrics<wbr>.metricLabelsAllowlist</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
+ingress serving a sub-path strips the prefix before forwarding.</p></td></tr></tbody></table><h4 id=kube-state-metrics>Kube State Metrics<a class=anchor href=#kube-state-metrics>#</a></h4><p>kube-state-metrics for Kubernetes resource-state metrics consumed by Materialize-adjacent dashboards.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml rel=external class=external-link>https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-state-metrics/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>kube-state-metrics<wbr>.priorityClassName</td><td class=helm-value-type>string</td><td class=helm-value-default><code>"monitoring-scalable"</code></td><td class=helm-value-desc>Scheduling priority. See the Priority classes section.</td></tr><tr><td class=helm-value-key>kube-state-metrics<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre></td><td class=helm-value-desc>kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.</td></tr><tr><td class=helm-value-key>kube-state-metrics<wbr>.metricLabelsAllowlist</td><td class=helm-value-type>list</td><td class=helm-value-default><pre>
 [
   "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
 ]</pre></td><td class=helm-value-desc>Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.<p>The node pool, by whichever label the cluster&rsquo;s provisioner sets — Karpenter,
@@ -3748,7 +3801,11 @@ apply to a cloud node running ext4/xfs on network block storage with
 Cilium replacing kube-proxy. <code>ipvs</code> matters if you run kube-proxy in IPVS
 mode; <code>nfs</code> if you mount EFS/Filestore.</li><li><code>sysctl</code> — no default set, but <code>--collector.sysctl.include=vm.swappiness, vm.overcommit_memory,vm.overcommit_ratio</code> is a cheap guard against AMI
 drift changing swap behaviour underneath a swap-dependent workload.</li><li><code>textfile</code> — the node-local extension point, but it needs a hostPath mount
-this chart does not create.</li></ul></td></tr></tbody></table><h4 id=metrics-server>Metrics Server<a class=anchor href=#metrics-server>#</a></h4><p>metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml rel=external class=external-link>https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>metrics-server<wbr>.replicas</td><td class=helm-value-type>int</td><td class=helm-value-default><code>1</code></td><td class=helm-value-desc>Number of replicas for metrics-server.</td></tr><tr><td class=helm-value-key>metrics-server<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+this chart does not create.</li></ul></td></tr></tbody></table><h4 id=metrics-server>Metrics Server<a class=anchor href=#metrics-server>#</a></h4><p>metrics-server for pod and node resource usage; only needed when the cluster does not already ship one.</p><p>Upstream reference:</p><ul><li><a href=https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml rel=external class=external-link>https://github.com/kubernetes-sigs/metrics-server/blob/master/charts/metrics-server/values.yaml</a></li></ul><table class=helm-values><thead><th>Key</th><th>Type</th><th>Default</th><th>Description</th></thead><tbody><tr><td class=helm-value-key>metrics-server<wbr>.replicas</td><td class=helm-value-type>int</td><td class=helm-value-default><code>1</code></td><td class=helm-value-desc>Number of replicas for metrics-server.</td></tr><tr><td class=helm-value-key>metrics-server<wbr>.image</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre></td><td class=helm-value-desc>metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.</td></tr><tr><td class=helm-value-key>metrics-server<wbr>.podSecurityContext</td><td class=helm-value-type>object</td><td class=helm-value-default><pre>
 {
   "runAsNonRoot": true,
   "seccompProfile": {

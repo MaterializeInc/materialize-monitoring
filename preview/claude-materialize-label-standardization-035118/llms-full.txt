@@ -2232,6 +2232,14 @@ kubectl create secret generic materialize-sql-monitor \
   --from-literal=password=
 ```
 
+### Telling the four SQL endpoints apart
+
+The four endpoints share one port, so the Prometheus Operator `PodMonitor` gives all four the same `job`, `instance`, `pod` and `endpoint`.
+Each endpoint therefore copies its path into a `metrics_path` label, as kube-prometheus-stack does for the kubelet's several paths.
+Without it, the four endpoints' `up` and `scrape_*` series are one series written four times per scrape interval.
+A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
+The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see
@@ -3775,6 +3783,7 @@ flowchart LR
 Replication gives durability and quorum: a single ingester can be lost or restarted without dropping writes, and queriers deduplicate the copies on read.
 The ring is also what makes scaling and rolling restarts safe — components join and leave the ring and traffic rebalances around them.
 A replication factor of 3 implies you run **at least three ingesters**.
+The rulers keep a ring of their own on the same memberlist cluster, which assigns each rule group to one ruler; see [Loki Ruler](#ruler).
 
 > [!INFO]
 >   `memberlist` is the default ring backend in current Loki.
@@ -3882,8 +3891,26 @@ The **Loki Ruler** evaluates LogQL [alerting and recording rules](../rules/) on 
 - **Alerting rules** emit alerts to [Alertmanager](../../alerting/), which routes and notifies.
 - **Recording rules** turn a LogQL expression into a metric sample. Because that output is a metric — not a log — the ruler **remote-writes those samples back through `alloy-gateway`**, which forwards them to the long-term metric store ([Thanos](../../o11y-glossary/#stack-components)) alongside the rest of the metrics pipeline. This keeps log-derived metrics in the same place you query everything else.
 
-Rule definitions live in object storage, and when multiple rulers run they shard rule groups across themselves via a consistent hash ring.
-A ruler can delegate query execution to the query frontend to benefit from splitting and caching.
+Rule definitions live in object storage.
+The chart runs two rulers, and they divide the rule groups between them through a [hash ring](#the-hash-ring) on the same memberlist cluster as the rest of Loki.
+Outside a ring change, each group is evaluated by one ruler, so each alert is sent once and each recording-rule sample is written once.
+While the ring changes, a group's old and new ruler can both hold it until each one's next sync, and an evaluation that falls in that window runs on both.
+A group's ruler follows a hash of the group, so with only a few groups one ruler can hold all of them while the other holds none.
+Grafana's rule list is complete from either ruler, because the ruler that answers collects the other's groups over gRPC.
+
+| When a ruler | Its groups move to the other ruler |
+| --- | --- |
+| Stops cleanly, as in a rollout, an eviction or a node drain | Within one evaluation interval, because it leaves the ring as it stops |
+| Is lost without stopping, as in a node failure | After two minutes, when the survivor forgets it. Its groups are not evaluated until then |
+
+A recording-rule sample with no `job` or `instance` of its own gets `loki-ruler` for each; one that already carries either keeps it.
+`instance` is a constant rather than the pod name because every rollout moves groups between rulers, and a per-pod value would start a new series each time.
+
+The rulers run their queries themselves.
+Loki can instead hand them to the query frontend for its splitting and caching, but the chart does not configure that.
+
+<!-- Verified 2026-10-02 against two Loki 3.7.6 rulers on one memberlist cluster: disjoint group ownership, a clean stop handed off in about 9s, and a SIGKILL in about 2m04s (auto-forget at 2 × the 1m heartbeat_timeout).
+Also verified the same day on a live EKS install with the chart's config patched in: a rolling restart, a pod deletion, and a scale to one replica and back each left every group evaluated exactly once per interval, and a recording rule stayed one series. `ruler.evaluation.mode` is `local` there. -->
 
 *See more:* [Ruler](https://grafana.com/docs/loki/latest/get-started/components/#ruler) (official) and [Logs & Events > Rules](../rules/).
 
@@ -4399,8 +4426,10 @@ The result: log-derived metrics live in the same place — and are queried the s
 ## Rule storage and evaluation
 
 - **Definitions** live in object storage under the `/loki/ruler` prefix (see [Storing](../storing/)).
-- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so evaluation scales horizontally.
-- **Delegated execution.** A ruler can hand query execution to the [Loki Query Frontend](../architecture/#loki-query-frontend) to benefit from query splitting and caching.
+- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so outside a ring change each group is evaluated by one ruler, and evaluation scales horizontally.
+  [Loki Ruler](../architecture/#ruler) covers the ring change, and what happens to a ruler's groups when it is lost.
+- **Local execution.** The rulers run their queries themselves.
+  Loki can instead hand them to the [Loki Query Frontend](../architecture/#loki-query-frontend) for query splitting and caching, but the chart does not configure that.
 
 ## Managing rules
 
@@ -5026,12 +5055,13 @@ the one matching its engine.
 The same requirement follows: **exactly one Loki-type datasource must be marked default**, or every panel on those
 tabs renders empty.
 
-The chart ships two, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
+The chart ships three, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
 
 | Datasource | Type | UID | In-cluster endpoint | Notes |
 |---|---|---|---|---|
-| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
+| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos`; declares a scrape interval — see below |
 | Loki | `loki` | `mzmon-loki` | `http://loki-gateway.<namespace>.svc:8080` | The Loki gateway; carries a tenant header — see below |
+| Alertmanager | `alertmanager` | `mzmon-alertmanager` | `http://alertmanager.<namespace>.svc.cluster.local:9093` | Read and written by Grafana's alerting UI; `https` when `alerting.server.tls` is on |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
 `<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
@@ -5063,6 +5093,18 @@ connections:
 ```
 
 Datasources are provisioned with `editable: false` and re-pushed every `resyncPeriod`, the same as dashboards.
+
+### Thanos declares the slowest scrape interval
+
+Grafana sizes `$__rate_interval` from the datasource's scrape interval, `jsonData.timeInterval`, and assumes 15s when it is unset.
+That makes the window one minute, which holds a single sample of a 60s scrape, and `rate()` over a single sample returns nothing.
+The gateway scrapes cAdvisor and kube-proxy every 60s, so every container CPU panel would draw scattered points.
+
+The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubelet.scrapeInterval` and `pipeline.metrics.kubeProxy.scrapeInterval`.
+Metrics scraped faster than that get a coarser minimum step and still draw.
+`connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
+The render warns about an override shorter than the chart's value, since that brings the scattered points back.
+The [style guidelines]({{< relref "../../reference/internal/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 
@@ -6342,9 +6384,17 @@ Rule results reach every metric destination the gateway fans out to, rather than
 The ruler holds no PersistentVolumeClaim.
 And forwarding alert state off-cluster becomes possible at all, because that forwarding happens at the gateway.
 
-Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream subchart models no `remoteWrite` key.
-**That argument is load-bearing.**
-A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
+Stateless mode is the subchart's `thanos.ruler.remoteWrite`.
+With it, the ruler is passed `--remote-write.config-file` and no `--objstore.config-file`, so it runs no block shipper.
+Setting `remoteWrite.enabled: false` reverts the ruler to a local TSDB, which the render warns about.
+
+The remote-write configuration targets the alloy-gateway, and the chart renders it as a Secret that `remoteWrite.secretName` names.
+The chart renders it rather than passing it through `remoteWrite.config`, because the gateway's address depends on the gateway's namespace and TLS mode, and the subchart cannot read either.
+There are two Secrets, one per TLS mode, and `profiles/mtls.values.yaml` selects the TLS one.
+A deployment MAY name a Secret of its own instead, or set `secretName: ""` with `createSecret: true` and its own `config`; the render's checks against the gateway then no longer apply.
+
+Before the subchart modeled it, the chart reached stateless mode through `thanos.ruler.extraArgs` and a `remote-write` entry in `extraVolumes` and `extraVolumeMounts`.
+An override that still restates either entry fails the render, because the subchart now renders both itself: Thanos refuses the repeated flag, and the API server refuses the repeated volume name.
 
 ## Every bundled rule is a `PrometheusRule`
 
@@ -9659,9 +9709,9 @@ Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare
 Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
 
 Both rulers also remote-write rule results, including the `ALERTS` series, to the gateway's metrics listener on 9090, which the profile moves to TLS.
-The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` ConfigMap.
-The profile points the ruler at the TLS one.
-The ruler reads that file once at startup, so switching ConfigMaps, which changes its pod template, is what rolls it onto TLS.
+The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` Secret.
+The profile points `thanos.ruler.remoteWrite.secretName` at the TLS one.
+The ruler reads that file once at startup, so switching Secrets, which changes its pod template, is what rolls it onto TLS.
 The names also carry a revision, which is bumped whenever the contents change, so a chart upgrade rolls the ruler onto new contents too.
 The Loki ruler's is in its subchart's values, so the profile restates its URL as https and adds a `tls_config`.
 Both present their own component's certificate from phase 1, so phase 3 can require one in any rollout order.
@@ -10996,7 +11046,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.2 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.24.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
@@ -12050,7 +12100,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
 </td>
     </tr>
     <tr>
@@ -14050,7 +14100,16 @@ because what it stored is the literal placeholder text.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).
+
+`timeInterval` is the scrape interval Grafana assumes when it sizes
+`$__rate_interval`. The chart sets it to the slower of
+`pipeline.metrics.kubelet.scrapeInterval` and
+`pipeline.metrics.kubeProxy.scrapeInterval` (60s by default). `rate()`
+needs two samples in its window, and with Grafana's own 15s assumption
+the window is one minute, which holds one sample of a 60s scrape.
+Set it here only when this datasource reads metrics scraped more slowly
+than that; the render warns about a shorter one.
 </td>
     </tr>
     <tr>
@@ -15893,6 +15952,29 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+instead of only when a chart release happens to carry a new `appVersion`.
+Every Loki component runs this image unless its own `image` overrides it.
+The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+the two so that they move together.
+
+In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+image, this one included. The profiles under `profiles/registry/` repoint
+`registry` and `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -16057,6 +16139,7 @@ Upstream reference:
   "alertmanager_url": "http://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}",
   "enable_alertmanager_discovery": true,
   "enable_alertmanager_v2": true,
+  "enable_sharding": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
   "remote_write": {
@@ -16082,7 +16165,7 @@ Upstream reference:
           },
           {
             "regex": "",
-            "replacement": "${POD_NAME}",
+            "replacement": "loki-ruler",
             "source_labels": [
               "instance"
             ],
@@ -16118,6 +16201,26 @@ side uses — and why `split-namespace` overrides both of them.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.enable_sharding</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Divide the rule groups between the ruler replicas, so each group is evaluated by one of them.
+
+Without it every replica loads every group: each alert is sent once per
+replica, and each recording-rule sample is written once per replica.
+
+The replicas divide the groups through a hash ring. Loki puts every ring
+on memberlist when `memberlist.join_members` is set, which the subchart
+does, so the ruler's ring rides the same gossip cluster as the rest of
+Loki and needs no configuration of its own.
+
+| A replica | Its groups move to the others |
+| --- | --- |
+| Stops cleanly (rollout, eviction, drain) | Within one evaluation, because it leaves the ring on the way out |
+| Is lost without stopping (node failure) | After two `heartbeat_timeout`s (two minutes by default), when the others forget it. The groups are not evaluated until then |
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -16144,7 +16247,7 @@ side uses — and why `split-namespace` overrides both of them.
         },
         {
           "regex": "",
-          "replacement": "${POD_NAME}",
+          "replacement": "loki-ruler",
           "source_labels": [
             "instance"
           ],
@@ -16763,6 +16866,13 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.ruler<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. They divide the rule groups between them rather than each evaluating all of them; see `loki.loki.rulerConfig.enable_sharding`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -16808,18 +16918,10 @@ https://grafana.com/docs/loki/latest/get-started/components/
         "name": "ruler-env"
       }
     }
-  },
-  {
-    "name": "POD_NAME",
-    "valueFrom": {
-      "fieldRef": {
-        "fieldPath": "metadata.name"
-      }
-    }
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
+      <td class="helm-value-desc">The cluster name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. A list: restate it when adding another.
 </td>
     </tr>
     <tr>
@@ -16861,6 +16963,45 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.memcached<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.memcachedExporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -16887,8 +17028,21 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
 </td>
     </tr>
     <tr>
@@ -16951,6 +17105,26 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre>
+</td>
+      <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Thanos on its own cadence, with Thanos's own release
+notes, instead of only when a chart release happens to carry a new
+`appVersion`. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under `profiles/registry/` repoint `registry` and
+`repository` and keep this tag.
 </td>
     </tr>
     <tr>
@@ -17842,7 +18016,6 @@ validator warns when the two disagree.
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
     "--label=cluster=\"$(CLUSTER_NAME)\""
   ],
   "extraEnv": [
@@ -17858,24 +18031,12 @@ validator warns when the two disagree.
   ],
   "extraVolumeMounts": [
     {
-      "mountPath": "/etc/thanos/remote-write.yaml",
-      "name": "remote-write",
-      "readOnly": true,
-      "subPath": "remote-write.yaml"
-    },
-    {
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
     }
   ],
   "extraVolumes": [
-    {
-      "configMap": {
-        "name": "thanos-ruler-remote-write-v2"
-      },
-      "name": "remote-write"
-    },
     {
       "name": "mzmon-tls",
       "secret": {
@@ -17897,6 +18058,10 @@ validator warns when the two disagree.
     "urls": [
       "http://thanos-query:9090"
     ]
+  },
+  "remoteWrite": {
+    "enabled": true,
+    "secretName": "thanos-ruler-remote-write-v2"
   },
   "replicaCount": 2,
   "resources": {
@@ -18028,8 +18193,8 @@ lists `example-alerts.yaml` as a required property**, so neither
 `rules: {}` (which would not clear a subchart default anyway) nor
 `example-alerts.yaml: null` renders — the second fails schema validation
 before any template runs. A rule file declaring no groups is the only
-spelling that both satisfies the schema and evaluates nothing. Fixing that
-upstream is on the same list as the missing `remoteWrite` key.
+spelling that both satisfies the schema and evaluates nothing, until the
+schema is fixed upstream.
 
 The render fails if the example rule comes back.
 
@@ -18102,22 +18267,15 @@ advice applies: keep it within one minor of your API server.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.remoteWrite</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
-  "--label=cluster=\"$(CLUSTER_NAME)\""
-]</pre>
+{
+  "enabled": true,
+  "secretName": "thanos-ruler-remote-write-v2"
+}</pre>
 </td>
       <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
-
-**The subchart models no `remoteWrite` key**, and its StatefulSet passes
-`--objstore.config-file` unconditionally, so stateless is reached by
-pointing `extraArgs` at a ConfigMap the umbrella renders
-(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
-tracked; until it lands, **this flag is load-bearing** — drop it and the
-Ruler silently reverts to a local TSDB.
 
 Three reasons stateless is the right mode here, in ascending order of how
 much they matter. It removes a stateful workload. It puts rule results on
@@ -18127,16 +18285,41 @@ interaction. And it is what makes alert state forwardable: a Ruler shipping
 blocks puts `ALERTS` in Thanos and out of reach of every gateway
 destination except Thanos.
 
-The residue is that the Ruler still starts a block shipper against the
-object store. With an agent WAL and no blocks in the data directory it
-scans every 30s and uploads nothing.
+With `enabled`, the subchart passes `--remote-write.config-file` and drops
+`--objstore.config-file`, so the Ruler runs no block shipper. The
+configuration targets the alloy-gateway's metrics listener, and **the
+chart renders it as a Secret** (`templates/thanos-ruler-remote-write.yaml`)
+rather than through `config`, because the gateway's address follows
+umbrella values that the subchart's `tpl` cannot read.
 
-**`--label=cluster` is load-bearing too.** It is an external label, which
-the Ruler adds to every alert it sends that does not already carry
-`cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
-Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-chart renders from `clusterName`. Both flags have to survive
-an override of this list; the render warns when either goes missing.
+`secretName` is one of two Secrets the chart renders, `-tls` for when
+`pipeline.metrics.gateway.server.tls` is on, which
+`profiles/mtls.values.yaml` selects and the render enforces. The Ruler
+reads the file once at startup, so the names carry the mode and a
+revision: switching Secrets changes the pod template, which is what rolls
+it.
+
+Writing elsewhere means naming another Secret here, or setting
+`secretName: ""` with `createSecret: true` and the configuration in
+`config`. The render's gateway checks then no longer apply.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--label=cluster=\"$(CLUSTER_NAME)\""
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra Ruler flags.
+
+**`--label=cluster` is load-bearing.** It is an external label, which the
+Ruler adds to every alert it sends that does not already carry `cluster`,
+and to every sample it writes. `$(CLUSTER_NAME)` is expanded by Kubernetes
+from `extraEnv` below, which reads the `ruler-env` ConfigMap the chart
+renders from `clusterName`. It has to survive an override of this list;
+the render warns when it goes missing.
 </td>
     </tr>
     <tr>
@@ -18164,12 +18347,6 @@ an override of this list; the render warns when either goes missing.
       <td class="helm-value-default"><pre>
 [
   {
-    "configMap": {
-      "name": "thanos-ruler-remote-write-v2"
-    },
-    "name": "remote-write"
-  },
-  {
     "name": "mzmon-tls",
     "secret": {
       "optional": true,
@@ -18178,21 +18355,14 @@ an override of this list; the render warns when either goes missing.
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
-
-`remote-write` is the plaintext variant of the Ruler's remote-write
-configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
-name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
-the render enforces. The Ruler reads the file once at startup, so the names
-carry the mode and a revision: switching ConfigMaps changes the pod
-template, which is what rolls it.
+      <td class="helm-value-desc">The Thanos certificate, for the Ruler's TLS clients.
 
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
 `alerting.server.tls` is on and to the gateway when its metrics listener
 serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
 so the same values work before issuance, during it and after.
-This is a list: restate both entries when adding one.
+This is a list: restate the entry when adding one.
 </td>
     </tr>
     <tr>
@@ -18307,6 +18477,26 @@ Upstream references:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
       <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+
+Unlike the other pins, this one is not meant to move on its own. The
+operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint `registry` and `repository` while keeping the tag.
 </td>
     </tr>
     <tr>
@@ -18569,6 +18759,19 @@ enforced at render time. The `grafana-pvc` profile is the assembled version.
 
 Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
 is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.initChownData<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.
 </td>
     </tr>
     <tr>
@@ -19421,6 +19624,19 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -19902,6 +20118,18 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
 </td>
     </tr>
     <tr>
@@ -22534,6 +22762,8 @@ Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window
 > ```
 >
 > Keep `timeInterval` in sync with the actual `scrape_interval`.
+  The chart's own Thanos datasource derives it from the pipeline's slowest scrape; see
+  [Thanos declares the slowest scrape interval]({{< relref "../../../dashboards/grafana/architecture.md" >}}#thanos-declares-the-slowest-scrape-interval).
   Diagnose a suspected mismatch with `count_over_time(<metric>[1m])` — if it returns `1`, the scrape interval is ≥60s
   and a `[1m]` rate window can't compute.
   The per-panel "Min interval" (`minStep`) is a local override of the same value, but the datasource setting is the
@@ -24376,7 +24606,7 @@ Releases track a monthly cadence aligned to the **15th**.
 
 Milestones are named by maturity stage; the date is a soft target.
 
-Linear restarts milestone numbering at M1 for every project, so milestones here carry a project prefix — **FCO-M1**–**FCO-M4**, **OO-M1**–**OO-M3**, **BYOC-Design** / **BYOC-CP** / **BYOC-Impl**, and **CLOM-Design**.
+Linear restarts milestone numbering at M1 for every project, so milestones here carry a project prefix — **FCO-M1**–**FCO-M4**, **OO-M1**–**OO-M3**, **BYOC-Design** / **BYOC-CP** / **BYOC-Impl**, and **CLOM-Design** / **CLOM-Labels**.
 Item tables below reference milestones by those prefixed tags.
 A bare **BYOC** or **CLOM** means the item is in that project with no milestone yet.
 
@@ -24423,7 +24653,8 @@ The workstreams are [BYOC](#byoc) and [Call-home from self-managed](#call-home-f
 
 | Milestone | Target | Deliverables |
 |---|---|---|
-| **Design and client feedback** (CLOM-Design) | September 30 | Nothing ticketed against it yet |
+| **Design and client feedback** (CLOM-Design) | October 15 | Nothing ticketed against it yet |
+| **Metric label standardization** (CLOM-Labels) | — | One label vocabulary for Materialize's metrics, the reserved list, and the authoritative environment key ([DEP-346](https://linear.app/materializeinc/issue/DEP-346)–[DEP-365](https://linear.app/materializeinc/issue/DEP-365)); see [Metric label vocabulary](#metric-label-vocabulary) |
 | *(no milestone)* (CLOM) | — | The tenant-scoped query API, which is the Thanos metric proxy ([DEP-269](https://linear.app/materializeinc/issue/DEP-269)); adoption in Materialize Cloud via Pulumi; Cloud's internal monitoring on this repo's `values.yaml`; k8s controller instrumentation; agent→gateway OTLP with a WAL; generic scrape discovery; the scanner follow-ups; the Day 1 Sizing dashboard |
 
 CLOM deliberately excludes the control plane, which is BYOC's.
@@ -24681,18 +24912,19 @@ The first pass is what lets this repo commit to label names it does not emit, an
 The upstream half is listed under [Metrics contract](#metrics-contract-upstream-dependency).
 
 Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), as the label-family item of [DEP-207](https://linear.app/materializeinc/issue/DEP-207).
-None of the rows below is ticketed yet, and their milestone is provisional until the design is accepted.
+Tracked in the **CLOM-Labels** milestone, gated on design acceptance in [DEP-346](https://linear.app/materializeinc/issue/DEP-346).
 
 | Item | Milestone | Status |
 |---|---|---|
-| Metric label vocabulary — design doc plus review | CLOM | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
-| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor. A live defect with no consumer to migrate | CLOM | ⬜ |
-| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, owned by the Prometheus Scrapers component | CLOM | ⬜ |
-| Transpiler: target aliases per flavor, and metric aliases, reserved moves and drops into `metricRelabelings`. The GMP render refuses what it cannot express rather than dropping it | CLOM | ⬜ |
-| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap | CLOM | ⬜ |
-| Generated customer-facing label contract, merged with the alerting design's owed label contract | CLOM | ⬜ |
-| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, then `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` switched to `environment_id` and `mz_environment_info` once the operator floor allows. Waits on the orchestratord change under [Metrics contract](#metrics-contract-upstream-dependency) | CLOM | ⬜ |
-| Alias retirement after the 30-day overlap | CLOM | ⬜ |
+| Metric label vocabulary — design doc plus review ([DEP-346](https://linear.app/materializeinc/issue/DEP-346); upstream review in [SQL-754](https://linear.app/materializeinc/issue/SQL-754)) | CLOM-Labels | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
+| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)). A live defect with no consumer to migrate | CLOM-Labels | ⬜ |
+| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, and the transpiler generating target aliases, metric aliases, reserved moves and drops from it in every flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | CLOM-Labels | ⬜ |
+| The GMP render refuses what it cannot express rather than dropping it, proven against GMP's admission webhook ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | CLOM-Labels | ⬜ |
+| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, and the same key as log structured metadata ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)). Waits on the orchestratord change ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) for its effect, not its merge | CLOM-Labels | ⬜ |
+| Environment switch: `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` on `environment_id` and `mz_environment_info` once the operator floor allows, and `materialize_cloud_organization_*` deprecated ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)); a kube-state-metrics bridge for `mz_environment_info` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | CLOM-Labels | ⬜ |
+| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | CLOM-Labels | ⬜ |
+| Generated customer-facing label contract, merged with the alerting design's owed label contract, and a registry check against it ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | CLOM-Labels | ⬜ |
+| Alias retirement after the 30-day overlap ([DEP-360](https://linear.app/materializeinc/issue/DEP-360)) | CLOM-Labels | ⬜ |
 
 ### Charts / Helm
 
@@ -24754,7 +24986,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../common-alerts/) until runbooks exist) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
-| Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
+| Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ (the two replicas shard the rule groups, so each rule is evaluated once rather than once per replica; fixed with [DEP-327](https://linear.app/materializeinc/issue/DEP-327)) |
 | Loki rules in Grafana's alerting UI, through the nginx Loki gateway on the read path | — | ✅ (the Loki datasource points at the gateway, which routes rule and alert state to the ruler and refuses rule edits, so Grafana lists the rules read-only; the E2E check `grafana::loki_rules_listed` asserts both. See [Gateway / ingress](../design-docs/20260627-loki-production-infrastructure/#gateway--ingress) for why nginx's DNS objection does not apply) |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. No recording rule is written yet) |
 | Log-derived alert definitions in the query registry | OO-M2 | ✅ (`materialize-log-alerts.yaml` ports Cloud's clicked-in Loki rules by shape rather than verbatim: `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` in the default set, `trace-logging-enabled` opt-in, and the hanging-query rule dropped because its error came from the removed gRPC transport. See [Authoring Alerts](../queries/alerts/#log-derived-alerts)) |
@@ -24779,12 +25011,13 @@ The Alertmanager the rulers notify now routes by severity and preset to whatever
 and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
 
-Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
-Each is worked around in `values.yaml` with the reasoning recorded at the line.
+Three subchart gaps were found in the wiring and owed upstream fixes to `thanos-community/helm-charts`.
+The first is fixed upstream and adopted.
+The other two are worked around in `values.yaml`, with the reasoning recorded at the line.
 
 | Gap | Workaround |
 |---|---|
-| `thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally | Stateless is reached through `extraArgs` plus a ConfigMap the umbrella renders. The ruler still starts a block shipper against the object store, which scans an agent WAL and uploads nothing. Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`); moving onto it is [DEP-329](https://linear.app/materializeinc/issue/DEP-329) |
+| ~~`thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally~~ | ✅ Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`) and adopted with [DEP-329](https://linear.app/materializeinc/issue/DEP-329). The ruler no longer passes `--objstore.config-file`, so no block shipper runs. The umbrella still renders the remote-write configuration, as the Secret `remoteWrite.secretName` names, because the gateway's address follows umbrella values the subchart's `tpl` cannot read |
 | The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
 | The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
 
@@ -25043,8 +25276,9 @@ High-leverage asks, in priority order:
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
   Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), whose first pass is relabeling in this repository (see [Metric label vocabulary](#metric-label-vocabulary)).
-  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on.
-  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output; `/metrics/public` replacing rather than appending replica labels; the reserved `cluster` const label on two compute families; then `instance_id` → `cluster_id` and entity-qualified `_info` payload labels, each after its alias ships here.
+  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)).
+  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)); `/metrics/public` replacing rather than appending replica labels ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)); the reserved `cluster` const label on two compute families ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)); then `instance_id` → `cluster_id` ([DEP-357](https://linear.app/materializeinc/issue/DEP-357)) and entity-qualified `_info` payload labels ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)), each after its alias ships here.
+  The remaining renames and follow-ons are [DEP-362](https://linear.app/materializeinc/issue/DEP-362), [DEP-363](https://linear.app/materializeinc/issue/DEP-363), [DEP-364](https://linear.app/materializeinc/issue/DEP-364) and [DEP-365](https://linear.app/materializeinc/issue/DEP-365), all in CLOM-Labels.
 - ⬜ **Latency histograms for the rest of persist's dependency calls.** `blob_get`, `blob_set` and `consensus_cas` already publish one, which `env-persist` and `env-consensus` read; `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle have only a mean, which hides the tail. Narrowed from the original ask, which assumed no latency was published at all. See [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
@@ -27693,7 +27927,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 | ~~Loki and Thanos server TLS through subchart passthrough~~ **Shipped** via `profiles/mtls.values.yaml`. Loki: `loki.server.http_tls_config` + `defaults.extraVolumes`/`extraVolumeMounts`/`readinessProbe` + `monitoring.serviceMonitor.scheme` + canary flags. Thanos: `receive.extraArgs` + volumes. A validator refuses every half-applied combination rather than pinning keys with snapshots — the coupling, not the key names, is what breaks | — | 1–2 |
 | ~~Modeled `connections.datasources.*.tls` for Grafana → backends~~ **Shipped** and verified against a live Grafana: `tls.caPem` (inline; a CA is public material) or `tls.caSecret` (a `valuesFrom` reference). Neither is defaulted, because an https datasource with no CA fails as an empty dashboard — the render refuses it. **Cluster finding, now fixed:** grafana-operator's `valuesFrom` substitutes into a `${...}` placeholder that must already exist at the target path **and must be named for the `secretKeyRef` key** — `${ca.crt}`, not a token of the chart's choosing. The chart emitted `${tlsCACert}`, so nothing substituted and Grafana stored the literal, reporting `failed to parse TLS CA PEM certificate` at query time while the CR, the operator log and `secureJsonFields` all looked correct. The placeholder is now derived from the key, `caSecret.name` is `tpl`-rendered so a profile can name a release-dependent Secret, and `mtls.values.yaml` wires Grafana's own certificate Secret with no operator action. Verified on grafana-operator v5.24.0 at tier 2. Grafana → Thanos Query is not shipped: Query has no `--http.tls-*` flags, only an experimental `--http.config` that would also TLS its probe endpoints | — | 2 |
 | ~~`profiles/mtls.values.yaml`~~ **Shipped** | most of the above | 2 |
-| ~~Rulers' remote-write to the gateway over TLS~~ **Shipped** ([DEP-323](https://linear.app/materializeinc/issue/DEP-323)). The chart renders the Thanos ruler's remote-write configuration as a plaintext and a TLS ConfigMap, and `mtls.values.yaml` mounts the TLS one. The ruler reads the file once at startup and the subchart's pod annotations are static, so switching ConfigMaps is the only way to roll it; changed contents alone never reached a running ruler. `mtls.values.yaml` also restates the Loki ruler's client. Both present from phase 1. Until this, a Thanos ruler under the mTLS profiles failed every write with `certificate signed by unknown authority`, and the gateway logged a handshake error per attempt | profiles | 3 |
+| ~~Rulers' remote-write to the gateway over TLS~~ **Shipped** ([DEP-323](https://linear.app/materializeinc/issue/DEP-323)). The chart renders the Thanos ruler's remote-write configuration as a plaintext and a TLS ConfigMap, and `mtls.values.yaml` mounts the TLS one. The ruler reads the file once at startup and the subchart's pod annotations are static, so switching ConfigMaps is the only way to roll it; changed contents alone never reached a running ruler. `mtls.values.yaml` also restates the Loki ruler's client. Both present from phase 1. Until this, a Thanos ruler under the mTLS profiles failed every write with `certificate signed by unknown authority`, and the gateway logged a handshake error per attempt. The two ConfigMaps became Secrets with [DEP-329](https://linear.app/materializeinc/issue/DEP-329), named by `thanos.ruler.remoteWrite.secretName`, which is what the profile now switches | profiles | 3 |
 | ~~Alertmanager server TLS~~ **Shipped** as `alerting.server.tls`, rendered into `--web.config.file`, with the probes, reloader, ServiceMonitor, both rulers and the Grafana datasource moved by the mTLS profiles. `VerifyClientCertIfGiven` at phase 2 is its ceiling; the render refuses `RequireAndVerifyClientCert` while the probes or reloader would be locked out | profiles | 3 |
 | Terraform `issuer_ref` / `internal_issuer_ref` variables and default-on wiring | chart side | 2 |
 | Rotation, negative-auth, and transport E2E assertions | per hop | with each hop |
@@ -29141,6 +29375,9 @@ Stateless is correct here for three reasons, in ascending order of how much they
 It exposes `ruler.extraArgs`, so `--remote-write.config` is reachable, and reaching it that way leaves the PVC and the objstore flag configured for a mode the ruler is no longer in.
 Modeling stateless ruler properly is a prerequisite rather than a values trick, and it is the kind of subchart gap this repository has fixed upstream before.
 
+**Update:** thanos 0.44.0 models it as `ruler.remoteWrite`, and the chart moved onto it with [DEP-329](https://linear.app/materializeinc/issue/DEP-329).
+The ruler no longer passes `--objstore.config-file`.
+
 ### Alertmanager runs HA by default
 
 **Decision: two replicas with gossip enabled, in the default configuration rather than behind a hardening profile.**
@@ -29657,7 +29894,7 @@ Work in this repository, roughly in dependency order.
 | Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
 | Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
-| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
+| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | ✅ done. thanos 0.44.0 models `ruler.remoteWrite`, and [DEP-329](https://linear.app/materializeinc/issue/DEP-329) moved the ruler onto it: no `--objstore.config-file`, no block shipper, the PVC off. The umbrella renders the remote-write Secret it names, because the gateway's address follows umbrella values |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done. The rule store is the ruler bucket. The LogQL rules are `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into it through the ruler API, once per tenant. The Thanos importer's selector excludes that flavor with a `flavor!: logql` key. A Prometheus Operator admission webhook in the same cluster still validates them as PromQL, and has to be told to skip them |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
 | `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |
@@ -33075,54 +33312,54 @@ The second is whether Cloud sets `spec.environmentName` to the name a customer s
 ## Upstream work
 
 Work in **`MaterializeInc/materialize`**, in the order [above](#the-order-keeps-it-invisible).
-None of it is ticketed yet.
+Tracked in the **Metric label standardization** milestone of the CLOM project, with the upstream review in [SQL-754](https://linear.app/materializeinc/issue/SQL-754).
 The metrics owners are the SQL team's Improve Prometheus Metrics project, with persist's families coordinated with the persist team.
 
 | Item | Why | Order |
 |---|---|---|
-| orchestratord adds `materialize.cloud/environment-id` to `default_labels()` | The only route for `environment_id` onto every series; everything environment-scoped waits on it | 1, additive |
-| orchestratord emits `mz_environment_info{environment_id, environment_name, environment_namespace}`, one series per resource | The environment's name, available while environmentd is down | 1, additive |
-| Label lint over `doc/user/data/metrics.yml`, reading the vocabulary | Stops the vocabulary eroding one metric at a time | 1 |
-| Reserved check on postprocessor labels and on metric-sink user labels | Two label sources the lint cannot see | 1 |
-| `add_replica_labels` replaces rather than appends | A latent duplicate label name the day any clusterd series carries `cluster_id` | 2 |
-| `cluster` → `server_name` on the two compute families | Reserved collision | 3 |
-| Remove `honeycomb` from the persist failure counters | A vendor hint with one constant value | 3 |
-| `instance_id` and `compute_instance` → `cluster_id` | The largest family of aliases | 4, after the alias ships here |
-| `_info` payload labels entity-qualified: `cluster_name`, `replica_name`, `object_name`, `object_type`, `source_type`, `sink_type`, `cluster_size`, `replica_size` | Two info joins in one expression | 4 |
-| `global_id` → `collection_id` on `mz_object_info` | One name for a collection's id | 4 |
-| `shard` → `shard_id`, persist `name` → `shard_name` | One name for a shard across persist and storage; coordinated with persist's cardinality work so the two land as one change per family | 4 |
-| `version` → `build_version` on the start-time and metadata families | Datadog-reserved; one name across components | 4 |
-| `source` qualified per family | Datadog-reserved and a catalog noun | 4, with each owning team |
-| `mz_dataflow_wallclock_lag_seconds` as a real histogram or summary | Retires the `quantile` exception | Independent |
-| An optional, mutable `spec.environmentName` on the `Materialize` resource, read by `mz_environment_info` in preference to `metadata.name` | A display name a person can change without recreating the resource | Independent; a CRD change |
-| `/metrics/public` stops appending `cluster_name` and `replica_name` to every federated series | [Ids on series, names on `_info`](#ids-on-series-names-on-_info); a cluster rename splits every series it touches | After the info joins are the norm |
-| orchestratord's per-resource reconciliation metrics carry `environment_id` | `env-upgrade`'s Reconciliation tab could then scope to one environment | Could; a change to the shared `k8s-controller` crate |
+| orchestratord adds `materialize.cloud/environment-id` to `default_labels()` ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The only route for `environment_id` onto every series; everything environment-scoped waits on it | 1, additive |
+| orchestratord emits `mz_environment_info{environment_id, environment_name, environment_namespace}`, one series per resource ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) | The environment's name, available while environmentd is down | 1, additive |
+| Label lint over `doc/user/data/metrics.yml`, reading the vocabulary ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Stops the vocabulary eroding one metric at a time | 1 |
+| Reserved check on postprocessor labels and on metric-sink user labels ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)) | Two label sources the lint cannot see | 1 |
+| `add_replica_labels` replaces rather than appends ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)) | A latent duplicate label name the day any clusterd series carries `cluster_id` | 2 |
+| `cluster` → `server_name` on the two compute families ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)) | Reserved collision | 3 |
+| Remove `honeycomb` from the persist failure counters ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)) | A vendor hint with one constant value | 3 |
+| `instance_id` and `compute_instance` → `cluster_id` ([DEP-357](https://linear.app/materializeinc/issue/DEP-357)) | The largest family of aliases | 4, after the alias ships here |
+| `_info` payload labels entity-qualified: `cluster_name`, `replica_name`, `object_name`, `object_type`, `source_type`, `sink_type`, `cluster_size`, `replica_size` ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)) | Two info joins in one expression | 4 |
+| `global_id` → `collection_id` on `mz_object_info` ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)) | One name for a collection's id | 4 |
+| `shard` → `shard_id`, persist `name` → `shard_name` ([DEP-362](https://linear.app/materializeinc/issue/DEP-362)) | One name for a shard across persist and storage; coordinated with persist's cardinality work so the two land as one change per family | 4 |
+| `version` → `build_version` on the start-time and metadata families ([DEP-362](https://linear.app/materializeinc/issue/DEP-362)) | Datadog-reserved; one name across components | 4 |
+| `source` qualified per family ([DEP-362](https://linear.app/materializeinc/issue/DEP-362)) | Datadog-reserved and a catalog noun | 4, with each owning team |
+| `mz_dataflow_wallclock_lag_seconds` as a real histogram or summary ([DEP-364](https://linear.app/materializeinc/issue/DEP-364)) | Retires the `quantile` exception | Independent |
+| An optional, mutable `spec.environmentName` on the `Materialize` resource, read by `mz_environment_info` in preference to `metadata.name` ([DEP-363](https://linear.app/materializeinc/issue/DEP-363)) | A display name a person can change without recreating the resource | Independent; a CRD change |
+| `/metrics/public` stops appending `cluster_name` and `replica_name` to every federated series ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)) | [Ids on series, names on `_info`](#ids-on-series-names-on-_info); a cluster rename splits every series it touches | After the info joins are the norm |
+| orchestratord's per-resource reconciliation metrics carry `environment_id` ([DEP-365](https://linear.app/materializeinc/issue/DEP-365)) | `env-upgrade`'s Reconciliation tab could then scope to one environment | Could; a change to the shared `k8s-controller` crate |
 
 ## Chart-side prerequisites
 
 Work in **this** repo.
 Ordered roughly by dependency.
-None of this is ticketed yet; [DEP-207](https://linear.app/materializeinc/issue/DEP-207) is the umbrella.
+Tracked in the same milestone, gated on design acceptance in [DEP-346](https://linear.app/materializeinc/issue/DEP-346); [DEP-207](https://linear.app/materializeinc/issue/DEP-207) is the umbrella.
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` | The single source every other row generates from | **Blocking** |
-| **The `cluster` move and the `honeycomb` drop** on the clusterd monitor | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
-| **Target-alias rendering** in the transpiler, per flavor | `podTargetLabels` cannot rename, so clusterd's ids cannot reach `cluster_id` without it | **Blocking** for clusterd |
-| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` | The aliases themselves | **Blocking** |
-| **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
-| **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
-| **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
-| **Compatibility declaration** of the operator version that sets the pod label | The switch is safe only above it | **Blocking** for the switch |
-| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes` | Covers operators that predate the upstream info metric | Could |
-| **Agent writes `environment_id`** as log structured metadata from the same pod label | One environment key across both engines | Should |
-| **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names | Step 3 of the overlap | **Blocking** for retiring aliases |
-| **Alert rules aggregate by both names** through the window, with the promtool tests updated | No alert loses a label inside the window | **Blocking** for the registry migration |
-| **Registry check** rejecting a reserved label as a matcher on a Materialize metric, and a retired alias anywhere | Keeps the registry on the vocabulary | Should |
-| **Generated label-contract page** from `labels.yaml`, merged with the alerting design's owed label contract | One contract for routing and for queries | Should |
+| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The single source every other row generates from | **Blocking** |
+| **The `cluster` move and the `honeycomb` drop** on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)) | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
+| **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so clusterd's ids cannot reach `cluster_id` without it | **Blocking** for clusterd |
+| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The aliases themselves | **Blocking** |
+| **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
+| **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
+| **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |
+| **Compatibility declaration** of the operator version that sets the pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | The switch is safe only above it | **Blocking** for the switch |
+| **`mz_environment_info` bridge** through kube-state-metrics `customResourceState`, with list and watch on `materializes` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | Covers operators that predate the upstream info metric | Could |
+| **Agent writes `environment_id`** as log structured metadata from the same pod label ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | One environment key across both engines | Should |
+| **Registry migration**: queries, selectors in `env_top/selector.rs`, variables, and the `mzClusterName` / `mzObjectName` helpers onto canonical names ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | Step 3 of the overlap | **Blocking** for retiring aliases |
+| **Alert rules aggregate by both names** through the window, with the promtool tests updated ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | No alert loses a label inside the window | **Blocking** for the registry migration |
+| **Registry check** rejecting a reserved label as a matcher on a Materialize metric, and a retired alias anywhere ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | Keeps the registry on the vocabulary | Should |
+| **Generated label-contract page** from `labels.yaml`, merged with the alerting design's owed label contract ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | One contract for routing and for queries | Should |
 | **`kube_pod_labels` adopts the canonical names** when [DEP-253](https://linear.app/materializeinc/issue/DEP-253) lands, with `materialize.cloud/environment-id` in its allowlist and a metric alias on the kube-state-metrics monitor | Otherwise its join keys are `label_cluster_environmentd_materialize_cloud_cluster_id` and `label_materialize_cloud_organization_name`, two more spellings | Should, with DEP-253 |
 | **E2E assertions** below | The failure mode is a rule that renders and does nothing | Should |
-| **Alias retirement** after 30 days: `labeldrop` and the allowlist trimmed | Step 5 | Not blocking |
+| **Alias retirement** after 30 days: `labeldrop` and the allowlist trimmed ([DEP-360](https://linear.app/materializeinc/issue/DEP-360)) | Step 5 | Not blocking |
 
 ## Testing
 

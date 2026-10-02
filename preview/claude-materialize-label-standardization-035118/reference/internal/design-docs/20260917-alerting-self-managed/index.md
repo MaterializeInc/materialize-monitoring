@@ -349,6 +349,9 @@ Stateless is correct here for three reasons, in ascending order of how much they
 It exposes `ruler.extraArgs`, so `--remote-write.config` is reachable, and reaching it that way leaves the PVC and the objstore flag configured for a mode the ruler is no longer in.
 Modeling stateless ruler properly is a prerequisite rather than a values trick, and it is the kind of subchart gap this repository has fixed upstream before.
 
+**Update:** thanos 0.44.0 models it as `ruler.remoteWrite`, and the chart moved onto it with [DEP-329](https://linear.app/materializeinc/issue/DEP-329).
+The ruler no longer passes `--objstore.config-file`.
+
 ### Alertmanager runs HA by default
 
 **Decision: two replicas with gossip enabled, in the default configuration rather than behind a hardening profile.**
@@ -865,7 +868,7 @@ Work in this repository, roughly in dependency order.
 | Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
 | Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
-| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
+| Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | ✅ done. thanos 0.44.0 models `ruler.remoteWrite`, and [DEP-329](https://linear.app/materializeinc/issue/DEP-329) moved the ruler onto it: no `--objstore.config-file`, no block shipper, the PVC off. The umbrella renders the remote-write Secret it names, because the gateway's address follows umbrella values |
 | `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done. The rule store is the ruler bucket. The LogQL rules are `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into it through the ruler API, once per tenant. The Thanos importer's selector excludes that flavor with a `flavor!: logql` key. A Prometheus Operator admission webhook in the same cluster still validates them as PromQL, and has to be told to skip them |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
 | `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |

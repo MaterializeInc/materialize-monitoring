@@ -44,7 +44,7 @@ Releases track a monthly cadence aligned to the **15th**.
 
 Milestones are named by maturity stage; the date is a soft target.
 
-Linear restarts milestone numbering at M1 for every project, so milestones here carry a project prefix — **FCO-M1**–**FCO-M4**, **OO-M1**–**OO-M3**, **BYOC-Design** / **BYOC-CP** / **BYOC-Impl**, and **CLOM-Design**.
+Linear restarts milestone numbering at M1 for every project, so milestones here carry a project prefix — **FCO-M1**–**FCO-M4**, **OO-M1**–**OO-M3**, **BYOC-Design** / **BYOC-CP** / **BYOC-Impl**, and **CLOM-Design** / **CLOM-Labels**.
 Item tables below reference milestones by those prefixed tags.
 A bare **BYOC** or **CLOM** means the item is in that project with no milestone yet.
 
@@ -91,7 +91,8 @@ The workstreams are [BYOC](#byoc) and [Call-home from self-managed](#call-home-f
 
 | Milestone | Target | Deliverables |
 |---|---|---|
-| **Design and client feedback** (CLOM-Design) | September 30 | Nothing ticketed against it yet |
+| **Design and client feedback** (CLOM-Design) | October 15 | Nothing ticketed against it yet |
+| **Metric label standardization** (CLOM-Labels) | — | One label vocabulary for Materialize's metrics, the reserved list, and the authoritative environment key ([DEP-346](https://linear.app/materializeinc/issue/DEP-346)–[DEP-365](https://linear.app/materializeinc/issue/DEP-365)); see [Metric label vocabulary](#metric-label-vocabulary) |
 | *(no milestone)* (CLOM) | — | The tenant-scoped query API, which is the Thanos metric proxy ([DEP-269](https://linear.app/materializeinc/issue/DEP-269)); adoption in Materialize Cloud via Pulumi; Cloud's internal monitoring on this repo's `values.yaml`; k8s controller instrumentation; agent→gateway OTLP with a WAL; generic scrape discovery; the scanner follow-ups; the Day 1 Sizing dashboard |
 
 CLOM deliberately excludes the control plane, which is BYOC's.
@@ -349,18 +350,19 @@ The first pass is what lets this repo commit to label names it does not emit, an
 The upstream half is listed under [Metrics contract](#metrics-contract-upstream-dependency).
 
 Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), as the label-family item of [DEP-207](https://linear.app/materializeinc/issue/DEP-207).
-None of the rows below is ticketed yet, and their milestone is provisional until the design is accepted.
+Tracked in the **CLOM-Labels** milestone, gated on design acceptance in [DEP-346](https://linear.app/materializeinc/issue/DEP-346).
 
 | Item | Milestone | Status |
 |---|---|---|
-| Metric label vocabulary — design doc plus review | CLOM | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
-| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor. A live defect with no consumer to migrate | CLOM | ⬜ |
-| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, owned by the Prometheus Scrapers component | CLOM | ⬜ |
-| Transpiler: target aliases per flavor, and metric aliases, reserved moves and drops into `metricRelabelings`. The GMP render refuses what it cannot express rather than dropping it | CLOM | ⬜ |
-| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap | CLOM | ⬜ |
-| Generated customer-facing label contract, merged with the alerting design's owed label contract | CLOM | ⬜ |
-| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, then `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` switched to `environment_id` and `mz_environment_info` once the operator floor allows. Waits on the orchestratord change under [Metrics contract](#metrics-contract-upstream-dependency) | CLOM | ⬜ |
-| Alias retirement after the 30-day overlap | CLOM | ⬜ |
+| Metric label vocabulary — design doc plus review ([DEP-346](https://linear.app/materializeinc/issue/DEP-346); upstream review in [SQL-754](https://linear.app/materializeinc/issue/SQL-754)) | CLOM-Labels | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
+| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)). A live defect with no consumer to migrate | CLOM-Labels | ⬜ |
+| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, and the transpiler generating target aliases, metric aliases, reserved moves and drops from it in every flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | CLOM-Labels | ⬜ |
+| The GMP render refuses what it cannot express rather than dropping it, proven against GMP's admission webhook ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | CLOM-Labels | ⬜ |
+| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, and the same key as log structured metadata ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)). Waits on the orchestratord change ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) for its effect, not its merge | CLOM-Labels | ⬜ |
+| Environment switch: `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` on `environment_id` and `mz_environment_info` once the operator floor allows, and `materialize_cloud_organization_*` deprecated ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)); a kube-state-metrics bridge for `mz_environment_info` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | CLOM-Labels | ⬜ |
+| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | CLOM-Labels | ⬜ |
+| Generated customer-facing label contract, merged with the alerting design's owed label contract, and a registry check against it ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | CLOM-Labels | ⬜ |
+| Alias retirement after the 30-day overlap ([DEP-360](https://linear.app/materializeinc/issue/DEP-360)) | CLOM-Labels | ⬜ |
 
 ### Charts / Helm
 
@@ -422,7 +424,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../common-alerts/) until runbooks exist) |
 | `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
-| Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
+| Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ (the two replicas shard the rule groups, so each rule is evaluated once rather than once per replica; fixed with [DEP-327](https://linear.app/materializeinc/issue/DEP-327)) |
 | Loki rules in Grafana's alerting UI, through the nginx Loki gateway on the read path | — | ✅ (the Loki datasource points at the gateway, which routes rule and alert state to the ruler and refuses rule edits, so Grafana lists the rules read-only; the E2E check `grafana::loki_rules_listed` asserts both. See [Gateway / ingress](../design-docs/20260627-loki-production-infrastructure/#gateway--ingress) for why nginx's DNS objection does not apply) |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. No recording rule is written yet) |
 | Log-derived alert definitions in the query registry | OO-M2 | ✅ (`materialize-log-alerts.yaml` ports Cloud's clicked-in Loki rules by shape rather than verbatim: `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` in the default set, `trace-logging-enabled` opt-in, and the hanging-query rule dropped because its error came from the removed gRPC transport. See [Authoring Alerts](../queries/alerts/#log-derived-alerts)) |
@@ -447,12 +449,13 @@ The Alertmanager the rulers notify now routes by severity and preset to whatever
 and with none configured every alert reaches `mzmon-null`.
 The remaining items in the table are what close that gap.
 
-Three subchart gaps were found in the wiring and owe upstream fixes to `thanos-community/helm-charts`.
-Each is worked around in `values.yaml` with the reasoning recorded at the line.
+Three subchart gaps were found in the wiring and owed upstream fixes to `thanos-community/helm-charts`.
+The first is fixed upstream and adopted.
+The other two are worked around in `values.yaml`, with the reasoning recorded at the line.
 
 | Gap | Workaround |
 |---|---|
-| `thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally | Stateless is reached through `extraArgs` plus a ConfigMap the umbrella renders. The ruler still starts a block shipper against the object store, which scans an agent WAL and uploads nothing. Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`); moving onto it is [DEP-329](https://linear.app/materializeinc/issue/DEP-329) |
+| ~~`thanos.ruler` models no `remoteWrite`, and the StatefulSet passes `--objstore.config-file` unconditionally~~ | ✅ Fixed upstream in thanos 0.44.0 (`ruler.remoteWrite`) and adopted with [DEP-329](https://linear.app/materializeinc/issue/DEP-329). The ruler no longer passes `--objstore.config-file`, so no block shipper runs. The umbrella still renders the remote-write configuration, as the Secret `remoteWrite.secretName` names, because the gateway's address follows umbrella values the subchart's `tpl` cannot read |
 | The subchart's `values.schema.json` marks `ruler.rules["example-alerts.yaml"]` **required**, so its `ExampleAlwaysFiring` rule cannot be removed from values | The file is emptied to `groups: []` rather than deleted. A render-time check fails if the rule returns |
 | The Loki subchart's `egress-alertmanager` NetworkPolicy selects `component: backend`, which no pod carries in Distributed mode | Unaffected in a single namespace. Under `split-namespace` the Loki ruler's egress cannot be opened from values at all; the profile says so |
 
@@ -711,8 +714,9 @@ High-leverage asks, in priority order:
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
   Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), whose first pass is relabeling in this repository (see [Metric label vocabulary](#metric-label-vocabulary)).
-  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on.
-  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output; `/metrics/public` replacing rather than appending replica labels; the reserved `cluster` const label on two compute families; then `instance_id` → `cluster_id` and entity-qualified `_info` payload labels, each after its alias ships here.
+  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)).
+  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)); `/metrics/public` replacing rather than appending replica labels ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)); the reserved `cluster` const label on two compute families ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)); then `instance_id` → `cluster_id` ([DEP-357](https://linear.app/materializeinc/issue/DEP-357)) and entity-qualified `_info` payload labels ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)), each after its alias ships here.
+  The remaining renames and follow-ons are [DEP-362](https://linear.app/materializeinc/issue/DEP-362), [DEP-363](https://linear.app/materializeinc/issue/DEP-363), [DEP-364](https://linear.app/materializeinc/issue/DEP-364) and [DEP-365](https://linear.app/materializeinc/issue/DEP-365), all in CLOM-Labels.
 - ⬜ **Latency histograms for the rest of persist's dependency calls.** `blob_get`, `blob_set` and `consensus_cas` already publish one, which `env-persist` and `env-consensus` read; `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle have only a mean, which hides the tail. Narrowed from the original ask, which assumed no latency was published at all. See [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user

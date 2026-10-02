@@ -40,7 +40,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.2 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.24.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
@@ -1094,7 +1094,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
 </td>
     </tr>
     <tr>
@@ -3094,7 +3094,16 @@ because what it stored is the literal placeholder text.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).
+
+`timeInterval` is the scrape interval Grafana assumes when it sizes
+`$__rate_interval`. The chart sets it to the slower of
+`pipeline.metrics.kubelet.scrapeInterval` and
+`pipeline.metrics.kubeProxy.scrapeInterval` (60s by default). `rate()`
+needs two samples in its window, and with Grafana's own 15s assumption
+the window is one minute, which holds one sample of a 60s scrape.
+Set it here only when this datasource reads metrics scraped more slowly
+than that; the render warns about a shorter one.
 </td>
     </tr>
     <tr>
@@ -4937,6 +4946,29 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+instead of only when a chart release happens to carry a new `appVersion`.
+Every Loki component runs this image unless its own `image` overrides it.
+The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+the two so that they move together.
+
+In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+image, this one included. The profiles under `profiles/registry/` repoint
+`registry` and `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -5101,6 +5133,7 @@ Upstream reference:
   "alertmanager_url": "http://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}",
   "enable_alertmanager_discovery": true,
   "enable_alertmanager_v2": true,
+  "enable_sharding": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
   "remote_write": {
@@ -5126,7 +5159,7 @@ Upstream reference:
           },
           {
             "regex": "",
-            "replacement": "${POD_NAME}",
+            "replacement": "loki-ruler",
             "source_labels": [
               "instance"
             ],
@@ -5162,6 +5195,26 @@ side uses — and why `split-namespace` overrides both of them.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.enable_sharding</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Divide the rule groups between the ruler replicas, so each group is evaluated by one of them.
+
+Without it every replica loads every group: each alert is sent once per
+replica, and each recording-rule sample is written once per replica.
+
+The replicas divide the groups through a hash ring. Loki puts every ring
+on memberlist when `memberlist.join_members` is set, which the subchart
+does, so the ruler's ring rides the same gossip cluster as the rest of
+Loki and needs no configuration of its own.
+
+| A replica | Its groups move to the others |
+| --- | --- |
+| Stops cleanly (rollout, eviction, drain) | Within one evaluation, because it leaves the ring on the way out |
+| Is lost without stopping (node failure) | After two `heartbeat_timeout`s (two minutes by default), when the others forget it. The groups are not evaluated until then |
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -5188,7 +5241,7 @@ side uses — and why `split-namespace` overrides both of them.
         },
         {
           "regex": "",
-          "replacement": "${POD_NAME}",
+          "replacement": "loki-ruler",
           "source_labels": [
             "instance"
           ],
@@ -5807,6 +5860,13 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.ruler<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. They divide the rule groups between them rather than each evaluating all of them; see `loki.loki.rulerConfig.enable_sharding`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -5852,18 +5912,10 @@ https://grafana.com/docs/loki/latest/get-started/components/
         "name": "ruler-env"
       }
     }
-  },
-  {
-    "name": "POD_NAME",
-    "valueFrom": {
-      "fieldRef": {
-        "fieldPath": "metadata.name"
-      }
-    }
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
+      <td class="helm-value-desc">The cluster name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. A list: restate it when adding another.
 </td>
     </tr>
     <tr>
@@ -5905,6 +5957,45 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.memcached<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.memcachedExporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -5931,8 +6022,21 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
 </td>
     </tr>
     <tr>
@@ -5995,6 +6099,26 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre>
+</td>
+      <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Thanos on its own cadence, with Thanos's own release
+notes, instead of only when a chart release happens to carry a new
+`appVersion`. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under `profiles/registry/` repoint `registry` and
+`repository` and keep this tag.
 </td>
     </tr>
     <tr>
@@ -6886,7 +7010,6 @@ validator warns when the two disagree.
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
     "--label=cluster=\"$(CLUSTER_NAME)\""
   ],
   "extraEnv": [
@@ -6902,24 +7025,12 @@ validator warns when the two disagree.
   ],
   "extraVolumeMounts": [
     {
-      "mountPath": "/etc/thanos/remote-write.yaml",
-      "name": "remote-write",
-      "readOnly": true,
-      "subPath": "remote-write.yaml"
-    },
-    {
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
     }
   ],
   "extraVolumes": [
-    {
-      "configMap": {
-        "name": "thanos-ruler-remote-write-v2"
-      },
-      "name": "remote-write"
-    },
     {
       "name": "mzmon-tls",
       "secret": {
@@ -6941,6 +7052,10 @@ validator warns when the two disagree.
     "urls": [
       "http://thanos-query:9090"
     ]
+  },
+  "remoteWrite": {
+    "enabled": true,
+    "secretName": "thanos-ruler-remote-write-v2"
   },
   "replicaCount": 2,
   "resources": {
@@ -7072,8 +7187,8 @@ lists `example-alerts.yaml` as a required property**, so neither
 `rules: {}` (which would not clear a subchart default anyway) nor
 `example-alerts.yaml: null` renders — the second fails schema validation
 before any template runs. A rule file declaring no groups is the only
-spelling that both satisfies the schema and evaluates nothing. Fixing that
-upstream is on the same list as the missing `remoteWrite` key.
+spelling that both satisfies the schema and evaluates nothing, until the
+schema is fixed upstream.
 
 The render fails if the example rule comes back.
 
@@ -7146,22 +7261,15 @@ advice applies: keep it within one minor of your API server.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.remoteWrite</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
-  "--label=cluster=\"$(CLUSTER_NAME)\""
-]</pre>
+{
+  "enabled": true,
+  "secretName": "thanos-ruler-remote-write-v2"
+}</pre>
 </td>
       <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
-
-**The subchart models no `remoteWrite` key**, and its StatefulSet passes
-`--objstore.config-file` unconditionally, so stateless is reached by
-pointing `extraArgs` at a ConfigMap the umbrella renders
-(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
-tracked; until it lands, **this flag is load-bearing** — drop it and the
-Ruler silently reverts to a local TSDB.
 
 Three reasons stateless is the right mode here, in ascending order of how
 much they matter. It removes a stateful workload. It puts rule results on
@@ -7171,16 +7279,41 @@ interaction. And it is what makes alert state forwardable: a Ruler shipping
 blocks puts `ALERTS` in Thanos and out of reach of every gateway
 destination except Thanos.
 
-The residue is that the Ruler still starts a block shipper against the
-object store. With an agent WAL and no blocks in the data directory it
-scans every 30s and uploads nothing.
+With `enabled`, the subchart passes `--remote-write.config-file` and drops
+`--objstore.config-file`, so the Ruler runs no block shipper. The
+configuration targets the alloy-gateway's metrics listener, and **the
+chart renders it as a Secret** (`templates/thanos-ruler-remote-write.yaml`)
+rather than through `config`, because the gateway's address follows
+umbrella values that the subchart's `tpl` cannot read.
 
-**`--label=cluster` is load-bearing too.** It is an external label, which
-the Ruler adds to every alert it sends that does not already carry
-`cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
-Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-chart renders from `clusterName`. Both flags have to survive
-an override of this list; the render warns when either goes missing.
+`secretName` is one of two Secrets the chart renders, `-tls` for when
+`pipeline.metrics.gateway.server.tls` is on, which
+`profiles/mtls.values.yaml` selects and the render enforces. The Ruler
+reads the file once at startup, so the names carry the mode and a
+revision: switching Secrets changes the pod template, which is what rolls
+it.
+
+Writing elsewhere means naming another Secret here, or setting
+`secretName: ""` with `createSecret: true` and the configuration in
+`config`. The render's gateway checks then no longer apply.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--label=cluster=\"$(CLUSTER_NAME)\""
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra Ruler flags.
+
+**`--label=cluster` is load-bearing.** It is an external label, which the
+Ruler adds to every alert it sends that does not already carry `cluster`,
+and to every sample it writes. `$(CLUSTER_NAME)` is expanded by Kubernetes
+from `extraEnv` below, which reads the `ruler-env` ConfigMap the chart
+renders from `clusterName`. It has to survive an override of this list;
+the render warns when it goes missing.
 </td>
     </tr>
     <tr>
@@ -7208,12 +7341,6 @@ an override of this list; the render warns when either goes missing.
       <td class="helm-value-default"><pre>
 [
   {
-    "configMap": {
-      "name": "thanos-ruler-remote-write-v2"
-    },
-    "name": "remote-write"
-  },
-  {
     "name": "mzmon-tls",
     "secret": {
       "optional": true,
@@ -7222,21 +7349,14 @@ an override of this list; the render warns when either goes missing.
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
-
-`remote-write` is the plaintext variant of the Ruler's remote-write
-configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
-name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
-the render enforces. The Ruler reads the file once at startup, so the names
-carry the mode and a revision: switching ConfigMaps changes the pod
-template, which is what rolls it.
+      <td class="helm-value-desc">The Thanos certificate, for the Ruler's TLS clients.
 
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
 `alerting.server.tls` is on and to the gateway when its metrics listener
 serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
 so the same values work before issuance, during it and after.
-This is a list: restate both entries when adding one.
+This is a list: restate the entry when adding one.
 </td>
     </tr>
     <tr>
@@ -7351,6 +7471,26 @@ Upstream references:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>nil</code></td>
       <td class="helm-value-desc">Namespace override.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+
+Unlike the other pins, this one is not meant to move on its own. The
+operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint `registry` and `repository` while keeping the tag.
 </td>
     </tr>
     <tr>
@@ -7613,6 +7753,19 @@ enforced at render time. The `grafana-pvc` profile is the assembled version.
 
 Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
 is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.initChownData<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.
 </td>
     </tr>
     <tr>
@@ -8465,6 +8618,19 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -8946,6 +9112,18 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
 </td>
     </tr>
     <tr>
