@@ -5596,7 +5596,7 @@ alertmanager:
   # profiles under `profiles/registry/` repoint `repository` and keep this tag.
   image:
     repository: quay.io/prometheus/alertmanager
-    tag: v0.34.0
+    tag: v0.34.1
 
   # -- Scheduling priority. See the Priority classes section.
   priorityClassName: monitoring-scalable
