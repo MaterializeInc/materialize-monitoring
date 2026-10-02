@@ -216,6 +216,37 @@ If the token is unset the push falls back to the default `GITHUB_TOKEN`, restori
 
 `propose-bumps` still syncs `uv.lock` inline for now; once auto-format reliably handles lockfiles that inline logic can be dropped (deferred — only generated docs were stale in practice).
 
+## Regenerate snapshots
+
+The [`regenerate-snapshots`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/regenerate-snapshots.yaml) workflow runs `make helm-update-snapshots` on a PR labeled `regenerate-snapshots` and pushes the result as a single `test:` commit.
+It exists for dependency bumps that move rendered chart output, such as a Renovate PR changing an image tag that the Loki snapshot suites pin.
+Such a PR otherwise needs a local checkout only to regenerate snapshots.
+
+The label is separate from `auto-format`, and neither Renovate nor `propose-bumps` applies it.
+A formatter's output is correct by construction.
+A regenerated snapshot records whatever the chart now renders, so a reviewer has to read the diff before the PR merges.
+
+| Behavior | Detail |
+|---|---|
+| Trigger | Applying the label. Later pushes do not re-run it |
+| Label lifetime | One-shot. The run removes the label when it finishes, whether or not it committed anything |
+| Push token | `MATERIALIZE_BOT_TOKEN`, as for auto-format, so the snapshot commit triggers the PR's required checks |
+| Other test failures | Fail the run with nothing committed. `--update-snapshot` rewrites only snapshot mismatches |
+| Copilot review | Requested after the commit lands. A failed request is a warning on the run, and a reviewer can still request one from the PR |
+| Retry | Apply the label again |
+
+The label belongs on the PR after auto-format has finished.
+Snapshots render from the vendored subchart archives, which auto-format refreshes on a chart bump.
+A push from auto-format during the run makes the snapshot push fail rather than land on a stale base.
+
+A Renovate rebase replaces the snapshot commit along with the rest of the branch.
+The new content needs the label applied again, and a new review of the regenerated snapshots.
+
+<!--
+The Copilot request uses the bot token.
+Whether a bot account may request a Copilot review is undocumented, so the step is best-effort until a run shows it working.
+-->
+
 ## The committed-surface check {#the-committed-surface-check}
 
 DEP-127's third deliverable: a PR that changes the customer-facing surface either follows the [deprecation policy](../versioning/#stability-guarantees) or says why not.
