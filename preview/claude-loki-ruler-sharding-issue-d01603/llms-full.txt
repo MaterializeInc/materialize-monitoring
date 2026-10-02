@@ -3885,7 +3885,8 @@ The **Loki Ruler** evaluates LogQL [alerting and recording rules](../rules/) on 
 
 Rule definitions live in object storage.
 The chart runs two rulers, and they divide the rule groups between them through a [hash ring](#the-hash-ring) on the same memberlist cluster as the rest of Loki.
-Each group is evaluated by one ruler at a time, so each alert is sent once and each recording-rule sample is written once.
+Outside a ring change, each group is evaluated by one ruler, so each alert is sent once and each recording-rule sample is written once.
+While the ring changes, a group's old and new ruler can both hold it until each one's next sync, and an evaluation that falls in that window runs on both.
 A group's ruler follows a hash of the group, so with only a few groups one ruler can hold all of them while the other holds none.
 Grafana's rule list is complete from either ruler, because the ruler that answers collects the other's groups over gRPC.
 
@@ -3894,7 +3895,7 @@ Grafana's rule list is complete from either ruler, because the ruler that answer
 | Stops cleanly, as in a rollout, an eviction or a node drain | Within one evaluation interval, because it leaves the ring as it stops |
 | Is lost without stopping, as in a node failure | After two minutes, when the survivor forgets it. Its groups are not evaluated until then |
 
-Recording-rule samples carry `job` and `instance` both set to `loki-ruler`.
+A recording-rule sample with no `job` or `instance` of its own gets `loki-ruler` for each; one that already carries either keeps it.
 `instance` is a constant rather than the pod name because every rollout moves groups between rulers, and a per-pod value would start a new series each time.
 
 The rulers run their queries themselves.
@@ -4417,8 +4418,8 @@ The result: log-derived metrics live in the same place — and are queried the s
 ## Rule storage and evaluation
 
 - **Definitions** live in object storage under the `/loki/ruler` prefix (see [Storing](../storing/)).
-- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so each group is evaluated by one ruler and evaluation scales horizontally.
-  [Loki Ruler](../architecture/#ruler) covers what happens to a ruler's groups when it is lost.
+- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so outside a ring change each group is evaluated by one ruler, and evaluation scales horizontally.
+  [Loki Ruler](../architecture/#ruler) covers the ring change, and what happens to a ruler's groups when it is lost.
 - **Local execution.** The rulers run their queries themselves.
   Loki can instead hand them to the [Loki Query Frontend](../architecture/#loki-query-frontend) for query splitting and caching, but the chart does not configure that.
 
@@ -15913,6 +15914,29 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+instead of only when a chart release happens to carry a new `appVersion`.
+Every Loki component runs this image unless its own `image` overrides it.
+The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+the two so that they move together.
+
+In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+image, this one included. The profiles under `profiles/registry/` repoint
+`registry` and `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -16901,6 +16925,45 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.memcached<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.memcachedExporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -16927,8 +16990,21 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
 </td>
     </tr>
     <tr>
@@ -16991,6 +17067,26 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre>
+</td>
+      <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Thanos on its own cadence, with Thanos's own release
+notes, instead of only when a chart release happens to carry a new
+`appVersion`. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under `profiles/registry/` repoint `registry` and
+`repository` and keep this tag.
 </td>
     </tr>
     <tr>
@@ -18350,6 +18446,26 @@ Upstream references:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+
+Unlike the other pins, this one is not meant to move on its own. The
+operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint `registry` and `repository` while keeping the tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -18609,6 +18725,19 @@ enforced at render time. The `grafana-pvc` profile is the assembled version.
 
 Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
 is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.initChownData<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.
 </td>
     </tr>
     <tr>
@@ -19461,6 +19590,19 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -19942,6 +20084,18 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
 </td>
     </tr>
     <tr>

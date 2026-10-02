@@ -39,8 +39,8 @@ The result: log-derived metrics live in the same place — and are queried the s
 ## Rule storage and evaluation
 
 - **Definitions** live in object storage under the `/loki/ruler` prefix (see [Storing](../storing/)).
-- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so each group is evaluated by one ruler and evaluation scales horizontally.
-  [Loki Ruler](../architecture/#ruler) covers what happens to a ruler's groups when it is lost.
+- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so outside a ring change each group is evaluated by one ruler, and evaluation scales horizontally.
+  [Loki Ruler](../architecture/#ruler) covers the ring change, and what happens to a ruler's groups when it is lost.
 - **Local execution.** The rulers run their queries themselves.
   Loki can instead hand them to the [Loki Query Frontend](../architecture/#loki-query-frontend) for query splitting and caching, but the chart does not configure that.
 
