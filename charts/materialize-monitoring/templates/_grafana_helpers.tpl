@@ -352,6 +352,37 @@ Usage:
 {{- end }}
 
 {{- /*
+The scrape interval the Thanos datasource declares, as `jsonData.timeInterval`.
+
+Grafana takes this as the datasource's scrape interval, and with it computes
+`$__rate_interval = max($__interval + timeInterval, 4 × timeInterval)`. Left
+unset it assumes 15s, so the window is a minute at any range up to several hours.
+A minute over a 60s scrape holds one sample, and `rate()` of one sample is
+nothing: the panel draws scattered points, or none.
+
+The value is the slowest scrape the chart's own pipeline runs, the gateway's
+kubelet (cAdvisor) and kube-proxy scrapes, so it follows them rather than
+repeating them as a literal. A family scraped faster than this gets a coarser
+minimum step and still draws; one scraped slower would draw nothing.
+
+Usage:
+  {{ include "mzmon.grafana.thanos.timeInterval" $ }}
+*/}}
+{{- define "mzmon.grafana.thanos.timeInterval" }}
+  {{- $metrics := dig "metrics" dict ( $.Values.pipeline | default dict ) }}
+  {{- $slowest := "" }}
+  {{- $slowestSeconds := -1 }}
+  {{- range $interval := list ( dig "kubelet" "scrapeInterval" "" $metrics ) ( dig "kubeProxy" "scrapeInterval" "" $metrics ) }}
+    {{- $seconds := include "mzmon.alloyGateway.provider.seconds" $interval }}
+    {{- if and $seconds ( gt ( atoi $seconds ) $slowestSeconds ) }}
+      {{- $slowest = $interval | toString }}
+      {{- $slowestSeconds = atoi $seconds }}
+    {{- end }}
+  {{- end }}
+  {{- $slowest }}
+{{- end }}
+
+{{- /*
 Grafana's own `grafana.ini` config, as a dict.
 
 The key has a dot in it, so it is not reachable with `dig`'s path form.
@@ -801,6 +832,23 @@ Usage:
     */}}
     {{- if and ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) ( not $ds.thanos.isDefault ) }}
       {{- $warnings = append $warnings "connections.datasources.thanos.isDefault is disabled; the bundled dashboards render empty unless another Prometheus datasource is the default in Grafana." }}
+    {{- end }}
+
+    {{- /*
+    An explicit `timeInterval` replaces the chart's, which is the slowest scrape
+    the pipeline runs. Shorter than that, `$__rate_interval` over those metrics
+    holds one sample and `rate()` draws nothing. Faster scrapes elsewhere are
+    harmless, and slower ones the render cannot see, so this is the one case
+    worth naming.
+    */}}
+    {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) }}
+      {{- $set := dig "jsonData" "timeInterval" "" ( $ds.thanos | default dict ) | toString }}
+      {{- $floor := include "mzmon.grafana.thanos.timeInterval" $ }}
+      {{- $setSeconds := include "mzmon.alloyGateway.provider.seconds" $set }}
+      {{- $floorSeconds := include "mzmon.alloyGateway.provider.seconds" $floor }}
+      {{- if and $setSeconds $floorSeconds ( lt ( atoi $setSeconds ) ( atoi $floorSeconds ) ) }}
+        {{- $warnings = append $warnings ( printf "connections.datasources.thanos.jsonData.timeInterval is %s, shorter than the slowest scrape the pipeline runs (%s, from pipeline.metrics.kubelet.scrapeInterval and pipeline.metrics.kubeProxy.scrapeInterval). Grafana sizes $__rate_interval from it, so rate() over cAdvisor and kube-proxy metrics holds one sample per window and those panels draw scattered points or nothing. Drop the override to use the chart's value." $set $floor ) }}
+      {{- end }}
     {{- end }}
 
     {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) ) }}

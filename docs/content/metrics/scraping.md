@@ -62,6 +62,14 @@ kubectl create secret generic materialize-sql-monitor \
   --from-literal=password=
 ```
 
+### Telling the four SQL endpoints apart
+
+The four endpoints share one port, so the Prometheus Operator `PodMonitor` gives all four the same `job`, `instance`, `pod` and `endpoint`.
+Each endpoint therefore copies its path into a `metrics_path` label, as kube-prometheus-stack does for the kubelet's several paths.
+Without it, the four endpoints' `up` and `scrape_*` series are one series written four times per scrape interval.
+A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
+The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see

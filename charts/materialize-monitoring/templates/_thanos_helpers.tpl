@@ -483,40 +483,21 @@ Usage:
 {{- end }}
 
 {{- /*
-The name of one of the Thanos ruler's remote-write ConfigMaps.
+The name of one of the Thanos ruler's remote-write Secrets.
 
 The name carries a revision and the TLS mode, because the ruler reads the file
 once at startup and a changed name is the only thing that rolls it. See
 `templates/thanos-ruler-remote-write.yaml`. **Bump the revision whenever the
 rendered contents change**; `rulers_test.yaml` pins them to catch a change that
-forgot. The base values and `profiles/mtls.values.yaml` name these literally, and
-`mzmon.thanos.validate.ruler` fails the render when they are out of step.
+forgot. The base values and `profiles/mtls.values.yaml` name these literally, in
+`thanos.ruler.remoteWrite.secretName`, and `mzmon.thanos.validate.ruler` fails
+the render when they are out of step.
 
 Usage:
-  {{ include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" true ) }}
+  {{ include "mzmon.thanos.ruler.remoteWriteSecretName" ( dict "tls" true ) }}
 */}}
-{{- define "mzmon.thanos.ruler.remoteWriteConfigMapName" -}}
+{{- define "mzmon.thanos.ruler.remoteWriteSecretName" -}}
   thanos-ruler-remote-write-v2{{ if .tls }}-tls{{ end }}
-{{- end }}
-
-{{- /*
-The remote-write ConfigMap the Thanos ruler mounts, as named in
-`thanos.ruler.extraVolumes`: the volume called `remote-write`, or the first
-ConfigMap volume whose name starts `thanos-ruler-remote-write`. Empty when
-there is neither.
-
-Usage:
-  {{- $cm := include "mzmon.thanos.ruler.remoteWriteConfigMap" $ }}
-*/}}
-{{- define "mzmon.thanos.ruler.remoteWriteConfigMap" }}
-  {{- $found := "" }}
-  {{- range ( dig "ruler" "extraVolumes" list ( $.Values.thanos | default dict ) | default list ) }}
-    {{- $name := dig "configMap" "name" "" ( . | default dict ) | toString }}
-    {{- if and ( not $found ) $name ( or ( eq ( toString ( dig "name" "" ( . | default dict ) ) ) "remote-write" ) ( hasPrefix "thanos-ruler-remote-write" $name ) ) }}
-      {{- $found = $name }}
-    {{- end }}
-  {{- end }}
-  {{- $found }}
 {{- end }}
 
 {{- /*
@@ -560,20 +541,38 @@ Usage:
     {{- $errors = append $errors "thanos.ruler.enabled is true but thanos.query.enabled is false. The ruler evaluates by issuing PromQL to Query over the network and has nothing to fall back on, so every rule fails to evaluate." }}
   {{- end }}
 
-  {{- /* Stateless mode is reached through `extraArgs` because the subchart
-         models no `remoteWrite` key. Someone clearing `extraArgs` to add their
-         own flag silently reverts the ruler to a local TSDB, which puts ALERTS
-         in Thanos and out of reach of the gateway's destination fan-out. */}}
-  {{- $stateless := false }}
-  {{- range ( dig "extraArgs" list $ruler ) }}
-    {{- if hasPrefix "--remote-write.config" ( . | toString ) }}
-      {{- $stateless = true }}
-    {{- end }}
-  {{- end }}
+  {{- /* Stateless mode is the subchart's `remoteWrite.enabled`. Turned off,
+         the ruler keeps its own TSDB and ships blocks, which puts ALERTS in
+         Thanos and out of reach of the gateway's destination fan-out. */}}
+  {{- $remoteWrite := dig "remoteWrite" dict $ruler }}
+  {{- $stateless := dig "enabled" false $remoteWrite }}
   {{- if not $stateless }}
-    {{- $warnings = append $warnings "thanos.ruler.extraArgs no longer carries --remote-write.config-file, so the ruler runs with its own TSDB rather than stateless. Rule results stop traversing the alloy-gateway, which is the path every other series in this stack takes and the one the destination fan-out can see." }}
+    {{- $warnings = append $warnings "thanos.ruler.remoteWrite.enabled is false, so the ruler runs with its own TSDB rather than stateless. Rule results stop traversing the alloy-gateway, which is the path every other series in this stack takes and the one the destination fan-out can see." }}
   {{- else if dig "persistence" "enabled" false $ruler }}
     {{- $warnings = append $warnings "thanos.ruler runs stateless but thanos.ruler.persistence.enabled is true. The PVC holds only the remote-write WAL; that is defensible durability, but it is not the block storage the subchart sizes this volume for." }}
+  {{- end }}
+
+  {{- /* Before the subchart modeled stateless mode, the chart reached it
+         through `extraArgs` and a `remote-write` volume of its own, and asked
+         anyone overriding those lists to restate the entries. An override
+         written then now collides with what the subchart renders. */}}
+  {{- range ( dig "extraArgs" list $ruler | default list ) }}
+    {{- if hasPrefix "--remote-write.config" ( . | toString ) }}
+      {{- $errors = append $errors ( printf "thanos.ruler.extraArgs carries %s. The subchart passes --remote-write.config-file itself under thanos.ruler.remoteWrite.enabled, and Thanos refuses the flag a second time (\"flag 'remote-write.config-file' cannot be repeated\"), so the ruler exits at startup. Drop it from extraArgs, keeping --label=cluster=\"$(CLUSTER_NAME)\"." ( . | toString ) ) }}
+    {{- end }}
+  {{- end }}
+  {{- range ( dig "extraVolumes" list $ruler | default list ) }}
+    {{- if kindIs "map" . }}
+      {{- $name := dig "name" "" . | toString }}
+      {{- if or ( eq $name "remote-write" ) ( hasPrefix "thanos-ruler-remote-write" ( dig "configMap" "name" "" . | toString ) ) }}
+        {{- $errors = append $errors ( printf "thanos.ruler.extraVolumes carries the volume %s, the remote-write ConfigMap this chart rendered before the subchart modeled stateless mode. The subchart now mounts the configuration itself, as its own remote-write volume, from the Secret in thanos.ruler.remoteWrite.secretName. This one either duplicates that volume's name, which the API server refuses, or names a ConfigMap the chart no longer renders. Drop it, keeping the mzmon-tls volume." $name ) }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- range ( dig "extraVolumeMounts" list $ruler | default list ) }}
+    {{- if and ( kindIs "map" . ) ( eq ( toString ( dig "name" "" . ) ) "remote-write" ) }}
+      {{- $errors = append $errors ( printf "thanos.ruler.extraVolumeMounts mounts the remote-write volume at %s, as the chart did before the subchart modeled stateless mode. The subchart now mounts it itself, at /etc/thanos/remote-write.yml. Drop this mount, keeping the mzmon-tls one." ( toString ( dig "mountPath" "" . ) ) ) }}
+    {{- end }}
   {{- end }}
 
   {{- /* The subchart ships an `ExampleAlwaysFiring` rule under `ruler.rules`,
@@ -586,34 +585,47 @@ Usage:
     {{- end }}
   {{- end }}
 
+  {{- /* The Secret the subchart mounts. The chart renders two, and an operator
+         MAY supply their own instead, through `secretName` or `createSecret`;
+         the gateway checks below apply only to the chart's. */}}
+  {{- $secret := dig "secretName" "" $remoteWrite | toString }}
+  {{- $plain := include "mzmon.thanos.ruler.remoteWriteSecretName" ( dict "tls" false ) }}
+  {{- $tlsSecret := include "mzmon.thanos.ruler.remoteWriteSecretName" ( dict "tls" true ) }}
+  {{- $ours := has $secret ( list $plain $tlsSecret ) }}
+
+  {{- /* `secretName` wins over `createSecret` in the subchart, so both set
+         means the subchart renders a Secret under one of the chart's names. */}}
+  {{- if and $stateless $ours ( dig "createSecret" false $remoteWrite ) }}
+    {{- $errors = append $errors ( printf "thanos.ruler.remoteWrite.createSecret is true but thanos.ruler.remoteWrite.secretName is %s, one of the two Secrets this chart renders. The subchart would render a second Secret under that name, and the install fails. To supply your own remote-write configuration in thanos.ruler.remoteWrite.config, also set secretName to \"\" or to a name of your own." $secret ) }}
+  {{- else if and $stateless ( not $ours ) ( regexMatch "^thanos-ruler-remote-write-v[0-9]+(-tls)?$" $secret ) }}
+    {{- /* An earlier revision's name. The chart no longer renders it, so the
+           volume would not mount. */}}
+    {{- $want := include "mzmon.thanos.ruler.remoteWriteSecretName" ( dict "tls" ( dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) ) ) }}
+    {{- $errors = append $errors ( printf "thanos.ruler.remoteWrite.secretName is %s, which this chart does not render; the current one is %s. The name carries a revision, because the ruler reads the file once at startup and a new name is what rolls it onto new contents." $secret $want ) }}
+  {{- end }}
+
   {{- /* The gateway's metrics listener is the ruler's remote-write target. */}}
-  {{- if $stateless }}
+  {{- if and $stateless $ours }}
     {{- if not ( include "mzmon.alloyGateway.enabled" $ ) }}
       {{- $warnings = append $warnings "thanos.ruler runs stateless and remote-writes to the alloy-gateway, but alloy-gateway is not enabled. Rule results are written to a Service that does not exist, so they accumulate in the WAL and are eventually dropped. Alerting itself still works — this costs the recording rules and the ALERTS series, not the notifications." }}
     {{- else }}
-      {{- /* The listener's TLS and the ConfigMap the ruler mounts have to agree.
-             The ConfigMap's name carries the mode, because the ruler reads it
+      {{- /* The listener's TLS and the Secret the ruler mounts have to agree.
+             The Secret's name carries the mode, because the ruler reads it
              once at startup and switching names is what rolls the pod. */}}
       {{- $gwTls := dig "metrics" "gateway" "server" "tls" "enabled" false ( $.Values.pipeline | default dict ) }}
-      {{- $cm := include "mzmon.thanos.ruler.remoteWriteConfigMap" $ }}
-      {{- $want := include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" $gwTls ) }}
-      {{- $other := include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" ( not $gwTls ) ) }}
-      {{- if eq $cm $other }}
-        {{- $errors = append $errors ( printf "thanos.ruler.extraVolumes mounts ConfigMap %s as the Thanos ruler's remote-write configuration, but the gateway's metrics listener serves %s (pipeline.metrics.gateway.server.tls.enabled is %t), which is %s. Every write fails, the ruler retries each batch indefinitely, and the gateway logs a TLS handshake error per attempt. The ruler reads the file once at startup, so the mode is in the ConfigMap's name and switching it is what rolls the ruler. Mount %s; profiles/mtls.values.yaml does. The list replaces the chart's, so restate the mzmon-tls volume with it." $cm ( ternary "https" "http" $gwTls ) $gwTls $want $want ) }}
-      {{- else if and $cm ( ne $cm $want ) }}
-        {{- /* An earlier revision's name. The chart no longer renders it, so the
-               volume would not mount. */}}
-        {{- $errors = append $errors ( printf "thanos.ruler.extraVolumes mounts ConfigMap %s as the Thanos ruler's remote-write configuration, which this chart does not render; the current one is %s. The name carries a revision, because the ruler reads the file once at startup and a new name is what rolls it onto new contents. Mount %s, restating the mzmon-tls volume with it." $cm $want $want ) }}
+      {{- $want := include "mzmon.thanos.ruler.remoteWriteSecretName" ( dict "tls" $gwTls ) }}
+      {{- if ne $secret $want }}
+        {{- $errors = append $errors ( printf "thanos.ruler.remoteWrite.secretName is %s, but the gateway's metrics listener serves %s (pipeline.metrics.gateway.server.tls.enabled is %t), which is %s. Every write fails, the ruler retries each batch indefinitely, and the gateway logs a TLS handshake error per attempt. The ruler reads the file once at startup, so the mode is in the Secret's name and switching it is what rolls the ruler. Set it to %s; profiles/mtls.values.yaml does." $secret ( ternary "https" "http" $gwTls ) $gwTls $want $want ) }}
       {{- end }}
     {{- end }}
   {{- end }}
 
-  {{- /* The TLS ConfigMap names fixed paths under /etc/mzmon/tls. What the
-         chart cannot render is the mount, which is a list in the subchart's
-         values that an override replaces whole. Prometheus's remote-write
-         client reads the CA when it starts, so a missing file stops the ruler,
-         not only its writes. */}}
-  {{- if and $stateless ( eq ( include "mzmon.thanos.ruler.remoteWriteConfigMap" $ ) ( include "mzmon.thanos.ruler.remoteWriteConfigMapName" ( dict "tls" true ) ) ) }}
+  {{- /* The TLS Secret names fixed paths under /etc/mzmon/tls. What the chart
+         cannot render is the mount, which is a list in the subchart's values
+         that an override replaces whole. Prometheus's remote-write client
+         reads the CA when it starts, so a missing file stops the ruler, not
+         only its writes. */}}
+  {{- if and $stateless ( eq $secret $tlsSecret ) }}
     {{- $mounted := false }}
     {{- range ( dig "extraVolumeMounts" list $ruler | default list ) }}
       {{- if and ( kindIs "map" . ) ( eq ( trimSuffix "/" ( toString .mountPath ) ) "/etc/mzmon/tls" ) }}

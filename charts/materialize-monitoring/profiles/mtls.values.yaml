@@ -161,7 +161,7 @@ loki:
       # certificate carries. It presents from phase 1 so that phase 3 can
       # require a certificate in any rollout order.
       #
-      # The Thanos ruler's equivalent is its `remote-write` volume, under
+      # The Thanos ruler's equivalent is its `remoteWrite.secretName`, under
       # `thanos.ruler` below.
       remote_write:
         clients:
@@ -332,10 +332,10 @@ thanos:
 
   # The Thanos ruler as a client of Alertmanager and of the gateway. The base
   # values already mount the Thanos certificate into the ruler; this restates
-  # the list to make the Secret required, and points `remote-write` at the TLS
+  # the list to make the Secret required, and points `remoteWrite` at the TLS
   # variant of the ruler's remote-write configuration. The ruler reads that file
-  # once, at startup, so the switch is a different ConfigMap rather than
-  # different contents: changing the volume is what rolls the ruler onto it.
+  # once, at startup, so the switch is a different Secret rather than different
+  # contents: changing the name is what rolls the ruler onto it.
   #
   # The address is restated whole, with the same split-namespace caveat as the
   # Loki ruler's above.
@@ -354,10 +354,9 @@ thanos:
                 server_name: alertmanager
             api_version: v2
             timeout: 10s
+    remoteWrite:
+      secretName: thanos-ruler-remote-write-v2-tls
     extraVolumes:
-      - name: remote-write
-        configMap:
-          name: thanos-ruler-remote-write-v2-tls
       - name: mzmon-tls
         secret:
           secretName: mzmon-thanos-tls

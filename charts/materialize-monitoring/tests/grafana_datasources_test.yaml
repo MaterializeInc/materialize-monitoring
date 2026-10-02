@@ -75,6 +75,29 @@ tests:
           value:
             prometheusType: Thanos
             httpMethod: POST
+            timeInterval: 60s
+
+  # Grafana assumes a 15s scrape when `timeInterval` is unset, which makes
+  # `$__rate_interval` one minute: one sample of a 60s scrape, and an empty
+  # `rate()`. Nothing errors, so the key's presence is asserted directly.
+  - it: should declare the kubelet's scrape interval, the slowest the pipeline runs
+    set:
+      pipeline.metrics.kubelet.scrapeInterval: 2m
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.timeInterval
+          value: 2m
+
+  - it: should declare kube-proxy's scrape interval when that one is slower
+    set:
+      pipeline.metrics.kubelet.scrapeInterval: 30s
+      pipeline.metrics.kubeProxy.scrapeInterval: 1m30s
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.datasource.jsonData.timeInterval
+          value: 1m30s
 
   - it: should point Loki at the gateway, which also serves the ruler's state
     documentIndex: 1

@@ -361,7 +361,8 @@ prometheus.receive_http "gateway" {
        alone, and a per-pod `instance` would keep every alert and recording
        rule twice. It cannot fill these itself: Thanos
        loads its remote-write file without a label-name validation scheme, and
-       any `replace` in `write_relabel_configs` panics the ruler at startup.
+       a `replace` in `write_relabel_configs` that reads a label, as filling
+       only a missing one must, panics the ruler on its first sample.
        The Loki ruler fills its own, in `loki.loki.rulerConfig`. */}}
 prometheus.relabel "receiveIdentity" {
     forward_to = [

@@ -737,3 +737,40 @@ tests:
     template: templates/validate.yaml
     asserts:
       - notFailedTemplate: {}
+
+  # --- datasource scrape interval -------------------------------------------
+
+  # An explicit timeInterval replaces the chart's. Shorter than the slowest
+  # scrape, it brings back the cAdvisor rate() panels that draw as scattered
+  # points, and nothing else says so. The datasource points at an external
+  # store because this suite deploys no backends.
+  - it: should warn when an explicit Thanos timeInterval is shorter than the slowest scrape
+    set:
+      connections.datasources.thanos.enabled: true
+      connections.datasources.thanos.url: http://metrics.example.com:9090
+      connections.datasources.thanos.jsonData.timeInterval: 15s
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "connections.datasources.thanos.jsonData.timeInterval is 15s, shorter than the slowest scrape the pipeline runs \\(60s"
+
+  - it: should follow a slower kubelet scrape when judging an explicit Thanos timeInterval
+    set:
+      connections.datasources.thanos.enabled: true
+      connections.datasources.thanos.url: http://metrics.example.com:9090
+      connections.datasources.thanos.jsonData.timeInterval: 60s
+      pipeline.metrics.kubelet.scrapeInterval: 2m
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "jsonData.timeInterval is 60s, shorter than the slowest scrape the pipeline runs \\(2m"
+
+  - it: should stay quiet when an explicit Thanos timeInterval is no shorter than the slowest scrape
+    set:
+      connections.datasources.thanos.enabled: true
+      connections.datasources.thanos.url: http://metrics.example.com:9090
+      connections.datasources.thanos.jsonData.timeInterval: 2m
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "jsonData.timeInterval is"
