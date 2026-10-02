@@ -44,7 +44,7 @@ Releases track a monthly cadence aligned to the **15th**.
 
 Milestones are named by maturity stage; the date is a soft target.
 
-Linear restarts milestone numbering at M1 for every project, so milestones here carry a project prefix — **FCO-M1**–**FCO-M4**, **OO-M1**–**OO-M3**, **BYOC-Design** / **BYOC-CP** / **BYOC-Impl**, and **CLOM-Design**.
+Linear restarts milestone numbering at M1 for every project, so milestones here carry a project prefix — **FCO-M1**–**FCO-M4**, **OO-M1**–**OO-M3**, **BYOC-Design** / **BYOC-CP** / **BYOC-Impl**, and **CLOM-Design** / **CLOM-Labels**.
 Item tables below reference milestones by those prefixed tags.
 A bare **BYOC** or **CLOM** means the item is in that project with no milestone yet.
 
@@ -91,7 +91,8 @@ The workstreams are [BYOC](#byoc) and [Call-home from self-managed](#call-home-f
 
 | Milestone | Target | Deliverables |
 |---|---|---|
-| **Design and client feedback** (CLOM-Design) | September 30 | Nothing ticketed against it yet |
+| **Design and client feedback** (CLOM-Design) | October 15 | Nothing ticketed against it yet |
+| **Metric label standardization** (CLOM-Labels) | — | One label vocabulary for Materialize's metrics, the reserved list, and the authoritative environment key ([DEP-346](https://linear.app/materializeinc/issue/DEP-346)–[DEP-365](https://linear.app/materializeinc/issue/DEP-365)); see [Metric label vocabulary](#metric-label-vocabulary) |
 | *(no milestone)* (CLOM) | — | The tenant-scoped query API, which is the Thanos metric proxy ([DEP-269](https://linear.app/materializeinc/issue/DEP-269)); adoption in Materialize Cloud via Pulumi; Cloud's internal monitoring on this repo's `values.yaml`; k8s controller instrumentation; agent→gateway OTLP with a WAL; generic scrape discovery; the scanner follow-ups; the Day 1 Sizing dashboard |
 
 CLOM deliberately excludes the control plane, which is BYOC's.
@@ -349,18 +350,19 @@ The first pass is what lets this repo commit to label names it does not emit, an
 The upstream half is listed under [Metrics contract](#metrics-contract-upstream-dependency).
 
 Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), as the label-family item of [DEP-207](https://linear.app/materializeinc/issue/DEP-207).
-None of the rows below is ticketed yet, and their milestone is provisional until the design is accepted.
+Tracked in the **CLOM-Labels** milestone, gated on design acceptance in [DEP-346](https://linear.app/materializeinc/issue/DEP-346).
 
 | Item | Milestone | Status |
 |---|---|---|
-| Metric label vocabulary — design doc plus review | CLOM | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
-| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor. A live defect with no consumer to migrate | CLOM | ⬜ |
-| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, owned by the Prometheus Scrapers component | CLOM | ⬜ |
-| Transpiler: target aliases per flavor, and metric aliases, reserved moves and drops into `metricRelabelings`. The GMP render refuses what it cannot express rather than dropping it | CLOM | ⬜ |
-| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap | CLOM | ⬜ |
-| Generated customer-facing label contract, merged with the alerting design's owed label contract | CLOM | ⬜ |
-| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, then `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` switched to `environment_id` and `mz_environment_info` once the operator floor allows. Waits on the orchestratord change under [Metrics contract](#metrics-contract-upstream-dependency) | CLOM | ⬜ |
-| Alias retirement after the 30-day overlap | CLOM | ⬜ |
+| Metric label vocabulary — design doc plus review ([DEP-346](https://linear.app/materializeinc/issue/DEP-346); upstream review in [SQL-754](https://linear.app/materializeinc/issue/SQL-754)) | CLOM-Labels | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
+| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)). A live defect with no consumer to migrate | CLOM-Labels | ⬜ |
+| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, and the transpiler generating target aliases, metric aliases, reserved moves and drops from it in every flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | CLOM-Labels | ⬜ |
+| The GMP render refuses what it cannot express rather than dropping it, proven against GMP's admission webhook ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | CLOM-Labels | ⬜ |
+| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, and the same key as log structured metadata ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)). Waits on the orchestratord change ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)) for its effect, not its merge | CLOM-Labels | ⬜ |
+| Environment switch: `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` on `environment_id` and `mz_environment_info` once the operator floor allows, and `materialize_cloud_organization_*` deprecated ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)); a kube-state-metrics bridge for `mz_environment_info` ([DEP-361](https://linear.app/materializeinc/issue/DEP-361)) | CLOM-Labels | ⬜ |
+| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap ([DEP-355](https://linear.app/materializeinc/issue/DEP-355)) | CLOM-Labels | ⬜ |
+| Generated customer-facing label contract, merged with the alerting design's owed label contract, and a registry check against it ([DEP-356](https://linear.app/materializeinc/issue/DEP-356)) | CLOM-Labels | ⬜ |
+| Alias retirement after the 30-day overlap ([DEP-360](https://linear.app/materializeinc/issue/DEP-360)) | CLOM-Labels | ⬜ |
 
 ### Charts / Helm
 
@@ -711,8 +713,9 @@ High-leverage asks, in priority order:
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
   Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), whose first pass is relabeling in this repository (see [Metric label vocabulary](#metric-label-vocabulary)).
-  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on.
-  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output; `/metrics/public` replacing rather than appending replica labels; the reserved `cluster` const label on two compute families; then `instance_id` → `cluster_id` and entity-qualified `_info` payload labels, each after its alias ships here.
+  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on ([DEP-348](https://linear.app/materializeinc/issue/DEP-348)).
+  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output ([DEP-352](https://linear.app/materializeinc/issue/DEP-352)); `/metrics/public` replacing rather than appending replica labels ([DEP-353](https://linear.app/materializeinc/issue/DEP-353)); the reserved `cluster` const label on two compute families ([DEP-359](https://linear.app/materializeinc/issue/DEP-359)); then `instance_id` → `cluster_id` ([DEP-357](https://linear.app/materializeinc/issue/DEP-357)) and entity-qualified `_info` payload labels ([DEP-358](https://linear.app/materializeinc/issue/DEP-358)), each after its alias ships here.
+  The remaining renames and follow-ons are [DEP-362](https://linear.app/materializeinc/issue/DEP-362), [DEP-363](https://linear.app/materializeinc/issue/DEP-363), [DEP-364](https://linear.app/materializeinc/issue/DEP-364) and [DEP-365](https://linear.app/materializeinc/issue/DEP-365), all in CLOM-Labels.
 - ⬜ **Latency histograms for the rest of persist's dependency calls.** `blob_get`, `blob_set` and `consensus_cas` already publish one, which `env-persist` and `env-consensus` read; `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle have only a mean, which hides the tail. Narrowed from the original ask, which assumed no latency was published at all. See [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
