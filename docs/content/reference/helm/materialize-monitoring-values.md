@@ -3105,7 +3105,7 @@ because what it stored is the literal placeholder text.
 needs two samples in its window, and with Grafana's own 15s assumption
 the window is one minute, which holds one sample of a 60s scrape.
 Set it here only when this datasource reads metrics scraped more slowly
-than that.
+than that; the render warns about a shorter one.
 </td>
     </tr>
     <tr>

@@ -415,6 +415,7 @@ The gateway scrapes cAdvisor and kube-proxy every 60s, so every container CPU pa
 The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubelet.scrapeInterval` and `pipeline.metrics.kubeProxy.scrapeInterval`.
 Metrics scraped faster than that get a coarser minimum step and still draw.
 `connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
+The render warns about an override shorter than the chart's value, since that brings the scattered points back.
 The [style guidelines]({{< relref "../../reference/internal/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
