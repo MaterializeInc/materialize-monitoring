@@ -6904,7 +6904,6 @@ validator warns when the two disagree.
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
     "--label=cluster=\"$(CLUSTER_NAME)\""
   ],
   "extraEnv": [
@@ -6920,24 +6919,12 @@ validator warns when the two disagree.
   ],
   "extraVolumeMounts": [
     {
-      "mountPath": "/etc/thanos/remote-write.yaml",
-      "name": "remote-write",
-      "readOnly": true,
-      "subPath": "remote-write.yaml"
-    },
-    {
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
     }
   ],
   "extraVolumes": [
-    {
-      "configMap": {
-        "name": "thanos-ruler-remote-write-v2"
-      },
-      "name": "remote-write"
-    },
     {
       "name": "mzmon-tls",
       "secret": {
@@ -6959,6 +6946,10 @@ validator warns when the two disagree.
     "urls": [
       "http://thanos-query:9090"
     ]
+  },
+  "remoteWrite": {
+    "enabled": true,
+    "secretName": "thanos-ruler-remote-write-v2"
   },
   "replicaCount": 2,
   "resources": {
@@ -7090,8 +7081,8 @@ lists `example-alerts.yaml` as a required property**, so neither
 `rules: {}` (which would not clear a subchart default anyway) nor
 `example-alerts.yaml: null` renders — the second fails schema validation
 before any template runs. A rule file declaring no groups is the only
-spelling that both satisfies the schema and evaluates nothing. Fixing that
-upstream is on the same list as the missing `remoteWrite` key.
+spelling that both satisfies the schema and evaluates nothing, until the
+schema is fixed upstream.
 
 The render fails if the example rule comes back.
 
@@ -7164,22 +7155,15 @@ advice applies: keep it within one minor of your API server.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.remoteWrite</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
-  "--label=cluster=\"$(CLUSTER_NAME)\""
-]</pre>
+{
+  "enabled": true,
+  "secretName": "thanos-ruler-remote-write-v2"
+}</pre>
 </td>
       <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
-
-**The subchart models no `remoteWrite` key**, and its StatefulSet passes
-`--objstore.config-file` unconditionally, so stateless is reached by
-pointing `extraArgs` at a ConfigMap the umbrella renders
-(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
-tracked; until it lands, **this flag is load-bearing** — drop it and the
-Ruler silently reverts to a local TSDB.
 
 Three reasons stateless is the right mode here, in ascending order of how
 much they matter. It removes a stateful workload. It puts rule results on
@@ -7189,16 +7173,41 @@ interaction. And it is what makes alert state forwardable: a Ruler shipping
 blocks puts `ALERTS` in Thanos and out of reach of every gateway
 destination except Thanos.
 
-The residue is that the Ruler still starts a block shipper against the
-object store. With an agent WAL and no blocks in the data directory it
-scans every 30s and uploads nothing.
+With `enabled`, the subchart passes `--remote-write.config-file` and drops
+`--objstore.config-file`, so the Ruler runs no block shipper. The
+configuration targets the alloy-gateway's metrics listener, and **the
+chart renders it as a Secret** (`templates/thanos-ruler-remote-write.yaml`)
+rather than through `config`, because the gateway's address follows
+umbrella values that the subchart's `tpl` cannot read.
 
-**`--label=cluster` is load-bearing too.** It is an external label, which
-the Ruler adds to every alert it sends that does not already carry
-`cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
-Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-chart renders from `clusterName`. Both flags have to survive
-an override of this list; the render warns when either goes missing.
+`secretName` is one of two Secrets the chart renders, `-tls` for when
+`pipeline.metrics.gateway.server.tls` is on, which
+`profiles/mtls.values.yaml` selects and the render enforces. The Ruler
+reads the file once at startup, so the names carry the mode and a
+revision: switching Secrets changes the pod template, which is what rolls
+it.
+
+Writing elsewhere means naming another Secret here, or setting
+`secretName: ""` with `createSecret: true` and the configuration in
+`config`. The render's gateway checks then no longer apply.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--label=cluster=\"$(CLUSTER_NAME)\""
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra Ruler flags.
+
+**`--label=cluster` is load-bearing.** It is an external label, which the
+Ruler adds to every alert it sends that does not already carry `cluster`,
+and to every sample it writes. `$(CLUSTER_NAME)` is expanded by Kubernetes
+from `extraEnv` below, which reads the `ruler-env` ConfigMap the chart
+renders from `clusterName`. It has to survive an override of this list;
+the render warns when it goes missing.
 </td>
     </tr>
     <tr>
@@ -7226,12 +7235,6 @@ an override of this list; the render warns when either goes missing.
       <td class="helm-value-default"><pre>
 [
   {
-    "configMap": {
-      "name": "thanos-ruler-remote-write-v2"
-    },
-    "name": "remote-write"
-  },
-  {
     "name": "mzmon-tls",
     "secret": {
       "optional": true,
@@ -7240,21 +7243,14 @@ an override of this list; the render warns when either goes missing.
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
-
-`remote-write` is the plaintext variant of the Ruler's remote-write
-configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
-name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
-the render enforces. The Ruler reads the file once at startup, so the names
-carry the mode and a revision: switching ConfigMaps changes the pod
-template, which is what rolls it.
+      <td class="helm-value-desc">The Thanos certificate, for the Ruler's TLS clients.
 
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
 `alerting.server.tls` is on and to the gateway when its metrics listener
 serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
 so the same values work before issuance, during it and after.
-This is a list: restate both entries when adding one.
+This is a list: restate the entry when adding one.
 </td>
     </tr>
     <tr>

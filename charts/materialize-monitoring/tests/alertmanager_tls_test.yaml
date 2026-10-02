@@ -220,12 +220,9 @@ tests:
       - ../profiles/mtls.values.yaml
     template: ../charts/thanos/templates/ruler/statefulset.yaml
     asserts:
-      - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: remote-write
-            configMap:
-              name: thanos-ruler-remote-write-v2-tls
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "remote-write")].secret.secretName
+          value: thanos-ruler-remote-write-v2-tls
       - contains:
           path: spec.template.spec.volumes
           content:
