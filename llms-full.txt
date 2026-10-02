@@ -15893,6 +15893,29 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+instead of only when a chart release happens to carry a new `appVersion`.
+Every Loki component runs this image unless its own `image` overrides it.
+The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+the two so that they move together.
+
+In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+image, this one included. The profiles under `profiles/registry/` repoint
+`registry` and `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -16861,6 +16884,45 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.memcached<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.memcachedExporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -16887,8 +16949,21 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
 </td>
     </tr>
     <tr>
@@ -16951,6 +17026,26 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre>
+</td>
+      <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Thanos on its own cadence, with Thanos's own release
+notes, instead of only when a chart release happens to carry a new
+`appVersion`. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under `profiles/registry/` repoint `registry` and
+`repository` and keep this tag.
 </td>
     </tr>
     <tr>
@@ -18310,6 +18405,26 @@ Upstream references:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+
+Unlike the other pins, this one is not meant to move on its own. The
+operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint `registry` and `repository` while keeping the tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -18569,6 +18684,19 @@ enforced at render time. The `grafana-pvc` profile is the assembled version.
 
 Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
 is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.initChownData<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.
 </td>
     </tr>
     <tr>
@@ -19421,6 +19549,19 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
@@ -19902,6 +20043,18 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
 </td>
     </tr>
     <tr>
