@@ -338,6 +338,30 @@ That closes the parity gap, and it makes `container_*` and `node_*` assertions w
 Long term, ServiceMonitors belong in the `materialize-operator` Helm chart rather than here.
 This repo carries them now to fill the gap, with the intent to hand them off once the operator owns that surface.
 
+### Metric label vocabulary
+
+Materialize's metrics spell one cluster id five ways: `instance_id`, `compute_instance`, `cluster_id`, `compute_cluster_id` and `cluster_environmentd_materialize_cloud_cluster_id`.
+Two clusterd families also emit `cluster`, which overrides the Kubernetes-cluster identity this stack stamps on every other series.
+The fix runs in two passes: the shipped monitors produce one canonical vocabulary by relabeling, then upstream adopts it until the rules have nothing to do.
+It also settles how an environment is keyed: `environment_id`, the `Materialize` resource's `spec.environmentId` UUID, on every series, and `environment_name` on `mz_environment_info` only.
+`materialize_cloud_organization_name` retires once the supported operator floor sets the new pod label.
+The first pass is what lets this repo commit to label names it does not emit, and it should land before [DEP-205](https://linear.app/materializeinc/issue/DEP-205) stamps 1.0.
+The upstream half is listed under [Metrics contract](#metrics-contract-upstream-dependency).
+
+Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), as the label-family item of [DEP-207](https://linear.app/materializeinc/issue/DEP-207).
+None of the rows below is ticketed yet, and their milestone is provisional until the design is accepted.
+
+| Item | Milestone | Status |
+|---|---|---|
+| Metric label vocabulary — design doc plus review | CLOM | 🔨 ([design doc](../design-docs/20261002-metric-label-vocabulary/) in draft) |
+| Move clusterd's emitted `cluster="compute"` to `server_name` and drop the constant `honeycomb` label, on the clusterd monitor. A live defect with no consumer to migrate | CLOM | ⬜ |
+| `labels.yaml` — canonical names, aliases, reserved names and drops — with a schema, owned by the Prometheus Scrapers component | CLOM | ⬜ |
+| Transpiler: target aliases per flavor, and metric aliases, reserved moves and drops into `metricRelabelings`. The GMP render refuses what it cannot express rather than dropping it | CLOM | ⬜ |
+| Registry, dashboard selectors, variables and the name-join helpers on canonical names; alert rules aggregate by both names through the overlap | CLOM | ⬜ |
+| Generated customer-facing label contract, merged with the alerting design's owed label contract | CLOM | ⬜ |
+| Environment key: a target alias from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor, then `%%{mzEnvironmentFilter}`, the pickers and `mzEnvironmentName` switched to `environment_id` and `mz_environment_info` once the operator floor allows. Waits on the orchestratord change under [Metrics contract](#metrics-contract-upstream-dependency) | CLOM | ⬜ |
+| Alias retirement after the 30-day overlap | CLOM | ⬜ |
+
 ### Charts / Helm
 
 **Helm is prioritized over Terraform.**
@@ -686,6 +710,9 @@ High-leverage asks, in priority order:
 - ⬜ Native **source/sink status** metrics (no genuine source exists today).
 - ⬜ Native **hydration** and **frontier/freshness** signals.
 - ⬜ **Label-family harmonization** (short vs long vs very-long forms).
+  Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/), whose first pass is relabeling in this repository (see [Metric label vocabulary](#metric-label-vocabulary)).
+  The upstream half starts with an additive orchestratord change, a `materialize.cloud/environment-id` pod label and an `mz_environment_info` metric, which the environment key waits on.
+  The renames follow, in order: a label lint over `gen-metrics-catalog`'s output; `/metrics/public` replacing rather than appending replica labels; the reserved `cluster` const label on two compute families; then `instance_id` → `cluster_id` and entity-qualified `_info` payload labels, each after its alias ships here.
 - ⬜ **Latency histograms for the rest of persist's dependency calls.** `blob_get`, `blob_set` and `consensus_cas` already publish one, which `env-persist` and `env-consensus` read; `consensus_scan`, `consensus_truncate`, `blob_delete` and the timestamp oracle have only a mean, which hides the tail. Narrowed from the original ask, which assumed no latency was published at all. See [External dependencies](#external-dependencies).
 
 - ⬜ **`balancerd` and `console` metrics** — neither exposes anything that reaches Thanos, so the two components a user
@@ -771,5 +798,9 @@ Full mechanics are in [Versioning](../versioning/) and [Releasing](../releasing/
   attaches to the destination.
 - A **customer-facing secret-filtering page** — what is redacted, card numbers included, the placeholder, the alerts, the canaries, and how
   to add rules — is owed alongside it, tracked as [DEP-320](https://linear.app/materializeinc/issue/DEP-320). ⬜
+- [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) is written and in draft. 🔨
+  It proposes one canonical label vocabulary, a reserved list led by `cluster`, and a two-pass path: fill-if-empty alias rules in the shipped monitors first, then upstream renames behind a label lint, ordered so that no consumer can observe the second pass.
+  The [Metric label vocabulary](#metric-label-vocabulary) section above is the roadmap position it establishes, including the authoritative environment key (`environment_id` from `spec.environmentId`, names only on `mz_environment_info`) and that clusterd's own ids stay target labels permanently.
+- A **customer-facing label contract** page, generated from `labels.yaml`, is owed alongside it, and absorbs the alerting label contract owed above. ⬜
 - A **runbook per shipped alert** under `operating/runbooks/` is owed with the rules themselves, since every alert links to one. ⬜
   Runbooks that stop changing and describe a practice rather than a workaround should be promoted to the product documentation.
