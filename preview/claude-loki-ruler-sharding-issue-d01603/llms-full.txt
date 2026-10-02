@@ -3886,6 +3886,7 @@ The **Loki Ruler** evaluates LogQL [alerting and recording rules](../rules/) on 
 Rule definitions live in object storage.
 The chart runs two rulers, and they divide the rule groups between them through a [hash ring](#the-hash-ring) on the same memberlist cluster as the rest of Loki.
 Each group is evaluated by one ruler at a time, so each alert is sent once and each recording-rule sample is written once.
+A group's ruler follows a hash of the group, so with only a few groups one ruler can hold all of them while the other holds none.
 Grafana's rule list is complete from either ruler, because the ruler that answers collects the other's groups over gRPC.
 
 | When a ruler | Its groups move to the other ruler |
@@ -3899,7 +3900,8 @@ Recording-rule samples carry `job` and `instance` both set to `loki-ruler`.
 The rulers run their queries themselves.
 Loki can instead hand them to the query frontend for its splitting and caching, but the chart does not configure that.
 
-<!-- Verified 2026-10-02 against two Loki 3.7.6 rulers on one memberlist cluster: disjoint group ownership, a clean stop handed off in about 9s, and a SIGKILL in about 2m04s (auto-forget at 2 × the 1m heartbeat_timeout). `ruler.evaluation.mode` is `local` on a live install. -->
+<!-- Verified 2026-10-02 against two Loki 3.7.6 rulers on one memberlist cluster: disjoint group ownership, a clean stop handed off in about 9s, and a SIGKILL in about 2m04s (auto-forget at 2 × the 1m heartbeat_timeout).
+Also verified the same day on a live EKS install with the chart's config patched in: a rolling restart, a pod deletion, and a scale to one replica and back each left every group evaluated exactly once per interval, and a recording rule stayed one series. `ruler.evaluation.mode` is `local` there. -->
 
 *See more:* [Ruler](https://grafana.com/docs/loki/latest/get-started/components/#ruler) (official) and [Logs & Events > Rules](../rules/).
 
