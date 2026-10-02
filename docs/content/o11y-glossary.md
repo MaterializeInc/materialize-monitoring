@@ -312,7 +312,7 @@ This stack does **not** ship ServiceMonitors for Materialize itself — those li
 
 ##### DIY scraping {#diy-scraping}
 The "I'll scrape `environmentd` and `clusterd` myself" path.
-Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/stable-metrics/).
+Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/list-metrics/).
 Source-side defaults are kept minimal specifically so this path stays viable.
 
 ##### Materialize Cloud {#materialize-cloud}

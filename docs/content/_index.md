@@ -55,8 +55,10 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 
 * [materialize-monitoring values]({{< relref "reference/helm/materialize-monitoring-values.md" >}}) — the generated Helm values reference.
 * [Terraform variables]({{< relref "reference/terraform/materialize-monitoring-variables.md" >}}) — the generated module variable reference.
-* [Reference Metrics]({{< relref "reference/stable-metrics/list-metrics.md" >}}) — the metrics the dashboards depend on, plus [common queries]({{< relref "reference/stable-metrics/common-queries.md" >}}) and [common alerts]({{< relref "reference/stable-metrics/common-alerts.md" >}}).
 * [Compatibility]({{< relref "reference/compatibility.md" >}}) — supported versions of Materialize, Grafana, GKE, and the Terraform modules.
+* [Common Alerts]({{< relref "reference/common-alerts.md" >}}) — the bundled alerting rules, and the page each alert's `runbook_url` points at.
+* [Common Queries]({{< relref "reference/common-queries.md" >}}) — the PromQL behind the dashboard panels.
+* [List of Metrics]({{< relref "reference/list-metrics.md" >}}) — the metrics the dashboards depend on.
 * [Custom Resource Definitions]({{< relref "reference/crds.md" >}}) — the custom resources the stack reads and relies on.
 * [Changelog]({{< relref "reference/changelog.md" >}}) — per-component release history.
 

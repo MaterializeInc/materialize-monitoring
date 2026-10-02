@@ -42,7 +42,7 @@ groups:
         follows; this sees why.
 
         Stays firing for 5m after the last panic.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#materialize-panic
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#materialize-panic
 - name: correctness
   rules:
   - alert: data-correctness-error
@@ -80,7 +80,7 @@ groups:
         no longer logs.
 
         Stays firing for 15m after the last match.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#data-correctness-error
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#data-correctness-error
   - alert: persist-filter-pushdown-violation
     expr: |-
       sum by (namespace, app, pod) (
@@ -116,7 +116,7 @@ groups:
         parameter.
 
         Stays firing for 15m after the last match.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#persist-filter-pushdown-violation
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#persist-filter-pushdown-violation
 - name: log_volume
   rules:
   - alert: trace-logging-enabled
@@ -149,4 +149,4 @@ groups:
 
         Not in the default set: Cloud's copy of this rule is paused, and there
         is no evidence yet that the volume matters on a self-managed install.
-      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/stable-metrics/common-alerts/#trace-logging-enabled
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#trace-logging-enabled

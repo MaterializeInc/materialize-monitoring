@@ -1,5 +1,5 @@
 ---
 title: "Terraform"
-weight: 30
+weight: 20
 bookCollapseSection: true
 ---

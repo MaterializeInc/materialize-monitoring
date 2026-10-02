@@ -1,6 +1,6 @@
 ---
 title: "Compatibility"
-weight: 40
+weight: 30
 ---
 
 # Release Compatibility

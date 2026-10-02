@@ -27,7 +27,7 @@ The remaining work is described in the [alerting design doc](../../reference/int
 The chart ships alerting rules for Materialize and for the platform under it.
 The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
 The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
-[Common Alerts](../../reference/stable-metrics/common-alerts/) lists every one, with what it detects.
+[Common Alerts](../../reference/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
 
@@ -227,7 +227,7 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 |---|---|
 | Triage of the rest of the bundled set | Most bundled rules are outside the default set until each is checked against a self-managed install |
 | A behavioural test for log rules | Loki has no counterpart to `promtool test rules`, so each log rule is checked against a live install instead |
-| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/stable-metrics/common-alerts/) until runbooks exist |
+| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/common-alerts/) until runbooks exist |
 | A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
 | Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
 

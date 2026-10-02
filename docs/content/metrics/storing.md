@@ -213,9 +213,9 @@ Not every backend should receive every metric.
 Every metric in the registry is classified by *importance* — how likely you are to want it — independent of which backend you use.
 The levels, from most to least important, are **essential**, **recommended**, **extended**, and **diagnostic**.
 A fifth value, **all**, is a firehose meaning "everything scraped, including metrics the registry has not classified."
-The tier definitions and the full membership of each tier live in [the metric list](../../reference/stable-metrics/list-metrics/).
+The tier definitions and the full membership of each tier live in [the metric list](../../reference/list-metrics/).
 
-<!-- The tier *definitions* live in reference/stable-metrics/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
+<!-- The tier *definitions* live in reference/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
 
 Each destination picks a floor with `minMetricImportance`.
 The filter is cumulative — a floor keeps that tier **and every tier more important than it**:

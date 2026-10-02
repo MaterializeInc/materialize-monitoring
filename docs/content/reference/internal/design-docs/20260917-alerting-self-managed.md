@@ -905,7 +905,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **`alerting/architecture.md`** — ✅ written, as the section's landing page: the notifier's shape, why the rulers
   address every replica, state, and failure modes.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.
-- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
+- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
 - **`operating/runbooks/`** — a new section, one page per shipped alert, and the convention that a stable runbook graduates to the product documentation.
 - **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
   for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
