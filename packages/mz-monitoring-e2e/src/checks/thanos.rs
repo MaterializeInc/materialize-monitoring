@@ -264,9 +264,9 @@ pub async fn rulers_remote_write_current(ctx: &Ctx, thanos_ruler: bool) -> Resul
 /// else in the suite notices.
 ///
 /// Read from the rule manager's per-group gauge, which each ruler exports only
-/// for the groups it loaded. A ruler with no rules passes. A rollout moves
-/// groups between pods, and the pod a group left can keep its last sample for
-/// the lookback window, so a brief overlap is retried rather than failed.
+/// for the groups it loaded. A ruler with no rules passes. While the ring
+/// changes, a group can be loaded by its old and new owner at once until each
+/// ruler's next sync, so a brief overlap is retried rather than failed.
 pub async fn loki_rule_groups_evaluated_once(ctx: &Ctx) -> Result<()> {
     let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
     let ns = ctx.cluster.namespace();
