@@ -24,6 +24,13 @@
   ],
   "minimumReleaseAge": "3 days",
   "abandonmentThreshold": "1 year",
+  "prConcurrentLimit": 20,
+  "logLevelRemap": [
+    {
+      "matchMessage": "/Some .+ did not have a releaseTimestamp, but as we're running with minimumReleaseAgeBehaviour=timestamp-optional, proceeding/",
+      "newLogLevel": "info"
+    }
+  ],
   "vulnerabilityAlerts": {
     "addLabels": ["security"],
     "automerge": true,
@@ -40,8 +47,19 @@
       "enabled": false
     },
     {
+      "description": "Raise an update whose registry publishes no release timestamp instead of holding it for good. Since Renovate 42 the default, `timestamp-required`, treats a missing timestamp as too new to pass `minimumReleaseAge`. That parked every GHCR, Quay, registry.k8s.io and gcr.io image (every OCI subchart among them), the GitHub runner images, and unversioned digests such as `dtolnay/rust-toolchain@stable` under Pending Status Checks indefinitely. Releases that do carry a timestamp still wait out `minimumReleaseAge`. In a dry run none of the updates this releases matched an automerge rule, so each still waits for review. The top-level `logLevelRemap` quiets the warning this logs on every run, which would otherwise sit under Repository Problems on the dashboard.",
+      "matchPackageNames": ["*"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
       "description": "Do not pin digests for Docker image tags referenced in Helm charts",
       "matchManagers": ["helm-values"],
+      "matchDatasources": ["docker"],
+      "pinDigests": false
+    },
+    {
+      "description": "Do not pin digests for the checker images the scripts under bin/ run (promtool, logcli). Their annotated variables hold a bare tag (`LOGCLI_VERSION=3.7.8`) and the bin/ regex manager captures no digest, so a `docker:pinDigests` update has nowhere to write one. It fails as `update failure` on every run and parks a permanently errored `pin-dependencies` branch on the dashboard.",
+      "matchFileNames": ["bin/**"],
       "matchDatasources": ["docker"],
       "pinDigests": false
     },
@@ -80,6 +98,18 @@
       "matchManagers": ["gomod"],
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": false
+    },
+    {
+      "description": "Crates automerge on every update type, including the 0.x minors the rule above skips and the majors the top-level `major` block holds back. Cargo treats both as breaking, and the build is what catches a break: an API change fails to compile, and a behavior change shows up as drift in the renders CI regenerates and diffs (dashboards, pipelines, rules). That is only a gate if the merge waits for those checks. GitHub's native automerge waits for the required checks alone, and `dashboards-gate` and `pipelines-gate` are not required on main, so `platformAutomerge` is off here and Renovate merges only once every check on the branch is green. Covers Cargo.lock maintenance too.",
+      "matchManagers": ["cargo"],
+      "automerge": true,
+      "platformAutomerge": false
+    },
+    {
+      "description": "One lock file maintenance PR per manager rather than one for the whole repository. A combined refresh stalls on whichever half breaks: a uv.lock refresh that pulled in a ruff with a new rule held a clean Cargo.lock refresh unmerged with it for six weeks. The branch is keyed on the manager, so Cargo.lock (cargo), uv.lock (pep621) and the Chart.lock files (helmv3) land separately.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "branchTopic": "{{{manager}}}-lock-file-maintenance",
+      "commitMessageExtra": "({{{manager}}})"
     },
     {
       "description": "Kubernetes puts its breaking changes in the minor, so for anything pinned to a k8s version v1.34 -> v1.36 is the risky bump and v1.34.8 -> v1.34.9 is the routine one. PVP versioning treats X.Y as the major version.",
@@ -122,6 +152,24 @@
       "matchDatasources": ["github-releases"],
       "matchPackageNames": ["gohugoio/hugo"],
       "extractVersion": "^v(?<version>.+)$"
+    },
+    {
+      "description": "Loki and its canary ship from one release but are pinned separately in the chart's values.yaml (`loki.loki.image`, `loki.lokiCanary.image`). Group them so the canary never trails the server it checks. The logcli that bin/check-rules.sh validates LogQL rules with comes from the same release and joins them. The Loki subchart is a different dependency (the helmv3 `loki` chart under grafana-community) and still moves on its own.",
+      "groupName": "Loki",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "grafana/loki",
+        "**/grafana/loki",
+        "grafana/loki-canary",
+        "**/grafana/loki-canary",
+        "grafana/logcli",
+        "**/grafana/logcli"
+      ]
+    },
+    {
+      "description": "grafana-operator releases its chart and its image under one version, and the CRDs the crds chart vendors are lifted out of that chart (`make grafana-operator-crds`). The image is pinned in values.yaml so that the registry profiles can repoint it and Renovate can see it, which on its own would let Renovate move the image ahead of the chart and its CRDs. Grouping lands both in one PR, and auto-format re-extracts the CRDs into it.",
+      "groupName": "grafana-operator",
+      "matchPackageNames": ["grafana-operator", "**/grafana-operator"]
     }
   ],
   "customManagers": [
