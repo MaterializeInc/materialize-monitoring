@@ -724,6 +724,9 @@ materialize:
       # -- Override for default labels to copy from the pod into metrics
       targetLabels: []
       # -- Override for default metric endpoints
+      # The defaults share one port, so each copies `__metrics_path__` into
+      # `metrics_path` with a `relabelings` entry. A replacement keeps that on
+      # every endpoint, or their `up` and `scrape_*` series collide.
       metricEndpoints: []
     secret:
       create: true

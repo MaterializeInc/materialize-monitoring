@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+# The environmentd SQL-derived metrics PodMonitor.
+#
+# Its four endpoints share one port and differ only by path, and the operator
+# derives identical target labels for all four. Without a label carrying the
+# path, every endpoint's `up` and `scrape_*` series is the same series, written
+# four times a scrape interval: Thanos keeps whichever landed last, and Google
+# Cloud Monitoring rejects the repeats. Nothing errors in the chart either way,
+# so the label is asserted per endpoint.
+suite: environmentd SQL PodMonitor
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+templates:
+  - templates/scrapers/monitor-materialize-environmentd-sql.yaml
+tests:
+  - it: should render one PodMonitor with the four SQL endpoints on one port
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: metadata.name
+          value: mzmon-materialize-environmentd-sql
+      # A fifth endpoint on this port needs the same relabeling; extend the
+      # per-endpoint test below with it.
+      - lengthEqual:
+          path: spec.podMetricsEndpoints
+          count: 4
+      - equal:
+          path: spec.podMetricsEndpoints[*].port
+          value: internal-http
+
+  - it: should label every endpoint's series with its path
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].path
+          value: /metrics/mz_compute
+      - contains:
+          path: spec.podMetricsEndpoints[0].relabelings
+          content: &metricsPath
+            sourceLabels: [__metrics_path__]
+            targetLabel: metrics_path
+      - equal:
+          path: spec.podMetricsEndpoints[1].path
+          value: /metrics/mz_frontier
+      - contains:
+          path: spec.podMetricsEndpoints[1].relabelings
+          content: *metricsPath
+      - equal:
+          path: spec.podMetricsEndpoints[2].path
+          value: /metrics/mz_storage
+      - contains:
+          path: spec.podMetricsEndpoints[2].relabelings
+          content: *metricsPath
+      - equal:
+          path: spec.podMetricsEndpoints[3].path
+          value: /metrics/mz_usage
+      - contains:
+          path: spec.podMetricsEndpoints[3].relabelings
+          content: *metricsPath
