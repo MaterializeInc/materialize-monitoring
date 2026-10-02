@@ -15,9 +15,39 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.30.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.31.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.30.0
+
+* Shard the Loki ruler's rule groups across its two replicas
+    * [materialize-monitoring#444](https://github.com/MaterializeInc/materialize-monitoring/pull/444)
+    * The Loki ruler's two replicas now divide the rule groups between them (`loki.loki.rulerConfig.enable_sharding: true`), so each rule is evaluated once rather than once per replica. Before this, every Loki alert reached Alertmanager twice.
+        * A ruler that stops cleanly hands its groups over within one evaluation. One lost with its node hands them over after two minutes, and they are not evaluated until then.
+        * Recording-rule samples from the Loki ruler carry `instance="loki-ruler"` rather than the pod name, and `POD_NAME` is removed from `loki.ruler.extraEnv`. An override of `write_relabel_configs` that still names `${POD_NAME}` should restate the env var or switch to the constant.
+        * The upgrade rolls every Loki component, since they share one configuration.
+* Update grafana Docker tag to v12.11.2
+    * [materialize-monitoring#450](https://github.com/MaterializeInc/materialize-monitoring/pull/450)
+* Thanos: datasource scrape interval, distinct SQL endpoint series, ruler on subchart remoteWrite
+    * [materialize-monitoring#447](https://github.com/MaterializeInc/materialize-monitoring/pull/447)
+    * The Thanos Grafana datasource now sets `jsonData.timeInterval` to the slower of `pipeline.metrics.kubelet.scrapeInterval` and `pipeline.metrics.kubeProxy.scrapeInterval` (60s by default), so `rate()` panels over cAdvisor and kube-proxy metrics draw continuously instead of as scattered points. Panels over faster-scraped metrics get a 60s minimum step. `connections.datasources.thanos.jsonData.timeInterval` overrides it, and the render warns when an override is shorter than the chart's value.
+    * Series from the environmentd SQL `PodMonitor` (`/metrics/mz_compute`, `mz_frontier`, `mz_storage`, `mz_usage`) carry a new `metrics_path` label, so that job's `up` and `scrape_*` have one series per path rather than one shared series.
+    * The Thanos ruler's stateless mode is now the subchart's `thanos.ruler.remoteWrite`, and the ruler no longer passes `--objstore.config-file` or runs a block shipper.
+        * The remote-write configuration is a Secret, `thanos-ruler-remote-write-v2` or `-v2-tls`, named by `thanos.ruler.remoteWrite.secretName`; it was a ConfigMap mounted through `thanos.ruler.extraVolumes`. `profiles/mtls.values.yaml` now sets `secretName`.
+        * `thanos.ruler.extraArgs` no longer carries `--remote-write.config-file`, and `extraVolumes` / `extraVolumeMounts` no longer carry a `remote-write` entry. A values override that still restates either now fails the render with what to remove. Terraform installs are unaffected; Helm installs upgrading with `--reuse-values` or a copied mTLS override need the entries dropped.
+        * To write rule results elsewhere, name another Secret in `secretName`, or set `secretName: ""` with `createSecret: true` and the configuration in `config`.
+* Renovate: unblock pending updates, automerge crates, split lock files; DEP-324 pin subchart images
+    * [materialize-monitoring#446](https://github.com/MaterializeInc/materialize-monitoring/pull/446)
+    * Every subchart image the chart renders under its shipped profiles is now pinned in `values.yaml` (`loki.loki.image`, `loki.lokiCanary.image`, `loki.memcached.image`, `loki.memcachedExporter.image`, `loki.sidecar.image`, `thanos.global.image`, `grafana-operator.image`, `kube-state-metrics.image`, `metrics-server.image`, `grafana.initChownData.image`). Rendered images are unchanged. These are the subcharts' own value paths, so existing overrides keep applying.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+    * docs: flatten reference/stable-metrics into reference, and reorder by use
+        * [materialize-monitoring#442](https://github.com/MaterializeInc/materialize-monitoring/pull/442)
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
 
 ## Dashboards (Helm chart) v0.19.0 (Unreleased)
 
