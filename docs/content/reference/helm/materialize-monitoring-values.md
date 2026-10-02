@@ -5991,7 +5991,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.10.1"
+  "tag": "2.11.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
