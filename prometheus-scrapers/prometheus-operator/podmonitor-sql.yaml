@@ -28,6 +28,16 @@ spec:
     - cluster.environmentd.materialize.cloud/cluster-id
     - cluster.environmentd.materialize.cloud/replica-id
   # https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.PodMetricsEndpoint
+  #
+  # Four endpoints on one port, differing only by path. Each is its own scrape
+  # pool, but the operator derives the same `job`, `instance`, `pod`,
+  # `container` and `endpoint` for all four, so without `metrics_path` their
+  # `up` and `scrape_*` series are one series written four times. That reads as
+  # whichever scrape landed last, and Google Cloud Monitoring rejects the
+  # repeats outright. `metrics_path` is the label kube-prometheus-stack uses for
+  # the kubelet's several paths. The classic and GMP renders already split the
+  # paths into one job each; classic carries the label anyway, and GMP, which
+  # has no target relabeling, drops it.
   podMetricsEndpoints:
     - port: internal-http
       path: /metrics/mz_compute
@@ -38,6 +48,9 @@ spec:
         password:
           name: materialize-sql-monitor
           key: password
+      relabelings:
+        - sourceLabels: [__metrics_path__]
+          targetLabel: metrics_path
     - port: internal-http
       path: /metrics/mz_frontier
       basicAuth:
@@ -47,6 +60,9 @@ spec:
         password:
           name: materialize-sql-monitor
           key: password
+      relabelings:
+        - sourceLabels: [__metrics_path__]
+          targetLabel: metrics_path
     - port: internal-http
       path: /metrics/mz_storage
       basicAuth:
@@ -56,6 +72,9 @@ spec:
         password:
           name: materialize-sql-monitor
           key: password
+      relabelings:
+        - sourceLabels: [__metrics_path__]
+          targetLabel: metrics_path
     - port: internal-http
       path: /metrics/mz_usage
       basicAuth:
@@ -65,3 +84,6 @@ spec:
         password:
           name: materialize-sql-monitor
           key: password
+      relabelings:
+        - sourceLabels: [__metrics_path__]
+          targetLabel: metrics_path

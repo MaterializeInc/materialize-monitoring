@@ -62,6 +62,14 @@ kubectl create secret generic materialize-sql-monitor \
   --from-literal=password=
 ```
 
+### Telling the four SQL endpoints apart
+
+The four endpoints share one port, so the Prometheus Operator `PodMonitor` gives all four the same `job`, `instance`, `pod` and `endpoint`.
+Each endpoint therefore copies its path into a `metrics_path` label, as kube-prometheus-stack does for the kubelet's several paths.
+Without it, the four endpoints' `up` and `scrape_*` series are one series written four times per scrape interval.
+A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
+The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see
@@ -231,7 +239,7 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     <tr>
       <td>materialize-sql</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=564076a90db12393" download="materialize-sql-564076a90db12393.yaml"><code>podmonitor-sql.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=3e68e90143aa7c63" download="materialize-sql-3e68e90143aa7c63.yaml"><code>podmonitor-sql.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -290,7 +298,7 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/prometheus-scrapers/classic/scrape_config.yaml?xxhash=5a3d8f41cde598cb" download="scrape_config-5a3d8f41cde598cb.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/prometheus-scrapers/classic/scrape_config.yaml?xxhash=e1b762b30355985f" download="scrape_config-e1b762b30355985f.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
