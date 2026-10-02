@@ -5142,6 +5142,7 @@ image, this one included. The profiles under `profiles/registry/` repoint
   "alertmanager_url": "http://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}",
   "enable_alertmanager_discovery": true,
   "enable_alertmanager_v2": true,
+  "enable_sharding": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
   "remote_write": {
@@ -5167,7 +5168,7 @@ image, this one included. The profiles under `profiles/registry/` repoint
           },
           {
             "regex": "",
-            "replacement": "${POD_NAME}",
+            "replacement": "loki-ruler",
             "source_labels": [
               "instance"
             ],
@@ -5203,6 +5204,26 @@ side uses — and why `split-namespace` overrides both of them.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.enable_sharding</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Divide the rule groups between the ruler replicas, so each group is evaluated by one of them.
+
+Without it every replica loads every group: each alert is sent once per
+replica, and each recording-rule sample is written once per replica.
+
+The replicas divide the groups through a hash ring. Loki puts every ring
+on memberlist when `memberlist.join_members` is set, which the subchart
+does, so the ruler's ring rides the same gossip cluster as the rest of
+Loki and needs no configuration of its own.
+
+| A replica | Its groups move to the others |
+| --- | --- |
+| Stops cleanly (rollout, eviction, drain) | Within one evaluation, because it leaves the ring on the way out |
+| Is lost without stopping (node failure) | After two `heartbeat_timeout`s (two minutes by default), when the others forget it. The groups are not evaluated until then |
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -5229,7 +5250,7 @@ side uses — and why `split-namespace` overrides both of them.
         },
         {
           "regex": "",
-          "replacement": "${POD_NAME}",
+          "replacement": "loki-ruler",
           "source_labels": [
             "instance"
           ],
@@ -5848,6 +5869,13 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.ruler<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. They divide the rule groups between them rather than each evaluating all of them; see `loki.loki.rulerConfig.enable_sharding`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -5893,18 +5921,10 @@ https://grafana.com/docs/loki/latest/get-started/components/
         "name": "ruler-env"
       }
     }
-  },
-  {
-    "name": "POD_NAME",
-    "valueFrom": {
-      "fieldRef": {
-        "fieldPath": "metadata.name"
-      }
-    }
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
+      <td class="helm-value-desc">The cluster name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. A list: restate it when adding another.
 </td>
     </tr>
     <tr>

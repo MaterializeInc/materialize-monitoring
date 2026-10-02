@@ -255,6 +255,66 @@ pub async fn rulers_remote_write_current(ctx: &Ctx, thanos_ruler: bool) -> Resul
     .await
 }
 
+/// Each Loki rule group is loaded by one ruler.
+///
+/// Without `enable_sharding` every ruler replica loads every group, so each
+/// alert goes out once per replica and each recording-rule sample is written
+/// once per replica into the same series. Every pod stays healthy, and nothing
+/// else in the suite notices.
+///
+/// Read from the rule manager's per-group gauge, which each ruler exports only
+/// for the groups it loaded. A ruler with no rules passes.
+///
+/// Only series scraped in the last [`FRESH_SECONDS`] count. A replaced pod's
+/// series can stay in the five-minute lookback window under its old `instance`
+/// (see [`rulers_remote_write_current`]), which is longer than an assertion's
+/// default deadline, so without the filter a correct rollout reads as two
+/// owners. While the ring changes, a group can also be loaded by its old and
+/// new owner at once until each ruler's next sync, so a brief overlap is
+/// retried rather than failed.
+pub async fn loki_rule_groups_evaluated_once(ctx: &Ctx) -> Result<()> {
+    // Six scrapes at the Loki subchart's default 15s ServiceMonitor interval.
+    const FRESH_SECONDS: u32 = 90;
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+    let ns = ctx.cluster.namespace();
+    let series = format!("loki_prometheus_rule_group_rules{{namespace=\"{ns}\"}}");
+    let query = format!(
+        "count by (rule_group) ({series} and (time() - timestamp({series})) < {FRESH_SECONDS}) > 1"
+    );
+
+    retry_until(
+        "each Loki rule group is loaded by one ruler",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let series = instant_query(ctx, &target, &query).await?;
+            if series.is_empty() {
+                return Ok(());
+            }
+            // The label is `<rule file>;<group>`; the group name is what a
+            // reader recognizes.
+            let groups: Vec<String> = series
+                .iter()
+                .map(|s| {
+                    let group = s
+                        .pointer("/metric/rule_group")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<group>");
+                    let name = group.rsplit(';').next().unwrap_or(group);
+                    format!("{name} ({} rulers)", sample_value(s).unwrap_or(0.0))
+                })
+                .collect();
+            bail!(
+                "{} loaded by more than one Loki ruler, so each is evaluated once per ruler. \
+                 Check loki.loki.rulerConfig.enable_sharding, and that every ruler is in the \
+                 memberlist cluster (/ruler/ring on a ruler lists the members it sees)",
+                groups.join(", ")
+            )
+        },
+    )
+    .await
+}
+
 /// Run an instant query and return its result vector.
 /// Run an instant query against a Prometheus-compatible endpoint.
 ///
