@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring Optional CRDs v0.5.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.31.0 (Unreleased)
 
 _Changes Pending_
@@ -1012,9 +1016,17 @@ _Changes Pending_
     * Update Rust crate jsonschema to 0.49.0
         * [materialize-monitoring#134](https://github.com/MaterializeInc/materialize-monitoring/pull/134)
 
-## materialize-monitoring Optional CRDs v0.4.0 (Unreleased)
+## materialize-monitoring Optional CRDs v0.4.0
 
-_Changes Pending_
+* Renovate: unblock pending updates, automerge crates, split lock files; DEP-324 pin subchart images
+    * [materialize-monitoring#446](https://github.com/MaterializeInc/materialize-monitoring/pull/446)
+    * Every subchart image the chart renders under its shipped profiles is now pinned in `values.yaml` (`loki.loki.image`, `loki.lokiCanary.image`, `loki.memcached.image`, `loki.memcachedExporter.image`, `loki.sidecar.image`, `thanos.global.image`, `grafana-operator.image`, `kube-state-metrics.image`, `metrics-server.image`, `grafana.initChownData.image`). Rendered images are unchanged. These are the subcharts' own value paths, so existing overrides keep applying.
+* Ensure auto-format on version-update PRs does not update Chart.lock
+    * [materialize-monitoring#262](https://github.com/MaterializeInc/materialize-monitoring/pull/262)
+* Upgrade all subcharts to latest version (Loki 15->18, etc)
+    * [materialize-monitoring#198](https://github.com/MaterializeInc/materialize-monitoring/pull/198)
+* More documentation cleanups
+    * [materialize-monitoring#187](https://github.com/MaterializeInc/materialize-monitoring/pull/187)
 
 ## materialize-monitoring Helm Chart v0.8.0
 
