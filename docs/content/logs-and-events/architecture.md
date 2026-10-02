@@ -124,6 +124,7 @@ flowchart LR
 Replication gives durability and quorum: a single ingester can be lost or restarted without dropping writes, and queriers deduplicate the copies on read.
 The ring is also what makes scaling and rolling restarts safe — components join and leave the ring and traffic rebalances around them.
 A replication factor of 3 implies you run **at least three ingesters**.
+The rulers keep a ring of their own on the same memberlist cluster, which assigns each rule group to one ruler; see [Loki Ruler](#ruler).
 
 > [!INFO]
 >   `memberlist` is the default ring backend in current Loki.
@@ -231,8 +232,23 @@ The **Loki Ruler** evaluates LogQL [alerting and recording rules](../rules/) on 
 - **Alerting rules** emit alerts to [Alertmanager](../../alerting/), which routes and notifies.
 - **Recording rules** turn a LogQL expression into a metric sample. Because that output is a metric — not a log — the ruler **remote-writes those samples back through `alloy-gateway`**, which forwards them to the long-term metric store ([Thanos](../../o11y-glossary/#stack-components)) alongside the rest of the metrics pipeline. This keeps log-derived metrics in the same place you query everything else.
 
-Rule definitions live in object storage, and when multiple rulers run they shard rule groups across themselves via a consistent hash ring.
-A ruler can delegate query execution to the query frontend to benefit from splitting and caching.
+Rule definitions live in object storage.
+The chart runs two rulers, and they divide the rule groups between them through a [hash ring](#the-hash-ring) on the same memberlist cluster as the rest of Loki.
+Each group is evaluated by one ruler at a time, so each alert is sent once and each recording-rule sample is written once.
+Grafana's rule list is complete from either ruler, because the ruler that answers collects the other's groups over gRPC.
+
+| When a ruler | Its groups move to the other ruler |
+| --- | --- |
+| Stops cleanly, as in a rollout, an eviction or a node drain | Within one evaluation interval, because it leaves the ring as it stops |
+| Is lost without stopping, as in a node failure | After two minutes, when the survivor forgets it. Its groups are not evaluated until then |
+
+Recording-rule samples carry `job` and `instance` both set to `loki-ruler`.
+`instance` is a constant rather than the pod name because every rollout moves groups between rulers, and a per-pod value would start a new series each time.
+
+The rulers run their queries themselves.
+Loki can instead hand them to the query frontend for its splitting and caching, but the chart does not configure that.
+
+<!-- Verified 2026-10-02 against two Loki 3.7.6 rulers on one memberlist cluster: disjoint group ownership, a clean stop handed off in about 9s, and a SIGKILL in about 2m04s (auto-forget at 2 × the 1m heartbeat_timeout). `ruler.evaluation.mode` is `local` on a live install. -->
 
 *See more:* [Ruler](https://grafana.com/docs/loki/latest/get-started/components/#ruler) (official) and [Logs & Events > Rules](../rules/).
 

@@ -493,6 +493,16 @@ Usage:
     {{- $warnings = append $warnings "loki.ruler.persistence is enabled but loki.loki.rulerConfig.remote_write is not, so the PVC the ruler keeps for its remote-write WAL buffers nothing. Either configure remote_write or drop the volume." }}
   {{- end }}
 
+  {{- /* Without sharding every replica loads every group and evaluates every
+         rule, at the same aligned timestamps. Alertmanager absorbs the extra
+         alerts. Recording rules are worse: the chart fills one constant
+         `instance`, so the replicas write the same series and nothing
+         downstream deduplicates them. Nothing looks wrong from the ruler. */}}
+  {{- $replicas := dig "ruler" "replicas" 1 $values | int }}
+  {{- if and ( gt $replicas 1 ) ( not ( dig "enable_sharding" false $rulerConfig ) ) }}
+    {{- $warnings = append $warnings ( printf "loki.ruler.replicas is %d but loki.loki.rulerConfig.enable_sharding is off, so every replica evaluates every rule group. Each alert is sent %d times, and each recording-rule sample is written %d times into the same series. Turn enable_sharding back on, or run one replica." $replicas $replicas $replicas ) }}
+  {{- end }}
+
   {{- /* The gateway's metrics listener is where recording-rule samples go. Its
          TLS is `pipeline.metrics.gateway.server.tls`, which the Loki subchart
          cannot read, so `profiles/mtls.values.yaml` restates the client's URL
@@ -525,8 +535,8 @@ Usage:
         {{- /* The gateway converts every series to OTLP, which needs `job` and
                `instance`. Recording-rule results carry neither, so the chart
                fills both here, in a list an override replaces whole. Without
-               them the gateway falls back to a generic pair, and the two ruler
-               replicas' results can no longer be told apart. */}}
+               them the gateway falls back to a generic pair, and the results
+               no longer say they came from the Loki ruler. */}}
         {{- $filled := list }}
         {{- range ( dig "write_relabel_configs" list ( $client | default dict ) | default list ) }}
           {{- if kindIs "map" . }}
@@ -535,7 +545,7 @@ Usage:
         {{- end }}
         {{- range $label := list "job" "instance" }}
           {{- if not ( has $label $filled ) }}
-            {{- $warnings = append $warnings ( printf "%s.write_relabel_configs does not set %s. The gateway converts every series to OTLP, which needs job and instance, so it fills a generic job=\"remote-write\" and instance=\"unknown\". Recording-rule results then do not say they came from the Loki ruler, and the per-replica instance that keeps two ruler replicas' results apart is lost. Restate the chart's two write_relabel_configs entries alongside any you add; the list replaces the chart's." $path $label ) }}
+            {{- $warnings = append $warnings ( printf "%s.write_relabel_configs does not set %s. The gateway converts every series to OTLP, which needs job and instance, so it fills a generic job=\"remote-write\" and instance=\"unknown\". Recording-rule results then do not say they came from the Loki ruler. Restate the chart's two write_relabel_configs entries alongside any you add; the list replaces the chart's." $path $label ) }}
           {{- end }}
         {{- end }}
         {{- if not ( hasPrefix ( printf "%s://" $scheme ) $url ) }}

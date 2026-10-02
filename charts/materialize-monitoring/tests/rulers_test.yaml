@@ -869,23 +869,16 @@ tests:
           path: data["remote-write.yaml"]
           pattern: "write_relabel_configs"
 
-  - it: fills job and instance on the Loki ruler's remote-written samples, from the pod name
+  # The Loki ruler's `instance` is a constant for the Thanos ruler's reason
+  # turned around: each group has one evaluator at a time (see the sharding
+  # tests below), so a per-pod value would only start a new series whenever a
+  # group moved between replicas.
+  - it: fills job and instance on the Loki ruler's remote-written samples, as constants
     template: ../charts/loki/templates/config.yaml
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: "write_relabel_configs:\\n\\s+- regex: \"\"\\n\\s+replacement: loki-ruler\\n\\s+source_labels:\\n\\s+- job\\n\\s+target_label: job\\n\\s+- regex: \"\"\\n\\s+replacement: \\$\\{POD_NAME\\}\\n\\s+source_labels:\\n\\s+- instance\\n\\s+target_label: instance"
-
-  - it: gives the Loki ruler the pod name that instance is filled from
-    template: ../charts/loki/templates/ruler/workload.yaml
-    asserts:
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: POD_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
+          pattern: "write_relabel_configs:\\n\\s+- regex: \"\"\\n\\s+replacement: loki-ruler\\n\\s+source_labels:\\n\\s+- job\\n\\s+target_label: job\\n\\s+- regex: \"\"\\n\\s+replacement: loki-ruler\\n\\s+source_labels:\\n\\s+- instance\\n\\s+target_label: instance"
 
   - it: warns when a Loki ruler client to the gateway no longer fills job and instance
     set:
@@ -899,6 +892,61 @@ tests:
           pattern: "remote_write.clients.gateway.write_relabel_configs does not set job"
       - matchRegexRaw:
           pattern: "remote_write.clients.gateway.write_relabel_configs does not set instance"
+
+  # --- one evaluator per Loki rule group ------------------------------------
+
+  # Loki's ruler does not shard by default, and then every replica loads every
+  # group and evaluates every rule: each alert goes out once per replica, and
+  # each recording-rule sample is written once per replica into the same
+  # series. Both pods stay healthy throughout.
+  - it: shards the Loki ruler's rule groups across its replicas
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "(?m)^ruler:\\n(?:  .*\\n)*?  enable_sharding: true$"
+
+  # The ruler's ring has no configuration of its own. Loki puts every ring on
+  # memberlist when `memberlist.join_members` is set, and the join address is
+  # the Service selecting `app.kubernetes.io/part-of: memberlist`. A ruler
+  # outside that cluster sees a ring holding only itself, owns every group, and
+  # brings the duplicate evaluation back without logging an error.
+  - it: gives the Loki ruler's ring a memberlist cluster to join
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "(?m)^memberlist:\\n(?:  .*\\n)*?  join_members:\\n  - loki-memberlist\\.test-monitoring\\.svc\\.cluster\\.local$"
+
+  - it: puts the Loki ruler in the memberlist cluster
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/part-of"]
+          value: memberlist
+
+  - it: warns when more than one Loki ruler runs without sharding
+    set:
+      loki.loki.rulerConfig.enable_sharding: false
+    template: NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "loki.ruler.replicas is 2 but loki.loki.rulerConfig.enable_sharding is off"
+
+  - it: does not warn about sharding for a single Loki ruler
+    set:
+      loki.loki.rulerConfig.enable_sharding: false
+      loki.ruler.replicas: 1
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "enable_sharding is off"
+
+  - it: does not warn about sharding in a default install
+    template: NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "enable_sharding is off"
 
   # --- the ConfigMap's revision ---------------------------------------------
 

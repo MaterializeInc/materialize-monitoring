@@ -363,6 +363,13 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
     trials.push(trial(
         runtime,
         ctx,
+        "thanos::loki_rule_groups_evaluated_once",
+        thanos && loki_ruler,
+        checks::thanos::loki_rule_groups_evaluated_once,
+    ));
+    trials.push(trial(
+        runtime,
+        ctx,
         "alertmanager::scraped_once_per_replica",
         alertmanager && thanos,
         checks::alertmanager::scraped_once_per_replica,
