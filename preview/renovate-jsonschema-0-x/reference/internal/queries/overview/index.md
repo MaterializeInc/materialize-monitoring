@@ -85,7 +85,7 @@ Adding or changing a query has effects beyond the query itself:
   reaches the rendered dashboards on the next `make dashboards`.
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
-  [Reference Metrics](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/).
+  [Reference Metrics](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/list-metrics/).
 - **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
   This is why a new query can change what a deployment ships to a metered backend.
@@ -104,7 +104,7 @@ Adding or changing a query has effects beyond the query itself:
   An alert's query renders through its own context and is held to stricter checks than a panel's; see
   [Authoring Alerts](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/queries/alerts/).
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
-  renders [Common Queries](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-queries/) from it.
+  renders [Common Queries](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/common-queries/) from it.
   There is no generated intermediate to refresh.
 
 Both generated outputs declare `packages/queries/*.yaml` as a prerequisite, so `make metrics` rebuilds them after a query change.

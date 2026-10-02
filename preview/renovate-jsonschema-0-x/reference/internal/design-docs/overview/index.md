@@ -26,7 +26,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/design-docs/20260627-loki-production-infrastructure/">First-Class Production Loki Infrastructure</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-06-28 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-10-01 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Shipped</li>
       </ul>
     </li>

@@ -12,7 +12,7 @@ on how they would be used.
 ## Metric Tiers
 
 Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
-For that, see [Stability Guarantees and Deprecation Policy](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
+For that, see [Stability Guarantees and Deprecation Policy](../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
 
 
 Metrics are grouped by "metricImportance" levels (mzmon-specific).
@@ -140,6 +140,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
+                <li><a href="../common-queries#infra.karpenter.controller.cpu">infra.karpenter.controller.cpu</a></li>
                 <li><a href="../common-queries#infra.kubernetes.pods_high_cpu_ratio">infra.kubernetes.pods_high_cpu_ratio</a></li>
                 <li><a href="../common-queries#infra.kubernetes.vector_high_cpu_ratio">infra.kubernetes.vector_high_cpu_ratio</a></li>
                 <li><a href="../common-queries#materialize.clusters.cpu_high">materialize.clusters.cpu_high</a></li>
@@ -207,6 +208,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
+                <li><a href="../common-queries#infra.karpenter.controller.memory">infra.karpenter.controller.memory</a></li>
                 <li><a href="../common-queries#infra.kubernetes.memory_elevated">infra.kubernetes.memory_elevated</a></li>
                 <li><a href="../common-queries#infra.kubernetes.memory_high">infra.kubernetes.memory_high</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_memory">materialize.environmentd.high_memory</a></li>
@@ -525,6 +527,9 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.hpa.at_max">infra.autoscaling.hpa.at_max</a></li>
+                <li><a href="../common-queries#infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas</a></li>
+                <li><a href="../common-queries#infra.autoscaling.hpa.share_of_max">infra.autoscaling.hpa.share_of_max</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_critical">infra.kubernetes.hpa_replicas_critical</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_high">infra.kubernetes.hpa_replicas_high</a></li>
             </ul>
@@ -535,6 +540,9 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.hpa.at_max">infra.autoscaling.hpa.at_max</a></li>
+                <li><a href="../common-queries#infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas</a></li>
+                <li><a href="../common-queries#infra.autoscaling.hpa.share_of_max">infra.autoscaling.hpa.share_of_max</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_critical">infra.kubernetes.hpa_replicas_critical</a></li>
                 <li><a href="../common-queries#infra.kubernetes.hpa_replicas_high">infra.kubernetes.hpa_replicas_high</a></li>
             </ul>
@@ -546,6 +554,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.nodes.age">infra.autoscaling.nodes.age</a></li>
                 <li><a href="../common-queries#infra.nodes.created">infra.nodes.created</a></li>
             </ul>
         </details>
@@ -556,6 +565,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.nodes.added">infra.autoscaling.nodes.added</a></li>
+                <li><a href="../common-queries#infra.autoscaling.nodes.count">infra.autoscaling.nodes.count</a></li>
                 <li><a href="../common-queries#infra.nodes.info.address">infra.nodes.info.address</a></li>
                 <li><a href="../common-queries#infra.nodes.info.kernel">infra.nodes.info.kernel</a></li>
                 <li><a href="../common-queries#infra.nodes.info.kubelet">infra.nodes.info.kubelet</a></li>
@@ -581,6 +592,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.pools.cordoned">infra.autoscaling.pools.cordoned</a></li>
                 <li><a href="../common-queries#infra.nodes.unschedulable">infra.nodes.unschedulable</a></li>
             </ul>
         </details>
@@ -591,6 +603,9 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.capacity.requested">infra.autoscaling.capacity.requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.cpu_requested">infra.autoscaling.pools.cpu_requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.memory_requested">infra.autoscaling.pools.memory_requested</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.cpu">infra.nodes.allocation.cpu</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.memory">infra.nodes.allocation.memory</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.pods">infra.nodes.allocation.pods</a></li>
@@ -616,6 +631,8 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.nodes.not_ready">infra.autoscaling.nodes.not_ready</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.not_ready">infra.autoscaling.pools.not_ready</a></li>
                 <li><a href="../common-queries#infra.kubernetes.node_disk_pressure">infra.kubernetes.node_disk_pressure</a></li>
                 <li><a href="../common-queries#infra.nodes.condition.ready">infra.nodes.condition.ready</a></li>
                 <li><a href="../common-queries#infra.nodes.conditions">infra.nodes.conditions</a></li>
@@ -630,6 +647,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.alloy.resources.cpu">infra.alloy.resources.cpu</a></li>
                 <li><a href="../common-queries#infra.alloy.resources.memory">infra.alloy.resources.memory</a></li>
+                <li><a href="../common-queries#infra.karpenter.controller.memory">infra.karpenter.controller.memory</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.budgets">infra.nodes.pods.budgets</a></li>
                 <li><a href="../common-queries#materialize.clusters.cpu_high">materialize.clusters.cpu_high</a></li>
                 <li><a href="../common-queries#materialize.kubernetes.cpu.usage.percent">materialize.kubernetes.cpu.usage.percent</a></li>
@@ -643,6 +661,9 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.capacity.requested">infra.autoscaling.capacity.requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.cpu_requested">infra.autoscaling.pools.cpu_requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.memory_requested">infra.autoscaling.pools.memory_requested</a></li>
                 <li><a href="../common-queries#infra.kubernetes.daemonset_high_cpu">infra.kubernetes.daemonset_high_cpu</a></li>
                 <li><a href="../common-queries#infra.kubernetes.daemonset_saturating_cpu">infra.kubernetes.daemonset_saturating_cpu</a></li>
                 <li><a href="../common-queries#infra.kubernetes.daemonset_saturating_mem">infra.kubernetes.daemonset_saturating_mem</a></li>
@@ -719,6 +740,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.pods.unscheduled_list">infra.autoscaling.pods.unscheduled_list</a></li>
                 <li><a href="../common-queries#materialize.cluster_replicas.not_ready">materialize.cluster_replicas.not_ready</a></li>
                 <li><a href="../common-queries#materialize.clusterd.new_restarts_during_release">materialize.clusterd.new_restarts_during_release</a></li>
             </ul>
@@ -757,6 +779,11 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.autoscaling.capacity.requested">infra.autoscaling.capacity.requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pods.pending">infra.autoscaling.pods.pending</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pods.pending_by_namespace">infra.autoscaling.pods.pending_by_namespace</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.cpu_requested">infra.autoscaling.pools.cpu_requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.memory_requested">infra.autoscaling.pools.memory_requested</a></li>
                 <li><a href="../common-queries#infra.kubernetes.infra_pod_pending">infra.kubernetes.infra_pod_pending</a></li>
                 <li><a href="../common-queries#infra.nodes.allocation.pods">infra.nodes.allocation.pods</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.by_namespace">infra.nodes.pods.by_namespace</a></li>
@@ -1964,6 +1991,34 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="kube_horizontalpodautoscaler_spec_min_replicas">kube_horizontalpodautoscaler_spec_min_replicas
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_horizontalpodautoscaler_status_condition">kube_horizontalpodautoscaler_status_condition
+        <details>
+            Used labels: condition, status
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.autoscaling.hpa.unable_to_scale">infra.autoscaling.hpa.unable_to_scale</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_horizontalpodautoscaler_status_desired_replicas">kube_horizontalpodautoscaler_status_desired_replicas
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.autoscaling.hpa.replicas">infra.autoscaling.hpa.replicas</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="kube_networkpolicy_spec_egress_rules">kube_networkpolicy_spec_egress_rules
         <details>
             Used labels: namespace
@@ -1983,6 +2038,34 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.net.security.policies.by_namespace">infra.net.security.policies.by_namespace</a></li>
                 <li><a href="../common-queries#infra.net.security.policies.rules">infra.net.security.policies.rules</a></li>
                 <li><a href="../common-queries#infra.net.security.policies.uncovered">infra.net.security.policies.uncovered</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_node_labels">kube_node_labels
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.autoscaling.nodes.age">infra.autoscaling.nodes.age</a></li>
+                <li><a href="../common-queries#infra.autoscaling.nodes.by_instance_type">infra.autoscaling.nodes.by_instance_type</a></li>
+                <li><a href="../common-queries#infra.autoscaling.nodes.by_pool">infra.autoscaling.nodes.by_pool</a></li>
+                <li><a href="../common-queries#infra.autoscaling.nodes.by_zone">infra.autoscaling.nodes.by_zone</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.cordoned">infra.autoscaling.pools.cordoned</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.cpu_requested">infra.autoscaling.pools.cpu_requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.memory_requested">infra.autoscaling.pools.memory_requested</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pools.not_ready">infra.autoscaling.pools.not_ready</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="kube_pod_status_scheduled">kube_pod_status_scheduled
+        <details>
+            Used labels: condition
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.autoscaling.pods.unscheduled">infra.autoscaling.pods.unscheduled</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pods.unscheduled_by_namespace">infra.autoscaling.pods.unscheduled_by_namespace</a></li>
+                <li><a href="../common-queries#infra.autoscaling.pods.unscheduled_list">infra.autoscaling.pods.unscheduled_list</a></li>
             </ul>
         </details>
     </li>

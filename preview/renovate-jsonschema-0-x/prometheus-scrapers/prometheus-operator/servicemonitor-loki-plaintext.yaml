@@ -18,6 +18,8 @@ spec:
   #     own `/metrics` server on :3500 is plaintext and has no TLS option.
   #   * The two memcached exporters serve :9150 in the clear; the subchart wires
   #     no certificates to them.
+  #   * The Loki gateway's access-log exporter serves :4040 in the clear. TLS on
+  #     the gateway moves its client listener, not the sidecar's.
   #
   # Scraped over HTTPS they fail outright, so `up` reads 0 and the series never
   # arrive — which for the canary means the end-to-end write→read check silently
@@ -32,7 +34,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: loki
       monitoring.materialize.cloud/scrape-scheme: plaintext
-  # One entry covers all of them: the canary and both exporters name their
+  # One entry covers all of them: the canary and the three exporters name their
   # metrics port `http-metrics`, whatever number sits behind it.
   endpoints:
     - port: http-metrics

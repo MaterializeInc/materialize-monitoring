@@ -253,6 +253,25 @@ Assume SQL fluency.
 Explain Materialize-side concepts (peek, hydration, arrangement) when they appear.
 Don't restate the obvious ("Network bandwidth per pod" — they can read the title).
 
+### Terminology
+
+Titles, legends, empty-state text, and descriptions use Materialize's product vocabulary rather than its internal one.
+Product review set these three:
+
+| Write | Instead of | Means |
+|---|---|---|
+| object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
+| freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+
+Freshness is a duration, so a larger value is worse.
+Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
+
+The rule covers what a reader sees.
+Metric names, label names, query ids, and element keys keep Materialize's own spelling, since they have to match what Materialize emits or are not shown.
+_Sink Lag_ keeps its name because it is a byte backlog, not a freshness reading.
+Metric and log _collection_ — gathering telemetry — is a different sense of the word and is unaffected.
+
 ### Structure
 
 The registry's `description` is structured, and `format_description` renders it to the shape below: `summary` in bold
@@ -366,6 +385,13 @@ Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window
   and a `[1m]` rate window can't compute.
   The per-panel "Min interval" (`minStep`) is a local override of the same value, but the datasource setting is the
   correct global fix.
+
+**In the query registry, write `%%{interval}`, `%%{range}` and `%%{rangeWindow}`, never Grafana's variables inside a
+range selector.** Metric extraction renders the registry with fixed windows and cannot parse `[$__rate_interval]`,
+`[$__range]` or `$__range_s`, so it skips the whole query with a warning, and a family only that query reads is left out
+of `metric-tiers.yaml` — which keeps it from every filtered destination while every dashboard test passes.
+`gen-metric-tiers` prints the skipped queries; `make metric-tiers` hides them. There is no parameter for the range in
+seconds: `infra.autoscaling.nodes.added` compares against `offset %%{rangeWindow}` instead of `time() - $__range_s`.
 
 ### Filtering cAdvisor metrics
 
@@ -701,6 +727,20 @@ Things that have surprised us during development; worth knowing before touching 
 - **A ratio of two rates is `NaN` over a window with no calls**, and Grafana applies `noValue` per field, so the panel's
   empty-state text lands in the legend beside the series. Mean latencies on the dependency dashboards are wrapped in
   `(…) >= 0`, which drops the `NaN` points.
+- **Karpenter's controller-runtime families need `app="karpenter"`.** `controller_runtime_*`, `workqueue_*`,
+  `client_go_*`, `aws_sdk_go_*` and `leader_election_*` carry no prefix, and the EBS CSI driver and the Load Balancer
+  Controller publish them too. Only the leader replica publishes `karpenter_*` at all; the standby publishes the
+  runtime families and `karpenter_build_info`.
+- **Some Karpenter `_count` names are gauges**: `karpenter_scheduler_unschedulable_pods_count`,
+  `karpenter_cluster_state_node_count` and every `operator_*_status_condition_count`. They are not a histogram's count.
+- **`aws_sdk_go_request_total`'s `service` label arrives as `exported_service`**, because the scrape stamps the
+  Kubernetes Service name on `service`. Any metric with its own `service`, `namespace`, `pod` or `job` label collides the
+  same way on a ServiceMonitor that does not honor labels.
+- **`karpenter_cloudprovider_instance_type_offering_available` is 0 for about half its series at rest**: every
+  instance type not sold in a zone, and every reserved-capacity offering. A capacity refusal is a drop over time, which
+  is why `infra-karpenter` draws the zones offering each type rather than a table of zeros.
+- **`RegisteredNode` does not mean a node joined.** The node controller emits it for every node whenever it starts,
+  which on a managed control plane happens without notice. Count joins from `kube_node_info` instead.
 
 ## Logs dashboard conventions
 
@@ -817,7 +857,8 @@ Two things worth keeping if this pattern spreads:
 
 ## Rendering a row on a discovered variable
 
-**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows.**
+**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows,
+`infra-autoscaling`'s Cloud Capacity tab and every row of `infra-karpenter`.**
 `Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
@@ -830,7 +871,8 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Five rules, the first four learned from `infra-net` and the fifth from its first shipped bug:
+Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from
+`infra-karpenter`:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -853,6 +895,10 @@ Five rules, the first four learned from `infra-net` and the fifth from its first
   in. `infra-net` shipped with `.+` as its dataplane's "All" and showed "No Dataplane Metrics" on every cluster until it
   was removed; `test_support::assert_row_conditions_can_read_all` now guards both dashboards. A discovery variable no
   query reads has no use for a custom value in the first place.
+- **Match what the detection returns, never `.+`.** A single-value variable whose query found nothing can reach a row
+  condition as the word `undefined`, which `.+` matches, so the rows render on a cluster without the thing they need
+  and the fallback hides. `infra-karpenter` matches the literal `karpenter` that `up{app="karpenter"}` discovers, and a
+  test asserts that no string an unset variable stringifies to contains it.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -1100,6 +1146,19 @@ and `node-debug.yaml` back this dashboard unchanged — at the cost of a name th
 Loki knows the node a third way again, as **structured metadata** on journal lines, so the journal filters in the
 pipeline (`| node=...`) rather than in the selector; node *events* match on the involved object's name with
 `kind="Node"`.
+
+## Node pools across provisioners
+
+`%%{nodePools}` is every node, valued 1 and labelled `node`, `pool`, `instance_type` and `zone`, read from
+`kube_node_labels`. The pool is whichever label the node's provisioner sets — `karpenter.sh/nodepool`,
+`eks.amazonaws.com/nodegroup`, `cloud.google.com/gke-nodepool` or `kubernetes.azure.com/agentpool` — and `unpooled`
+when none is set. Count it directly, or join a per-node series onto it with `* on (node) group_left (pool)`; its outer
+`max by` already removes kube-state-metrics replicas' duplicates.
+
+**kube-state-metrics 2.x publishes no `kube_node_labels` at all without an allowlist**, so the chart's
+`kube-state-metrics.metricLabelsAllowlist` is what makes the family exist, not just what fills it. A chart test pins the
+flag. An install from before it has every per-pool panel empty, and those panels say so rather than showing
+`unpooled`.
 
 **The node families are vetted.** `node-health` and `node-debug` were authored before any dashboard used them and were
 long flagged as unreviewed. All 87 of their expressions were run against a live cluster while this was built and all 87

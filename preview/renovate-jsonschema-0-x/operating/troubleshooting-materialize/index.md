@@ -68,6 +68,8 @@ Ordered so the cheapest question that could explain everything comes first.
    *Infrastructure Node Detail* → Summary, for the node the pods are on.
    Memory pressure, disk pressure, a cordon, or requests at 100% will make Materialize look broken while nothing about
    Materialize is broken.
+   A replica with no node at all is a pod waiting for one: *Infrastructure Autoscaling* → Pending Pods says why, and
+   whether the autoscaler or the cloud is the reason.
 4. **Is it the metadata database or object storage?**
    *Materialize Consensus (Metadata)* → Overview, then *Materialize Persist (Storage)* → Overview.
    Every write Materialize makes commits to the metadata database and uploads to the bucket, so a failing dependency
@@ -94,6 +96,8 @@ Logs are the most detailed and least structured evidence you have, and without a
 | Did a rollout do this, and has the new generation caught up | Materialize Upgrade |
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
+| Is a replica waiting for a node, and can the cluster grow | Infrastructure Autoscaling |
+| Is Karpenter launching nodes, and what keeps it from removing them | Karpenter |
 | Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
 | Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
 | Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |
@@ -180,10 +184,16 @@ Most of the definitions in this repo are outside that set: some await triage, an
 Materialize Cloud runs, so a self-managed install has no data behind them either way.
 
 So never reason "nothing is alerting, therefore it is healthy" without first checking the alert is installed.
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
-default set, and the Thanos ruler's own rule list says what it is evaluating.
+`pre-rendered/rules/_index.yaml` lists every rule with the capabilities it requires, whether it is in the default set,
+and its `engine`, which says which ruler evaluates it.
+
+| `engine` | Evaluated by | Its rule list | Evaluate the expression against |
+|---|---|---|---|
+| `promql` | The Thanos ruler | The Thanos ruler's `/api/v1/rules` | Thanos Query |
+| `logql` | The Loki ruler | The Loki ruler's `/loki/api/v1/rules`, under the tenant the logs are in | Loki, as a metric query |
+
 Read the definitions as *thresholds* — they are the closest thing here to "how bad is this number" — and evaluate their
-expressions yourself against Thanos when in doubt.
+expressions yourself against the backend in the table when in doubt.
 That is what the alert would have done.
 
 ## Handing it over

@@ -56,8 +56,10 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 
 * [materialize-monitoring values]({{< relref "reference/helm/materialize-monitoring-values.md" >}}) — the generated Helm values reference.
 * [Terraform variables]({{< relref "reference/terraform/materialize-monitoring-variables.md" >}}) — the generated module variable reference.
-* [Reference Metrics]({{< relref "reference/stable-metrics/list-metrics.md" >}}) — the metrics the dashboards depend on, plus [common queries]({{< relref "reference/stable-metrics/common-queries.md" >}}) and [common alerts]({{< relref "reference/stable-metrics/common-alerts.md" >}}).
 * [Compatibility]({{< relref "reference/compatibility.md" >}}) — supported versions of Materialize, Grafana, GKE, and the Terraform modules.
+* [Common Alerts]({{< relref "reference/common-alerts.md" >}}) — the bundled alerting rules, and the page each alert's `runbook_url` points at.
+* [Common Queries]({{< relref "reference/common-queries.md" >}}) — the PromQL behind the dashboard panels.
+* [List of Metrics]({{< relref "reference/list-metrics.md" >}}) — the metrics the dashboards depend on.
 * [Custom Resource Definitions]({{< relref "reference/crds.md" >}}) — the custom resources the stack reads and relies on.
 * [Changelog]({{< relref "reference/changelog.md" >}}) — per-component release history.
 
@@ -533,7 +535,8 @@ For the full component breakdown — diagrams, the read/write paths, the hash ri
 At a glance:
 
 * **Write path** — `alloy-gateway` pushes processed logs to the **Loki Distributor**, which fans each stream across **Loki Ingesters** through a consistent hash ring (replication factor 3); ingesters flush chunks and the TSDB index to object storage.
-* **Read path** — Grafana issues LogQL to the **Loki Query Frontend**, which queues and splits work for **Loki Queriers** (assisted by the **Loki Query Scheduler** and **Loki Index Gateway**); queriers read recent data from ingesters and historical data from object storage.
+* **Read path** — Grafana issues LogQL through the **Loki Gateway** (nginx) to the **Loki Query Frontend**, which queues and splits work for **Loki Queriers** (assisted by the **Loki Query Scheduler** and **Loki Index Gateway**); queriers read recent data from ingesters and historical data from object storage.
+  The gateway also routes Grafana's rule list to the **Loki Ruler**.
 * **Backend / maintenance** — the **Loki Compactor** (singleton) compacts the index and enforces retention; the **Loki Ruler** evaluates LogQL alerting and recording rules, sending alerts to [Alertmanager](#alertmanager-prometheus-alertmanager) and recording-rule samples back through `alloy-gateway` to the long-term metric store ([Thanos](#thanos-thanos)).
 
 Loki writes all durable data to object storage (S3-compatible, GCS, or Azure Blob).
@@ -917,7 +920,7 @@ This stack does **not** ship ServiceMonitors for Materialize itself — those li
 
 ##### DIY scraping {#diy-scraping}
 The "I'll scrape `environmentd` and `clusterd` myself" path.
-Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/stable-metrics/).
+Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/list-metrics/).
 Source-side defaults are kept minimal specifically so this path stays viable.
 
 ##### Materialize Cloud {#materialize-cloud}
@@ -2598,9 +2601,9 @@ Not every backend should receive every metric.
 Every metric in the registry is classified by *importance* — how likely you are to want it — independent of which backend you use.
 The levels, from most to least important, are **essential**, **recommended**, **extended**, and **diagnostic**.
 A fifth value, **all**, is a firehose meaning "everything scraped, including metrics the registry has not classified."
-The tier definitions and the full membership of each tier live in [the metric list](../../reference/stable-metrics/list-metrics/).
+The tier definitions and the full membership of each tier live in [the metric list](../../reference/list-metrics/).
 
-<!-- The tier *definitions* live in reference/stable-metrics/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
+<!-- The tier *definitions* live in reference/list-metrics.md; this page owns the config/operational angle only. Keep them from drifting. -->
 
 Each destination picks a floor with `minMetricImportance`.
 The filter is cumulative — a floor keeps that tier **and every tier more important than it**:
@@ -3137,9 +3140,9 @@ Thanos Query presents a Prometheus-compatible API, so anything that speaks PromQ
 Most questions are already answered by a query someone wrote for a dashboard.
 Two reference pages carry them, both generated from the same query registry the dashboards are built from:
 
-- **[Common Queries](../../reference/stable-metrics/common-queries/)** — the PromQL behind the shipped dashboard panels, and the best starting point for a new panel or an ad-hoc investigation. Each query also renders a **Datadog** tab beside its PromQL.
-- **[Common Alerts](../../reference/stable-metrics/common-alerts/)** — alerting expressions with thresholds and severities.
-- **[List of Metrics](../../reference/stable-metrics/list-metrics/)** — the metric families those queries draw on.
+- **[Common Queries](../../reference/common-queries/)** — the PromQL behind the shipped dashboard panels, and the best starting point for a new panel or an ad-hoc investigation. Each query also renders a **Datadog** tab beside its PromQL.
+- **[Common Alerts](../../reference/common-alerts/)** — alerting expressions with thresholds and severities.
+- **[List of Metrics](../../reference/list-metrics/)** — the metric families those queries draw on.
 
 > [!WARNING]
 >   Common Alerts is **reference material, not a shipped rule set**. The expressions are sound but the thresholds are not universal, and the chart does not currently install them as `PrometheusRule` resources. Adopt them selectively rather than wholesale.
@@ -3312,7 +3315,7 @@ The result is written beside every other metric, with the same retention, the sa
 A provider series is therefore joinable with `mz_persist_*` in a single expression.
 A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
 
-The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws them, with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws the database and bucket pulls, and **Infrastructure Autoscaling** (`infra-autoscaling`) the node and quota pulls on its Cloud Capacity tab, each with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
 
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
@@ -3325,8 +3328,10 @@ The [external-dependency design](../../../reference/internal/design-docs/2026092
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
 charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only the instances. The metric
 sets on this page are that file's; change them there, not here first. packages/queries/infra-cloud.yaml and
-packages/dashboards/src/grafana/infra_cloud/ draw them, so a metric added to a pull reaches no panel until
-those follow, and a metric removed leaves a panel empty. The numbers on this page
+packages/dashboards/src/grafana/infra_cloud/ draw the database and bucket pulls, and
+packages/queries/infra-autoscaling.yaml and infra_autoscaling/cloud.rs the EKS, Compute Engine and AKS
+pulls, so a metric added to a pull reaches no panel until those follow, and a metric removed leaves a panel
+empty. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
 GKE and EKS test installs, and on 2026-09-29 against the AKS one, with Alloy v1.20.0 locally and
 v1.19.2 in-cluster, and are the ones to re-measure if the exporters are bumped. The Azure call counts
@@ -3577,7 +3582,7 @@ The scrape of it is clustered, so one replica owns it and each provider is calle
 ## Which destinations receive it
 
 Each provider assigns its families a tier through `metricImportance`, which defaults to `extended`.
-The families `infra-cloud` draws are also named in the query registry, at `diagnostic`, the lowest tier.
+The families `infra-cloud` and `infra-autoscaling` draw are also named in the query registry, at `diagnostic`, the lowest tier.
 A registry tier admits a metric at that tier and above, so `metricImportance` decides for every destination floor above `diagnostic`.
 
 | Destination `minMetricImportance` | Receives provider families at the default |
@@ -3695,10 +3700,12 @@ flowchart TB
       dist -->|"hash ring"| ing
     end
     subgraph lread["Read path"]
+      lgw["Loki Gateway<br/>(nginx)"]
       qf["Loki Query Frontend"]
       qs["Loki Query Scheduler"]
       qr["Loki Querier"]
       idxgw["Loki Index Gateway"]
+      lgw --> qf
       qf --> qs --> qr
       qr --> idxgw
     end
@@ -3720,11 +3727,13 @@ flowchart TB
   comp <--> store
   ruler --> idxgw
   ruler -->|"alerts"| am
-  graf -->|"LogQL"| qf
+  graf -->|"LogQL · rule list"| lgw
+  lgw -->|"rule and alert state"| ruler
 ```
 
 Writes flow left-to-right: the gateway pushes to the [Loki Distributor](#loki-distributor), which fans each stream out to [Loki Ingesters](#loki-ingester), which buffer logs and flush them to [object storage](#storage).
-Reads flow from Grafana into the [Loki Query Frontend](#loki-query-frontend), which queues and splits the query for [Loki Queriers](#loki-querier) that pull recent data from ingesters and historical data from object storage.
+Reads flow from Grafana through the [Loki Gateway](#loki-gateway) into the [Loki Query Frontend](#loki-query-frontend), which queues and splits the query for [Loki Queriers](#loki-querier) that pull recent data from ingesters and historical data from object storage.
+The gateway sends Grafana's rule-list requests to the [Loki Ruler](#ruler) instead.
 In the background, the [Loki Compactor](#loki-compactor) maintains the index and retention, and the [Loki Ruler](#ruler) evaluates rules — sending alerts to Alertmanager and recording-rule samples back through `alloy-gateway` to the long-term metric store.
 
 ## Collection components {#collection}
@@ -3799,6 +3808,28 @@ Each ingester holds tokens on the ring and moves through lifecycle states (joini
 ## Loki read path {#read-path}
 
 The read path serves the [Querying](../querying/) stage — almost always reached through Grafana.
+
+### Loki Gateway {#loki-gateway}
+
+The **Loki Gateway** is an nginx reverse proxy, and it is the address Grafana's Loki datasource points at.
+It routes by path: queries go to the query frontend, and rule and alert state go to the ruler.
+Grafana's alerting UI lists a datasource's rules from that datasource's own URL, so a datasource pointed at the query frontend alone shows no Loki rules.
+
+| Request | Routed to |
+| --- | --- |
+| `/loki/api/v1/*`, including `tail` | Loki Query Frontend |
+| `/prometheus/api/v1/rules`, `/prometheus/api/v1/alerts` (`GET`) | Loki Ruler |
+| Rule definitions, pushes, rings, flushes, deletes | Refused with `404 page not found` |
+
+Rule definitions are refused because the `alloy-gateway` owns them: its `loki.rules.kubernetes` writes the chart's LogQL rules into the ruler and reverts any change it did not make.
+Grafana reads the refusal as a ruler without a configuration API, and lists the rules without offering to edit them.
+Writes are refused because the `alloy-gateway` is the write path.
+
+The gateway resolves each backend's Service name per request, through the cluster DNS resolver with a ten-second cache.
+A Service that is deleted and recreated is followed without a restart.
+Under `profiles/mtls.values.yaml` it serves TLS to Grafana and dials Loki over TLS, and it re-reads its certificate from disk within a minute of a renewal.
+
+*See more:* `loki.gateway` in the [values reference](../../reference/helm/materialize-monitoring-values/), and the header of `templates/_loki_gateway_helpers.tpl` for every route.
 
 ### Loki Query Frontend
 
@@ -4376,6 +4407,8 @@ The result: log-derived metrics live in the same place — and are queried the s
 - Group related rules so the ring can balance evaluation across rulers.
 - Keep recording-rule output label sets small — they become metric series and carry the same [cardinality](../../o11y-glossary/#observability-foundations) cost as any other metric.
 - Alert routing, grouping, silences, and notification channels are configured in Alertmanager — see [Alerting](../../alerting/).
+- Grafana's alert list shows these rules and their state, read-only, through the [Loki Gateway](../architecture/#loki-gateway).
+  Edits are refused there: the `alloy-gateway` writes the chart's rules into the ruler and reverts a change it did not make.
 
 ## See more
 
@@ -4392,8 +4425,8 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-js
 
 # Available Dashboards
 
-Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
-Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+Thirteen dashboards ship today: five scoped to a Materialize environment (`env-*`), and eight to the platform underneath it (`infra-*`).
+Two of the eight watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -4403,7 +4436,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
-The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/stable-metrics/common-queries.md" >}}) is the query material to build one yourself.
+The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -4443,7 +4476,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Persist (Storage) (`env-persist`)
 
 Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
-Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
@@ -4456,7 +4489,7 @@ It needs both a metrics and a logs datasource.
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
 The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
-Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
 The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.
@@ -4516,6 +4549,31 @@ The Object Storage tab draws each bucket's billed size beside the data Materiali
 Provider data is minutes old, and bucket size a day old, so this dashboard says why a dependency is struggling rather than whether it is; `env-consensus` and `env-persist` answer the second question and are the ones to open first.
 
 {{< download-dashboards name="infra-cloud" >}}
+
+### Infrastructure Autoscaling (`infra-autoscaling`)
+
+Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
+Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+
+It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+- **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}) are enabled for them.
+
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+
+{{< download-dashboards name="infra-autoscaling" >}}
+
+### Karpenter (`infra-karpenter`)
+
+How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
+It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
+
+- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
+
+{{< download-dashboards name="infra-karpenter" >}}
 
 ## Meta monitoring (`infra-*`)
 
@@ -4756,7 +4814,7 @@ flowchart TB
       gcr["Grafana CR: mzmon-grafana<br/>spec.external.url + credentials"]
       gman["GrafanaManifest: mzmon-env-top-dashboard<br/>resyncPeriod 5m"]
       gfld["GrafanaFolder: mzmon-materialize · mzmon-infra · mzmon-meta-o11y"]
-      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki query frontend"]
+      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki gateway"]
     end
   end
 
@@ -4799,9 +4857,9 @@ Two things shift automatically under `split-namespace`, both to keep `mode: bund
 The operator watches all namespaces by default (`WATCH_NAMESPACE=""`), so it sees both regardless of layout.
 Scoping that watch is a separate decision — see [Watch scope](../grafana-operator/#watch-scope).
 
-Datasource URLs are the piece that does *not* adjust itself, because the chart does not ship datasources yet.
-Under `split-namespace` they must name the backend's own namespace (`thanos-query.thanos`, `loki-query-frontend.loki`),
-and cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+Datasource URLs follow the backends: each is built from its backend's own namespace, so under `split-namespace` they name `thanos-query.thanos` and `loki-gateway.loki`.
+Cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+For Loki that is `loki.networkPolicy.ingress.namespaceSelector`, which admits clients to the Loki gateway.
 
 ## Dashboards
 
@@ -4863,7 +4921,9 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Seven dashboards are rendered, and `selected` decides which of them a release installs:
+Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
+These are the ones with something to know before narrowing it:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -4896,6 +4956,15 @@ Seven dashboards are rendered, and `selected` decides which of them a release in
   discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
   match nothing.
   `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
+- **Infrastructure Autoscaling** (`infra-autoscaling` → `mz-mon-infra-autoscaling`), matched by the default `infra-*` pattern.
+  Its Node Pools tab groups nodes by labels that kube-state-metrics publishes only when its
+  `metricLabelsAllowlist` names them.
+  The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
+  reads empty.
+- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), also matched by the default `infra-*` pattern.
+  It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
+  row saying why it is empty.
+  Leave it out of `selected` on GKE and AKS if that row is noise.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
@@ -4962,7 +5031,7 @@ The chart ships two, as `GrafanaDatasource` resources targeting the same instanc
 | Datasource | Type | UID | In-cluster endpoint | Notes |
 |---|---|---|---|---|
 | Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
-| Loki | `loki` | `mzmon-loki` | `http://loki-query-frontend.<namespace>.svc:3100` | Carries a tenant header — see below |
+| Loki | `loki` | `mzmon-loki` | `http://loki-gateway.<namespace>.svc:8080` | The Loki gateway; carries a tenant header — see below |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
 `<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
@@ -5019,9 +5088,10 @@ Under `byNamespace`, `byEnvironment`, or `byLabel`, logs are spread across many 
 exactly one of them — the chart emits an install-time warning saying which.
 Those modes need a datasource per tenant, or a multi-tenant read path in front of Loki.
 
-The Loki **gateway is disabled by default** (`loki.gateway.enabled: false`) — writes go through `alloy-gateway` and
-reads go straight to the query frontend.
-Do not point a datasource at a `loki-gateway` service; it does not exist.
+The Loki datasource points at the [Loki gateway](../../../logs-and-events/architecture/#loki-gateway), not at the query frontend.
+Grafana's alerting UI lists a datasource's rules from the datasource's own URL, and the gateway routes those requests to the ruler and everything else to the query frontend.
+A Loki datasource on the query frontend therefore shows no Loki rules.
+Writes do not pass through the gateway; they go through `alloy-gateway`.
 
 ## Reaching Grafana
 
@@ -5741,7 +5811,7 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-js
 
 What exists today is the query material to build one yourself.
 
-[Common Queries]({{< relref "../reference/stable-metrics/common-queries.md" >}}) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
+[Common Queries]({{< relref "../reference/common-queries.md" >}}) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
 
 > [!WARNING]
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
@@ -5848,6 +5918,8 @@ See [Configuration](#configuration).
 
 **Nothing about alerting lives in Grafana.**
 Grafana reads and writes Alertmanager's alerts and silences through a datasource, and keeps none of that state itself.
+It also lists the Loki ruler's rules and their state, read-only, through the Loki datasource.
+That datasource points at the [Loki Gateway](../../logs-and-events/architecture/#loki-gateway), which routes Grafana's rule-list requests to the ruler and refuses rule edits, because the `alloy-gateway` owns the rule definitions.
 
 ## Why the rulers address every replica {#every-replica}
 
@@ -6173,8 +6245,10 @@ The remaining work is described in the [alerting design doc](../../reference/int
 
 ## The bundled rules
 
-The chart ships alerting rules for Materialize and for the platform under it, installed as `PrometheusRule` resources that the Thanos ruler evaluates.
-[Common Alerts](../../reference/stable-metrics/common-alerts/) lists every one, with what it detects.
+The chart ships alerting rules for Materialize and for the platform under it.
+The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
+The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
+[Common Alerts](../../reference/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
 
@@ -6184,6 +6258,7 @@ A rule installs when all of the following hold:
 | Every capability the rule requires is present | derived from what the chart deploys, plus `rules.capabilities` |
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
+| A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
 The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
@@ -6230,7 +6305,7 @@ No component evaluates both PromQL and LogQL, which is why there are two.
 | Language | PromQL | LogQL |
 | Values key | `thanos.ruler` | `loki.ruler`, configured under `loki.loki.rulerConfig` |
 | Reads from | Thanos Query | Loki |
-| Rule source | `PrometheusRule` resources in the cluster | The ruler's object-storage bucket |
+| Rule source | `PrometheusRule` resources in the cluster, except `flavor: logql` | `PrometheusRule` resources labelled `flavor: logql`, written into its bucket by the alloy-gateway |
 | Notifies | The bundled Alertmanager | The bundled Alertmanager |
 | Rule results | Remote-written to the alloy-gateway | Remote-written to the alloy-gateway |
 
@@ -6271,26 +6346,59 @@ Stateless mode is reached through `thanos.ruler.extraArgs`, because the upstream
 **That argument is load-bearing.**
 A deployment that sets `thanos.ruler.extraArgs` MUST carry `--remote-write.config-file` forward; dropping it reverts the ruler to a local TSDB, which the render warns about but cannot prevent.
 
-## Rules reach the Thanos Ruler as `PrometheusRule` resources
+## Every bundled rule is a `PrometheusRule`
+
+Both rulers' rules are installed as `PrometheusRule` resources, and the label `mzmon.materialize.cloud/flavor` says which ruler each is for.
+
+| Flavor | Read by | Delivered to |
+|---|---|---|
+| `promql` | The Thanos ruler's import sidecar | The Thanos ruler's rule directory |
+| `logql` | The alloy-gateway's `loki.rules.kubernetes` | The Loki ruler's rule store, through its API |
+
+A deployment's own `PrometheusRule` reaches the right ruler the same way.
+One without the label is PromQL, and one labelled `logql` is LogQL.
+
+## Rules reach the Thanos Ruler through an import sidecar
 
 A sidecar lists `PrometheusRule` resources, writes each one's spec into the ruler's rule directory, and triggers a reload when the set changes.
 No Prometheus Operator controller is involved, and the chart installs the CRDs it needs.
 
-This is the only consumer of a `PrometheusRule` in this stack.
-Alloy reads `ServiceMonitor` and `PodMonitor` and has no rule evaluator, and no Prometheus runs here.
-
-**The sidecar imports every `PrometheusRule` in the cluster.**
+**The sidecar imports every `PrometheusRule` in the cluster except the LogQL ones.**
 That is deliberate: a `PrometheusRule` applied by an operator or by another chart works with no configuration here.
 The cost is that a co-resident rule owner — a kube-prometheus-stack, for instance — has its alerts evaluated by this ruler and notified through this Alertmanager.
 Where that is not wanted, `thanos.ruler.autoImportPrometheusRules.labelSelector` SHOULD be set to narrow the imported set.
 
-## Loki rules come from object storage
+**The exclusion is load-bearing.**
+The Thanos ruler reads every file it imports as PromQL, so one LogQL file fails its reload, and it keeps evaluating the rules it loaded before.
+The default selector is `mzmon.materialize.cloud/flavor!: logql`.
+The subchart joins the selector map into `key=value` pairs, so a key ending in `!` renders as `key!=value`, which also keeps a `PrometheusRule` carrying no flavor label.
+A selector replacing the default MUST keep that key, or select `mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
-The Loki ruler reads its rule groups from the bucket named by `loki.loki.storage.bucketNames.ruler`.
-Nothing in the chart writes rules into that bucket yet.
+**A Prometheus Operator in the same cluster may refuse the LogQL rules.**
+Its Prometheus selects rules by its own `ruleSelector`, so it does not evaluate them.
+Its admission webhook, where one is installed, validates every `PrometheusRule` as PromQL, and rejects a LogQL one when it is applied.
+A cluster running one MUST exclude `mzmon.materialize.cloud/flavor: logql` through the webhook's `objectSelector`, or the install fails.
 
-A Loki rule group belongs to one tenant, and the ruler does not evaluate across tenants.
-Where `pipeline.tenancy.tenantMap` selects `byNamespace`, every Materialize namespace becomes its own tenant and the tenant set changes as namespaces are created, so a rule set installed at deploy time covers only the namespaces that existed then.
+## Rules reach the Loki Ruler through its API
+
+The alloy-gateway's `loki.rules.kubernetes` watches `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, in every namespace.
+It writes each one's groups into the Loki ruler through the ruler API, which stores them in the bucket named by `loki.loki.storage.bucketNames.ruler`.
+Its Loki rule namespaces are prefixed `mzmon`.
+It removes the ones whose `PrometheusRule` is gone and leaves every other namespace alone, so a rule written to the API by anything else survives.
+
+Every gateway replica runs the sync; the writes set whole rule groups, so the replicas converge on the same set.
+The gateway addresses the Service that serves the ruler in Loki's deployment mode: `loki-ruler` when distributed, `loki-backend` when simple-scalable, and `loki` for a single binary.
+It uses the scheme and TLS settings of its Loki destination, `pipeline.logging.gateway.destination.loki.tls`, and the chart's Loki certificate names `loki-ruler`.
+
+A log-derived rule installs only where the release runs the Loki ruler and the gateway, and where the ruler's rule store accepts writes.
+A `local` store does not; that is what a filesystem-only Loki gets, such as the `loki-test` profile.
+There the log-derived rules are left out and the render warns.
+
+**A Loki rule group belongs to one tenant**, and the ruler does not evaluate across tenants.
+The gateway writes the log-derived rules into each tenant in `rules.logTenants`, which defaults to `pipeline.logging.tenancy.staticTenant`.
+Under the default `static` tenancy every line is in that tenant, and nothing needs setting.
+Under `byEnvironment` each environment's logs are in a tenant named for its environment id, which the chart cannot discover; those tenants MUST be listed in `rules.logTenants` for the rules to see them, and the render warns while none are.
+Under `byNamespace` the tenant set changes as namespaces are created, so no list stays complete.
 Deployments that need complete log alerting SHOULD use `static` or `byEnvironment`.
 
 ## What an operator configures today
@@ -6300,14 +6408,15 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `thanos.ruler.enabled` | `true` | Deploys the PromQL evaluator. Turning it off makes every `PrometheusRule` in the cluster inert |
 | `thanos.ruler.query.urls` | Thanos Query | Deliberately Query rather than Query Frontend. See below |
 | `thanos.ruler.alertmanagers.config` | Every replica of the bundled Alertmanager, by `dns+` lookup | Thanos's own Alertmanager configuration format, passed through |
-| `thanos.ruler.autoImportPrometheusRules.labelSelector` | `{}` | Which `PrometheusRule` resources to import. Empty means all of them |
+| `thanos.ruler.autoImportPrometheusRules.labelSelector` | `mzmon.materialize.cloud/flavor!: logql` | Which `PrometheusRule` resources to import. The default is all but the LogQL ones |
 | `loki.ruler.enabled` | `true` | Deploys the LogQL evaluator |
 | `loki.loki.rulerConfig.alertmanager_url` | Every replica of the bundled Alertmanager, by SRV lookup | Clearing it leaves the ruler evaluating recording rules and discarding alerts. The `_http._tcp.` form requires `enable_alertmanager_discovery: true` |
 | `loki.loki.rulerConfig.evaluation_interval` | `1m` | How often the Loki ruler evaluates |
 | `rules.enabled` | `true` | Installs the bundled rules that apply |
 | `rules.capabilities` | `[]` | Capabilities beyond those the chart derives |
 | `rules.selected` / `rules.disabled` | `[]` | Bundled rules to add to, or remove from, the default set |
-| `rules.overrides` | `{}` | Per-alert `for` and labels |
+| `rules.overrides` | `{}` | Per-alert `for` and labels, for metric and log rules alike |
+| `rules.logTenants` | the static tenant | Loki tenants the gateway writes the log-derived rules into |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
@@ -6338,8 +6447,8 @@ A deployment using `split-namespace` MUST either supply its own NetworkPolicy fo
 | Missing | Consequence |
 |---|---|
 | Triage of the rest of the bundled set | Most bundled rules are outside the default set until each is checked against a self-managed install |
-| Log-derived alert definitions | Panic and correctness detection is not yet expressible here |
-| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/stable-metrics/common-alerts/) until runbooks exist |
+| A behavioural test for log rules | Loki has no counterpart to `promtool test rules`, so each log rule is checked against a live install instead |
+| Runbooks | Each alert's `runbook_url` points at its entry on [Common Alerts](../../reference/common-alerts/) until runbooks exist |
 | A deadman's switch | Stopped evaluation is indistinguishable from nothing being wrong |
 | Rollout-signal inhibition | Upgrade noise is suppressed by hand; see [Maintenance Windows](../maintenance/) |
 
@@ -7733,7 +7842,8 @@ Per **tenant** (per environment). The aggregate burst is a fleet-capacity concer
 #### 8. Read path
 
 - [x] `[chart]` Query-frontend ≥ 2 for queue fairness; query splitting/parallelism configured.
-- [x] `[chart]` Grafana Loki datasource provisioned, pointing at the **query-frontend** Service (bundled nginx loki-gateway is off; datasource wiring still to land).
+- [x] `[chart]` Grafana Loki datasource provisioned, pointing at the **Loki Gateway**, which routes queries to the query frontend and Grafana's rule list to the ruler.
+- [x] `[chart]` Loki Gateway: two replicas with a PDB, routing only Grafana's reads and the ruler's rule state; rule edits, pushes and admin endpoints refused.
 - [ ] `[operator]` Scale queriers/frontends — not ingesters — when dashboards feel slow.
 
 #### 9. Tenancy & auth
@@ -8759,6 +8869,8 @@ Ordered so the cheapest question that could explain everything comes first.
    *Infrastructure Node Detail* → Summary, for the node the pods are on.
    Memory pressure, disk pressure, a cordon, or requests at 100% will make Materialize look broken while nothing about
    Materialize is broken.
+   A replica with no node at all is a pod waiting for one: *Infrastructure Autoscaling* → Pending Pods says why, and
+   whether the autoscaler or the cloud is the reason.
 4. **Is it the metadata database or object storage?**
    *Materialize Consensus (Metadata)* → Overview, then *Materialize Persist (Storage)* → Overview.
    Every write Materialize makes commits to the metadata database and uploads to the bucket, so a failing dependency
@@ -8785,6 +8897,8 @@ Logs are the most detailed and least structured evidence you have, and without a
 | Did a rollout do this, and has the new generation caught up | Materialize Upgrade |
 | What did the platform underneath say | Infrastructure Logs and Events |
 | Is the machine the problem | Infrastructure Node Detail |
+| Is a replica waiting for a node, and can the cluster grow | Infrastructure Autoscaling |
+| Is Karpenter launching nodes, and what keeps it from removing them | Karpenter |
 | Is the metadata database failing or slow for Materialize | Materialize Consensus (Metadata) |
 | Is object storage failing or slow for Materialize, and what is the stored data for | Materialize Persist (Storage) |
 | Why is the database or the bucket struggling: CPU, storage, connections, burst credits, reclaimable waste | Infrastructure Cloud Provider |
@@ -8871,10 +8985,16 @@ Most of the definitions in this repo are outside that set: some await triage, an
 Materialize Cloud runs, so a self-managed install has no data behind them either way.
 
 So never reason "nothing is alerting, therefore it is healthy" without first checking the alert is installed.
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the capabilities it requires and whether it is in the
-default set, and the Thanos ruler's own rule list says what it is evaluating.
+`pre-rendered/rules/_index.yaml` lists every rule with the capabilities it requires, whether it is in the default set,
+and its `engine`, which says which ruler evaluates it.
+
+| `engine` | Evaluated by | Its rule list | Evaluate the expression against |
+|---|---|---|---|
+| `promql` | The Thanos ruler | The Thanos ruler's `/api/v1/rules` | Thanos Query |
+| `logql` | The Loki ruler | The Loki ruler's `/loki/api/v1/rules`, under the tenant the logs are in | Loki, as a metric query |
+
 Read the definitions as *thresholds* — they are the closest thing here to "how bad is this number" — and evaluate their
-expressions yourself against Thanos when in doubt.
+expressions yourself against the backend in the table when in doubt.
 That is what the alert would have done.
 
 ## Handing it over
@@ -9159,12 +9279,17 @@ It runs as a non-root, read-only-rootfs pod using upstream's own distroless `reg
 Three cases still need you:
 
 - **`helm uninstall --no-hooks`** skips it, by definition.
-- **Deleting the CRDs release first** removes the resource types, and the hook fails on an unknown type — no kubectl flag suppresses that. With the CRDs gone the custom resources went with them, so `--no-hooks` is the right response.
+- **Deleting the CRDs by hand first** removes the resource types, and the hook fails on an unknown type — no kubectl flag suppresses that. With the CRDs gone the custom resources went with them, so `--no-hooks` is the right response.
+  Uninstalling the CRDs release does not do this; see below.
 - **`cleanup.grafanaOperator.enabled: false`** restores the old behaviour.
 
+> [!NOTE]
+>   Uninstalling the CRDs release (`materialize-monitoring-crds`, or `enable_monitoring_crds` in the Terraform module) leaves the CRDs.
+>   Every one carries `helm.sh/resource-policy: keep`, so neither `helm uninstall` nor `terraform destroy` removes them, or any custom resource.
+
 > [!WARNING]
->   The same trap is worse one level up. Deleting the CRDs release (`materialize-monitoring-crds`, or `enable_monitoring_crds = true` in the Terraform module) cascades to **every** `Grafana*` and `Prometheus*` custom resource in the cluster, including ones this stack did not create.
->   With finalizers still pending, the CRD itself hangs in `Terminating`, which blocks re-installing the CRDs as well as removing them.
+>   Removing the CRDs is a separate `kubectl delete crd`, and that cascades to **every** `Grafana*` and `Prometheus*` custom resource in the cluster, including ones this stack did not create.
+>   Do it last, after the release is gone: with finalizers still pending, the CRD itself hangs in `Terminating`, which blocks re-installing the CRDs as well as removing them.
 
 ## Ordered teardown, by hand
 
@@ -9284,6 +9409,7 @@ No component authenticates its callers:
 |---|---|
 | Alloy gateway ingest (`3100`, `4317`, `4318`, `9090`) | Write logs and metrics into your backends |
 | Loki distributor / query frontend (`3100`) | Read and write any tenant's logs |
+| Loki gateway (`8080`) | Read any tenant's logs and the ruler's rule state |
 | Thanos Receive (`10908`) / Query (`9090`) | Write and read any metric series |
 | Alertmanager (`9093`) | Read alerts, create silences |
 | Every `/metrics` endpoint | Read the stack's own telemetry |
@@ -9508,6 +9634,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | `loki.defaults.readinessProbe` scheme | Every Loki pod fails readiness at once — presents as a crashloop |
 | `loki.monitoring.serviceMonitor` scheme | Loki's own metrics vanish, and `up` goes *absent* rather than 0, so an alert on `up == 0` does not fire either |
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
+| The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
@@ -9564,11 +9691,11 @@ In `materialize-terraform-self-managed` both are on by default, since every exam
 
 Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
 
-| Phase | Profile | Gateway ingress | Loki | Thanos Receive | Alertmanager |
-|---|---|---|---|---|---|
-| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA | TLS, `NoClientCert`; rulers present |
-| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
-| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** | **unreachable** |
+| Phase | Profile | Gateway ingress | Loki | Loki gateway | Thanos Receive | Alertmanager |
+|---|---|---|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS to Grafana and to Loki, no client CA | TLS, no client CA | TLS, `NoClientCert`; rulers present |
+| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | `ssl_verify_client optional`; Grafana presents, and it presents to Loki | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
+| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | **unreachable** | client CA set — **authenticated** | **unreachable** |
 
 The gateway's own ingress reaches phase 3 because its listeners are not the ports the kubelet probes — readiness is on `12345`. That is the difference between it and Loki.
 
@@ -9611,6 +9738,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
 | **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
+| **In-cluster TLS, Grafana → Loki gateway → Loki** | 🔨 Encrypted on both hops, and presented certificates verified, at phase 2, which is its ceiling. The kubelet probes the Loki gateway's listener too |
 | **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
 | **In-cluster TLS, rulers and Grafana → Alertmanager** | 🔨 Encrypted, and presented certificates verified, at phase 2, which is its ceiling. The kubelet and the config reloader dial the same port and cannot present a certificate |
 | **In-cluster TLS, rulers → gateway** | ✅ Shipped and **authenticated** at phase 3. Both rulers remote-write to `9090` over TLS and present their component's certificate from phase 1 |
@@ -10082,7 +10210,7 @@ Adding or changing a query has effects beyond the query itself:
   reaches the rendered dashboards on the next `make dashboards`.
 - **Metric extraction** (`mz-monitoring-build extract-metrics`) parses the PromQL to derive the metric set, which lands
   in `docs/assets/metrics/metrics.yaml` and backs
-  [Reference Metrics]({{< relref "../../stable-metrics/list-metrics.md" >}}).
+  [Reference Metrics]({{< relref "../../list-metrics.md" >}}).
 - **Metric tiers** (`mz-monitoring-build gen-metric-tiers`) roll each query's `stability` and importance up into the
   per-destination allowlists in `charts/materialize-monitoring/pre-rendered/metrics/metric-tiers.yaml`.
   This is why a new query can change what a deployment ships to a metered backend.
@@ -10101,7 +10229,7 @@ Adding or changing a query has effects beyond the query itself:
   An alert's query renders through its own context and is held to stricter checks than a panel's; see
   [Authoring Alerts]({{< relref "alerts.md" >}}).
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
-  renders [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}) from it.
+  renders [Common Queries]({{< relref "../../common-queries.md" >}}) from it.
   There is no generated intermediate to refresh.
 
 Both generated outputs declare `packages/queries/*.yaml` as a prerequisite, so `make metrics` rebuilds them after a query change.
@@ -10617,8 +10745,9 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-js
 
 # Authoring Alerts
 
-An alert is written once, in the query registry, and becomes a Prometheus rule through `mz-monitoring-build gen-rules`.
-The chart installs that rule as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
+An alert is written once, in the query registry, and becomes a rule through `mz-monitoring-build gen-rules`.
+An alert whose query is PromQL is installed as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
+An alert whose query is LogQL is installed as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway writes into the Loki ruler, and the Loki ruler evaluates it.
 This page is the conventions a contributor follows when adding or changing an alert, and what the tooling checks on their behalf.
 Where the alert goes once it fires is [Alert Channels]({{< relref "../../../alerting/channels.md" >}}); why the stack is shaped this way is the [alerting design doc]({{< relref "../design-docs/20260917-alerting-self-managed.md" >}}).
 
@@ -10636,9 +10765,9 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 | Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose; the file's `alertLabels` supply its `audience` |
 | Validate | `bin/mz-monitoring-check check-queries` (pre-commit) | Schema validation, including every `%%{…}` placeholder name |
 | Render | `make rules` (`mz-monitoring-build gen-rules`) | Renders through the alerting context, infers capabilities, and fails on any problem |
-| Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | One `groups:` file per registry file, and `_index.yaml` |
-| Install | `templates/alerts/prometheusrules.yaml` | Fills the placeholders from values and keeps the rules that apply |
-| Check | `make rules-check` | `promtool check rules` on several rendered scenarios, then `promtool test rules` |
+| Output | `charts/materialize-monitoring/pre-rendered/rules/` | One `groups:` file per registry file and ruler, PromQL in `prometheus/` and LogQL in `loki/`, and one `_index.yaml` listing both |
+| Install | `templates/alerts/prometheusrules.yaml`, `templates/alerts/lokirules.yaml` | Fills the placeholders from values and keeps the rules that apply, the same way for both engines |
+| Check | `make rules-check` | `promtool check rules` and a LogQL parse with `logcli` on several rendered scenarios, then `promtool test rules` |
 
 The generated files are committed, and CI fails when they are stale.
 
@@ -10649,6 +10778,7 @@ An alert belongs in the file for the people who act on it.
 | File | `audience` | Holds |
 |---|---|---|
 | `materialize-alerts.yaml` | `platform` | The Materialize deployment: environmentd, the system clusters, clusterd crashes, persist, auth and the console |
+| `materialize-log-alerts.yaml` | `platform` | The Materialize deployment, detected in its log lines: panics and correctness violations |
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
 
@@ -10714,6 +10844,9 @@ Most requirements are **inferred**.
 `gen-rules` reads the metrics an alert names and maps each through the ordered table in `packages/mzmon-lib/src/query/rules/capability.rs`, so an alert reading `cilium_*` requires `cilium` without saying so.
 A metric the table does not claim fails the build.
 
+A LogQL alert names no metrics, so nothing is inferred for it.
+Its requirements are what it declares, and the chart installs it only where the release can deliver it: a Loki ruler, the alloy-gateway, and a rule store the ruler API can write to.
+
 **`requires` declares what metric names cannot show.**
 An alert whose only metric is `up` MUST declare what it is about, since `up` exists for every target.
 An alert that depends on a label only some deployments add, such as a node label, SHOULD declare the capability that adds it.
@@ -10754,8 +10887,10 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
 | `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
-| The query exists and has exactly one PromQL expression | A rule is one expression; LogQL rules are not rendered yet |
-| The expression renders and parses | A group with one bad rule is dropped whole |
+| The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
+| A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |
+| The expression renders and parses | A group with one bad rule is dropped whole. PromQL is parsed here; LogQL is checked for shape here and parsed by `make rules-check` |
+| A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
 | Every metric has a known source | A rule reading a metric nothing produces never fires |
 | `deploymentMode` is not a label | Applicability is `requires`, not a label nothing reads |
@@ -10774,6 +10909,36 @@ The first two are checked mechanically; the rest are for the author and the revi
 7. The name SHOULD describe the condition rather than its grade, so that re-grading does not force a rename.
 8. The `summary` MUST be actionable without following the runbook link, since an air-gapped install cannot follow it.
 
+## Log-derived alerts
+
+An alert whose query is LogQL reads Materialize's log lines instead of its metrics.
+It is authored the same way, in a registry file of its own, and lands in `pre-rendered/rules/loki/`.
+It installs as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the Thanos ruler's importer leaves out and the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler through its API.
+It routes through the same Alertmanager, with the same labels, as a metric alert.
+
+**The range is the alert's duration.**
+Cloud's clicked-in Loki rules used Grafana's `$__range`, which no ruler can parse, and the alerting context refuses it.
+A log rule SHOULD be written as `count_over_time(…[<range>]) > 0` with `for: 0s`, so it fires on the first evaluation at which a matching line falls inside the range.
+The range is then how long the alert keeps firing after the last matching line, and the notes SHOULD say so.
+
+**A log rule SHOULD match on structure before text.**
+`namespace`, `app`, `container` and `level` are stream labels and belong in the selector.
+`pod` and the fields the pipeline extracts are structured metadata, which a rule filters with `| field != ""` and MAY group by.
+The pipeline already classifies a panic: a line starting `thread '…' panicked at` becomes level `CRITICAL`, with `panic_thread` and `panic_location` as structured metadata, so `materialize-panic` matches that rather than the word "panic".
+
+**A line filter matches text Materialize does not promise to keep.**
+A reworded message makes the rule silent rather than broken.
+A log rule that matches message text MUST name the source file that logs it, so a reviewer can check the message still exists.
+The durable fix is a stable error code in the log line, which the alerting design doc asks of Materialize.
+
+**A Loki rule reads one tenant.**
+The rule set installs once per tenant in `rules.logTenants`, which defaults to the pipeline's static tenant.
+Under non-static tenancy the chart cannot enumerate the tenants, and the render warns.
+
+**There is no unit test for a LogQL rule.**
+Loki has no counterpart to `promtool test rules`.
+A log rule MUST instead be evaluated against a live install before it enters the default set, once as it stands and once with its range widened over a window in which the line is known to have been logged.
+
 ## Testing an alert
 
 **Unit tests.**
@@ -10785,61 +10950,8 @@ Before an alert enters the default set, its expression SHOULD be run against a r
 `gcx metrics query` does this without cluster access.
 
 **Cloud's rules are prior art, not a source.**
-Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set) are worth reading for thresholds and history.
+Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set, where its only log-derived rules live) are worth reading for thresholds and history.
 An alert MUST NOT be copied from them verbatim: they use Cloud's namespaces, labels and job names, and some carry customer names that MUST NOT enter this repository.
-
-
---------------------------------------------------------------------------------
-title: "List of Metrics"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/index.md
---------------------------------------------------------------------------------
-
-# List of Metrics
-
-This has the list of metrics which are available for usage.
-In many systems, only a subset of metrics get stored based
-on how they would be used.
-
-## Metric Tiers
-
-Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
-For that, see [Stability Guarantees and Deprecation Policy](../../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
-
-
-Metrics are grouped by "metricImportance" levels (mzmon-specific).
-These levels guide which metrics are prioritized in
-metric stores which have limited capacity.
-
-The **essential** metrics are the set of metrics that
-are critical and you would always want to have available.
-These are used in alerting.
-
-The **recommended** metrics are the set of metrics that
-are used in dashboards and are generally desirable for
-troubleshooting.
-
-The **extended** set of metrics are used for optional/experimental
-dashboards.
-
-The **diagnostic** set of metrics are used for in-depth
-troubleshooting and analysis.
-
-In our `materialize-monitoring` configuration, we also
-provide an **all** min-importance for including
-absolutely everything.
-This is recommended if you have cheaper metric storage
-like our bundled Thanos provider.
-
-## Essential Metrics
-
-> [!WARNING]
-> FIXME: Some links for alerts mistakenly point at the common-queries page.
-
-{{% list-metrics importance="essential" %}}
-
-## Recommended Metrics
-
-{{% list-metrics importance="recommended" %}}
 
 
 --------------------------------------------------------------------------------
@@ -11785,7 +11897,9 @@ point rather than a researched one.
     "secretName": "",
     "services": [
       "loki-distributor",
-      "loki-query-frontend"
+      "loki-gateway",
+      "loki-query-frontend",
+      "loki-ruler"
     ]
   },
   "thanos": {
@@ -13990,8 +14104,8 @@ valuesFrom:
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-query-frontend.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100"</code></td>
-      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).
+      <td class="helm-value-default"><code>"http://loki-gateway.{{ include \"mzmon.loki.namespace\" $ }}.svc:8080"</code></td>
+      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway, which routes queries to the query frontend and rule state to the ruler. Grafana's alerting UI lists the Loki rules from this same URL, so a datasource pointed at the query frontend shows none. With `loki.gateway.enabled` off, point this at `http://loki-query-frontend.<namespace>.svc:3100`.
 </td>
     </tr>
     <tr>
@@ -14265,9 +14379,12 @@ every replica like any other.
 Which alerting rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
-(`packages/queries/`) and installed as `PrometheusRule` resources, which the
-Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
-below.
+(`packages/queries/`) and installed as `PrometheusRule` resources, each
+labelled with its query language as `mzmon.materialize.cloud/flavor`. The
+Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
+`loki.rules.kubernetes` writes the LogQL ones into the Loki ruler, so they
+install only where this release runs both. Where they go once they fire is
+`alerting`, below.
 
 A rule installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
@@ -14275,7 +14392,7 @@ either in the **default set** or named in `selected`, and it is not named in
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
 `loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
 capabilities it requires.
 
 <table class="helm-values">
@@ -14367,6 +14484,26 @@ rules:
 `audience` one of `platform` and `workload`, so the routes still match. An
 unknown alert name fails the render, and an override for a rule that is
 not installed renders with a warning.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.logTenants</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Loki tenants the log-derived rules are written into. Empty means `pipeline.logging.tenancy.staticTenant`.
+
+A Loki rule reads one tenant's logs, and the ruler does not evaluate across
+tenants, so the gateway writes every LogQL `PrometheusRule` into each
+tenant listed here. Under the default `static` tenancy every log line is in
+`staticTenant`, and the default is right.
+
+Under `byEnvironment` each Materialize environment's logs are in a tenant
+named for its environment id, which the chart cannot know at render time.
+List those tenants here, and restate the list when an environment is
+added. Under `byNamespace` the tenant set grows with every namespace, and no
+list stays complete.
 </td>
     </tr>
     <tr>
@@ -15756,6 +15893,29 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+instead of only when a chart release happens to carry a new `appVersion`.
+Every Loki component runs this image unless its own `image` overrides it.
+The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+the two so that they move together.
+
+In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+image, this one included. The profiles under `profiles/registry/` repoint
+`registry` and `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -15966,11 +16126,13 @@ never had is somewhere to send an alert: without `alertmanager_url` it
 evaluates its rules correctly and drops every alert on the floor, which is
 indistinguishable from nothing being wrong. That is what this block fixes.
 
-**Rule storage is already configured and is not here.** With
+**Rule storage is configured and is not here.** With
 `loki.storage.use_thanos_objstore` on, the subchart renders a top-level
-`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
-writes rules into that bucket yet — the chart's own log-alert definitions
-do not exist, and how they get delivered is decided with them.
+`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. The
+chart's log-derived rules are written into it through the ruler API, by
+the alloy-gateway's `loki.rules.kubernetes`, from `PrometheusRule`
+resources labelled `mzmon.materialize.cloud/flavor: logql`. A rule store
+that refuses writes, such as `local`, leaves them out.
 
 Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
 resolves. It does **not** see the umbrella's values, which is why these
@@ -16029,8 +16191,150 @@ destination fan-out rather than only the bundled metric store.
     <tr>
       <td class="helm-value-key">loki<wbr>.gateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run the Loki gateway, the nginx reverse proxy Grafana reads Loki through.
+
+Grafana's alerting UI lists a datasource's rules from the datasource's own
+URL. In distributed mode the query frontend answers queries and the ruler
+answers for rules, so a datasource pointed at either one sees half of Loki.
+The gateway routes by path and gives Grafana one address for both.
+
+The routing is this chart's own (`nginxConfig.file`), and it is narrower
+than the subchart's:
+
+| Request | Subchart's gateway | This chart's gateway |
+| --- | --- | --- |
+| Queries, labels, tail | Query frontend | Query frontend |
+| Rule and alert state | Ruler | Ruler, `GET` only |
+| Rule definitions | Ruler, read and write | Refused; `loki.rules.kubernetes` on the alloy-gateway owns them |
+| Pushes | Distributor | Refused; the alloy-gateway is the write path |
+| Rings, flush, config, deletes | Each component | Refused |
+
+Every request resolves its backend's name through `resolver`, so a Service
+recreated under the same name is followed without a restart. Turning the
+gateway off needs `connections.datasources.loki.url` pointed back at the
+query frontend, and Grafana then shows no Loki rules.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. The subchart's required per-node anti-affinity is kept, so each replica needs a node of its own.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.podDisruptionBudget<wbr>.minAvailable</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Keep one gateway through voluntary disruption.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "nginxinc/nginx-unprivileged",
+  "tag": "1.31.6-alpine-slim"
+}</pre>
+</td>
+      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "50m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.verboseLogging</td>
+      <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Disable gateway by default. We recommend using alloy-gateway for loki writes. Use the query-frontend for loki reads.
+      <td class="helm-value-desc">Log only failed requests (4xx and 5xx). Grafana reads through the gateway constantly, and every successful request's line would be ingested back into the Loki it is proxying.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.service<wbr>.port</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>8080</code></td>
+      <td class="helm-value-desc">The Service port, equal to the container port. A TLS profile then changes only the scheme of the URL that dials it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.nginxConfig<wbr>.file</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"{{ include \"mzmon.loki.gateway.nginxConf\" . }}"</code></td>
+      <td class="helm-value-desc">The nginx.conf, rendered by `mzmon.loki.gateway.nginxConf`. Its header comment lists what it routes and what it refuses.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.nginxConfig<wbr>.tls</td>
+      <td class="helm-value-type">desc</td>
+      <td class="helm-value-default"><em>every path empty</em></td>
+      <td class="helm-value-desc">TLS for the gateway's listener and for its connections to Loki.
+
+Read by this chart's nginx.conf; the subchart does not know the key.
+`profiles/mtls.values.yaml` sets these, alongside `ssl` and `schema`.
+
+| Key | nginx directive | Used when |
+| --- | --- | --- |
+| `certFile`, `keyFile` | `ssl_certificate`, `ssl_certificate_key` | `ssl` is true |
+| `clientCaFile` | `ssl_client_certificate`, with `ssl_verify_client optional` | set, with `ssl` |
+| `upstreamCaFile` | `proxy_ssl_trusted_certificate`, with `proxy_ssl_verify on` | `schema` is `https` |
+| `upstreamCertFile`, `upstreamKeyFile` | `proxy_ssl_certificate`, `proxy_ssl_certificate_key` | set, with `schema: https` |
+
+Requiring a client certificate is not offered. The kubelet's readiness
+probe dials the same listener and cannot present one, the same limit
+that holds Loki's own HTTP port at phase 2.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "ghcr.io",
+  "repository": "jkroepke/access-log-exporter",
+  "tag": "0.4.11"
+}</pre>
+</td>
+      <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--nginx.scrape-url=http://127.0.0.1:8081/stub_status"
+]</pre>
+</td>
+      <td class="helm-value-desc">Scrape `stub_status` from the loopback-only listener the nginx.conf serves on 8081, rather than from the client port. The flag is repeated after the subchart's own and the later one wins, so turning on TLS for clients does not break the scrape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the exporter out of the subchart's ServiceMonitor and into this chart's plaintext one. It serves `/metrics` in the clear whatever the gateway's listener does. See `monitoring.serviceMonitor` below.
 </td>
     </tr>
   </tbody>
@@ -16580,6 +16884,45 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.memcached<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.memcachedExporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -16587,14 +16930,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
 
 **Plaintext exporters are excluded from it.** The subchart renders a
 single ServiceMonitor covering everything it labels, with one `scheme`
-shared by every target. Three of those targets never speak TLS whatever
-Loki is configured to do — the canary's own `/metrics` server, and the
-two memcached exporters — so under `profiles/mtls`, which sets
-`scheme: https` here, all three fail the scrape and their series vanish.
-For the canary that means the end-to-end write→read check goes quiet
-rather than red, which is the worst way for a canary to fail.
+shared by every target. Four of those targets never speak TLS whatever
+Loki is configured to do — the canary's own `/metrics` server, the two
+memcached exporters, and the gateway's access-log exporter — so under
+`profiles/mtls`, which sets `scheme: https` here, all four fail the
+scrape and their series vanish. For the canary that means the end-to-end
+write→read check goes quiet rather than red, which is the worst way for
+a canary to fail.
 
-Each of the three therefore carries
+Each of the four therefore carries
 `prometheus.io/service-monitor: "false"`, which the subchart's selector
 excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
 opt-in that this chart's own monitor selects on
@@ -16605,8 +16949,21 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
 </td>
     </tr>
     <tr>
@@ -16669,6 +17026,26 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre>
+</td>
+      <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Thanos on its own cadence, with Thanos's own release
+notes, instead of only when a chart release happens to carry a new
+`appVersion`. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under `profiles/registry/` repoint `registry` and
+`repository` and keep this tag.
 </td>
     </tr>
     <tr>
@@ -17541,6 +17918,9 @@ validator warns when the two disagree.
   },
   "autoImportPrometheusRules": {
     "enabled": true,
+    "labelSelector": {
+      "mzmon.materialize.cloud/flavor!": "logql"
+    },
     "sidecar": {
       "image": {
         "registry": "docker.io",
@@ -17758,6 +18138,9 @@ resources, through the import sidecar below.
       <td class="helm-value-default"><pre>
 {
   "enabled": true,
+  "labelSelector": {
+    "mzmon.materialize.cloud/flavor!": "logql"
+  },
   "sidecar": {
     "image": {
       "registry": "docker.io",
@@ -17779,12 +18162,22 @@ A `kubectl` sidecar lists `PrometheusRule` resources every 60s, writes each
 one's `.spec` into the Ruler's rule directory, and POSTs `/-/reload` when
 the set changes. No Prometheus Operator controller is involved.
 
-**`labelSelector` is empty, so this imports every `PrometheusRule` in the
-cluster**, including any belonging to a co-resident kube-prometheus-stack.
-That is the upstream default and it is kept deliberately: it is also what
-makes a customer's own `PrometheusRule` work with no chart configuration.
-Set a selector here if this cluster runs another rule owner whose alerts
-should not reach this Alertmanager.
+**`labelSelector` imports every `PrometheusRule` in the cluster except the
+LogQL ones**, including any belonging to a co-resident
+kube-prometheus-stack. That is kept deliberately: it is what makes a
+customer's own `PrometheusRule` work with no chart configuration. Set a
+narrower selector here if this cluster runs another rule owner whose
+alerts should not reach this Alertmanager.
+
+**The exclusion is load-bearing.** The chart's log-derived rules are
+`PrometheusRule` resources too, labelled
+`mzmon.materialize.cloud/flavor: logql`, and the Thanos ruler reads every
+file it imports as PromQL; one LogQL file fails the reload, and the ruler
+keeps evaluating whatever it loaded before. The subchart joins this map
+into `key=value` pairs, so a key ending in `!` renders as `key!=value`,
+which also keeps a `PrometheusRule` carrying no flavor label. A selector
+replacing this one keeps the exclusion, or selects
+`mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
 The image is pinned rather than left on the upstream `latest`, so a default
 install does not track a floating tag. It is the only Docker Hub image the
@@ -18012,6 +18405,26 @@ Upstream references:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+
+Unlike the other pins, this one is not meant to move on its own. The
+operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint `registry` and `repository` while keeping the tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -18120,7 +18533,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.2.2"
+  "tag": "13.2.3"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
@@ -18271,6 +18684,19 @@ enforced at render time. The `grafana-pvc` profile is the assembled version.
 
 Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
 is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.initChownData<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.
 </td>
     </tr>
     <tr>
@@ -19123,6 +19549,36 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+]</pre>
+</td>
+      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+
+The node pool, by whichever label the cluster's provisioner sets — Karpenter,
+an EKS managed node group, a GKE node pool or an AKS agent pool — and the
+instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
+by all three. One series per node, so the cost is negligible; add a label here
+rather than `nodes=[*]`, which copies every label on every node.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -19590,6 +20046,18 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">metrics-server<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">metrics-server<wbr>.podSecurityContext</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -19863,7 +20331,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, and `infra-cloud.yaml`, the cloud provider pull — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
@@ -19901,7 +20369,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `content/`: authored Markdown
       * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/internal/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
       * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
-      * `reference/`: `helm/`, `terraform/` (generated variable reference), `stable-metrics/`, `crds.md`, `changelog.md`, and `internal/` (this section — `dashboard/`, `pipelines/`, `design-docs/`, plus `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
+      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `internal/` (this section — `dashboard/`, `pipelines/`, `design-docs/`, plus `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`
@@ -20854,16 +21322,9 @@ Set false when the cluster already has them from elsewhere — kube-prometheus-s
 platform team that owns CRDs centrally — since Terraform would otherwise fail trying to
 create objects it does not own.
 
-Note the teardown blast radius: destroying this release deletes the CRDs, which cascades to
-every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the cluster,
-including ones this stack did not create. It is a separate `helm_release` so it can be
-targeted independently (`-target=module.monitoring.helm_release.crds`).
-
-The Grafana custom resources still have to go before grafana-operator does, or their
-finalizers have no remover and the CRDs wedge in Terminating. The chart's `pre-delete` hook
-handles that ordering now — but it lives in the *main* release, so destroying this one first
-takes the resource types out from under it. Destroy in the module's own order, and see the
-"Uninstalling" page in the docs.
+Every CRD carries `helm.sh/resource-policy: keep`, so destroying this release, or turning
+this off later, leaves the CRDs and every custom resource in the cluster in place. Removing
+the CRDs is a deliberate step of its own; see the "Uninstalling" page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
     </tr>
@@ -21108,8 +21569,9 @@ Two ports stop short of `authenticate` by nature rather than by choice, and
 the chart refuses to configure them otherwise: Loki's HTTP port and
 Alertmanager's API port are probed by the kubelet, and a `httpGet` probe has
 no field for a client certificate, so their terminal state is `present`.
-Grafana's datasources verify the backend, and present a certificate only to
-Alertmanager.
+The Loki gateway's listener stops at `present` for the same reason. Grafana's
+datasources verify the backend, and from `present` they present a certificate
+to Alertmanager and to the Loki gateway; the Thanos datasource presents none.
 </td>
         <td class="tf-var-default"><code>off</code></td>
     </tr>
@@ -21426,7 +21888,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_grafana_admin_secret_name"></a> [grafana_admin_secret_name](#output_grafana_admin_secret_name) | Name of the Secret holding the Grafana admin credentials. |
 | <a name="output_grafana_admin_user"></a> [grafana_admin_user](#output_grafana_admin_user) | Grafana admin username. |
 | <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead. |
-| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (query frontend). Reads carry a tenant header; see the chart's datasource configuration. |
+| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. `https` whenever `internal_tls` is not `off`, verified against the internal CA. Reads carry a tenant header; see the chart's datasource configuration. |
 | <a name="output_metrics_url"></a> [metrics_url](#output_metrics_url) | Thanos Query endpoint. Prometheus-API-compatible, so consumers of a Prometheus URL keep working against it. |
 | <a name="output_namespace"></a> [namespace](#output_namespace) | Namespace the monitoring stack is installed into. |
 | <a name="output_release_name"></a> [release_name](#output_release_name) | Name of the materialize-monitoring Helm release. |
@@ -21443,7 +21905,7 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-js
 # Datadog Translations
 
 Every query in `packages/queries/` carries a `datadogQuery` alongside its `promQL`.
-They render side by side as tabs on [Common Queries]({{< relref "../../stable-metrics/common-queries.md" >}}); this
+They render side by side as tabs on [Common Queries]({{< relref "../../common-queries.md" >}}); this
 page is the conventions behind them, for whoever is adding or correcting one.
 
 These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has
@@ -22097,6 +22559,25 @@ Assume SQL fluency.
 Explain Materialize-side concepts (peek, hydration, arrangement) when they appear.
 Don't restate the obvious ("Network bandwidth per pod" — they can read the title).
 
+### Terminology
+
+Titles, legends, empty-state text, and descriptions use Materialize's product vocabulary rather than its internal one.
+Product review set these three:
+
+| Write | Instead of | Means |
+|---|---|---|
+| object | collection | an index, materialized view, source, or table — what `collection_id` identifies |
+| freshness | lag | how far an object's results trail real time, from `mz_dataflow_wallclock_lag_seconds` |
+| orphaned | leaked | persist data nothing refers to that cleanup missed, from `mz_persist_shard_usage_leaked_bytes` |
+
+Freshness is a duration, so a larger value is worse.
+Titles qualify it — _Worst Freshness_, _Total Freshness_, _Least Fresh Objects_ — rather than saying _Max Freshness_, which reads as the freshest.
+
+The rule covers what a reader sees.
+Metric names, label names, query ids, and element keys keep Materialize's own spelling, since they have to match what Materialize emits or are not shown.
+_Sink Lag_ keeps its name because it is a byte backlog, not a freshness reading.
+Metric and log _collection_ — gathering telemetry — is a different sense of the word and is unaffected.
+
 ### Structure
 
 The registry's `description` is structured, and `format_description` renders it to the shape below: `summary` in bold
@@ -22210,6 +22691,13 @@ Use a literal range (`[5m]`, `[1h]`) only when the panel needs a specific window
   and a `[1m]` rate window can't compute.
   The per-panel "Min interval" (`minStep`) is a local override of the same value, but the datasource setting is the
   correct global fix.
+
+**In the query registry, write `%%{interval}`, `%%{range}` and `%%{rangeWindow}`, never Grafana's variables inside a
+range selector.** Metric extraction renders the registry with fixed windows and cannot parse `[$__rate_interval]`,
+`[$__range]` or `$__range_s`, so it skips the whole query with a warning, and a family only that query reads is left out
+of `metric-tiers.yaml` — which keeps it from every filtered destination while every dashboard test passes.
+`gen-metric-tiers` prints the skipped queries; `make metric-tiers` hides them. There is no parameter for the range in
+seconds: `infra.autoscaling.nodes.added` compares against `offset %%{rangeWindow}` instead of `time() - $__range_s`.
 
 ### Filtering cAdvisor metrics
 
@@ -22545,6 +23033,20 @@ Things that have surprised us during development; worth knowing before touching 
 - **A ratio of two rates is `NaN` over a window with no calls**, and Grafana applies `noValue` per field, so the panel's
   empty-state text lands in the legend beside the series. Mean latencies on the dependency dashboards are wrapped in
   `(…) >= 0`, which drops the `NaN` points.
+- **Karpenter's controller-runtime families need `app="karpenter"`.** `controller_runtime_*`, `workqueue_*`,
+  `client_go_*`, `aws_sdk_go_*` and `leader_election_*` carry no prefix, and the EBS CSI driver and the Load Balancer
+  Controller publish them too. Only the leader replica publishes `karpenter_*` at all; the standby publishes the
+  runtime families and `karpenter_build_info`.
+- **Some Karpenter `_count` names are gauges**: `karpenter_scheduler_unschedulable_pods_count`,
+  `karpenter_cluster_state_node_count` and every `operator_*_status_condition_count`. They are not a histogram's count.
+- **`aws_sdk_go_request_total`'s `service` label arrives as `exported_service`**, because the scrape stamps the
+  Kubernetes Service name on `service`. Any metric with its own `service`, `namespace`, `pod` or `job` label collides the
+  same way on a ServiceMonitor that does not honor labels.
+- **`karpenter_cloudprovider_instance_type_offering_available` is 0 for about half its series at rest**: every
+  instance type not sold in a zone, and every reserved-capacity offering. A capacity refusal is a drop over time, which
+  is why `infra-karpenter` draws the zones offering each type rather than a table of zeros.
+- **`RegisteredNode` does not mean a node joined.** The node controller emits it for every node whenever it starts,
+  which on a managed control plane happens without notice. Count joins from `kube_node_info` instead.
 
 ## Logs dashboard conventions
 
@@ -22661,7 +23163,8 @@ Two things worth keeping if this pattern spreads:
 
 ## Rendering a row on a discovered variable
 
-**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows.**
+**New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows,
+`infra-autoscaling`'s Cloud Capacity tab and every row of `infra-karpenter`.**
 `Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
@@ -22674,7 +23177,8 @@ cannot be told apart at render time.
 A CNI is the motivating case: the metric names differ per vendor and share nothing, so the panels cannot be written
 once.
 
-Five rules, the first four learned from `infra-net` and the fifth from its first shipped bug:
+Six rules, the first four learned from `infra-net`, the fifth from its first shipped bug, and the sixth from
+`infra-karpenter`:
 
 - **Discover the condition, do not ask for it.** The scrape config knows which vendor it is scraping, so it labels
   every series it collects and a query variable reads the label back. An operator picking their own CNI from a list is
@@ -22697,6 +23201,10 @@ Five rules, the first four learned from `infra-net` and the fifth from its first
   in. `infra-net` shipped with `.+` as its dataplane's "All" and showed "No Dataplane Metrics" on every cluster until it
   was removed; `test_support::assert_row_conditions_can_read_all` now guards both dashboards. A discovery variable no
   query reads has no use for a custom value in the first place.
+- **Match what the detection returns, never `.+`.** A single-value variable whose query found nothing can reach a row
+  condition as the word `undefined`, which `.+` matches, so the rows render on a cluster without the thing they need
+  and the fallback hides. `infra-karpenter` matches the literal `karpenter` that `up{app="karpenter"}` discovers, and a
+  test asserts that no string an unset variable stringifies to contains it.
 
 The condition is a **substring regex against the interpolated value**, so a multi-select variable works: a row asking
 for `cilium` still renders when the value is `cilium,kube-proxy`. Both directions are expressed by the operator
@@ -22944,6 +23452,19 @@ and `node-debug.yaml` back this dashboard unchanged — at the cost of a name th
 Loki knows the node a third way again, as **structured metadata** on journal lines, so the journal filters in the
 pipeline (`| node=...`) rather than in the selector; node *events* match on the involved object's name with
 `kind="Node"`.
+
+## Node pools across provisioners
+
+`%%{nodePools}` is every node, valued 1 and labelled `node`, `pool`, `instance_type` and `zone`, read from
+`kube_node_labels`. The pool is whichever label the node's provisioner sets — `karpenter.sh/nodepool`,
+`eks.amazonaws.com/nodegroup`, `cloud.google.com/gke-nodepool` or `kubernetes.azure.com/agentpool` — and `unpooled`
+when none is set. Count it directly, or join a per-node series onto it with `* on (node) group_left (pool)`; its outer
+`max by` already removes kube-state-metrics replicas' duplicates.
+
+**kube-state-metrics 2.x publishes no `kube_node_labels` at all without an allowlist**, so the chart's
+`kube-state-metrics.metricLabelsAllowlist` is what makes the family exist, not just what fills it. A chart test pins the
+flag. An install from before it has every per-pool panel empty, and those panels say so rather than showing
+`unpooled`.
 
 **The node families are vetted.** `node-health` and `node-debug` were authored before any dashboard used them and were
 long flagged as unreviewed. All 87 of their expressions were run against a live cluster while this was built and all 87
@@ -23215,48 +23736,87 @@ one `selector.rs` per dashboard, and the prose lives on the registry query.
 
 
 --------------------------------------------------------------------------------
-title: "Common Alerts"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-alerts/index.md
+title: "Compatibility"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/compatibility/index.md
 --------------------------------------------------------------------------------
 
-# Common Alerts
+# Release Compatibility
 
-These are the alerting rules the chart bundles, generated from the query registry.
-Each is installed only where the deployment has the capabilities it requires, and only the default set installs without
-being selected; see [Configuring Alerting]({{< relref "../../alerting/configuring.md" >}}#the-bundled-rules).
+This shows the compatibility of materialize-monitoring with various
+technologies.
 
-> [!WARNING]
-> Rules outside the default set have not all been checked against a self-managed install.
-> Evaluate one against the deployment before relying on it.
+It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
+For what we guarantee about our own names, and the notice you get before one changes, see [Stability Guarantees and Deprecation Policy](../stability/).
 
-{{% list-alerts %}}
+## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
 
+| materialize-terraform-self-managed | materialize-monitoring | Clouds | Observability default |
+|---|---|---|---|
+| v11.0.0+ | 0.17.0 | AWS, GCP, Azure | **On** — `enable_observability` defaults to `true` |
+| v10.0.0 – v10.1.1 | 0.12.0 – 0.15.0 | AWS, GCP, Azure | Off — opt-in |
+| ≤ v9.0.2 | none (a vendored copy of the `env-top` dashboard only) | — | — |
 
---------------------------------------------------------------------------------
-title: "Common Queries"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-queries/index.md
---------------------------------------------------------------------------------
+The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.
 
-# Common Queries
+v11 made the monitoring stack **opt-out rather than opt-in** and completed the per-cloud rollout, so Azure no longer uses the previous Prometheus + Grafana modules.
 
-These queries are used in various dashboards and may be a good
-starting point for a dashboard developer or for someone looking
-into particulars of a dashboard.
+## [Kubernetes](https://kubernetes.io/)
 
-> [!TIP]
-> The underlined values in each query are placeholders, and they are editable.
-> Click one, type your environment's value, and every other occurrence of that placeholder on the page follows — so copying a query gives you something you can paste straight into Prometheus.
-> Press Enter to commit an edit or Escape to discard it.
->
-> You can also set placeholders up front by naming them in this page's URL:
->
->     ?mzSqlPrefix=v2_mz_&mzNamespaceList=materialize-prod
->
-> The two directions are the same mechanism: editing in place rewrites the URL to match, so once the page reads the way you want, the address bar holds a link you can bookmark or share.
-> Only placeholders you have changed appear there, and a customized value is underlined with a solid rather than a dashed line.
-> Reload without the query string to get the defaults back.
+**We support the non-EOL Kubernetes releases — v1.34 and newer.**
 
-{{% list-queries %}}
+The charts declare `kubeVersion: ">=1.27.0-0"`, but that is a floor rather than a support statement: older releases *may* work and are not supported.
+
+Cloud-provided distributions offering extended support past a release's upstream EOL are supported on a **best-effort** basis, and may run into issues.
+
+## [Materialize product](https://github.com/MaterializeInc/materialize)
+
+Dashboards (v0.8.0+) generally require the `mz_object_info` metric introduced in `v26.29.0`,
+however they will gracefully degrade without it.
+
+The **`env-upgrade`** dashboard requires **`v26.41.0`** for its operator signals: the reconciliation metrics
+(`orchestratord_reconciliations_total` and friends) and the Kubernetes events the operator publishes for reconciliation
+failures and `Materialize` lifecycle transitions.
+
+It degrades rather than breaking on an older release, and not uniformly — the floor is narrower than the dashboard:
+
+| Tab | On a release older than `v26.41.0` |
+|---|---|
+| Generations | **Fully working.** Every panel reads metrics that predate it, and the blue/green split comes from pod names rather than anything the operator newly exports. |
+| Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
+| Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
+
+Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
+dashboard table shows.
+
+Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
+
+## [Grafana](https://grafana.com/)
+
+Dashboards (v0.8.0+) require Grafana v13+ for the dashboard schema v2.
+Grafana v12 is generally known to work, but may run into issues.
+
+## [Google Kubernetes Engine (GKE)](https://cloud.google.com/kubernetes-engine)
+
+GKE works generally with the dashboards. Managed collection ([enabling it](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#enable-mgdcoll-gke)) is on by default from v1.27 and provides the `PodMonitoring` CRDs the GMP scrapers use.
+
+**Container metrics no longer depend on what GMP exposes.**
+The Alloy gateway scrapes `/metrics/cadvisor` on every kubelet itself, which yields a fuller set than GMP's default
+collection.
+That is what retired the GCP-specific dashboard variants: there is now one render per dashboard, carrying the same
+`container_*` and `kube_*` families and percentage-based panels everywhere.
+See [Container metrics from the kubelet](../../metrics/scraping/#kubelet).
+
+## [Google Cloud Monitoring Dashboards](https://cloud.google.com/monitoring/dashboards)
+
+Importing Grafana dashboards into Google Cloud Monitoring is not yet fully supported.
+
+The shipped dashboards do have some improvements but there are
+still some known issues:
+* `$__range` and `$__rate_interval` need to be replaced with constants
+* Horizontal bar charts are not rendered
+* Tabs and rows are not supported, so there is no layout
+* Switch variables are not supported (e.g. "show system clusters")
+  * This breaks the downstream cluster selector variable
 
 
 --------------------------------------------------------------------------------
@@ -23415,6 +23975,7 @@ Adding `infra-alloy` took the dashboards release from 441,572 to 551,100 bytes, 
 Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzipped, then base64-encoded.
 The three external-dependency dashboards — `env-persist` (122 KB), `env-consensus` (137 KB) and `infra-cloud`
 (122 KB) — took it to 683,928 bytes, 65%, measured the same way.
+`infra-autoscaling` (153 KB) and `infra-karpenter` (137 KB) took it from 691,288 to 794,244 bytes, 76%.
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
@@ -23574,87 +24135,21 @@ dependent components are shown within a release.
 
 
 --------------------------------------------------------------------------------
-title: "Compatibility"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/compatibility/index.md
+title: "Common Alerts"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/common-alerts/index.md
 --------------------------------------------------------------------------------
 
-# Release Compatibility
+# Common Alerts
 
-This shows the compatibility of materialize-monitoring with various
-technologies.
+These are the alerting rules the chart bundles, generated from the query registry.
+Each is installed only where the deployment has the capabilities it requires, and only the default set installs without
+being selected; see [Configuring Alerting]({{< relref "../alerting/configuring.md" >}}#the-bundled-rules).
 
-It is also where changes we absorb from outside this repo are recorded — a Materialize metric rename, a Grafana schema bump, an upstream chart moving a value.
-For what we guarantee about our own names, and the notice you get before one changes, see [Stability Guarantees and Deprecation Policy](../stability/).
+> [!WARNING]
+> Rules outside the default set have not all been checked against a self-managed install.
+> Evaluate one against the deployment before relying on it.
 
-## [materialize-terraform-self-managed](https://github.com/MaterializeInc/materialize-terraform-self-managed)
-
-| materialize-terraform-self-managed | materialize-monitoring | Clouds | Observability default |
-|---|---|---|---|
-| v11.0.0+ | 0.17.0 | AWS, GCP, Azure | **On** — `enable_observability` defaults to `true` |
-| v10.0.0 – v10.1.1 | 0.12.0 – 0.15.0 | AWS, GCP, Azure | Off — opt-in |
-| ≤ v9.0.2 | none (a vendored copy of the `env-top` dashboard only) | — | — |
-
-The Terraform module ships **inside** the `materialize-monitoring` component rather than on a version stream of its own, so one number covers both: a module ref of `materialize-monitoring/vX.Y.Z` installs chart `X.Y.Z`. There is no mapping to maintain between the two.
-
-v11 made the monitoring stack **opt-out rather than opt-in** and completed the per-cloud rollout, so Azure no longer uses the previous Prometheus + Grafana modules.
-
-## [Kubernetes](https://kubernetes.io/)
-
-**We support the non-EOL Kubernetes releases — v1.34 and newer.**
-
-The charts declare `kubeVersion: ">=1.27.0-0"`, but that is a floor rather than a support statement: older releases *may* work and are not supported.
-
-Cloud-provided distributions offering extended support past a release's upstream EOL are supported on a **best-effort** basis, and may run into issues.
-
-## [Materialize product](https://github.com/MaterializeInc/materialize)
-
-Dashboards (v0.8.0+) generally require the `mz_object_info` metric introduced in `v26.29.0`,
-however they will gracefully degrade without it.
-
-The **`env-upgrade`** dashboard requires **`v26.41.0`** for its operator signals: the reconciliation metrics
-(`orchestratord_reconciliations_total` and friends) and the Kubernetes events the operator publishes for reconciliation
-failures and `Materialize` lifecycle transitions.
-
-It degrades rather than breaking on an older release, and not uniformly — the floor is narrower than the dashboard:
-
-| Tab | On a release older than `v26.41.0` |
-|---|---|
-| Generations | **Fully working.** Every panel reads metrics that predate it, and the blue/green split comes from pod names rather than anything the operator newly exports. |
-| Events | The Kubernetes Activity row works — those events come from the kubelet and the scheduler. The Rollout and Operator Health rows are empty. |
-| Reconciliation | Empty, apart from Reconciling Replicas and Environments Needing Update, whose gauges predate the rest. |
-
-Each dashboard also carries its floor as a `monitoring.materialize.cloud/min-mz-version` annotation, which the docsite's
-dashboard table shows.
-
-Scrapers (v0.1.1+) require `app.kubernetes.io/name` labels for environmentd introduced in `v26.24.0`.
-
-## [Grafana](https://grafana.com/)
-
-Dashboards (v0.8.0+) require Grafana v13+ for the dashboard schema v2.
-Grafana v12 is generally known to work, but may run into issues.
-
-## [Google Kubernetes Engine (GKE)](https://cloud.google.com/kubernetes-engine)
-
-GKE works generally with the dashboards. Managed collection ([enabling it](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed#enable-mgdcoll-gke)) is on by default from v1.27 and provides the `PodMonitoring` CRDs the GMP scrapers use.
-
-**Container metrics no longer depend on what GMP exposes.**
-The Alloy gateway scrapes `/metrics/cadvisor` on every kubelet itself, which yields a fuller set than GMP's default
-collection.
-That is what retired the GCP-specific dashboard variants: there is now one render per dashboard, carrying the same
-`container_*` and `kube_*` families and percentage-based panels everywhere.
-See [Container metrics from the kubelet](../../metrics/scraping/#kubelet).
-
-## [Google Cloud Monitoring Dashboards](https://cloud.google.com/monitoring/dashboards)
-
-Importing Grafana dashboards into Google Cloud Monitoring is not yet fully supported.
-
-The shipped dashboards do have some improvements but there are
-still some known issues:
-* `$__range` and `$__rate_interval` need to be replaced with constants
-* Horizontal bar charts are not rendered
-* Tabs and rows are not supported, so there is no layout
-* Switch variables are not supported (e.g. "show system clusters")
-  * This breaks the downstream cluster selector variable
+{{% list-alerts %}}
 
 
 --------------------------------------------------------------------------------
@@ -23706,7 +24201,16 @@ rather than updating the fixture.
 
 ## Allow-listed divergences
 
-Both parity allow-lists — shell fields and queries — are checked **in both directions**.
+The parity suite records deliberate divergences in four lists:
+
+| List | Records |
+|---|---|
+| `ALLOWED` | dashboard shell fields |
+| `QUERY_DIVERGENCES` | panels whose registry query differs from the baseline's expression |
+| `RETITLED` | panels retitled after the port, each with the title it carries now |
+| `RELABELED_COLUMNS` | table column headers renamed after the port, applied to the baseline before transformations are compared |
+
+Each is checked **in both directions**.
 An entry that no longer diverges fails too, so the list cannot rot into a set of stale excuses.
 
 That bidirectional check is what proved the four registry fixes landed: twenty-one entries went stale at once, and the
@@ -23721,6 +24225,86 @@ is clean.
 plain `make` can consider them up to date and skip rendering — which would make the check vacuous.
 Deleting the outputs first does not fix it either: removing files inside a directory target updates that directory's
 mtime, making it look *newer* than its prerequisites rather than missing.
+
+
+--------------------------------------------------------------------------------
+title: "Common Queries"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/common-queries/index.md
+--------------------------------------------------------------------------------
+
+# Common Queries
+
+These queries are used in various dashboards and may be a good
+starting point for a dashboard developer or for someone looking
+into particulars of a dashboard.
+
+> [!TIP]
+> The underlined values in each query are placeholders, and they are editable.
+> Click one, type your environment's value, and every other occurrence of that placeholder on the page follows — so copying a query gives you something you can paste straight into Prometheus.
+> Press Enter to commit an edit or Escape to discard it.
+>
+> You can also set placeholders up front by naming them in this page's URL:
+>
+>     ?mzSqlPrefix=v2_mz_&mzNamespaceList=materialize-prod
+>
+> The two directions are the same mechanism: editing in place rewrites the URL to match, so once the page reads the way you want, the address bar holds a link you can bookmark or share.
+> Only placeholders you have changed appear there, and a customized value is underlined with a solid rather than a dashed line.
+> Reload without the query string to get the defaults back.
+
+{{% list-queries %}}
+
+
+--------------------------------------------------------------------------------
+title: "List of Metrics"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/list-metrics/index.md
+--------------------------------------------------------------------------------
+
+# List of Metrics
+
+This has the list of metrics which are available for usage.
+In many systems, only a subset of metrics get stored based
+on how they would be used.
+
+## Metric Tiers
+
+Importance is about **storage**, not stability: it says which metrics are worth keeping when capacity is limited, not what we promise about their names.
+For that, see [Stability Guarantees and Deprecation Policy](../stability/) — in short, `mz_*` names come from Materialize itself and we disclose rather than freeze them.
+
+
+Metrics are grouped by "metricImportance" levels (mzmon-specific).
+These levels guide which metrics are prioritized in
+metric stores which have limited capacity.
+
+The **essential** metrics are the set of metrics that
+are critical and you would always want to have available.
+These are used in alerting.
+
+The **recommended** metrics are the set of metrics that
+are used in dashboards and are generally desirable for
+troubleshooting.
+
+The **extended** set of metrics are used for optional/experimental
+dashboards.
+
+The **diagnostic** set of metrics are used for in-depth
+troubleshooting and analysis.
+
+In our `materialize-monitoring` configuration, we also
+provide an **all** min-importance for including
+absolutely everything.
+This is recommended if you have cheaper metric storage
+like our bundled Thanos provider.
+
+## Essential Metrics
+
+> [!WARNING]
+> FIXME: Some links for alerts mistakenly point at the common-queries page.
+
+{{% list-metrics importance="essential" %}}
+
+## Recommended Metrics
+
+{{% list-metrics importance="recommended" %}}
 
 
 --------------------------------------------------------------------------------
@@ -24050,7 +24634,7 @@ Both questions the family raised are settled:
   `env-logs` opens on the Materialize namespaces and `infra-logs` subtracts them, so each dashboard answers for one
   audience while still reaching the other in a click.
 
-Only the Nodes, Networking and External components rows are ticketed.
+Only the Nodes, Autoscaling, Networking and External components rows are ticketed.
 The untracked rows that remain open are backlog, tagged OO-M3.
 The "collectable today" column is what a live self-managed install actually exposes, measured rather than assumed —
 it is the difference between a dashboard we could build this week and one that needs collection work first.
@@ -24061,7 +24645,7 @@ it is the difference between a dashboard we could build this week and one that n
 | **Nodes** — health, workloads, bin capacity (logs and journals now covered by `infra-logs`) | **Yes, shipped.** `infra-nodes` (`mz-mon-infra-nodes`) exists with **Summary**, **CPU**, **Memory & Swap**, **Network**, **Storage**, **Pods** and **Logs & Events** tabs, scoped to one node at a time. Built on 282 `node_*` families, the 9 `kube_node_*` ones the KSM label fix unblocked, and the node journal. The Summary tab is deliberately `kubectl describe node` for someone who cannot run it: identity and capacity as info cells, utilization sparklines, radial gauges for how much of the node the scheduler has already promised, and the conditions, cordon state and taints that explain a node accepting no work. It is also the repo's first dashboard to join two identifier conventions — kube-state-metrics names a node `node`, node-exporter names the same machine `instance` — through a hidden `$nodeList` lookup over `node_uname_info`, which let the pre-existing `node-health` and `node-debug` families back it unchanged. Those two families were vetted in the process: all 87 of their expressions were run against a live cluster and all 87 returned data. The **Pods** tab answers what is scheduled here and whether it is well, with requests beside limits — the scheduler's reservation beside the kernel's ceiling. **Later:** fleet views, which are a different question (*which* node) rather than a wider version of this one | OO-M2 | ✅ |
 | **Pods** — health, logs, metrics for a single workload | **Partly.** The cAdvisor families are fine; the 41 `kube_pod_*` ones are all present but keyed under `exported_pod` / `exported_namespace`, so a pod picker cannot be built on them until the KSM label collision is fixed | OO-M3 | ⬜ |
 | **Meta-monitoring** — every component of this stack | **Loki and Alloy shipped; Grafana, Thanos and Alertmanager outstanding.** `infra-loki` (`mz-mon-infra-loki`, "Loki Meta Monitoring") exists with **Overview**, **Writes**, **Reads**, **Storage** and **Logs** tabs, and is the first occupant of the **Meta Observability** folder that `values.yaml` has carried unused since folders existed. It is the repo's first dashboard whose subject is the monitoring stack rather than something the stack watches, and that inversion drives its shape: a blank panel here can mean the instrument is down rather than that nothing happened, so Scrape Health leads the Overview tab and every panel writes its own empty-state text. Building it found the fault it was built around — `profiles/mtls` set one `scheme: https` on the subchart's single ServiceMonitor, which also reached the three targets that never serve TLS (the canary's own `/metrics`, and both memcached exporters), so all three failed their scrape and the **end-to-end write→read canary was silent on exactly the installs configured most carefully**. The chart now splits those three onto a plaintext monitor of its own; all 11 Loki targets read `up == 1` on a live install where three had read 0. The upstream mixin dashboards were evaluated and rejected: they read `cluster_job_route:*` recording rules that this stack evaluates nothing to produce (the Thanos Ruler now runs, but no rule set records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring name rather than a Kubernetes cluster. Bloom panels are excluded as experimental. Verified against a live install: all 55 rendered queries execute and 53 return data, the two that do not being the healthy-empty cases. Shipping it is what moved the dashboards into a chart of their own ([why](../dashboard/generating/#the-size-ceiling-on-dashboard-delivery)). **Alloy** is `infra-alloy` (`mz-mon-infra-alloy`, "Alloy Meta Monitoring"), the folder's second occupant, with **Overview**, **Log Pipeline**, **Metric Pipeline**, **Ingest**, **Components**, **Resources**, **Events** and **Logs** tabs, 90 panels over 86 queries in `packages/queries/infra-alloy.yaml`. It absorbs the six panel-less `infra.loki.pipeline.*` placeholders, which now have panels behind them. Its inversion is stronger than Loki's: the gateway scrapes Alloy's metrics and forwards Alloy's logs, so a gateway outage empties the dashboard and nothing inside the stack can say so. Counts that should be zero are built as `sum(A) or 0 * sum(B)` so zero and absent read differently. **Ingest** reads the gateway's three push listeners (log push, remote write, OTLP) from three vantage points, because no one of them sees everything: the gateway's own request counters by status, the remote-write senders' own queues (found by the `url` they write to, which is the only view that sees a sender that cannot connect), and the gateway's log for refused TLS handshakes, which fail before any request exists. **Events** matches Kubernetes events on the involved object's name, which reaches the DaemonSet, Deployment, ReplicaSets, autoscaler and pods alike, and the pre-install `validate-agent` / `validate-gateway` Jobs, whose failure stops an upgrade. The existing internal Alloy dashboards, mostly the upstream mixin, were read panel by panel and not ported: they compute success rates by summing `_bucket` series, scope scraped targets' `up` by the collector's own `job`, and read memory as RSS, which on a reference install put an agent at 95% of its limit while its working set was at 29%. Resources measures Go memory against `GOMEMLIMIT` instead of heap alone, which read the reference gateways at 93% rather than 62–71%. In passing, `infra-loki`'s level picker discovered from a variable that dashboard never defined, and offered nothing but "All"; it now discovers from Loki's own streams. Verified against a live install: all 111 rendered queries execute, 101 return data, and the 10 that do not are healthy-empty tables and feeds or unconfigured cases (no OTLP senders, no warning events). Every panel whose series Alloy creates only on failure draws a zero from a population that always exists, and reads no data only when nothing is collected. The dashboards release grows from 441,572 to 551,100 bytes, 53% of the 1 MiB Secret ceiling. Building it also found that the Thanos datasource declares no scrape interval, which breaks every cAdvisor `rate()` panel into points ([DEP-326](https://linear.app/materializeinc/issue/DEP-326)). **Outstanding:** Grafana (523 families), Thanos (220) and Alertmanager (145, scraped since [DEP-226](https://linear.app/materializeinc/issue/DEP-226) and not yet on any dashboard) | OO-M3 | 🔨 |
-| **Autoscaling** — utilization, controller status, compute cost proxy | **Events, and the provider's view of instance availability.** No `karpenter_*` metrics reach Thanos, but 15 event reasons do (`TriggeredScaleUp`, `NotTriggerScaleUp`, `FailedScaleUp`, `ScaleDown`, `RegisteredNode`, `RemovingNode`, …). HPA is covered by 10 `kube_horizontalpodautoscaler_*` families. The provider pull now supplies, per cloud, the half no in-cluster scrape can: EC2 status checks, managed node group sizes and On-Demand vCPU usage on EKS; per-family CPU and local-SSD quota with refusals on GKE; and on AKS the managed cluster autoscaler's own four `cluster_autoscaler_*` gauges, which exist nowhere else, and each node VM's availability. See the instance-availability row under [External dependencies](#external-dependencies) | OO-M3 | ⬜ |
+| **Autoscaling** ([DEP-344](https://linear.app/materializeinc/issue/DEP-344)) — utilization, controller status, compute cost proxy | **Yes, built as two dashboards; Karpenter's scrape awaits the Terraform.** **Infrastructure Autoscaling** (`infra-autoscaling`, `mz-mon-infra-autoscaling`) asks the same two questions on every cloud — are pods waiting for a node, and can the cluster grow — with **Overview**, **Node Pools**, **Pending Pods**, **Workload Autoscaling**, **Cloud Capacity** and **Events** tabs. It groups nodes by pool across Karpenter, EKS managed node groups, GKE and AKS through a `%%{nodePools}` registry parameter over `kube_node_labels`, which kube-state-metrics 2.x does not publish at all until an allowlist names a label; the chart now names the four pool labels, the instance type and the zone. Node joins are counted from `kube_node_info` rather than `RegisteredNode` events, which repeat whenever the control plane restarts. Cloud Capacity draws the provider pull's EC2, Compute Engine quota and AKS rows, each discovered from the pull's `up`. **Karpenter** (`infra-karpenter`, `mz-mon-infra-karpenter`) is Karpenter's own account on EKS, with **Overview**, **Provisioning**, **Disruption**, **Controller** and **Events and Logs** tabs; every row renders on Karpenter's `up`, and each tab carries a fallback that says why it is empty elsewhere. Its ServiceMonitor comes from the self-managed Terraform's `karpenter` module ([materialize-terraform-self-managed#498](https://github.com/MaterializeInc/materialize-terraform-self-managed/pull/498)), which trims the per-instance-type offering families from about 61k samples to about 9k. Verified on the three test installs: every query runs, and on EKS, where that change is applied, the Karpenter rows render with data. The pool panels read empty there until the allowlist is deployed, and the provider rows until [DEP-336](https://linear.app/materializeinc/issue/DEP-336) configures the pulls. The dashboards release grows from 691,288 to 794,244 bytes, 76% of the ceiling. **Outstanding:** GKE's autoscaler visibility log, which lives only in Cloud Logging | OO-M3 | 🔨 |
 | **Networking** — throughput, traffic shape, policy metrics | **Yes, shipped**, and the collection gap that blocked it is closed. `infra-net` (`mz-mon-infra-net`) exists; see the Dashboards table above for the detail. The survey that produced this row was right that no CNI metrics reached Thanos, and wrong that none could: the endpoints are there and were simply unscraped. `awscni_*` and the network-policy agent's counters are rich on EKS and now collected; GKE Dataplane V2 genuinely exposes nothing, which is Google's choice rather than a gap here. `kube_networkpolicy_*` was also already present and unused — 33 policy objects on a reference install — so the declared half of Security needed no collection work at all | OO-M2 | ✅ |
 | **External components** — object store, consensus DB | **Yes, the client and provider halves shipped** as three dashboards rather than the one `infra-deps` the design proposed — see [External dependencies](#external-dependencies). **Materialize Persist (Storage)** (`env-persist`) and **Materialize Consensus (Metadata)** (`env-consensus`) read persist's own measurement of both dependencies and are filed under Materialize; **Infrastructure Cloud Provider** (`infra-cloud`) reads the provider pull and is filed under Infrastructure. **Still no exporter vantage point**: only 2 `postgres_exporter_*` *config* metrics land, no database statistics, and `thanos_objstore_*` is still read by nothing | OO-M2 | 🔨 |
 
@@ -24069,7 +24653,7 @@ Ordering follows what is buildable and what an operator reaches for first.
 **Nodes** and **Meta-monitoring** need no collection work and answer the two questions that block everything else — is
 the platform healthy, and is the telemetry itself trustworthy.
 **Pods** is the natural drilldown target from both, and from `env-logs`.
-**Autoscaling** is buildable now from events and the provider pull, and gains Karpenter's own view when its controller is scraped.
+**Autoscaling** was built from events, `kube_node_labels` and the provider pull, with Karpenter's own view beside it on EKS.
 **External components** is gated on the collection gap below.
 **Networking** was too, and stopped being: the gap turned out to be unscraped endpoints rather than absent ones, so the dashboard and the scrape configs landed together.
 
@@ -24081,7 +24665,8 @@ Found while surveying a live install; each is a scrape-side gap in *this* repo r
 |---|---|---|
 | ✅ **kube-state-metrics label collision** — fixed, and now asserted | *was:* Pods, Nodes, and five shipped `env-top` panels | KSM emits its own `namespace` / `pod` / `container` labels describing the object it reports on. The scrape does not set `honorLabels`, so Prometheus's collision rule renames them `exported_namespace` / `exported_pod` and puts the *KSM pod's own* identity in `namespace` / `pod`. Every series therefore reads `namespace="monitoring"`. The data is all there — `kube_pod_info` has 105 series, `kube_pod_status_ready` 315 — but every query in this repo written as `kube_*{namespace=…}` matches nothing. Fixed by setting `honorLabels: true` on both ServiceMonitor endpoints (the vendored 8.4.0 subchart defaults them to `false`). Now asserted by `kube_state::labels_are_honored` and `kube_state::pods_are_distinguishable` in the e2e suite, which between them catch the collision's signature (`exported_*` labels) and its consequence (`kube_pod_info` collapsing to one identity). Verified against a live install *before* the fix: 15 families carrying `exported_*`, and 117 `kube_pod_info` series reporting a single pod. The three `materialize.kubernetes.*` readiness queries are `canonical` on the strength of that coverage |
 | ✅ **Alertmanager is not scraped** — fixed | *was:* Meta-monitoring | The subchart's own ServiceMonitor, on since [DEP-226](https://linear.app/materializeinc/issue/DEP-226). Both Services it renders carry identical labels, so the monitor drops the headless one's targets; without that every replica is scraped twice. Verified on a live install: one `up` series per replica, 145 families, `alertmanager_cluster_members` reading 2 |
-| No cluster-autoscaler / Karpenter scrape — AKS covered by the provider pull | Autoscaling | Distro-specific. **AKS** runs its autoscaler in the managed control plane and publishes four gauges to Azure Monitor, which `pipeline.metrics.provider.azure.aks` now pulls. **GKE** publishes no autoscaler metrics anywhere, only a visibility log in Cloud Logging and events. **Karpenter** on EKS runs in-cluster and serves `/metrics`, so it is the one that still needs a scrape |
+| No cluster-autoscaler / Karpenter scrape — AKS covered by the provider pull, Karpenter by the Terraform | Autoscaling | Distro-specific. **AKS** runs its autoscaler in the managed control plane and publishes four gauges to Azure Monitor, which `pipeline.metrics.provider.azure.aks` now pulls. **GKE** publishes no autoscaler metrics anywhere, only a visibility log in Cloud Logging and events. **Karpenter** on EKS runs in-cluster and serves `/metrics`; the self-managed Terraform's `karpenter` module creates its ServiceMonitor in [materialize-terraform-self-managed#498](https://github.com/MaterializeInc/materialize-terraform-self-managed/pull/498), in review |
+| ✅ **`kube_node_labels` absent** — fixed, and now asserted | *was:* Autoscaling (node pools) | kube-state-metrics 2.x publishes the family only for the labels `--metric-labels-allowlist` names, so without one it is missing rather than thin, and nothing else fails. The chart names each provisioner's pool label, the instance type and the zone, and a chart test asserts that and that the wildcard is never used |
 | ✅ **No CNI / NetworkPolicy metrics** — fixed for the two CNIs with monitors | *was:* Networking (policy half) | Two PodMonitors ship, for the AWS VPC CNI and for Cilium, plus a kube-proxy ScrapeConfig. All three are **self-disabling**, which is what makes it safe to deploy every one to every cluster: the pod selector matches nothing on a cluster running another vendor, and the CNI endpoints name *container ports* rather than numbers, so a vendor built without metrics yields no target instead of a scrape failing on every node forever. Each stamps a `network_component` label, which is the dashboard's whole detection mechanism. Measured rather than assumed: EKS `aws-node` serves `awscni_*` on the `metrics` port and `network_policy_drop_count_total` on the nodeagent's, both verified landing in Thanos; GKE Dataplane V2 serves nothing on `:9962` and only Hubble's own health counters on `:9965`. **kube-proxy is collected too**, from the gateway pipeline rather than from its ScrapeConfig CR: the gateway has no `prometheus.operator.scrapeconfigs` component, so the CR is a Prometheus-consumer artifact exactly as the cAdvisor one is, and the pipeline carries the same relabeling. Discovery is a server-side pod selector, so a cluster running no kube-proxy returns no targets rather than a refused connection on every node. **Still uncovered:** Calico and Azure NPM, which no monitor ships for |
 | Consensus DB exports config only | External components | `postgres_exporter` is present but only its own config metrics arrive; the database statistics it exists to publish do not. Nothing in this chart deploys one — the [external-dependency design](../design-docs/20260920-external-dependency-monitoring/) makes it a chart component with a documented grant |
 
@@ -24141,7 +24726,7 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | On-premise object-store adapter (MinIO / Garage / Ceph) ([DEP-299](https://linear.app/materializeinc/issue/DEP-299)) | OO-M2 | ⬜ |
 | Version reporting (`ext:*_version_info`) across every adapter ([DEP-300](https://linear.app/materializeinc/issue/DEP-300)) | OO-M2 | ⬜ |
 | The **provider** vantage point — `prometheus.exporter.{cloudwatch,gcp,azure}` on the gateway, with clustering and importance tiering ([DEP-301](https://linear.app/materializeinc/issue/DEP-301)) | OO-M2 | ✅ (**CloudWatch, GCP and Azure built.** `pipeline.metrics.provider.{cloudwatch,gcp,azure}` pull RDS and S3, Cloud SQL and GCS, and Flexible Server and Blob Storage, for resources named in values, never discovered. Each pull is a custom component (`declare`) in a pre-rendered, schema-validated module that deploys as-is, the repository's first; the chart renders only flat instances, one per resource on CloudWatch and one per service on GCP and Azure, which `alloy validate` checks against the declared arguments, and the metric sets are fixed in the module rather than values. Clustering is on the scrape, not the exporter: all three exporters call the provider on scrape and export an identical target on every replica, so one replica owns it. Each provider assigns its families an importance tier in values, since no registry query reads them yet. Proven against the real test resources on both clouds with a local `alloy run`: 30 CloudWatch series from 28 `GetMetricStatistics` calls, 43 Cloud SQL and GCS series from 19 API calls, and an unrelated Cloud SQL instance in the same project correctly excluded. Five findings shaped it, all silent in a render: Alloy's `nil_to_zero` defaults to true; CloudWatch `decoupled_scraping` polls from every replica; a `static` label must be an identifier; GCS `api/request_count` under-counts about fivefold at a five-minute interval; and a pull with no credentials still reports `up == 1`. **GCP run in-cluster** on a GKE test install: 41 series in Thanos from one clustered owner, with the gateway's existing Workload Identity plus `roles/monitoring.viewer`. The first reading found a persist bucket holding 120 times its live size in soft-deleted objects, which is the reclaimable-waste signal the design asked for. Each gateway restart leaves a gap as long as the provider's lag, because remote write never sends samples stamped before it started. CloudWatch then ran on an EKS test install through a scoped IRSA role: 32 series, from exactly the 30 `GetMetricStatistics` calls one owner should make, and no post-restart gap because CloudWatch stamps at scrape time. The custom-component revision re-ran there too: five instances, each owned by exactly one replica and spread across both, and all 32 series in Thanos three minutes after the roll with `instance` naming the resource. **Azure** ran on an AKS test install with a workload identity holding Monitoring Reader on the four named resources only: 23 Flexible Server series from one call per server, after a relabel `keep` trims the exporter's every-aggregation output from 84 samples, and 10 Blob Storage series across two pulls, with each of the three targets owned by one replica. Without the `azure.workload.identity/use` pod label the pull fell through to the node's identity and Resource Graph refused it, so on Azure a missing identity does show as `up == 0`; the chart warns, and the Terraform module sets the label. The Terraform identities are DEP-302) |
-| **Instance availability** on the provider pull — can the cloud supply the nodes an autoscaler asks for, and are the ones it supplied healthy | OO-M3 | 🔨 (**Pipeline built; no dashboard draws it yet.** Three pulls beside DEP-301's, named by cluster or region in values. `pipeline.metrics.provider.cloudwatch.eks.clusters` finds each cluster's nodes by the `aws:eks:cluster-name` tag EKS and Karpenter set, since they are replaced too often to name, and pulls their three status checks, the managed node groups' desired, in-service, pending and maximum sizes, and the region's On-Demand vCPU usage. `gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and each refusal. `azure.aks.clusters` pulls the managed cluster autoscaler's four gauges and every node VM's `VmAvailabilityMetric`, finding the scale sets through the cluster's node resource group with a Resource Graph join. The generator gained a typed CloudWatch `discovery` job and an expression-valued `honor_timestamps`. Proven by running the rendered components under a local Alloy against the three test installs' accounts: 26 billed metrics per EKS pull for eight nodes and a node group, 12 Cloud Monitoring calls per quota pull, 5 Azure calls for a cluster with two pools, and no warnings. Four findings shaped it: an EC2 discovery job without `dimension_name_requirements` also pulled every Auto Scaling group's aggregate in the shared account, 302 billed metrics against 26; every discovery job writes an `aws_<service>_info` series carrying all of a resource's tags, which the pull now drops; GCP quota points arrive hours apart, so that pull is stamped at the scrape like a daily S3 datapoint; and GCP's per-family quotas replace the regional `CPUS` one for C4 and C4A, which reads zero on the test install. **Not measured in-cluster**, because the test installs' gateway identities hold none of the new grants; the Terraform wrappers' values and grants are [DEP-336](https://linear.app/materializeinc/issue/DEP-336). No provider publishes a capacity-refusal metric, so stockouts remain Karpenter's and the autoscaler's to report, and neither the EC2 vCPU quota's limit nor any Azure compute quota is in its provider's monitoring API) |
+| **Instance availability** on the provider pull — can the cloud supply the nodes an autoscaler asks for, and are the ones it supplied healthy | OO-M3 | 🔨 (**Pipeline built, and drawn by `infra-autoscaling`'s Cloud Capacity tab.** Three pulls beside DEP-301's, named by cluster or region in values. `pipeline.metrics.provider.cloudwatch.eks.clusters` finds each cluster's nodes by the `aws:eks:cluster-name` tag EKS and Karpenter set, since they are replaced too often to name, and pulls their three status checks, the managed node groups' desired, in-service, pending and maximum sizes, and the region's On-Demand vCPU usage. `gcp.compute.regions` pulls per-family CPU and local-SSD quota, usage against limit, and each refusal. `azure.aks.clusters` pulls the managed cluster autoscaler's four gauges and every node VM's `VmAvailabilityMetric`, finding the scale sets through the cluster's node resource group with a Resource Graph join. The generator gained a typed CloudWatch `discovery` job and an expression-valued `honor_timestamps`. Proven by running the rendered components under a local Alloy against the three test installs' accounts: 26 billed metrics per EKS pull for eight nodes and a node group, 12 Cloud Monitoring calls per quota pull, 5 Azure calls for a cluster with two pools, and no warnings. Four findings shaped it: an EC2 discovery job without `dimension_name_requirements` also pulled every Auto Scaling group's aggregate in the shared account, 302 billed metrics against 26; every discovery job writes an `aws_<service>_info` series carrying all of a resource's tags, which the pull now drops; GCP quota points arrive hours apart, so that pull is stamped at the scrape like a daily S3 datapoint; and GCP's per-family quotas replace the regional `CPUS` one for C4 and C4A, which reads zero on the test install. **Not measured in-cluster**, because the test installs' gateway identities hold none of the new grants; the Terraform wrappers' values and grants are [DEP-336](https://linear.app/materializeinc/issue/DEP-336). No provider publishes a capacity-refusal metric, so stockouts remain Karpenter's and the autoscaler's to report, and neither the EC2 vCPU quota's limit nor any Azure compute quota is in its provider's monitoring API) |
 | Terraform: read-only provider roles on the per-cloud monitoring modules ([DEP-302](https://linear.app/materializeinc/issue/DEP-302)) | OO-M2 | 🔨 (**AWS and GCP merged; Azure outstanding.** A `provider_metrics` input on each module grants the gateway read access and names the resources in the chart values: an IRSA role holding `cloudwatch:GetMetricStatistics` and `iam:ListAccountAliases`, and `roles/monitoring.viewer` on the gateway's Google service account. Azure needs a user-assigned identity for the gateway, federated to its ServiceAccount, with Monitoring Reader scoped to each named server and storage account) |
 | The `externalDependencies:` values block and a `dependency-monitoring` profile ([DEP-303](https://linear.app/materializeinc/issue/DEP-303)) | OO-M2 | ⬜ |
 | Persist bucket `AbortIncompleteMultipartUpload` lifecycle rule, in `materialize-terraform-self-managed` ([DEP-304](https://linear.app/materializeinc/issue/DEP-304)) | OO-M2 | ⬜ |
@@ -24276,6 +24861,7 @@ This replaces the hand-rolled Prometheus + Grafana modules that repo shipped, wh
 | Remote-write destinations through Terraform ([DEP-232](https://linear.app/materializeinc/issue/DEP-232)) — `prometheus_remote_write`, its credentials, and the gateway ServiceAccount annotation SigV4 needs | OO-M1 | ✅ (a map keyed by the same destination name the chart uses, so `thanos` retunes the bundled destination rather than adding a second. Credentials go through the `mzmon-alloy-gateway-env` Secret with the module naming the variables explicitly, per DEP-204's pattern. Tier 0 asserts each declared destination reaches a component, a fan-out edge, its URL variable, and a tier variable that actually differs from `.*`) |
 | S3 account-regional namespaced buckets ([DEP-201](https://linear.app/materializeinc/issue/DEP-201)), which waited on the downstream AWS provider v6 upgrade | OO-M1 | ✅ |
 | Alerting through Terraform ([DEP-339](https://linear.app/materializeinc/issue/DEP-339)) — rule selection and overrides, routing and receivers, and the receiver credentials Secret | OO-M2 | 🔨 (the common module takes `alert_rules`, `alerting`, `alerting_receiver_secrets` and `alertmanager_namespace`. Credentials become the `alertmanager-receivers` Secret rather than Helm values, and the plan fails when a receiver reads a key that is not supplied. Tier 0 asserts each input lands in the render, including the preset by its effect. **Outstanding:** the per-cloud wrappers in `materialize-terraform-self-managed` mirroring the inputs, after a release) |
+| Downstream components' ServiceMonitors, and a `monitoring-crds` module that installs the CRDs before anything that renders one ([materialize-terraform-self-managed#498](https://github.com/MaterializeInc/materialize-terraform-self-managed/pull/498)) | OO-M3 | 🔨 (in review. Karpenter, the Load Balancer Controller, the EBS CSI driver, NodeLocal DNS, cert-manager, Ory and metrics-server. A ServiceMonitor cannot be applied before its CRD, so the CRDs move ahead of all of them) |
 
 The module ships as part of the **`materialize-monitoring` component**, not as a component of its own — one version stream covering two artifacts, so `?ref=materialize-monitoring/vX.Y.Z` installs chart `vX.Y.Z` and there is no mapping to maintain between our own two surfaces.
 The module derives its chart version from the chart's own `Chart.yaml`, so that coupling is structural rather than a convention someone maintains on each bump.
@@ -24290,17 +24876,18 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Item | Milestone | Status |
 |---|---|---|
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
-| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Twenty-eight are in the default set**, each evaluated against both self-managed test installs without firing falsely. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../stable-metrics/common-alerts/) until runbooks exist) |
-| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL only. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
+| Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../common-alerts/) until runbooks exist) |
+| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ |
-| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. No LogQL rule and no recording rule is written yet) |
-| Log-derived alert definitions in the query registry | OO-M2 | ⬜ |
+| Loki rules in Grafana's alerting UI, through the nginx Loki gateway on the read path | — | ✅ (the Loki datasource points at the gateway, which routes rule and alert state to the ruler and refuses rule edits, so Grafana lists the rules read-only; the E2E check `grafana::loki_rules_listed` asserts both. See [Gateway / ingress](../design-docs/20260627-loki-production-infrastructure/#gateway--ingress) for why nginx's DNS objection does not apply) |
+| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. No recording rule is written yet) |
+| Log-derived alert definitions in the query registry | OO-M2 | ✅ (`materialize-log-alerts.yaml` ports Cloud's clicked-in Loki rules by shape rather than verbatim: `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` in the default set, `trace-logging-enabled` opt-in, and the hanging-query rule dropped because its error came from the removed gRPC transport. See [Authoring Alerts](../queries/alerts/#log-derived-alerts)) |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
 | Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ✅ (twenty capabilities, **mostly inferred** from the metrics a rule reads through an ordered table, with `requires` for what names cannot show. Eight are derived from what the chart deploys; twelve are listed in `rules.capabilities`. A rule installs only where all of its capabilities are present, and a metric the table does not claim fails the build — the design doc's applicability check, with something to check against) |
 | Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | 🔨 (every rule carries `runbook_url`, pointing at its anchored entry on Common Alerts; the runbooks themselves are not written) |
-| Alert and recording-rule names added to the committed surface | OO-M2 | ✅ (`pre-rendered/rules/prometheus/_index.yaml` joins the committed-surface table and CODEOWNERS, and the `code-review` skill treats a default-set name as committed) |
+| Alert and recording-rule names added to the committed surface | OO-M2 | ✅ (`pre-rendered/rules/_index.yaml` joins the committed-surface table and CODEOWNERS, and the `code-review` skill treats a default-set name as committed) |
 | Extension surface — extra rules, rule overrides, extra receivers, extra routes | OO-M2 | 🔨 (`rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` exist, as do extra receivers and routes under `alerting`. An override sets one rule's `for` and labels, never its expression. `rules.extra` does not exist) |
 | Deadman's switch, and the Alertmanager scrape two of its checks depend on | OO-M2 | 🔨 (the scrape is on; the switch and the meta-alerts are rules, and are not written yet. `environmentd-not-scraped` covers one silence, a Materialize that has disappeared from the scrape) |
 | Alertmanager production hardening ([DEP-226](https://linear.app/materializeinc/issue/DEP-226)) — HA via gossip, resource requests, storage shape, topology spread | OO-M2 | ✅ (two gossiping replicas by default, PDB of one, hard zone and soft host spread, read-only root filesystem, no ServiceAccount token, requests and a memory limit, health-endpoint probes, `cluster.label`. Both rulers now address the headless Service by DNS discovery, because gossip replicates silences and the notification log but **not alerts**, and a replica a ruler never reached cannot notify when its peer is lost. The storage question the ticket deferred is settled: the 4Gi volume stays, because gossip covers losing one replica and only the volume covers losing both, and `volumeClaimTemplates` are immutable so removing it would fail every upgrade. Verified on a live GKE install, including the upgrade landing the replicas in separate zones. Resource names are pinned to `alertmanager`, so that upgrade replaces the StatefulSet rather than scaling it. See [Alert Architecture](../../../alerting/architecture/)) |
@@ -24355,9 +24942,9 @@ The proposal keeps `severity` on the rule and puts a three-way `alerting.critica
 It ships here, and the answer is that names are committed from the release that first carries rules: `rules.disabled` names alerts, an external Alertmanager's routing matches on them, and a runbook link is built from them.
 Names churn while the default set is derived, and each rename owes a changelog entry even then.
 
-**Log-derived alerting has never been code anywhere at Materialize.**
+**Log-derived alerting had never been code anywhere at Materialize.**
 Cloud's pipeline emits PromQL rule groups, so the alerts that detect panics, correctness violations, and data-corruption patterns are clicked into Grafana — duplicated per region, drifted between copies, and carrying deployment-specific exclusions compiled into the LogQL.
-Self-managed is the first place that class can be defined and reviewed, and the port is not a transcription: the clicked-in rules use `$__range`, which is a Grafana variable that a Loki ruler cannot parse.
+Self-managed is the first place that class is defined and reviewed, in `materialize-log-alerts.yaml`, and the port was not a transcription: the clicked-in rules use `$__range`, which is a Grafana variable that a Loki ruler cannot parse.
 
 ### Profiles
 
@@ -24900,7 +25487,7 @@ There is no CI gate for this — see [why](../design-docs/20260823-deprecation-p
 | `terraform/modules/*/variables.tf`, `outputs.tf` | module inputs and outputs |
 | `charts/*/pre-rendered/dashboards/` | dashboard identities |
 | `charts/*/pre-rendered/metrics/metric-tiers.yaml` | tier names |
-| `charts/*/pre-rendered/rules/prometheus/_index.yaml` | the alert names that ship, which are in the default set, and the capability names `rules.capabilities` accepts |
+| `charts/*/pre-rendered/rules/_index.yaml` | the alert names that ship, which are in the default set, and the capability names `rules.capabilities` accepts |
 
 These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/CODEOWNERS) covers, so the review request arrives on its own.
 The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.
@@ -25317,7 +25904,7 @@ Fill in as each component is wrapped.
 | query-frontend | ⬜ | ⬜ | |
 | compactor | ⬜ | ⬜ | singleton |
 | ruler | ⬜ | ⬜ | own storage prefix |
-| gateway | ⬜ | ⬜ | nginx today — see topology |
+| gateway | ⬜ | ⬜ | nginx, read path only — see [Gateway / ingress](#gateway--ingress) |
 | memcached | ⬜ | ⬜ | |
 
 ## Storage and credentials
@@ -25344,13 +25931,35 @@ Fill in as each component is wrapped.
 
 ### Gateway / ingress
 
-The upstream loki-gateway is an **nginx** reverse proxy doing path-based routing, and we do not want nginx here (though we are using it for loki-gateway today).
+The upstream loki-gateway is an **nginx** reverse proxy doing path-based routing.
 Cloud ingress is also fragmenting (ALBs not in use where expected, Gateway API adoption slow, nginx explicitly unwanted).
 
 **Decision: the alloy-gateway is the canonical write-path gateway.**
 We already bundle Alloy in a gateway role, so writes flow agent → **alloy-gateway** → distributor, and the bundled nginx loki-gateway is dropped from the write path.
-The read path points Grafana's datasource at the **query-frontend** Service directly; a `LoadBalancer` Service default is sufficient otherwise.
-Reserve a separate gateway only if a single external hostname or auth termination is required, and prefer the cloud LB / Gateway API / Envoy over re-introducing nginx.
+
+**Revised 2026-10-01: the nginx loki-gateway is back, on the read path only.**
+The first version of this decision pointed Grafana's datasource at the query frontend and kept nginx out.
+That left Grafana's alerting UI with no Loki rules.
+Grafana reads a datasource's rules from the datasource's own URL, and in distributed mode the ruler serves them, not the query frontend.
+A path-routing proxy in front of both is the smallest change that fixes it.
+
+The objection to nginx was that it resolves a backend once at startup and loses it when DNS is repointed.
+It does not hold for this gateway, for two independent reasons:
+
+| Reason | Detail |
+| --- | --- |
+| The backends are ClusterIP Services | A ClusterIP is immutable for the life of its Service; only deleting and recreating the Service changes it |
+| The config resolves per request | Each `proxy_pass` names its backend through a variable, so nginx resolves it through `resolver` on each request, with a ten-second cache, instead of once at startup |
+
+Both were measured against the pinned image rather than read off documentation: a backend whose address changed was followed within ten seconds with no restart.
+
+Pingap, which Materialize Cloud runs as its Loki gateway, and Envoy were the alternatives.
+Pingap presents no client certificate to an upstream and verifies none on its listener, so it would weaken the read hop under the mTLS profiles.
+Either one would also mean a Deployment this chart owns, and for pingap an image as well, where the subchart already ships one for nginx.
+
+The gateway runs this chart's nginx.conf rather than the subchart's.
+It routes Grafana's reads to the query frontend and the ruler's rule and alert state (`GET`) to the ruler, and refuses everything else: pushes, rule definitions, rings, flushes and deletes.
+Rule definitions are refused because the alloy-gateway's `loki.rules.kubernetes` owns them, and Grafana reads the refusal as a ruler it cannot edit.
 
 ## Sizing
 
@@ -25589,12 +26198,13 @@ module "monitoring" {
 ### CRDs are a flag
 
 Folded into the common module as `enable_monitoring_crds` (default `true`), driving a second `helm_release` installed ahead of the main one, which sets `skip_crds = true`.
-A separate module bought nothing: a resource inside a module is still addressable as `module.monitoring.helm_release.crds`, so the teardown blast radius stays targetable without a module boundary.
+A separate module bought nothing: a resource inside a module is still addressable as `module.monitoring.helm_release.crds`, so the release stays targetable without a module boundary.
 
 The flag exists for the one case that matters — a cluster where prometheus-operator or grafana-operator CRDs are already managed by someone else (kube-prometheus-stack, a platform team), where Terraform would otherwise fail trying to create objects it does not own.
 Per-group toggles pass through to the CRDs chart's own tags for the partial case.
 
-The teardown caveat still needs stating in the module README: destroying the CRDs release cascades to every `GrafanaDashboard`, `GrafanaDatasource`, `PrometheusRule`, and `PodMonitor` in the cluster, including customer-authored ones.
+This section once said destroying the CRDs release cascades to every `GrafanaDashboard`, `GrafanaDatasource`, `PrometheusRule`, and `PodMonitor` in the cluster.
+It does not: every CRD in the chart carries `helm.sh/resource-policy: keep`, so a destroy leaves them, and removing them is a deliberate `kubectl delete crd`.
 
 ## Cloud wrapper modules
 
@@ -27325,7 +27935,7 @@ That last one is exactly right and is the model this proposal generalizes: **gua
 **Metric importance tiers, which are not stability.**
 `essential / recommended / extended / diagnostic / all` drive the Helm gateway's per-destination allowlists via the generated `metric-tiers.yaml`.
 They answer "is this worth storing", not "may I depend on this".
-They are the *only* one of the two axes currently visible to customers, on [List of Metrics](../../../stable-metrics/list-metrics/). Stability is invisible there, which was the earlier draft's complaint — but on the [consumer-chain](#where-the-surface-exits) reading that is fine: `stability` governs internal expectations, and what a customer needs published is the policy, not a per-query badge.
+They are the *only* one of the two axes currently visible to customers, on [List of Metrics](../../../list-metrics/). Stability is invisible there, which was the earlier draft's complaint — but on the [consumer-chain](#where-the-surface-exits) reading that is fine: `stability` governs internal expectations, and what a customer needs published is the policy, not a per-query badge.
 
 **A prefix-parameterization capability — but no deprecation precedent.**
 Queries template their metric prefix as `%%{mzSqlPrefix}`, the tier regexes match `(?:v2_)?mz_`, and dashboards stamp which prefix they were rendered for in a `monitoring.materialize.cloud/sql-metric-prefix` annotation.
@@ -27608,7 +28218,7 @@ The policy itself has landed; what remains is the cleanup it enables and the one
 - [Versioning](../../versioning/) — the policy of record, and a pointer from "How versions are synced".
 - [Releasing](../../releasing/) — the release-process check, next to the release-notes section it reuses.
 - [Compatibility](../../../compatibility/) — say that it is the disclosure venue for the coordinated and passthrough surfaces. It already maps `materialize-terraform-self-managed` and Materialize versions to ours, so it is the natural place for the three-stream picture.
-- [List of Metrics](../../../stable-metrics/list-metrics/) — stability alongside importance, and a note that the two axes are different questions.
+- [List of Metrics](../../../list-metrics/) — stability alongside importance, and a note that the two axes are different questions.
 - [Roadmap](../../roadmap/#versioning-changelog-and-releases) — link this doc from the DEP-127 bullet.
 
 ## Open questions
@@ -29039,6 +29649,16 @@ The registry already models LogQL — `env-logs` and `env-upgrade` are built on 
 
 That gets the class four things it has never had: review, a docsite entry beside the metric alerts, a single definition rendered to both the chart and, eventually, Cloud, and the ability to change a pattern in one place rather than in three regions' worth of clicked-in copies.
 
+As ported, from the fourteen clicked-in rules, which are five detectors copied per region:
+
+| Clicked-in detector | Ported as | Changed |
+|---|---|---|
+| Panic | `materialize-panic`, default set | Matches the pipeline's panic classification (`level="CRITICAL"`, `panic_location`) rather than `(?i)panic` minus a `seqno` exception, and drops the per-environment exclusions |
+| Potential data corruption errors | `data-correctness-error`, default set | Drops `invalid record multiplicity`, which Materialize no longer logs |
+| Filter pushdown correctness violation | `persist-filter-pushdown-violation`, default set | Names the system parameter that disables pushdown, where Cloud named a LaunchDarkly flag |
+| Trace logs enabled | `trace-logging-enabled`, opt-in | Scoped to the environment namespaces, because the operator logs at TRACE in normal operation |
+| Hanging query warning | Not ported | Matched an HTTP/2 error from the gRPC controller transport, which Materialize has since removed |
+
 ## Maintenance windows do not work when the customer picks the time
 
 The `docs/content/alerting/maintenance.md` page is an empty heading, and the obvious thing to put on it is wrong for this audience.
@@ -29151,12 +29771,12 @@ Work in this repository, roughly in dependency order.
 
 | Item | Why it blocks |
 |---|---|
-| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done for PromQL, through an alerting render context whose deployment-specific values are install-time placeholders. LogQL is not rendered yet |
+| `gen-rules` command in `mz-monitoring-build`, rendering the registry's alerts into `pre-rendered/rules/{prometheus,loki}/` | ✅ done, through an alerting render context whose deployment-specific values are install-time placeholders. One `_index.yaml` beside the two directories lists both engines' rules |
 | Capability tags (`requires`) on rules, and the schema change behind them | ✅ done, mostly inferred from metric names; see the note under [Choosing what ships enabled](#choosing-what-ships-enabled) |
 | Build-time applicability check against the extracted metric set | ✅ done: a metric no capability source claims fails `gen-rules` |
 | `thanos.ruler` enabled by default, wired to Thanos Query and Alertmanager | ✅ done. The switch that makes PromQL alerting exist |
 | Stateless Thanos Ruler modeled in the subchart (`remoteWrite`, no PVC, no objstore) | 🔨 The ruler runs stateless, reached through `extraArgs` and an umbrella-rendered ConfigMap, with the PVC off. The subchart still models no `remoteWrite` and still passes `--objstore.config-file`, so a shipper scans an empty agent directory. The upstream fix is outstanding |
-| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done, for the notification half. The rule store was already configured and nothing writes rules into it yet |
+| `loki.rulerConfig` with `alertmanager_url` and the rule store | ✅ done. The rule store is the ruler bucket. The LogQL rules are `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into it through the ruler API, once per tenant. The Thanos importer's selector excludes that flavor with a `flavor!: logql` key. A Prometheus Operator admission webhook in the same cluster still validates them as PromQL, and has to be told to skip them |
 | Alertmanager configuration surface: receivers passthrough with `class`, the criticality matrix, inhibition, mute timings | ✅ done. `templates/alertmanager-config.yaml` renders the tree; inhibition and time intervals pass through. The rollout-signal inhibition is a rule and waits for the rule set |
 | `amtool check-config` over the rendered configuration | ✅ done, in CI (`make alertmanager-config-check`) rather than at render, which Helm cannot do. Render-time validators cover what the chart can see |
 | `alerting.secrets` mounting, and the `_file` credential convention | ✅ done, through `alertmanager.extraSecretMounts` rather than `alerting.secrets` — see the note under [Notification channels](#notification-channels). Inline credentials and unmounted `*_file` paths both fail the render |
@@ -29165,11 +29785,11 @@ Work in this repository, roughly in dependency order.
 | Alertmanager NetworkPolicy egress review | The existing policy is deliberately wide; the receiver set now makes the destinations knowable per deployment |
 | Deadman's switch rule, exempt from the severity matrix | Distinguishes silence from health |
 | `operating/runbooks/`, and the `runbook_url` annotation built from the alert name | 🔨 Every rule carries `runbook_url`, pointing for now at its entry on Common Alerts. The runbooks are not written |
-| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/prometheus/_index.yaml` is in the committed-surface table and CODEOWNERS |
+| Alert names added to the committed-surface check | ✅ done: `pre-rendered/rules/_index.yaml` is in the committed-surface table and CODEOWNERS |
 | `rules.selected` / `rules.disabled` / `rules.extra` / `rules.overrides` | 🔨 `rules.selected`, `rules.disabled`, `rules.capabilities` and `rules.overrides` are done; `extra` is not. An override sets one rule's `for` and labels, never its expression |
 | `alerting.routes.extra`, spliced ahead of the matrix | ✅ done |
 | `alerting.alertmanager.mode: external` | A customer with Alertmanager should not get a second one |
-| Log-alert registry files and the LogQL render path | The class that has never been code |
+| Log-alert registry files and the LogQL render path | ✅ done for Materialize: `materialize-log-alerts.yaml`, installed per tenant in `rules.logTenants`. No `infra-log-alerts.yaml` yet, because none of the clicked-in rules is about the platform |
 | Rollout-inhibition rule over `materialize.generations.active` | Maintenance windows that close themselves; the hydration count is not rollout-specific |
 | Alertmanager datasource in Grafana, and an alerts dashboard | 🔨 The datasource is done, which gives Grafana the alert list and the silence editor. The dashboard is not |
 | A vendor receiver profile, and a `grafana-managed-alerting` profile | Profiles are documentation |
@@ -29180,7 +29800,7 @@ Work in this repository, roughly in dependency order.
 
 The kind E2E tiers can prove most of this, and the parts they cannot are worth naming rather than pretending.
 
-- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built for PromQL: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. No LogQL rules exist yet to validate.
+- 🔨 **Rules render and parse.** Every rendered group is checked with `promtool check rules` and Loki's rule validator, in CI, without a cluster. A rule that does not parse is loaded by a ruler that then serves none of its group. As built: `promtool check rules` runs on the generated files in `cargo test` and on several rendered chart scenarios in `make rules-check`, which also runs the `promtool test rules` cases under `packages/queries/tests/`. LogQL rules are checked for shape by `gen-rules` and parsed with `logcli`'s offline mode, which uses Loki's own parser, in `make rules-check`. Neither is the ruler's own loader.
 - ✅ **Every shipped rule's metrics exist.** The applicability check, asserted as a test rather than only as a build step, so that a rule added later cannot quietly reintroduce the problem.
 - **The rulers load what the chart rendered.** Assert against each ruler's own API that the group count and names match the render, rather than asserting the ConfigMap exists. A ruler that rejected a group reports healthy.
 - **An alert reaches Alertmanager.** Install a rule that fires on `vector(1)`, assert it appears in Alertmanager's API within the evaluation and group-wait interval. This is the end-to-end assertion the whole page exists for.
@@ -29205,7 +29825,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **The deadman's switch fires and keeps firing.** Assert it is present at every `alerting.criticality` setting, which is the exemption that is easy to lose in a refactor.
 - **Silences suppress notification and not state.** Silence an alert, assert no notification and a firing `ALERTS` series. This is the over-reporting behaviour the call-home level inherits, and pinning it keeps it a known property rather than a surprise.
 - **Inhibition suppresses a rollout and not a restart.** Stand up a second generation and assert the restart alerts are inhibited; restart a pod without a rollout and assert they are not. The second half is the assertion, since an inhibition rule that fires too widely is indistinguishable from one that works until the day it hides something.
-- **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus.
+- **Log rules fire on real lines.** Write a line matching each shipped pattern into Loki and assert the rule fires. This is the test that catches an upstream reword, and it is only as good as the corpus. Not automated: each shipped log rule was evaluated by hand against the test installs, quiet as it stands and, for the panic rule, firing over a window holding a real panic.
 - **Not covered by any tier:** that a notification reaches a receiver. Every receiver is a third-party endpoint, and a test that posts to a real one is a test that pages somebody. A local webhook receiver proves Alertmanager's delivery path and proves nothing about a vendor's ingestion.
 
 ## Documentation to update
@@ -29218,7 +29838,7 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **`alerting/architecture.md`** — ✅ written, as the section's landing page: the notifier's shape, why the rulers
   address every replica, state, and failure modes.
 - **A label contract page** — every label a shipped rule emits, its values, and its meaning. Owed to anyone routing in an external Alertmanager, and to anyone writing an extra route.
-- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/stable-metrics/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
+- **A rule reference** — the shipped set, with what fires it and what to do about it. `reference/common-alerts.md` renders the definitions today and carries a warning that many of them do not suit every deployment; once the set is tagged that warning should become a statement about which set is default and which capability tag brings in the rest.
 - **`operating/runbooks/`** — a new section, one page per shipped alert, and the convention that a stable runbook graduates to the product documentation.
 - **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
   for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
@@ -29348,7 +29968,7 @@ Four stakeholder classes consume this, and they are not the BYOC four.
 | Client TLS and auth types on every destination | ✅ Shipped | `tls.{ca,cert,key}` plus `*File` carriers; `none` / `basicAuth` / `bearer` / `oauth2` / `sigv4` |
 | Gateway server-side TLS on all four ingest ports | ✅ Shipped | `pipeline.{logging,metrics}.gateway.server.tls`, `profiles/mtls.values.yaml` and the phase overlays |
 | Certificate issuance and renewal | ✅ Shipped | `templates/certificates.yaml`, `certificates.enabled`; renewal measured across five rotations |
-| Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../stable-metrics/common-alerts/) |
+| Alert **definitions** | ✅ Shipped as documentation | `packages/queries/materialize-alerts.yaml`, `infra-alerts.yaml`, rendered to [Common Alerts](../../../common-alerts/) |
 | **Alert rule evaluation** | ❌ **Absent** | `templates/alerts/` is empty, nothing reads `config.rules.prometheus.enabled`, `pre-rendered/rules/prometheus/` holds only a `.gitkeep`, and `thanos.ruler.enabled` is `false` |
 | **Alertmanager** | ⚠️ Bundled, off | `tags.alertmanager: false`; routing is [DEP-216](https://linear.app/materializeinc/issue/DEP-216), unstarted |
 | **Logs to more than one destination** | ❌ Missing | One `loki.write "destination"`, one `egress` seam — [BYOC's blocking row](../20260813-byoc-observability/#chart-side-prerequisites) |
@@ -29487,7 +30107,7 @@ It is also the level that **nothing currently produces**.
 ### Nothing evaluates alerting rules today
 
 The alert definitions exist and are good.
-They live in the query registry and render to the docsite as [Common Alerts](../../../stable-metrics/common-alerts/).
+They live in the query registry and render to the docsite as [Common Alerts](../../../common-alerts/).
 They are not evaluated anywhere in a default install:
 
 - `charts/materialize-monitoring/templates/alerts/` contains no templates.
@@ -30780,7 +31400,7 @@ Tier 3 is where the provider pull can be proven against a real account, which is
 - `operating/production-best-practices.md` — which vantage points to configure per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
 - `architecture.md` — the dependency surface is not described anywhere; the page starts at the chart.
 - `reference/internal/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
-- `reference/stable-metrics/` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
+- `reference/list-metrics.md` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
 - `reference/internal/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
 - `reference/internal/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
 - The **CockroachDB alert descriptions**, which should say which flavor they target. They currently read as general CockroachDB coverage.

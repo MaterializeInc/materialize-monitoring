@@ -941,7 +941,9 @@ point rather than a researched one.
     "secretName": "",
     "services": [
       "loki-distributor",
-      "loki-query-frontend"
+      "loki-gateway",
+      "loki-query-frontend",
+      "loki-ruler"
     ]
   },
   "thanos": {
@@ -3146,8 +3148,8 @@ valuesFrom:
     <tr>
       <td class="helm-value-key">connections<wbr>.datasources<wbr>.loki<wbr>.url</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"http://loki-query-frontend.{{ include \"mzmon.loki.namespace\" $ }}.svc:3100"</code></td>
-      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway is disabled by default, so reads go to the query frontend directly (see `loki.gateway.enabled`).
+      <td class="helm-value-default"><code>"http://loki-gateway.{{ include \"mzmon.loki.namespace\" $ }}.svc:8080"</code></td>
+      <td class="helm-value-desc">Loki read endpoint. Rendered with `tpl`. The Loki gateway, which routes queries to the query frontend and rule state to the ruler. Grafana's alerting UI lists the Loki rules from this same URL, so a datasource pointed at the query frontend shows none. With `loki.gateway.enabled` off, point this at `http://loki-query-frontend.<namespace>.svc:3100`.
 </td>
     </tr>
     <tr>
@@ -3421,9 +3423,12 @@ every replica like any other.
 Which alerting rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
-(`packages/queries/`) and installed as `PrometheusRule` resources, which the
-Thanos ruler imports and evaluates. Where they go once they fire is `alerting`,
-below.
+(`packages/queries/`) and installed as `PrometheusRule` resources, each
+labelled with its query language as `mzmon.materialize.cloud/flavor`. The
+Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
+`loki.rules.kubernetes` writes the LogQL ones into the Loki ruler, so they
+install only where this release runs both. Where they go once they fire is
+`alerting`, below.
 
 A rule installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
@@ -3431,7 +3436,7 @@ either in the **default set** or named in `selected`, and it is not named in
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
 `loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/prometheus/_index.yaml` lists every rule with the
+`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
 capabilities it requires.
 
 <table class="helm-values">
@@ -3523,6 +3528,26 @@ rules:
 `audience` one of `platform` and `workload`, so the routes still match. An
 unknown alert name fails the render, and an override for a rule that is
 not installed renders with a warning.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">rules<wbr>.logTenants</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Loki tenants the log-derived rules are written into. Empty means `pipeline.logging.tenancy.staticTenant`.
+
+A Loki rule reads one tenant's logs, and the ruler does not evaluate across
+tenants, so the gateway writes every LogQL `PrometheusRule` into each
+tenant listed here. Under the default `static` tenancy every log line is in
+`staticTenant`, and the default is right.
+
+Under `byEnvironment` each Materialize environment's logs are in a tenant
+named for its environment id, which the chart cannot know at render time.
+List those tenants here, and restate the list when an environment is
+added. Under `byNamespace` the tenant set grows with every namespace, and no
+list stays complete.
 </td>
     </tr>
     <tr>
@@ -4912,6 +4937,29 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Loki on its own cadence, with Loki's own release notes,
+instead of only when a chart release happens to carry a new `appVersion`.
+Every Loki component runs this image unless its own `image` overrides it.
+The canary is pinned separately in `lokiCanary.image`, and Renovate groups
+the two so that they move together.
+
+In the Loki chart, `global.imageRegistry` outranks the `registry` of every
+image, this one included. The profiles under `profiles/registry/` repoint
+`registry` and `repository` and keep this tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.storage<wbr>.bucketNames</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -5122,11 +5170,13 @@ never had is somewhere to send an alert: without `alertmanager_url` it
 evaluates its rules correctly and drops every alert on the floor, which is
 indistinguishable from nothing being wrong. That is what this block fixes.
 
-**Rule storage is already configured and is not here.** With
+**Rule storage is configured and is not here.** With
 `loki.storage.use_thanos_objstore` on, the subchart renders a top-level
-`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. Nothing
-writes rules into that bucket yet — the chart's own log-alert definitions
-do not exist, and how they get delivered is decided with them.
+`ruler_storage` block pointing at `loki.storage.bucketNames.ruler`. The
+chart's log-derived rules are written into it through the ruler API, by
+the alloy-gateway's `loki.rules.kubernetes`, from `PrometheusRule`
+resources labelled `mzmon.materialize.cloud/flavor: logql`. A rule store
+that refuses writes, such as `local`, leaves them out.
 
 Everything here is `tpl`-evaluated by the subchart, so `.Release.*`
 resolves. It does **not** see the umbrella's values, which is why these
@@ -5185,8 +5235,150 @@ destination fan-out rather than only the bundled metric store.
     <tr>
       <td class="helm-value-key">loki<wbr>.gateway<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Run the Loki gateway, the nginx reverse proxy Grafana reads Loki through.
+
+Grafana's alerting UI lists a datasource's rules from the datasource's own
+URL. In distributed mode the query frontend answers queries and the ruler
+answers for rules, so a datasource pointed at either one sees half of Loki.
+The gateway routes by path and gives Grafana one address for both.
+
+The routing is this chart's own (`nginxConfig.file`), and it is narrower
+than the subchart's:
+
+| Request | Subchart's gateway | This chart's gateway |
+| --- | --- | --- |
+| Queries, labels, tail | Query frontend | Query frontend |
+| Rule and alert state | Ruler | Ruler, `GET` only |
+| Rule definitions | Ruler, read and write | Refused; `loki.rules.kubernetes` on the alloy-gateway owns them |
+| Pushes | Distributor | Refused; the alloy-gateway is the write path |
+| Rings, flush, config, deletes | Each component | Refused |
+
+Every request resolves its backend's name through `resolver`, so a Service
+recreated under the same name is followed without a restart. Turning the
+gateway off needs `connections.datasources.loki.url` pointed back at the
+query frontend, and Grafana then shows no Loki rules.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. The subchart's required per-node anti-affinity is kept, so each replica needs a node of its own.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.podDisruptionBudget<wbr>.minAvailable</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>1</code></td>
+      <td class="helm-value-desc">Keep one gateway through voluntary disruption.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "nginxinc/nginx-unprivileged",
+  "tag": "1.31.6-alpine-slim"
+}</pre>
+</td>
+      <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "requests": {
+    "cpu": "50m",
+    "memory": "64Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource requests.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.verboseLogging</td>
+      <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Disable gateway by default. We recommend using alloy-gateway for loki writes. Use the query-frontend for loki reads.
+      <td class="helm-value-desc">Log only failed requests (4xx and 5xx). Grafana reads through the gateway constantly, and every successful request's line would be ingested back into the Loki it is proxying.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.service<wbr>.port</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>8080</code></td>
+      <td class="helm-value-desc">The Service port, equal to the container port. A TLS profile then changes only the scheme of the URL that dials it.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.nginxConfig<wbr>.file</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"{{ include \"mzmon.loki.gateway.nginxConf\" . }}"</code></td>
+      <td class="helm-value-desc">The nginx.conf, rendered by `mzmon.loki.gateway.nginxConf`. Its header comment lists what it routes and what it refuses.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.nginxConfig<wbr>.tls</td>
+      <td class="helm-value-type">desc</td>
+      <td class="helm-value-default"><em>every path empty</em></td>
+      <td class="helm-value-desc">TLS for the gateway's listener and for its connections to Loki.
+
+Read by this chart's nginx.conf; the subchart does not know the key.
+`profiles/mtls.values.yaml` sets these, alongside `ssl` and `schema`.
+
+| Key | nginx directive | Used when |
+| --- | --- | --- |
+| `certFile`, `keyFile` | `ssl_certificate`, `ssl_certificate_key` | `ssl` is true |
+| `clientCaFile` | `ssl_client_certificate`, with `ssl_verify_client optional` | set, with `ssl` |
+| `upstreamCaFile` | `proxy_ssl_trusted_certificate`, with `proxy_ssl_verify on` | `schema` is `https` |
+| `upstreamCertFile`, `upstreamKeyFile` | `proxy_ssl_certificate`, `proxy_ssl_certificate_key` | set, with `schema: https` |
+
+Requiring a client certificate is not offered. The kubelet's readiness
+probe dials the same listener and cannot present one, the same limit
+that holds Loki's own HTTP port at phase 2.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "pullPolicy": "IfNotPresent",
+  "registry": "ghcr.io",
+  "repository": "jkroepke/access-log-exporter",
+  "tag": "0.4.11"
+}</pre>
+</td>
+      <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--nginx.scrape-url=http://127.0.0.1:8081/stub_status"
+]</pre>
+</td>
+      <td class="helm-value-desc">Scrape `stub_status` from the loopback-only listener the nginx.conf serves on 8081, rather than from the client port. The flag is repeated after the subchart's own and the later one wins, so turning on TLS for clients does not break the scrape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.gateway<wbr>.metrics<wbr>.service<wbr>.labels</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "monitoring.materialize.cloud/scrape-scheme": "plaintext",
+  "prometheus.io/service-monitor": "false"
+}</pre>
+</td>
+      <td class="helm-value-desc">Keep the exporter out of the subchart's ServiceMonitor and into this chart's plaintext one. It serves `/metrics` in the clear whatever the gateway's listener does. See `monitoring.serviceMonitor` below.
 </td>
     </tr>
   </tbody>
@@ -5736,6 +5928,45 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.memcached<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/memcached",
+  "tag": "1.6.45-alpine"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.memcachedExporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "prom/memcached-exporter",
+  "tag": "v0.17.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Memcached exporter image for both caches, pinned here rather than left at the subchart's default.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.sidecar<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "kiwigrid/k8s-sidecar",
+  "tag": "2.10.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.monitoring<wbr>.serviceMonitor<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -5743,14 +5974,15 @@ https://grafana.com/docs/loki/latest/get-started/components/
 
 **Plaintext exporters are excluded from it.** The subchart renders a
 single ServiceMonitor covering everything it labels, with one `scheme`
-shared by every target. Three of those targets never speak TLS whatever
-Loki is configured to do — the canary's own `/metrics` server, and the
-two memcached exporters — so under `profiles/mtls`, which sets
-`scheme: https` here, all three fail the scrape and their series vanish.
-For the canary that means the end-to-end write→read check goes quiet
-rather than red, which is the worst way for a canary to fail.
+shared by every target. Four of those targets never speak TLS whatever
+Loki is configured to do — the canary's own `/metrics` server, the two
+memcached exporters, and the gateway's access-log exporter — so under
+`profiles/mtls`, which sets `scheme: https` here, all four fail the
+scrape and their series vanish. For the canary that means the end-to-end
+write→read check goes quiet rather than red, which is the worst way for
+a canary to fail.
 
-Each of the three therefore carries
+Each of the four therefore carries
 `prometheus.io/service-monitor: "false"`, which the subchart's selector
 excludes, plus a `monitoring.materialize.cloud/scrape-scheme: plaintext`
 opt-in that this chart's own monitor selects on
@@ -5761,8 +5993,21 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">loki<wbr>.lokiCanary<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": "3.7.6"
+}</pre>
+</td>
+      <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
 </td>
     </tr>
     <tr>
@@ -5825,6 +6070,26 @@ Upstream reference:
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
       <td class="helm-value-desc">Scheduling priority for every Thanos pod. See the Priority classes section.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.global<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "thanos/thanos",
+  "tag": "v0.42.4"
+}</pre>
+</td>
+      <td class="helm-value-desc">Thanos image for every component, pinned here rather than inherited from the subchart's `appVersion`.
+
+So Renovate bumps Thanos on its own cadence, with Thanos's own release
+notes, instead of only when a chart release happens to carry a new
+`appVersion`. The subchart has no per-component image, so this one tag
+moves Query, Store Gateway, Compactor, Query Frontend and Ruler together.
+The profiles under `profiles/registry/` repoint `registry` and
+`repository` and keep this tag.
 </td>
     </tr>
     <tr>
@@ -6697,6 +6962,9 @@ validator warns when the two disagree.
   },
   "autoImportPrometheusRules": {
     "enabled": true,
+    "labelSelector": {
+      "mzmon.materialize.cloud/flavor!": "logql"
+    },
     "sidecar": {
       "image": {
         "registry": "docker.io",
@@ -6914,6 +7182,9 @@ resources, through the import sidecar below.
       <td class="helm-value-default"><pre>
 {
   "enabled": true,
+  "labelSelector": {
+    "mzmon.materialize.cloud/flavor!": "logql"
+  },
   "sidecar": {
     "image": {
       "registry": "docker.io",
@@ -6935,12 +7206,22 @@ A `kubectl` sidecar lists `PrometheusRule` resources every 60s, writes each
 one's `.spec` into the Ruler's rule directory, and POSTs `/-/reload` when
 the set changes. No Prometheus Operator controller is involved.
 
-**`labelSelector` is empty, so this imports every `PrometheusRule` in the
-cluster**, including any belonging to a co-resident kube-prometheus-stack.
-That is the upstream default and it is kept deliberately: it is also what
-makes a customer's own `PrometheusRule` work with no chart configuration.
-Set a selector here if this cluster runs another rule owner whose alerts
-should not reach this Alertmanager.
+**`labelSelector` imports every `PrometheusRule` in the cluster except the
+LogQL ones**, including any belonging to a co-resident
+kube-prometheus-stack. That is kept deliberately: it is what makes a
+customer's own `PrometheusRule` work with no chart configuration. Set a
+narrower selector here if this cluster runs another rule owner whose
+alerts should not reach this Alertmanager.
+
+**The exclusion is load-bearing.** The chart's log-derived rules are
+`PrometheusRule` resources too, labelled
+`mzmon.materialize.cloud/flavor: logql`, and the Thanos ruler reads every
+file it imports as PromQL; one LogQL file fails the reload, and the ruler
+keeps evaluating whatever it loaded before. The subchart joins this map
+into `key=value` pairs, so a key ending in `!` renders as `key!=value`,
+which also keeps a `PrometheusRule` carrying no flavor label. A selector
+replacing this one keeps the exclusion, or selects
+`mzmon.materialize.cloud/flavor: promql`; the render fails otherwise.
 
 The image is pinned rather than left on the upstream `latest`, so a default
 install does not track a floating tag. It is the only Docker Hub image the
@@ -7168,6 +7449,26 @@ Upstream references:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">grafana-operator<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "ghcr.io",
+  "repository": "grafana/grafana-operator",
+  "tag": "v5.24.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
+
+Unlike the other pins, this one is not meant to move on its own. The
+operator's CRDs are vendored from the subchart (`make grafana-operator-crds`),
+and upstream releases the chart and the image under one version. Renovate
+groups this tag with the subchart in `Chart.yaml` so the two land in one PR.
+The pin is what lets Renovate see the image, and lets the registry profiles
+repoint `registry` and `repository` while keeping the tag.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">grafana-operator<wbr>.crds</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -7276,7 +7577,7 @@ for the full checklist.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/grafana",
-  "tag": "13.2.2"
+  "tag": "13.2.3"
 }</pre>
 </td>
       <td class="helm-value-desc">Grafana server image.
@@ -7427,6 +7728,19 @@ enforced at render time. The `grafana-pvc` profile is the assembled version.
 
 Prefer PostgreSQL (`grafana-postgres`) wherever a database is available: it
 is the only option that lifts both constraints.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">grafana<wbr>.initChownData<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "docker.io",
+  "repository": "library/busybox",
+  "tag": "1.38.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">Image for the chown init container, pinned here rather than left at the subchart's default. It renders only alongside `persistence.enabled` (`profiles/grafana-pvc`). Pinned so Renovate sees it: Renovate reads this file and never the vendored subchart's `values.yaml`.
 </td>
     </tr>
     <tr>
@@ -8279,6 +8593,36 @@ Upstream reference:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "registry.k8s.io",
+  "repository": "kube-state-metrics/kube-state-metrics",
+  "tag": "v2.20.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">kube-state-metrics image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. The subchart prefixes `v` to `appVersion`; a pinned tag is used verbatim. `global.imageRegistry` outranks `registry` in this chart.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.metricLabelsAllowlist</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+]</pre>
+</td>
+      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+
+The node pool, by whichever label the cluster's provisioner sets — Karpenter,
+an EKS managed node group, a GKE node pool or an AKS agent pool — and the
+instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
+by all three. One series per node, so the cost is negligible; add a label here
+rather than `nodes=[*]`, which copies every label on every node.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">kube-state-metrics<wbr>.networkPolicy</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -8743,6 +9087,18 @@ Upstream reference:
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>1</code></td>
       <td class="helm-value-desc">Number of replicas for metrics-server.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">metrics-server<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "repository": "registry.k8s.io/metrics-server/metrics-server",
+  "tag": "v0.9.0"
+}</pre>
+</td>
+      <td class="helm-value-desc">metrics-server image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps it on its own cadence, with its own release notes. Like Alertmanager, this chart's `repository` carries the registry host, and the subchart prefixes `v` to `appVersion` where a pinned tag is used verbatim.
 </td>
     </tr>
     <tr>

@@ -51,8 +51,10 @@ They appear in the sidebar because the sections exist; the [Roadmap](/materializ
 
 * [materialize-monitoring values](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/helm/materialize-monitoring-values/) — the generated Helm values reference.
 * [Terraform variables](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/terraform/materialize-monitoring-variables/) — the generated module variable reference.
-* [Reference Metrics](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/list-metrics/) — the metrics the dashboards depend on, plus [common queries](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-queries/) and [common alerts](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-alerts/).
 * [Compatibility](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/compatibility/) — supported versions of Materialize, Grafana, GKE, and the Terraform modules.
+* [Common Alerts](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/common-alerts/) — the bundled alerting rules, and the page each alert's `runbook_url` points at.
+* [Common Queries](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/common-queries/) — the PromQL behind the dashboard panels.
+* [List of Metrics](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/list-metrics/) — the metrics the dashboards depend on.
 * [Custom Resource Definitions](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/crds/) — the custom resources the stack reads and relies on.
 * [Changelog](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/changelog/) — per-component release history.
 

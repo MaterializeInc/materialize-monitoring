@@ -54,12 +54,17 @@ It runs as a non-root, read-only-rootfs pod using upstream's own distroless `reg
 Three cases still need you:
 
 - **`helm uninstall --no-hooks`** skips it, by definition.
-- **Deleting the CRDs release first** removes the resource types, and the hook fails on an unknown type — no kubectl flag suppresses that. With the CRDs gone the custom resources went with them, so `--no-hooks` is the right response.
+- **Deleting the CRDs by hand first** removes the resource types, and the hook fails on an unknown type — no kubectl flag suppresses that. With the CRDs gone the custom resources went with them, so `--no-hooks` is the right response.
+  Uninstalling the CRDs release does not do this; see below.
 - **`cleanup.grafanaOperator.enabled: false`** restores the old behaviour.
 
+> [!NOTE]
+>   Uninstalling the CRDs release (`materialize-monitoring-crds`, or `enable_monitoring_crds` in the Terraform module) leaves the CRDs.
+>   Every one carries `helm.sh/resource-policy: keep`, so neither `helm uninstall` nor `terraform destroy` removes them, or any custom resource.
+
 > [!WARNING]
->   The same trap is worse one level up. Deleting the CRDs release (`materialize-monitoring-crds`, or `enable_monitoring_crds = true` in the Terraform module) cascades to **every** `Grafana*` and `Prometheus*` custom resource in the cluster, including ones this stack did not create.
->   With finalizers still pending, the CRD itself hangs in `Terminating`, which blocks re-installing the CRDs as well as removing them.
+>   Removing the CRDs is a separate `kubectl delete crd`, and that cascades to **every** `Grafana*` and `Prometheus*` custom resource in the cluster, including ones this stack did not create.
+>   Do it last, after the release is gone: with finalizers still pending, the CRD itself hangs in `Terminating`, which blocks re-installing the CRDs as well as removing them.
 
 ## Ordered teardown, by hand
 

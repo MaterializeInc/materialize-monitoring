@@ -155,7 +155,7 @@ flowchart TB
       gcr["Grafana CR: mzmon-grafana<br/>spec.external.url + credentials"]
       gman["GrafanaManifest: mzmon-env-top-dashboard<br/>resyncPeriod 5m"]
       gfld["GrafanaFolder: mzmon-materialize · mzmon-infra · mzmon-meta-o11y"]
-      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki query frontend"]
+      gds["GrafanaDatasource: mzmon-thanos · mzmon-loki<br/>Thanos Query · Loki gateway"]
     end
   end
 
@@ -198,9 +198,9 @@ Two things shift automatically under `split-namespace`, both to keep `mode: bund
 The operator watches all namespaces by default (`WATCH_NAMESPACE=""`), so it sees both regardless of layout.
 Scoping that watch is a separate decision — see [Watch scope](../grafana-operator/#watch-scope).
 
-Datasource URLs are the piece that does *not* adjust itself, because the chart does not ship datasources yet.
-Under `split-namespace` they must name the backend's own namespace (`thanos-query.thanos`, `loki-query-frontend.loki`),
-and cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+Datasource URLs follow the backends: each is built from its backend's own namespace, so under `split-namespace` they name `thanos-query.thanos` and `loki-gateway.loki`.
+Cross-namespace NetworkPolicy has to permit the operator to reach Grafana and Grafana to reach the backends.
+For Loki that is `loki.networkPolicy.ingress.namespaceSelector`, which admits clients to the Loki gateway.
 
 ## Dashboards
 
@@ -262,7 +262,9 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Seven dashboards are rendered, and `selected` decides which of them a release installs:
+Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
+These are the ones with something to know before narrowing it:
 
 - **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
 - **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
@@ -295,6 +297,15 @@ Seven dashboards are rendered, and `selected` decides which of them a release in
   discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
   match nothing.
   `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
+- **Infrastructure Autoscaling** (`infra-autoscaling` → `mz-mon-infra-autoscaling`), matched by the default `infra-*` pattern.
+  Its Node Pools tab groups nodes by labels that kube-state-metrics publishes only when its
+  `metricLabelsAllowlist` names them.
+  The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
+  reads empty.
+- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), also matched by the default `infra-*` pattern.
+  It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
+  row saying why it is empty.
+  Leave it out of `selected` on GKE and AKS if that row is noise.
 - **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
@@ -361,7 +372,7 @@ The chart ships two, as `GrafanaDatasource` resources targeting the same instanc
 | Datasource | Type | UID | In-cluster endpoint | Notes |
 |---|---|---|---|---|
 | Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
-| Loki | `loki` | `mzmon-loki` | `http://loki-query-frontend.<namespace>.svc:3100` | Carries a tenant header — see below |
+| Loki | `loki` | `mzmon-loki` | `http://loki-gateway.<namespace>.svc:8080` | The Loki gateway; carries a tenant header — see below |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
 `<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
@@ -418,9 +429,10 @@ Under `byNamespace`, `byEnvironment`, or `byLabel`, logs are spread across many 
 exactly one of them — the chart emits an install-time warning saying which.
 Those modes need a datasource per tenant, or a multi-tenant read path in front of Loki.
 
-The Loki **gateway is disabled by default** (`loki.gateway.enabled: false`) — writes go through `alloy-gateway` and
-reads go straight to the query frontend.
-Do not point a datasource at a `loki-gateway` service; it does not exist.
+The Loki datasource points at the [Loki gateway](../../../logs-and-events/architecture/#loki-gateway), not at the query frontend.
+Grafana's alerting UI lists a datasource's rules from the datasource's own URL, and the gateway routes those requests to the ruler and everything else to the query frontend.
+A Loki datasource on the query frontend therefore shows no Loki rules.
+Writes do not pass through the gateway; they go through `alloy-gateway`.
 
 ## Reaching Grafana
 

@@ -110,7 +110,7 @@ That last one is exactly right and is the model this proposal generalizes: **gua
 **Metric importance tiers, which are not stability.**
 `essential / recommended / extended / diagnostic / all` drive the Helm gateway's per-destination allowlists via the generated `metric-tiers.yaml`.
 They answer "is this worth storing", not "may I depend on this".
-They are the *only* one of the two axes currently visible to customers, on [List of Metrics](../../../stable-metrics/list-metrics/). Stability is invisible there, which was the earlier draft's complaint — but on the [consumer-chain](#where-the-surface-exits) reading that is fine: `stability` governs internal expectations, and what a customer needs published is the policy, not a per-query badge.
+They are the *only* one of the two axes currently visible to customers, on [List of Metrics](../../../list-metrics/). Stability is invisible there, which was the earlier draft's complaint — but on the [consumer-chain](#where-the-surface-exits) reading that is fine: `stability` governs internal expectations, and what a customer needs published is the policy, not a per-query badge.
 
 **A prefix-parameterization capability — but no deprecation precedent.**
 Queries template their metric prefix as `%%{mzSqlPrefix}`, the tier regexes match `(?:v2_)?mz_`, and dashboards stamp which prefix they were rendered for in a `monitoring.materialize.cloud/sql-metric-prefix` annotation.
@@ -393,7 +393,7 @@ The policy itself has landed; what remains is the cleanup it enables and the one
 - [Versioning](../../versioning/) — the policy of record, and a pointer from "How versions are synced".
 - [Releasing](../../releasing/) — the release-process check, next to the release-notes section it reuses.
 - [Compatibility](../../../compatibility/) — say that it is the disclosure venue for the coordinated and passthrough surfaces. It already maps `materialize-terraform-self-managed` and Materialize versions to ours, so it is the natural place for the three-stream picture.
-- [List of Metrics](../../../stable-metrics/list-metrics/) — stability alongside importance, and a note that the two axes are different questions.
+- [List of Metrics](../../../list-metrics/) — stability alongside importance, and a note that the two axes are different questions.
 - [Roadmap](../../roadmap/#versioning-changelog-and-releases) — link this doc from the DEP-127 bullet.
 
 ## Open questions

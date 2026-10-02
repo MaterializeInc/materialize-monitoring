@@ -5,8 +5,9 @@
 
 # Authoring Alerts
 
-An alert is written once, in the query registry, and becomes a Prometheus rule through `mz-monitoring-build gen-rules`.
-The chart installs that rule as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
+An alert is written once, in the query registry, and becomes a rule through `mz-monitoring-build gen-rules`.
+An alert whose query is PromQL is installed as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
+An alert whose query is LogQL is installed as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway writes into the Loki ruler, and the Loki ruler evaluates it.
 This page is the conventions a contributor follows when adding or changing an alert, and what the tooling checks on their behalf.
 Where the alert goes once it fires is [Alert Channels](/materialize-monitoring/preview/renovate-jsonschema-0-x/alerting/channels/); why the stack is shaped this way is the [alerting design doc](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/internal/design-docs/20260917-alerting-self-managed/).
 
@@ -31,9 +32,9 @@ validators actually enforce; a rule listed as checked here that nothing checks i
 | Author | `packages/queries/*.yaml`, an `alerts:` entry | The alert names its query inline or by `queryId`, its `severity` and `component` labels, and its prose; the file's `alertLabels` supply its `audience` |
 | Validate | `bin/mz-monitoring-check check-queries` (pre-commit) | Schema validation, including every `%%{…}` placeholder name |
 | Render | `make rules` (`mz-monitoring-build gen-rules`) | Renders through the alerting context, infers capabilities, and fails on any problem |
-| Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | One `groups:` file per registry file, and `_index.yaml` |
-| Install | `templates/alerts/prometheusrules.yaml` | Fills the placeholders from values and keeps the rules that apply |
-| Check | `make rules-check` | `promtool check rules` on several rendered scenarios, then `promtool test rules` |
+| Output | `charts/materialize-monitoring/pre-rendered/rules/` | One `groups:` file per registry file and ruler, PromQL in `prometheus/` and LogQL in `loki/`, and one `_index.yaml` listing both |
+| Install | `templates/alerts/prometheusrules.yaml`, `templates/alerts/lokirules.yaml` | Fills the placeholders from values and keeps the rules that apply, the same way for both engines |
+| Check | `make rules-check` | `promtool check rules` and a LogQL parse with `logcli` on several rendered scenarios, then `promtool test rules` |
 
 The generated files are committed, and CI fails when they are stale.
 
@@ -44,6 +45,7 @@ An alert belongs in the file for the people who act on it.
 | File | `audience` | Holds |
 |---|---|---|
 | `materialize-alerts.yaml` | `platform` | The Materialize deployment: environmentd, the system clusters, clusterd crashes, persist, auth and the console |
+| `materialize-log-alerts.yaml` | `platform` | The Materialize deployment, detected in its log lines: panics and correctness violations |
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
 
@@ -109,6 +111,9 @@ Most requirements are **inferred**.
 `gen-rules` reads the metrics an alert names and maps each through the ordered table in `packages/mzmon-lib/src/query/rules/capability.rs`, so an alert reading `cilium_*` requires `cilium` without saying so.
 A metric the table does not claim fails the build.
 
+A LogQL alert names no metrics, so nothing is inferred for it.
+Its requirements are what it declares, and the chart installs it only where the release can deliver it: a Loki ruler, the alloy-gateway, and a rule store the ruler API can write to.
+
 **`requires` declares what metric names cannot show.**
 An alert whose only metric is `up` MUST declare what it is about, since `up` exists for every target.
 An alert that depends on a label only some deployments add, such as a node label, SHOULD declare the capability that adds it.
@@ -149,8 +154,10 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
 | `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
-| The query exists and has exactly one PromQL expression | A rule is one expression; LogQL rules are not rendered yet |
-| The expression renders and parses | A group with one bad rule is dropped whole |
+| The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
+| A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |
+| The expression renders and parses | A group with one bad rule is dropped whole. PromQL is parsed here; LogQL is checked for shape here and parsed by `make rules-check` |
+| A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
 | Every metric has a known source | A rule reading a metric nothing produces never fires |
 | `deploymentMode` is not a label | Applicability is `requires`, not a label nothing reads |
@@ -169,6 +176,36 @@ The first two are checked mechanically; the rest are for the author and the revi
 7. The name SHOULD describe the condition rather than its grade, so that re-grading does not force a rename.
 8. The `summary` MUST be actionable without following the runbook link, since an air-gapped install cannot follow it.
 
+## Log-derived alerts
+
+An alert whose query is LogQL reads Materialize's log lines instead of its metrics.
+It is authored the same way, in a registry file of its own, and lands in `pre-rendered/rules/loki/`.
+It installs as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the Thanos ruler's importer leaves out and the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler through its API.
+It routes through the same Alertmanager, with the same labels, as a metric alert.
+
+**The range is the alert's duration.**
+Cloud's clicked-in Loki rules used Grafana's `$__range`, which no ruler can parse, and the alerting context refuses it.
+A log rule SHOULD be written as `count_over_time(…[<range>]) > 0` with `for: 0s`, so it fires on the first evaluation at which a matching line falls inside the range.
+The range is then how long the alert keeps firing after the last matching line, and the notes SHOULD say so.
+
+**A log rule SHOULD match on structure before text.**
+`namespace`, `app`, `container` and `level` are stream labels and belong in the selector.
+`pod` and the fields the pipeline extracts are structured metadata, which a rule filters with `| field != ""` and MAY group by.
+The pipeline already classifies a panic: a line starting `thread '…' panicked at` becomes level `CRITICAL`, with `panic_thread` and `panic_location` as structured metadata, so `materialize-panic` matches that rather than the word "panic".
+
+**A line filter matches text Materialize does not promise to keep.**
+A reworded message makes the rule silent rather than broken.
+A log rule that matches message text MUST name the source file that logs it, so a reviewer can check the message still exists.
+The durable fix is a stable error code in the log line, which the alerting design doc asks of Materialize.
+
+**A Loki rule reads one tenant.**
+The rule set installs once per tenant in `rules.logTenants`, which defaults to the pipeline's static tenant.
+Under non-static tenancy the chart cannot enumerate the tenants, and the render warns.
+
+**There is no unit test for a LogQL rule.**
+Loki has no counterpart to `promtool test rules`.
+A log rule MUST instead be evaluated against a live install before it enters the default set, once as it stands and once with its range widened over a window in which the line is known to have been logged.
+
 ## Testing an alert
 
 **Unit tests.**
@@ -180,6 +217,6 @@ Before an alert enters the default set, its expression SHOULD be run against a r
 `gcx metrics query` does this without cluster access.
 
 **Cloud's rules are prior art, not a source.**
-Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set) are worth reading for thresholds and history.
+Materialize Cloud's rules (`infra/prometheus/alerting.py` and the Grafana-managed set, where its only log-derived rules live) are worth reading for thresholds and history.
 An alert MUST NOT be copied from them verbatim: they use Cloud's namespaces, labels and job names, and some carry customer names that MUST NOT enter this repository.
 

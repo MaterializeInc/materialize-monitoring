@@ -6,7 +6,7 @@
 # Datadog Translations
 
 Every query in `packages/queries/` carries a `datadogQuery` alongside its `promQL`.
-They render side by side as tabs on [Common Queries](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/stable-metrics/common-queries/); this
+They render side by side as tabs on [Common Queries](/materialize-monitoring/preview/renovate-jsonschema-0-x/reference/common-queries/); this
 page is the conventions behind them, for whoever is adding or correcting one.
 
 These are **translations, not a tested dashboard set** — there is no Datadog test environment in CI, so nothing here has

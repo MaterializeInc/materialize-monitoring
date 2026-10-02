@@ -249,7 +249,7 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     <tr>
       <td>loki-plaintext</td>
       <td>monitoring.coreos.com/v1/ServiceMonitor</td>
-      <td><a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/prometheus-scrapers/prometheus-operator/servicemonitor-loki-plaintext.yaml?xxhash=3327948ce6ff1609" download="loki-plaintext-3327948ce6ff1609.yaml"><code>servicemonitor-loki-plaintext.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/prometheus-scrapers/prometheus-operator/servicemonitor-loki-plaintext.yaml?xxhash=7c89498b936c1817" download="loki-plaintext-7c89498b936c1817.yaml"><code>servicemonitor-loki-plaintext.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
