@@ -120,7 +120,7 @@ dependencies:
       - bundled-backends
       - thanos
   - name: grafana
-    version: "12.11.1"
+    version: "12.11.2"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:
