@@ -8,9 +8,24 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.31.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.32.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.31.0
+
+* Update quay.io/prometheus/alertmanager Docker tag to v0.34.1
+    * [materialize-monitoring#453](https://github.com/MaterializeInc/materialize-monitoring/pull/453)
+    * [`v0.34.1`](https://redirect.github.com/prometheus/alertmanager/releases/tag/v0.34.1): 0.34.1 / 2026-09-17
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate hyper-util to v0.1.21
+        * [materialize-monitoring#404](https://github.com/MaterializeInc/materialize-monitoring/pull/404)
+        * [`v0.1.21`](https://redirect.github.com/hyperium/hyper-util/blob/HEAD/CHANGELOG.md#0121-2026-09-24)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.30.0
 
