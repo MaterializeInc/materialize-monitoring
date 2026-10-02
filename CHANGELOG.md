@@ -8,6 +8,10 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## Container Images v0.8.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v0.31.0 (Unreleased)
 
 _Changes Pending_
@@ -93,9 +97,13 @@ _Changes Pending_
     * chore(deps): update rust crate tokio-rustls to v0.26.6
         * [materialize-monitoring#427](https://github.com/MaterializeInc/materialize-monitoring/pull/427)
 
-## Container Images v0.7.0 (Unreleased)
+## Container Images v0.7.0
 
-_Changes Pending_
+* Update gcr.io/distroless/base-debian13 Docker digest to 389cad2
+    * [materialize-monitoring#448](https://github.com/MaterializeInc/materialize-monitoring/pull/448)
+* Update dependency grafana/alloy to v1.20.1
+    * [materialize-monitoring#437](https://github.com/MaterializeInc/materialize-monitoring/pull/437)
+    * [`v1.20.1`](https://redirect.github.com/grafana/alloy/releases/tag/v1.20.1)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.27.0
 
