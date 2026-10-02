@@ -352,6 +352,37 @@ Usage:
 {{- end }}
 
 {{- /*
+The scrape interval the Thanos datasource declares, as `jsonData.timeInterval`.
+
+Grafana takes this as the datasource's scrape interval, and with it computes
+`$__rate_interval = max($__interval + timeInterval, 4 × timeInterval)`. Left
+unset it assumes 15s, so the window is a minute at any range up to several hours.
+A minute over a 60s scrape holds one sample, and `rate()` of one sample is
+nothing: the panel draws scattered points, or none.
+
+The value is the slowest scrape the chart's own pipeline runs, the gateway's
+kubelet (cAdvisor) and kube-proxy scrapes, so it follows them rather than
+repeating them as a literal. A family scraped faster than this gets a coarser
+minimum step and still draws; one scraped slower would draw nothing.
+
+Usage:
+  {{ include "mzmon.grafana.thanos.timeInterval" $ }}
+*/}}
+{{- define "mzmon.grafana.thanos.timeInterval" }}
+  {{- $metrics := dig "metrics" dict ( $.Values.pipeline | default dict ) }}
+  {{- $slowest := "" }}
+  {{- $slowestSeconds := -1 }}
+  {{- range $interval := list ( dig "kubelet" "scrapeInterval" "" $metrics ) ( dig "kubeProxy" "scrapeInterval" "" $metrics ) }}
+    {{- $seconds := include "mzmon.alloyGateway.provider.seconds" $interval }}
+    {{- if and $seconds ( gt ( atoi $seconds ) $slowestSeconds ) }}
+      {{- $slowest = $interval | toString }}
+      {{- $slowestSeconds = atoi $seconds }}
+    {{- end }}
+  {{- end }}
+  {{- $slowest }}
+{{- end }}
+
+{{- /*
 Grafana's own `grafana.ini` config, as a dict.
 
 The key has a dot in it, so it is not reachable with `dig`'s path form.

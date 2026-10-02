@@ -19,12 +19,11 @@ in first so user `jsonData` / `secureJsonData` merges over them.
 
 {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) ) }}
   {{- $thanos := $ds.thanos }}
-  {{- $jsonData := merge
-    ( deepCopy ( $thanos.jsonData | default dict ) )
-    ( dict
-      "prometheusType" "Thanos"
-      "httpMethod" "POST"
-    ) }}
+  {{- $defaults := dict "prometheusType" "Thanos" "httpMethod" "POST" }}
+  {{- with ( include "mzmon.grafana.thanos.timeInterval" $ ) }}
+    {{- $_ := set $defaults "timeInterval" . }}
+  {{- end }}
+  {{- $jsonData := merge ( deepCopy ( $thanos.jsonData | default dict ) ) $defaults }}
   {{- $thanosUrl := tpl $thanos.url $ }}
   {{- $thanosTls := include "mzmon.grafana.datasource.tls" ( dict "root" $ "name" "thanos" "url" $thanosUrl ) | fromYaml }}
   {{- $specs = append $specs ( dict

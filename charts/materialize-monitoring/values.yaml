@@ -2052,7 +2052,17 @@ connections:
         # -- SNI to send, when it differs from the URL host.
         serverName: ""
       # -- Extra `jsonData`, merged over the chart's defaults
-      # (`prometheusType: Thanos`, `httpMethod: POST`).
+      # (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).
+      # @raw
+      #
+      # `timeInterval` is the scrape interval Grafana assumes when it sizes
+      # `$__rate_interval`. The chart sets it to the slower of
+      # `pipeline.metrics.kubelet.scrapeInterval` and
+      # `pipeline.metrics.kubeProxy.scrapeInterval` (60s by default). `rate()`
+      # needs two samples in its window, and with Grafana's own 15s assumption
+      # the window is one minute, which holds one sample of a 60s scrape.
+      # Set it here only when this datasource reads metrics scraped more slowly
+      # than that.
       # @default -- `{}`
       jsonData: {}
       # -- Inline `secureJsonData`. Prefer `valuesFrom` for real secrets — this

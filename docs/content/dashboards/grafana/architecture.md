@@ -367,12 +367,13 @@ the one matching its engine.
 The same requirement follows: **exactly one Loki-type datasource must be marked default**, or every panel on those
 tabs renders empty.
 
-The chart ships two, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
+The chart ships three, as `GrafanaDatasource` resources targeting the same instance as the dashboards.
 
 | Datasource | Type | UID | In-cluster endpoint | Notes |
 |---|---|---|---|---|
-| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos` |
+| Thanos | `prometheus` | `mzmon-thanos` | `http://thanos-query.<namespace>.svc:9090` | Default datasource; `prometheusType: Thanos`; declares a scrape interval — see below |
 | Loki | `loki` | `mzmon-loki` | `http://loki-gateway.<namespace>.svc:8080` | The Loki gateway; carries a tenant header — see below |
+| Alertmanager | `alertmanager` | `mzmon-alertmanager` | `http://alertmanager.<namespace>.svc.cluster.local:9093` | Read and written by Grafana's alerting UI; `https` when `alerting.server.tls` is on |
 
 Both backends use static `fullnameOverride` values (`thanos`, `loki`), so the service names do not carry a release prefix.
 `<namespace>` is each backend's own, which is the release namespace unless `split-namespace` moved it.
@@ -404,6 +405,17 @@ connections:
 ```
 
 Datasources are provisioned with `editable: false` and re-pushed every `resyncPeriod`, the same as dashboards.
+
+### Thanos declares the slowest scrape interval
+
+Grafana sizes `$__rate_interval` from the datasource's scrape interval, `jsonData.timeInterval`, and assumes 15s when it is unset.
+That makes the window one minute, which holds a single sample of a 60s scrape, and `rate()` over a single sample returns nothing.
+The gateway scrapes cAdvisor and kube-proxy every 60s, so every container CPU panel would draw scattered points.
+
+The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubelet.scrapeInterval` and `pipeline.metrics.kubeProxy.scrapeInterval`.
+Metrics scraped faster than that get a coarser minimum step and still draw.
+`connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
+The [style guidelines]({{< relref "../../reference/internal/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 
