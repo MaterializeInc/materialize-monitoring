@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright Materialize, Inc. and contributors. All rights reserved.
 """Assert the scheduling fan-out reached every workload it should, and no others.
 
 Also checks one topology-spread invariant, since it parses the same manifests:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright Materialize, Inc. and contributors. All rights reserved.
 """Assert every pod bound to an Azure workload identity carries the webhook's label.
 
 Called from `bin/terraform-render-check.sh` with a rendered chart. Silent and

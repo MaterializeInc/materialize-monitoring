@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright Materialize, Inc. and contributors. All rights reserved.
 """Assert the module's alerting inputs land in the rendered chart.
 
 Called from `bin/terraform-render-check.sh` with the example's plan and its

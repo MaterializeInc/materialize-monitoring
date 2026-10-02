@@ -122,12 +122,19 @@ jobs:
       # the runner image, and that path never installs .git/hooks/pre-push into
       # this clone. Without that hook the push below would upload pointer files
       # with no objects behind them, leaving the archives unresolvable.
+      #
+      # The Grafana Operator CRDs the crds chart carries are lifted out of the
+      # grafana-operator archive, so they are re-extracted from whatever archive
+      # helm-deps just left. Renovate groups the operator's chart and image into
+      # one PR, and this is what puts the matching CRDs in it too. Unchanged
+      # archives extract to unchanged CRDs, so on every other PR it is a no-op.
       - name: Refresh Helm subchart archives
         if: ${{ needs.check.outputs.helm_deps == 'true' }}
         run: |
           ./bin/check-lfs.sh --fix
           git lfs install --local
           make helm-deps
+          make grafana-operator-crds
       # Renovate moves the FSDK_REF pin in the script but cannot run the script,
       # so a schema-bump PR arrives with the vendored documents under
       # packages/mzmon-lib/schemas/grafana/ still at the previous tag.
