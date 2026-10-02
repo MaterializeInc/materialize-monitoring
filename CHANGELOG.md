@@ -8,13 +8,42 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.30.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards (Helm chart) v0.19.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.29.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.29.0
 
-_Changes Pending_
+* Update docker.io/grafana/grafana Docker tag to v13.2.3
+    * [materialize-monitoring#440](https://github.com/MaterializeInc/materialize-monitoring/pull/440)
+    * [`v13.2.3`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1323-2026-09-29)
+* dashboards: add Infrastructure Autoscaling and Karpenter
+    * [materialize-monitoring#425](https://github.com/MaterializeInc/materialize-monitoring/pull/425)
+    * Two new dashboards, installed by the default `infra-*` pattern: **Infrastructure Autoscaling** (`infra-autoscaling`), on every cloud, and **Karpenter** (`infra-karpenter`), which has data on EKS where Karpenter's ServiceMonitor is applied.
+    * kube-state-metrics now publishes `kube_node_labels` for each provisioner's pool label, the instance type and the zone, set by the new default `kube-state-metrics.metricLabelsAllowlist`. An install that brings its own kube-state-metrics needs the same allowlist for the Node Pools tab.
+* Re-enable the nginx Loki gateway so Grafana lists Loki rules
+    * [materialize-monitoring#432](https://github.com/MaterializeInc/materialize-monitoring/pull/432)
+    * The Loki gateway (nginx) is enabled by default, and Grafana's Loki datasource points at it: `connections.datasources.loki.url` defaults to `http://loki-gateway.<namespace>.svc:8080`. Grafana's alerting UI now lists the Loki ruler's rules and their state, read-only.
+        * The gateway routes only Grafana's reads and the ruler's rule and alert state. Pushes, rule definitions, ring pages, flushes and deletes are refused.
+        * A values file that sets `loki.gateway.enabled: false` now fails the render until `connections.datasources.loki.url` points at the query frontend (`http://loki-query-frontend.<namespace>.svc:3100`).
+        * New `loki.gateway.nginxConfig.tls`: certificate paths for the gateway's listener and its connections to Loki. `profiles/mtls.values.yaml` and `mtls-phase2.values.yaml` set them; phase 2 also has Grafana present its certificate on the Loki datasource.
+        * `loki-gateway` is added to `certificates.components.loki.services`.
+        * Under `profiles/split-namespace.values.yaml`, `loki.networkPolicy.ingress.namespaceSelector` must admit the `grafana` namespace: it now governs Grafana's access to the gateway.
+        * `profiles/registry/chainguard.values.yaml` pins the gateway's nginx tag to `1.31.6`. Under `profiles/registry/docker-hardened-images.values.yaml`, restate `loki.gateway.image.tag` to a variant your mirror holds.
+    * The Terraform module's `logs_url` output is now the Loki gateway (`http://loki-gateway.<namespace>.svc.cluster.local:8080`), and `https` whenever `internal_tls` is not `off`. It was `http` under every `internal_tls` before, which was wrong for the TLS stages.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * dashboards: say object, freshness, and orphaned instead of collection, lag, and leaked
+        * [materialize-monitoring#435](https://github.com/MaterializeInc/materialize-monitoring/pull/435)
+        * Dashboard panels now use Materialize's product terms: _object_ for collection, _freshness_ for lag, and _orphaned_ for leaked persist data. Several panel titles on `env-top`, `env-upgrade`, `env-persist`, and `env-consensus` changed accordingly; dashboard UIDs and queries did not.
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.28.0
 
