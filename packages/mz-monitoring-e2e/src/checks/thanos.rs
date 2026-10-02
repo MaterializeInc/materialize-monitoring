@@ -264,14 +264,23 @@ pub async fn rulers_remote_write_current(ctx: &Ctx, thanos_ruler: bool) -> Resul
 /// else in the suite notices.
 ///
 /// Read from the rule manager's per-group gauge, which each ruler exports only
-/// for the groups it loaded. A ruler with no rules passes. While the ring
-/// changes, a group can be loaded by its old and new owner at once until each
-/// ruler's next sync, so a brief overlap is retried rather than failed.
+/// for the groups it loaded. A ruler with no rules passes.
+///
+/// Only series scraped in the last [`FRESH_SECONDS`] count. A replaced pod's
+/// series can stay in the five-minute lookback window under its old `instance`
+/// (see [`rulers_remote_write_current`]), which is longer than an assertion's
+/// default deadline, so without the filter a correct rollout reads as two
+/// owners. While the ring changes, a group can also be loaded by its old and
+/// new owner at once until each ruler's next sync, so a brief overlap is
+/// retried rather than failed.
 pub async fn loki_rule_groups_evaluated_once(ctx: &Ctx) -> Result<()> {
+    // Six scrapes at the Loki subchart's default 15s ServiceMonitor interval.
+    const FRESH_SECONDS: u32 = 90;
     let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
     let ns = ctx.cluster.namespace();
+    let series = format!("loki_prometheus_rule_group_rules{{namespace=\"{ns}\"}}");
     let query = format!(
-        "count by (rule_group) (loki_prometheus_rule_group_rules{{namespace=\"{ns}\"}}) > 1"
+        "count by (rule_group) ({series} and (time() - timestamp({series})) < {FRESH_SECONDS}) > 1"
     );
 
     retry_until(

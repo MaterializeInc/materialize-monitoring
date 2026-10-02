@@ -234,7 +234,8 @@ The **Loki Ruler** evaluates LogQL [alerting and recording rules](../rules/) on 
 
 Rule definitions live in object storage.
 The chart runs two rulers, and they divide the rule groups between them through a [hash ring](#the-hash-ring) on the same memberlist cluster as the rest of Loki.
-Each group is evaluated by one ruler at a time, so each alert is sent once and each recording-rule sample is written once.
+Outside a ring change, each group is evaluated by one ruler, so each alert is sent once and each recording-rule sample is written once.
+While the ring changes, a group's old and new ruler can both hold it until each one's next sync, and an evaluation that falls in that window runs on both.
 A group's ruler follows a hash of the group, so with only a few groups one ruler can hold all of them while the other holds none.
 Grafana's rule list is complete from either ruler, because the ruler that answers collects the other's groups over gRPC.
 
@@ -243,7 +244,7 @@ Grafana's rule list is complete from either ruler, because the ruler that answer
 | Stops cleanly, as in a rollout, an eviction or a node drain | Within one evaluation interval, because it leaves the ring as it stops |
 | Is lost without stopping, as in a node failure | After two minutes, when the survivor forgets it. Its groups are not evaluated until then |
 
-Recording-rule samples carry `job` and `instance` both set to `loki-ruler`.
+A recording-rule sample with no `job` or `instance` of its own gets `loki-ruler` for each; one that already carries either keeps it.
 `instance` is a constant rather than the pod name because every rollout moves groups between rulers, and a per-pod value would start a new series each time.
 
 The rulers run their queries themselves.
