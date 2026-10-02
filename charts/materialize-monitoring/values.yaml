@@ -3744,7 +3744,7 @@ loki:
       image:
         registry: ghcr.io
         repository: jkroepke/access-log-exporter
-        tag: "0.4.11"
+        tag: "0.4.21"
         pullPolicy: IfNotPresent
       # -- Scrape `stub_status` from the loopback-only listener the nginx.conf
       # serves on 8081, rather than from the client port.
