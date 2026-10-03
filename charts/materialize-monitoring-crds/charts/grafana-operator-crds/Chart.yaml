@@ -10,7 +10,7 @@ type: application
 # a fixed placeholder. `appVersion` is the operator the CRDs were lifted from
 # and is rewritten by bin/extract-grafana-operator-crds.sh.
 version: 0.0.0
-appVersion: "v5.24.0"
+appVersion: "v5.25.0"
 kubeVersion: ">=1.27.0-0"
 home: https://github.com/MaterializeInc/materialize-monitoring
 sources:

@@ -16,7 +16,7 @@ dependencies:
   version: 12.11.2
 - name: grafana-operator
   repository: oci://ghcr.io/grafana/helm-charts
-  version: 5.24.0
+  version: 5.25.0
 - name: alertmanager
   repository: oci://ghcr.io/prometheus-community/charts
   version: 1.42.0
@@ -29,5 +29,5 @@ dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
-digest: sha256:9dbffc49d59d5ae2befd0d5fe40263b1d0260faeeee43b61d1fe60afed9c99ae
-generated: "2026-10-02T15:02:31.130769492Z"
+digest: sha256:0ac5b8a6e66038c84591cebf9ccebd13e1c4f70e0209a2ea12dfcd097c937796
+generated: "2026-10-03T00:28:42.370250904Z"
