@@ -52,7 +52,7 @@ PROMTOOL=${PROMTOOL:-}
 LOGCLI=${LOGCLI:-}
 # Keep in step with the promtool the cargo-test job installs (.github/workflows/test.yaml).
 # renovate: datasource=docker packageName=quay.io/prometheus/prometheus
-PROM_VERSION=v3.12.0
+PROM_VERSION=v3.15.0
 PROM_IMAGE=${PROM_IMAGE:-quay.io/prometheus/prometheus:${PROM_VERSION}}
 # Keep in step with the Loki the chart runs (`loki.loki.image.tag` in the
 # chart's values.yaml). Renovate groups the two.
