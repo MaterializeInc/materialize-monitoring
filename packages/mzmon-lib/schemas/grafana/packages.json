@@ -1,5 +1,5 @@
 {
-  "_comment": "GENERATED -- DO NOT EDIT. Plugin metadata distilled from the info block of grafana-foundation-sdk openapi/*.openapi.json at v0.0.18. identifier is the Grafana plugin id used as VizConfigKind.group (panelcfg) or DataQueryKind.group (dataquery); it is not always the document name. An empty identifier means the document carries no plugin identity (dashboardv2, common, units, ...).",
+  "_comment": "GENERATED -- DO NOT EDIT. Plugin metadata distilled from the info block of grafana-foundation-sdk openapi/*.openapi.json at v0.0.20. identifier is the Grafana plugin id used as VizConfigKind.group (panelcfg) or DataQueryKind.group (dataquery); it is not always the document name. An empty identifier means the document carries no plugin identity (dashboardv2, common, units, ...).",
   "packages": {
     "alerting": {
       "identifier": "AlertRuleGroup",
