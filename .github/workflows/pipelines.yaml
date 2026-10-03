@@ -26,7 +26,7 @@ jobs:
   # `paths:` filter, so the workflow still runs (and the gate still reports) on
   # PRs that don't touch these paths.
   changes:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       pipelines: ${{ steps.filter.outputs.pipelines }}
     steps:
@@ -58,7 +58,7 @@ jobs:
     # the paths above but never changes the render, and the merge re-runs this on
     # main). Renovate dep bumps use a different branch prefix, so those still run.
     if: ${{ needs.changes.outputs.pipelines == 'true' && !startsWith(github.head_ref, 'version-update/') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       # renovate: datasource=github-releases packageName=grafana/alloy
       ALLOY_VERSION: v1.20.1
@@ -139,7 +139,7 @@ jobs:
     name: pipelines-gate
     needs: [changes, pipelines]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check job results
         env:

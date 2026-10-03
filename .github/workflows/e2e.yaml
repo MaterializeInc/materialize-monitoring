@@ -24,7 +24,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       chart: ${{ steps.filter.outputs.chart }}
       terraform: ${{ steps.filter.outputs.terraform }}
@@ -53,7 +53,7 @@ jobs:
     # Skip on version-update/* PRs: a version bump cannot change behaviour here,
     # and the merge re-runs this on main.
     if: ${{ needs.changes.outputs.chart == 'true' && !startsWith(github.head_ref, 'version-update/') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # A hung wait is the expected failure mode; without this the job burns the
     # 6-hour default.
     timeout-minutes: 30
@@ -110,7 +110,7 @@ jobs:
     # Thanos's storage wiring is exactly the kind that clears a filesystem-mode
     # tier-1 gate and breaks against real object storage.
     if: ${{ (needs.changes.outputs.terraform == 'true' || needs.changes.outputs.chart == 'true') && !startsWith(github.head_ref, 'version-update/') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # A green run is ~5 minutes. The bound is set well above that on purpose:
     # it has to clear a *failing* run, not a passing one.
     #
@@ -182,7 +182,7 @@ jobs:
     name: e2e-gate
     needs: [changes, tier1, tier2]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check job results
         env:

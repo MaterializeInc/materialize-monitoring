@@ -17,7 +17,7 @@ permissions:
 jobs:
   editorconfig:
     name: editorconfig
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install editorconfig-checker
@@ -31,7 +31,7 @@ jobs:
 
   python:
     name: python (ruff + pyright)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -51,7 +51,7 @@ jobs:
 
   rust:
     name: rust (fmt + clippy)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -69,7 +69,7 @@ jobs:
 
   shell:
     name: shell (shellcheck + shfmt)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # shellcheck is preinstalled on ubuntu-24.04 runners.
@@ -108,7 +108,7 @@ jobs:
 
   yaml:
     name: yaml (yamllint)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -131,7 +131,7 @@ jobs:
 
   helm:
     name: helm (lint + helm-docs freshness)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -166,7 +166,7 @@ jobs:
     name: lint-gate
     needs: [editorconfig, python, rust, shell, yaml, helm]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check job results
         env:
