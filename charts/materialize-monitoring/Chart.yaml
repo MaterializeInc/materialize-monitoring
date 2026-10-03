@@ -136,7 +136,7 @@ dependencies:
       - managed-grafana
       - grafana-operator
   - name: alertmanager
-    version: "1.42.0"
+    version: "2.0.1"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: alertmanager.enabled
     tags:
