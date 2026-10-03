@@ -46,7 +46,7 @@ jobs:
     name: trivy config (gate)
     # Nothing to gate on a schedule run -- the report job covers that path.
     if: ${{ github.event_name != 'schedule' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -64,7 +64,7 @@ jobs:
 
   misconfig-report:
     name: trivy config (report)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       # Required to upload SARIF to code scanning.
@@ -99,7 +99,7 @@ jobs:
     # images it scans are the chart's pins, which a pull request usually does
     # not touch, so failing a pull request here blocks work that cannot fix it.
     if: ${{ github.event_name == 'schedule' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       # Reading the image we publish to GHCR.
@@ -126,7 +126,7 @@ jobs:
 
   image-report:
     name: trivy image (report)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: read
@@ -178,7 +178,7 @@ jobs:
     name: security-gate
     needs: [misconfig-gate, misconfig-report, image-report]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check job results
         env:

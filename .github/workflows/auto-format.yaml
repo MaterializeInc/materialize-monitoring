@@ -44,7 +44,7 @@ jobs:
   # their output rather than exposing every auto-format run to an outage.
   check:
     if: contains(github.event.pull_request.labels.*.name, 'auto-format')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       proceed: ${{ steps.guard.outputs.proceed }}
@@ -88,7 +88,7 @@ jobs:
   auto-format:
     needs: check
     if: ${{ needs.check.outputs.proceed == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

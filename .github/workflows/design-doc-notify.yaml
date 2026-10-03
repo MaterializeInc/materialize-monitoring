@@ -52,7 +52,7 @@ permissions:
 jobs:
   notify:
     if: ${{ !github.event.pull_request.draft }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       # The `paths` gate above fires on any touched page in the section,
