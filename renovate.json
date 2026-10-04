@@ -81,6 +81,12 @@
       "rangeStrategy": "pin"
     },
     {
+      "description": "Title subchart bumps `Update <chart> Helm Chart to <version>`. helmv3 resolves `oci://` subcharts through the docker datasource, whose default topic, `<chart> Docker tag`, makes a chart bump read like an image bump. The https:// subcharts get the helm datasource's `Helm release <chart>` instead, so one topic covers both. Lock file maintenance is left out because it has no depName to put in the topic.",
+      "matchManagers": ["helmv3"],
+      "matchUpdateTypes": ["!lockFileMaintenance"],
+      "commitMessageTopic": "{{{depName}}} Helm Chart"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["!devDependencies"],
       "matchCurrentVersion": "!/^0/",
