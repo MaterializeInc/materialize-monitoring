@@ -16,7 +16,7 @@ jobs:
     # on main. Renovate dependency bumps use a different branch prefix, so those
     # still run here. head_ref is empty on push, so main builds are unaffected.
     if: ${{ !startsWith(github.head_ref, 'version-update/') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -39,7 +39,7 @@ jobs:
     name: helm unittest
     # Safe to run on version-update PRs (it's quick, and ensures we don't break a chart test)
     # if: ${{ !startsWith(github.head_ref, 'version-update/') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -71,7 +71,7 @@ jobs:
     # reads the chart version out of Chart.yaml, so a bump changes the rendered
     # release name only, and main re-runs this on merge.
     if: ${{ !startsWith(github.head_ref, 'version-update/') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -100,7 +100,7 @@ jobs:
     name: test-gate
     needs: [cargo-test, helm-tests, terraform-check]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check job results
         env:
