@@ -44,7 +44,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.4.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.56.1 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.46.0 |
 
@@ -5989,7 +5989,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.10.1"
+  "tag": "2.11.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -8270,7 +8270,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.93.1"
+    "tag": "v0.94.1"
   },
   "resources": {
     "limits": {
