@@ -51,7 +51,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.2 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
-| [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.24.0 |
+| [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.56.1 |
@@ -7489,7 +7489,7 @@ Upstream references:
 {
   "registry": "ghcr.io",
   "repository": "grafana/grafana-operator",
-  "tag": "v5.24.0"
+  "tag": "v5.25.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
