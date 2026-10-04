@@ -7,18 +7,21 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Rendering the registry's alerts into rule files for the two rulers.
+//! Rendering the registry's alerts and recording rules into rule files for the
+//! two rulers.
 //!
-//! [`render_rules`] turns every alert into a [`RenderedRule`], validating as it
-//! goes, and [`RuleSet`] serializes the result: one `groups:` document per source
-//! registry file and [`RuleEngine`], plus one index of every rule the chart
-//! selects from. Every problem is an error, never a warning, and all of them are
-//! collected before returning, so a contributor sees the whole list at once.
+//! [`render_rules`] turns every alert into a [`RenderedRule`] and every recording
+//! rule into a [`RenderedRecord`], validating as it goes, and [`RuleSet`]
+//! serializes the result: one `groups:` document per source registry file and
+//! [`RuleEngine`], plus one index of every rule the chart selects from. Every
+//! problem is an error, never a warning, and all of them are collected before
+//! returning, so a contributor sees the whole list at once.
 //!
 //! An alert whose query is PromQL is a Prometheus rule for the Thanos ruler; one
 //! whose query is LogQL is a rule for the Loki ruler. Both files share the
 //! Prometheus rule format, and the two engines share every check that is about
-//! the rule rather than its language.
+//! the rule rather than its language. Recording rules are PromQL, for the Thanos
+//! ruler, and share an alert's expression checks and capability inference.
 //!
 //! The checks are the ones a rule needs and a dashboard query does not: a rule
 //! is evaluated unattended, so a mistake that a panel would show as an empty
@@ -35,7 +38,7 @@ use serde::Serialize;
 use crate::query::docgen::extract_metric_docs;
 use crate::query::extract::ExtractedMetric;
 use crate::query::importance::Importance;
-use crate::query::model::{Alert, QueryEngine};
+use crate::query::model::{Alert, QueryEngine, Rule};
 use crate::query::registry::QueryRegistry;
 use crate::query::render::{SQL_PREFIX_SENTINEL, TemplateContext, tier_context};
 use crate::query::rules::capability::{Capability, MetricSource, capability_for_metric};
@@ -123,16 +126,40 @@ pub struct RenderedRule {
     pub min_importance: Option<Importance>,
 }
 
-/// A problem with one alert.
+/// One recording rule, rendered and validated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedRecord {
+    pub record: String,
+    /// The registry file stem this rule is written under.
+    pub source: String,
+    pub group: String,
+    /// The rule expression, placeholders intact.
+    pub expr: String,
+    pub labels: IndexMap<String, String>,
+    /// Inferred from the metrics the rule reads, plus what it declares.
+    pub requires: BTreeSet<Capability>,
+    /// As for [`RenderedRule::min_importance`].
+    pub min_importance: Option<Importance>,
+}
+
+impl RenderedRecord {
+    /// `<group>/<record>`, the rule's key in the index.
+    pub fn key(&self) -> String {
+        format!("{}/{}", self.group, self.record)
+    }
+}
+
+/// A problem with one rule: an alert, by name, or a recording rule, by
+/// `<group>/<record>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleError {
-    pub alert: String,
+    pub rule: String,
     pub message: String,
 }
 
 impl fmt::Display for RuleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.alert, self.message)
+        write!(f, "{}: {}", self.rule, self.message)
     }
 }
 
@@ -140,12 +167,18 @@ impl fmt::Display for RuleError {
 #[derive(Debug, Clone, Default)]
 pub struct RuleSet {
     pub rules: Vec<RenderedRule>,
+    pub records: Vec<RenderedRecord>,
 }
 
 static ALERT_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9]+(-[a-z0-9]+)*$").unwrap());
 static GROUP_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9]+(_[a-z0-9]+)*$").unwrap());
+/// `<level>:<metric>[:<operation>]`, the schema's `record` pattern.
+static RECORD_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*(:[a-z0-9_]+)?$").unwrap());
+static LABEL_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap());
 /// A Prometheus duration: units in descending order, each at most once.
 static DURATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^([0-9]+y)?([0-9]+w)?([0-9]+d)?([0-9]+h)?([0-9]+m)?([0-9]+s)?([0-9]+ms)?$")
@@ -169,7 +202,7 @@ struct Contexts<'a> {
     logql: TemplateContext<'a>,
 }
 
-/// Render and validate every alert in `registry`.
+/// Render and validate every alert and recording rule in `registry`.
 pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>> {
     let contexts = Contexts {
         promql: alerting_context(registry, QueryEngine::PromQl, false),
@@ -189,11 +222,28 @@ pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>>
             }
         } else {
             errors.extend(problems.into_iter().map(|message| RuleError {
-                alert: alert.alert.clone(),
+                rule: alert.alert.clone(),
                 message,
             }));
         }
     }
+
+    let mut records = Vec::new();
+    for rule in registry.rules() {
+        let mut problems = Vec::new();
+        let record = render_record(registry, rule, &contexts, &importance, &mut problems);
+        if problems.is_empty() {
+            if let Some(record) = record {
+                records.push(record);
+            }
+        } else {
+            errors.extend(problems.into_iter().map(|message| RuleError {
+                rule: rule.key(),
+                message,
+            }));
+        }
+    }
+    check_record_collisions(&rules, &records, &mut errors);
 
     // The chart names each `PrometheusRule` after its registry file, so a file
     // holding both engines' alerts would render two objects with one name.
@@ -204,12 +254,18 @@ pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>>
             .or_default()
             .insert(rule.engine);
     }
+    for record in &records {
+        engines_by_source
+            .entry(&record.source)
+            .or_default()
+            .insert(RuleEngine::PromQl);
+    }
     for rule in &rules {
         if rule.engine == RuleEngine::LogQl && engines_by_source[rule.source.as_str()].len() > 1 {
             errors.push(RuleError {
-                alert: rule.alert.clone(),
+                rule: rule.alert.clone(),
                 message: format!(
-                    "`{}` holds PromQL and LogQL alerts, and each registry file installs as one \
+                    "`{}` holds PromQL and LogQL rules, and each registry file installs as one \
                      `PrometheusRule` per ruler under the file's name; move the LogQL alerts to \
                      their own file, such as `materialize-log-alerts.yaml`",
                     rule.source
@@ -225,11 +281,65 @@ pub fn render_rules(registry: &QueryRegistry) -> Result<RuleSet, Vec<RuleError>>
             by_source.entry(rule.source.clone()).or_default().push(rule);
         }
         by_source.sort_keys();
+        let mut records_by_source: IndexMap<String, Vec<RenderedRecord>> = IndexMap::new();
+        for record in records {
+            records_by_source
+                .entry(record.source.clone())
+                .or_default()
+                .push(record);
+        }
+        records_by_source.sort_keys();
         Ok(RuleSet {
             rules: by_source.into_values().flatten().collect(),
+            records: records_by_source.into_values().flatten().collect(),
         })
     } else {
         Err(errors)
+    }
+}
+
+/// The checks that span rules rather than sit inside one.
+///
+/// **A group holds alerts or recording rules, not both.** The chart selects
+/// alerts by group name, and installs recording rules wherever they apply, so a
+/// mixed group would be half-selectable.
+///
+/// **Two recording rules MUST NOT write the same series.** Rules recording one
+/// name are told apart by their static labels — an `ext:*` adapter by its
+/// `flavor` — and two with the same labels would overwrite each other's samples
+/// whenever both have data.
+fn check_record_collisions(
+    rules: &[RenderedRule],
+    records: &[RenderedRecord],
+    errors: &mut Vec<RuleError>,
+) {
+    let alert_groups: BTreeSet<&str> = rules.iter().map(|r| r.group.as_str()).collect();
+    let mut series: HashMap<(String, Vec<(String, String)>), String> = HashMap::new();
+    for record in records {
+        if alert_groups.contains(record.group.as_str()) {
+            errors.push(RuleError {
+                rule: record.key(),
+                message: format!(
+                    "group `{}` also holds alerts; a group holds alerts or recording rules, not both",
+                    record.group
+                ),
+            });
+        }
+        let mut labels: Vec<(String, String)> = record
+            .labels
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        labels.sort();
+        if let Some(other) = series.insert((record.record.clone(), labels), record.key()) {
+            errors.push(RuleError {
+                rule: record.key(),
+                message: format!(
+                    "`{other}` records the same name with the same labels, so the two would \
+                     overwrite each other's samples; tell them apart with a label, such as `flavor`"
+                ),
+            });
+        }
     }
 }
 
@@ -295,9 +405,121 @@ fn render_one(
         problems.push("the alert was not loaded from a registry file".into());
         return None;
     };
+    let rendered = render_expr(
+        registry,
+        &alert.query_id,
+        &alert.requires,
+        contexts,
+        importance,
+        problems,
+    )?;
 
-    let Some(query) = registry.get(&alert.query_id) else {
-        problems.push(format!("`queryId` `{}` names no query", alert.query_id));
+    Some(RenderedRule {
+        alert: alert.alert.clone(),
+        source,
+        engine: rendered.engine,
+        group: alert.group.clone(),
+        expr: rendered.expr,
+        for_: alert.for_.clone(),
+        keep_firing_for: alert.keep_firing_for.clone(),
+        labels: alert.labels.clone(),
+        annotations: annotations(alert),
+        requires: rendered.requires,
+        enabled_by_default: alert.enabled_by_default,
+        min_importance: rendered.min_importance,
+    })
+}
+
+fn render_record(
+    registry: &QueryRegistry,
+    rule: &Rule,
+    contexts: &Contexts,
+    importance: &HashMap<String, Importance>,
+    problems: &mut Vec<String>,
+) -> Option<RenderedRecord> {
+    if !RECORD_NAME.is_match(&rule.record) {
+        problems.push(
+            "the record name must be `<level>:<metric>[:<operation>]`, each part lowercase \
+             snake_case, such as `ext:consensus_commit_latency_seconds:p99`"
+                .into(),
+        );
+    }
+    if !GROUP_NAME.is_match(&rule.group) {
+        problems.push(format!(
+            "group `{}` must be snake_case (`[a-z0-9]` words joined by `_`)",
+            rule.group
+        ));
+    }
+    for (name, value) in &rule.labels {
+        if !LABEL_NAME.is_match(name) || name.starts_with("__") {
+            problems.push(format!("`{name}` is not a label name a rule may set"));
+        }
+        if value.is_empty() {
+            problems.push(format!(
+                "label `{name}` is empty, which Prometheus reads as no label at all"
+            ));
+        }
+    }
+    // The normalized layer's contract: every series names the adapter that
+    // produced it, which is what tells two adapters' rules for one name apart
+    // and what a dashboard discovers the adapters from.
+    if rule.record.starts_with("ext:") && rule.labels.get("flavor").is_none_or(String::is_empty) {
+        problems.push(
+            "an `ext:*` series carries a `flavor` label naming the adapter that produced it".into(),
+        );
+    }
+    let Some(source) = rule.source.clone() else {
+        problems.push("the rule was not loaded from a registry file".into());
+        return None;
+    };
+    let rendered = render_expr(
+        registry,
+        &rule.query_id,
+        &rule.requires,
+        contexts,
+        importance,
+        problems,
+    )?;
+    if rendered.engine == RuleEngine::LogQl {
+        problems.push(
+            "a recording rule's query is PromQL; nothing delivers recording rules to the Loki \
+             ruler"
+                .into(),
+        );
+        return None;
+    }
+
+    Some(RenderedRecord {
+        record: rule.record.clone(),
+        source,
+        group: rule.group.clone(),
+        expr: rendered.expr,
+        labels: rule.labels.clone(),
+        requires: rendered.requires,
+        min_importance: rendered.min_importance,
+    })
+}
+
+/// A rule's query, rendered for its ruler, with what it was found to need.
+struct RenderedExpr {
+    engine: RuleEngine,
+    expr: String,
+    requires: BTreeSet<Capability>,
+    min_importance: Option<Importance>,
+}
+
+/// Render the query `query_id` names for whichever ruler its language selects,
+/// check it, and infer what it requires beyond `declared`.
+fn render_expr(
+    registry: &QueryRegistry,
+    query_id: &str,
+    declared: &[Capability],
+    contexts: &Contexts,
+    importance: &HashMap<String, Importance>,
+    problems: &mut Vec<String>,
+) -> Option<RenderedExpr> {
+    let Some(query) = registry.get(query_id) else {
+        problems.push(format!("`queryId` `{query_id}` names no query"));
         return None;
     };
     let engine = if query.is_log_query() {
@@ -346,18 +568,24 @@ fn render_one(
         RuleEngine::PromQl => {
             check_promql_expr(&expr, problems);
             let requires = match query.render(&contexts.inference) {
-                Ok(mut rendered) => infer_requires(&rendered.remove(0), &alert.requires, problems),
+                Ok(mut rendered) => {
+                    infer_requires(registry, &rendered.remove(0), declared, problems)
+                }
                 Err(err) => {
                     problems.push(format!("rendering for capability inference failed: {err}"));
                     return None;
                 }
             };
+            // A provider pull's families take their tier from values, which the
+            // chart adds to every destination's filter itself, so the registry's
+            // tier for them says nothing about whether a destination keeps them.
             let min_importance =
                 ExtractedMetric::extract_from_promql(&expr)
                     .ok()
                     .and_then(|metrics| {
                         metrics
                             .iter()
+                            .filter(|m| !is_provider_pulled(&m.name))
                             .filter_map(|m| importance.get(&normalize_sql_prefix(&m.name)).copied())
                             .min_by_key(|i| i.rank())
                     });
@@ -369,24 +597,23 @@ fn render_one(
         // chart's to decide.
         RuleEngine::LogQl => {
             check_logql_expr(&expr, problems);
-            (alert.requires.iter().copied().collect(), None)
+            (declared.iter().copied().collect(), None)
         }
     };
 
-    Some(RenderedRule {
-        alert: alert.alert.clone(),
-        source,
+    Some(RenderedExpr {
         engine,
-        group: alert.group.clone(),
         expr,
-        for_: alert.for_.clone(),
-        keep_firing_for: alert.keep_firing_for.clone(),
-        labels: alert.labels.clone(),
-        annotations: annotations(alert),
         requires,
-        enabled_by_default: alert.enabled_by_default,
         min_importance,
     })
+}
+
+fn is_provider_pulled(metric: &str) -> bool {
+    matches!(
+        capability_for_metric(metric),
+        Some(MetricSource::Capability(c)) if c.is_provider_pull()
+    )
 }
 
 fn check_duration(field: &str, value: &str, problems: &mut Vec<String>) {
@@ -533,6 +760,7 @@ fn check_tokens(expr: &str, problems: &mut Vec<String>) {
 
 /// The capabilities `expr` needs, from the metrics it names, plus `declared`.
 fn infer_requires(
+    registry: &QueryRegistry,
     expr: &str,
     declared: &[Capability],
     problems: &mut Vec<String>,
@@ -552,6 +780,18 @@ fn infer_requires(
     let mut named_capability = false;
     let mut unknown = false;
     for metric in &metrics {
+        // A recorded series applies wherever any one of its adapters does, which
+        // a set of capabilities that must all be present cannot say.
+        if registry.rules_recording(&metric.name).next().is_some() {
+            unknown = true;
+            problems.push(format!(
+                "`{}` is a recorded series, and a rule cannot read one yet: what it requires is \
+                 whichever of its adapters applies, and capabilities can only require all of \
+                 them",
+                metric.name
+            ));
+            continue;
+        }
         match capability_for_metric(&metric.name) {
             Some(MetricSource::Capability(capability)) => {
                 named_capability = true;
@@ -655,7 +895,27 @@ struct RuleFileDoc<'a> {
 #[derive(Serialize)]
 struct GroupDoc<'a> {
     name: &'a str,
-    rules: Vec<RuleDoc<'a>>,
+    rules: Vec<EntryDoc<'a>>,
+}
+
+/// One entry in a group: an alert or a recording rule.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum EntryDoc<'a> {
+    Alert(RuleDoc<'a>),
+    Record(RecordDoc<'a>),
+}
+
+#[derive(Serialize)]
+struct RecordDoc<'a> {
+    record: &'a str,
+    expr: &'a str,
+    #[serde(skip_serializing_if = "no_labels")]
+    labels: &'a IndexMap<String, String>,
+}
+
+fn no_labels(labels: &&IndexMap<String, String>) -> bool {
+    labels.is_empty()
 }
 
 #[derive(Serialize)]
@@ -675,6 +935,7 @@ struct IndexDoc<'a> {
     placeholders: Vec<&'static str>,
     capabilities: IndexMap<&'static str, CapabilityDoc>,
     rules: IndexMap<&'a str, IndexRuleDoc<'a>>,
+    records: IndexMap<String, IndexRecordDoc<'a>>,
 }
 
 #[derive(Serialize)]
@@ -696,15 +957,41 @@ struct IndexRuleDoc<'a> {
     min_importance: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IndexRecordDoc<'a> {
+    file: String,
+    group: &'a str,
+    record: &'a str,
+    labels: &'a IndexMap<String, String>,
+    requires: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_importance: Option<String>,
+}
+
 impl RuleSet {
-    /// The source file stems with rules for `engine`, in output order.
+    /// The source file stems with rules for `engine`, in output order: every
+    /// file with an alert for it, then, for PromQL, any holding only recording
+    /// rules.
     pub fn sources(&self, engine: RuleEngine) -> Vec<&str> {
         let mut seen: Vec<&str> = Vec::new();
-        for rule in self.rules.iter().filter(|r| r.engine == engine) {
-            if !seen.contains(&rule.source.as_str()) {
-                seen.push(&rule.source);
+        let records = self
+            .records
+            .iter()
+            .filter(|_| engine == RuleEngine::PromQl)
+            .map(|r| r.source.as_str());
+        for source in self
+            .rules
+            .iter()
+            .filter(|r| r.engine == engine)
+            .map(|r| r.source.as_str())
+            .chain(records)
+        {
+            if !seen.contains(&source) {
+                seen.push(source);
             }
         }
+        seen.sort();
         seen
     }
 
@@ -714,20 +1001,37 @@ impl RuleSet {
         engine: RuleEngine,
         source: &str,
     ) -> serde_yaml_ng::Result<String> {
-        let mut groups: IndexMap<&str, Vec<RuleDoc>> = IndexMap::new();
+        let mut groups: IndexMap<&str, Vec<EntryDoc>> = IndexMap::new();
         for rule in self
             .rules
             .iter()
             .filter(|r| r.engine == engine && r.source == source)
         {
-            groups.entry(&rule.group).or_default().push(RuleDoc {
-                alert: &rule.alert,
-                expr: &rule.expr,
-                for_: &rule.for_,
-                keep_firing_for: rule.keep_firing_for.as_deref(),
-                labels: &rule.labels,
-                annotations: &rule.annotations,
-            });
+            groups
+                .entry(&rule.group)
+                .or_default()
+                .push(EntryDoc::Alert(RuleDoc {
+                    alert: &rule.alert,
+                    expr: &rule.expr,
+                    for_: &rule.for_,
+                    keep_firing_for: rule.keep_firing_for.as_deref(),
+                    labels: &rule.labels,
+                    annotations: &rule.annotations,
+                }));
+        }
+        for record in self
+            .records
+            .iter()
+            .filter(|r| engine == RuleEngine::PromQl && r.source == source)
+        {
+            groups
+                .entry(&record.group)
+                .or_default()
+                .push(EntryDoc::Record(RecordDoc {
+                    record: &record.record,
+                    expr: &record.expr,
+                    labels: &record.labels,
+                }));
         }
         let doc = RuleFileDoc {
             groups: groups
@@ -776,14 +1080,32 @@ impl RuleSet {
                     )
                 })
                 .collect(),
+            records: self
+                .records
+                .iter()
+                .map(|record| {
+                    (
+                        record.key(),
+                        IndexRecordDoc {
+                            file: format!("{}/{}.yaml", RuleEngine::PromQl.dir(), record.source),
+                            group: &record.group,
+                            record: &record.record,
+                            labels: &record.labels,
+                            requires: record.requires.iter().map(|c| c.as_str()).collect(),
+                            min_importance: record.min_importance.map(|i| i.to_string()),
+                        },
+                    )
+                })
+                .collect(),
         };
         let header = "\
 # Generated by `mz-monitoring-build gen-rules`. DO NOT EDIT.
 #
-# What the chart needs to decide which rules install: each rule's engine (which
+# What the chart needs to decide which rules install: each alert's engine (which
 # ruler evaluates it, and so which directory its file is in), its capabilities
 # (inferred from the metrics it reads, plus any it declares) and whether it is in
-# the default set, and the vocabularies the chart validates values against.
+# the default set; each recording rule's capabilities, keyed `<group>/<record>`;
+# and the vocabularies the chart validates values against.
 ";
         Ok(format!("{header}{}", serde_yaml_ng::to_string(&doc)?))
     }
@@ -1075,7 +1397,7 @@ mod tests {
             args: ["namespace"]
 "#;
         let yaml = format!(
-            "{}{}{}{joined}",
+            "{}{}{}{}{joined}",
             alert(
                 "cluster-offline",
                 LABELS,
@@ -1092,6 +1414,12 @@ mod tests {
                 "infra-oomkill",
                 LABELS,
                 r#"kube_pod_container_status_restarts_total{container=~"%%{infraCoreWorkloadList}|%%{infraImportantWorkloadList}|%%{infraDaemonsetWorkloadList}", container!~"%%{infraNonessentialWorkloadList}"} > 0"#,
+                ""
+            ),
+            alert(
+                "consensus-storage",
+                LABELS,
+                r#"aws_rds_free_storage_space_minimum{dimension_DBInstanceIdentifier=~"%%{consensusRdsResources}"} < 1 or stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id=~".+:(%%{consensusCloudsqlResources})"} == 0 or azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName=~"%%{consensusAzurePostgresResources}"} == 0"#,
                 ""
             ),
         );
@@ -1303,8 +1631,8 @@ mod tests {
         );
         let errs = render_rules(&registry(&yaml)).expect_err("mixed file");
         assert_eq!(errs.len(), 1, "{errs:?}");
-        assert_eq!(errs[0].alert, "log-alert");
-        assert!(errs[0].message.contains("holds PromQL and LogQL alerts"));
+        assert_eq!(errs[0].rule, "log-alert");
+        assert!(errs[0].message.contains("holds PromQL and LogQL rules"));
     }
 
     #[test]
@@ -1378,5 +1706,273 @@ mod tests {
         );
         // Registration order, not alphabetical.
         assert_eq!(one.rules[0].alert, "b-alert");
+    }
+
+    // --- recording rules --------------------------------------------------------
+
+    fn record(group: &str, name: &str, labels: &str, promql: &str, extra: &str) -> String {
+        format!(
+            r#"  - record: {name}
+    group: {group}
+    stability: best-effort
+    labels: {labels}
+    description:
+      summary: Something, recorded.
+{extra}    query:
+      id: test.{id}
+      stability: experimental
+      description:
+        summary: q
+      promQL: '{promql}'
+"#,
+            id = format!("{group}.{name}").replace([':', '-'], "_")
+        )
+    }
+
+    fn records_registry(rules_yaml: &str) -> QueryRegistry {
+        let yaml =
+            format!("description: test\nmetricImportanceHint: diagnostic\nrules:\n{rules_yaml}");
+        let doc = RegistryDoc::from_yaml_str(&yaml).expect("test registry parses");
+        let mut registry = QueryRegistry::new();
+        registry.load_from(doc, Some("test-records")).unwrap();
+        registry
+    }
+
+    fn record_errors(yaml: &str) -> Vec<String> {
+        render_rules(&records_registry(yaml))
+            .expect_err("expected errors")
+            .into_iter()
+            .map(|e| e.message)
+            .collect()
+    }
+
+    const RDS_XID: &str = r#"max by (resource) (label_replace(last_over_time(aws_rds_maximum_used_transaction_ids_maximum{dimension_DBInstanceIdentifier=~"%%{consensusRdsResources}"}[15m]), "resource", "$1", "dimension_DBInstanceIdentifier", "(.+)")) / 2147483648"#;
+
+    #[test]
+    fn renders_recording_rules_into_their_file_and_the_index() {
+        let yaml = format!(
+            "{}{}",
+            record(
+                "ext_consensus_persist",
+                "ext:consensus_up",
+                "{flavor: persist}",
+                r#"sum by (namespace) (rate(mz_persist_external_succeeded_count{op=~"consensus_.*"}[5m])) > bool 0"#,
+                ""
+            ),
+            record(
+                "ext_consensus_rds",
+                "ext:consensus_xid_used_ratio",
+                "{flavor: rds}",
+                RDS_XID,
+                ""
+            ),
+        );
+        let set = render_rules(&records_registry(&yaml)).unwrap();
+        assert!(set.rules.is_empty());
+        assert_eq!(set.records.len(), 2);
+        let rds = &set.records[1];
+        assert_eq!(rds.key(), "ext_consensus_rds/ext:consensus_xid_used_ratio");
+        assert!(
+            rds.expr
+                .contains(r#"dimension_DBInstanceIdentifier=~"__mzmon_consensus_rds__""#),
+            "{}",
+            rds.expr
+        );
+        assert_eq!(
+            rds.requires.iter().collect::<Vec<_>>(),
+            vec![&Capability::Cloudwatch]
+        );
+        assert_eq!(
+            set.records[0].requires.iter().collect::<Vec<_>>(),
+            vec![&Capability::Materialize]
+        );
+
+        assert_eq!(set.sources(RuleEngine::PromQl), vec!["test-records"]);
+        assert!(set.sources(RuleEngine::LogQl).is_empty());
+        let file = set
+            .rule_file_yaml(RuleEngine::PromQl, "test-records")
+            .unwrap();
+        assert!(file.contains("- name: ext_consensus_rds"), "{file}");
+        assert!(
+            file.contains("record: ext:consensus_xid_used_ratio"),
+            "{file}"
+        );
+        assert!(file.contains("flavor: rds"), "{file}");
+        assert!(!file.contains("alert:") && !file.contains("for:"), "{file}");
+        crate::scrape::test_support::assert_promtool_rules_ok("test-records", &file);
+
+        let index = set.index_yaml().unwrap();
+        assert!(
+            index.contains("ext_consensus_rds/ext:consensus_xid_used_ratio:"),
+            "{index}"
+        );
+        assert!(
+            index.contains("file: prometheus/test-records.yaml"),
+            "{index}"
+        );
+        assert!(index.contains("- cloudwatch"), "{index}");
+    }
+
+    #[test]
+    fn one_name_has_a_rule_per_adapter_and_each_writes_its_own_series() {
+        let up = |group: &str, flavor: &str| {
+            record(
+                group,
+                "ext:consensus_up",
+                &format!("{{flavor: {flavor}}}"),
+                r#"max by (resource) (label_replace(last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m]), "resource", "$1", "database_id", ".+:(.+)"))"#,
+                "",
+            )
+        };
+        let set = render_rules(&records_registry(&format!(
+            "{}{}",
+            up("ext_consensus_a", "a"),
+            up("ext_consensus_b", "b")
+        )))
+        .unwrap();
+        assert_eq!(set.records.len(), 2);
+
+        let errs = record_errors(&format!(
+            "{}{}",
+            up("ext_consensus_a", "same"),
+            up("ext_consensus_b", "same")
+        ));
+        assert!(
+            has(&errs, "records the same name with the same labels"),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn a_group_records_a_name_once() {
+        let yaml = format!(
+            "description: test\nmetricImportanceHint: diagnostic\nrules:\n{}{}",
+            record("g", "ext:x", "{flavor: a}", "mz_a", ""),
+            record("g", "ext:x", "{flavor: b}", "mz_b", "")
+                .replace("id: test.g_ext_x", "id: test.g_ext_x_again"),
+        );
+        let mut registry = QueryRegistry::new();
+        let err = registry
+            .load_from(RegistryDoc::from_yaml_str(&yaml).unwrap(), Some("t"))
+            .unwrap_err();
+        assert!(err.to_string().contains("g/ext:x"), "{err}");
+    }
+
+    #[test]
+    fn record_metadata_problems_are_all_reported() {
+        let errs = record_errors(&record(
+            "Bad-Group",
+            "ext_consensus_up",
+            "{__bad: x, empty: ''}",
+            "mz_thing",
+            "",
+        ));
+        assert!(has(&errs, "`<level>:<metric>[:<operation>]`"), "{errs:?}");
+        assert!(has(&errs, "group `Bad-Group`"), "{errs:?}");
+        assert!(has(&errs, "`__bad` is not a label name"), "{errs:?}");
+        assert!(has(&errs, "label `empty` is empty"), "{errs:?}");
+    }
+
+    #[test]
+    fn an_ext_series_names_its_adapter() {
+        let errs = record_errors(&record("g", "ext:consensus_up", "{}", "mz_thing", ""));
+        assert!(has(&errs, "`flavor` label"), "{errs:?}");
+        // Another level carries no such contract.
+        let set = render_rules(&records_registry(&record(
+            "g",
+            "mzobject:thing:rate5m",
+            "{}",
+            "rate(mz_thing[5m])",
+            "",
+        )))
+        .unwrap();
+        assert!(
+            !set.rule_file_yaml(RuleEngine::PromQl, "test-records")
+                .unwrap()
+                .contains("labels")
+        );
+    }
+
+    #[test]
+    fn a_group_holds_alerts_or_records() {
+        let mut registry = registry(&alert("x", LABELS, "mz_a > 0", ""));
+        registry
+            .load_from(
+                RegistryDoc::from_yaml_str(&format!(
+                    "description: test\nmetricImportanceHint: diagnostic\nrules:\n{}",
+                    record("test_group", "ext:x", "{flavor: a}", "mz_a", "")
+                ))
+                .unwrap(),
+                Some("test-records"),
+            )
+            .unwrap();
+        let errs: Vec<String> = render_rules(&registry)
+            .expect_err("mixed group")
+            .into_iter()
+            .map(|e| e.message)
+            .collect();
+        assert!(has(&errs, "also holds alerts"), "{errs:?}");
+    }
+
+    #[test]
+    fn a_recording_rule_is_promql() {
+        let yaml = r#"  - record: ext:x
+    group: g
+    stability: best-effort
+    labels: {flavor: a}
+    description:
+      summary: s
+    query:
+      id: test.log_record
+      stability: experimental
+      description:
+        summary: q
+      logQL: 'sum(count_over_time({namespace="a"} [5m]))'
+"#;
+        assert!(has(
+            &record_errors(yaml),
+            "a recording rule's query is PromQL"
+        ));
+    }
+
+    #[test]
+    fn a_rule_cannot_read_a_recorded_series_yet() {
+        let mut registry = records_registry(&record("g", "ext:x", "{flavor: a}", "mz_a", ""));
+        registry
+            .load_from(
+                RegistryDoc::from_yaml_str(&format!(
+                    "description: test\nmetricImportanceHint: essential\nalertLabels: {{audience: platform}}\nalerts:\n{}",
+                    alert("reads-a-record", LABELS, "ext:x > 0", "")
+                ))
+                .unwrap(),
+                Some("test-alerts"),
+            )
+            .unwrap();
+        let errs: Vec<String> = render_rules(&registry)
+            .expect_err("reads a record")
+            .into_iter()
+            .map(|e| e.message)
+            .collect();
+        assert!(has(&errs, "is a recorded series"), "{errs:?}");
+    }
+
+    #[test]
+    fn provider_families_do_not_set_a_rules_tier() {
+        // The pull's families are tiered in values; the registry's `diagnostic`
+        // for them would otherwise warn on every destination above it.
+        let set = render_rules(&records_registry(&format!(
+            "{}{}",
+            record("ext_consensus_rds", "ext:x", "{flavor: rds}", RDS_XID, ""),
+            record(
+                "ext_consensus_persist",
+                "ext:x",
+                "{flavor: persist}",
+                "sum by (namespace) (rate(mz_persist_external_succeeded_count[5m]))",
+                ""
+            ),
+        )))
+        .unwrap();
+        assert_eq!(set.records[0].min_importance, None);
+        assert_eq!(set.records[1].min_importance, Some(Importance::Diagnostic));
     }
 }

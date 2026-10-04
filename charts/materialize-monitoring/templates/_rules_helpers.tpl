@@ -1,11 +1,12 @@
-{{- /* Alerting-rule helpers and validators.
+{{- /* Alerting- and recording-rule helpers and validators.
 
 The rules themselves are rendered at build time by `mz-monitoring-build
 gen-rules` into `pre-rendered/rules/`: one `groups:` document per query-registry
 file and ruler, PromQL under `prometheus/` and LogQL under `loki/`, and
-`_index.yaml`, which records each rule's engine, its capabilities and whether it
-is in the default set. These helpers decide which of those rules install, and
-fill in the placeholders the build left for facts only an install knows.
+`_index.yaml`, which records each alert's engine, its capabilities and whether
+it is in the default set, and each recording rule's capabilities. These helpers
+decide which of those rules install, and fill in the placeholders the build left
+for facts only an install knows.
 Both engines install as PrometheusRules, labelled with `mzmon.rules.flavorLabel`:
 `templates/alerts/prometheusrules.yaml` emits the PromQL ones for the Thanos
 ruler's importer, and `templates/alerts/lokirules.yaml` the LogQL ones, which the
@@ -87,9 +88,11 @@ Usage:
 Capabilities the chart derives from what it deploys, as a YAML list.
 
 Each is present only where the chart both runs the component and collects its
-metrics, which in this chart means through the alloy-gateway. Must derive
-exactly the capabilities `_index.yaml` marks `derived: true`; the rules
-helm-unittest pins the list.
+metrics, which in this chart means through the alloy-gateway. A provider pull
+(`pipeline.metrics.provider.*`) runs in the gateway, so it is a capability of
+the same kind. Must derive exactly the capabilities `_index.yaml` marks
+`derived: true`. Nothing checks the two lists against each other, so a capability
+added there needs its derivation added here by hand.
 
 Usage:
   {{- $derived := include "mzmon.rules.derivedCapabilities" $ | fromYamlArray }}
@@ -121,8 +124,58 @@ Usage:
     {{- if and ( include "mzmon.alloyAgent.enabled" $ ) ( dig "serviceMonitor" "enabled" false ( index $.Values "alloy-agent" ) ) }}
       {{- $caps = append $caps "alloy" }}
     {{- end }}
+    {{- $provider := dig "metrics" "provider" dict ( $.Values.pipeline | default dict ) }}
+    {{- if dig "cloudwatch" "enabled" false $provider }}
+      {{- $caps = append $caps "cloudwatch" }}
+    {{- end }}
+    {{- if dig "gcp" "enabled" false $provider }}
+      {{- $caps = append $caps "cloud-monitoring" }}
+    {{- end }}
+    {{- if dig "azure" "enabled" false $provider }}
+      {{- $caps = append $caps "azure-monitor" }}
+    {{- end }}
   {{- end }}
   {{- $caps | toYaml }}
+{{- end }}
+
+{{- /*
+The flavors `externalDependencies.consensus` accepts, as a dict of flavor to
+the placeholder its resources fill and the provider pull that watches them:
+`values` is the pull's key under `pipeline.metrics.provider`, and `list` the
+path to its resource list below that.
+*/}}
+{{- define "mzmon.externalDependencies.consensusFlavors" }}
+  {{- dict
+      "rds" ( dict "token" "__mzmon_consensus_rds__" "values" "cloudwatch" "list" ( list "rds" "instances" ) )
+      "cloudsql" ( dict "token" "__mzmon_consensus_cloudsql__" "values" "gcp" "list" ( list "cloudSql" "instances" ) )
+      "azure-postgres" ( dict "token" "__mzmon_consensus_azure_postgres__" "values" "azure" "list" ( list "postgres" "servers" ) )
+    | toYaml }}
+{{- end }}
+
+{{- /*
+`externalDependencies.consensus`, as a dict of flavor to the list of resource
+ids declared for it. Entries that fail validation are left out; the validator
+reports them.
+*/}}
+{{- define "mzmon.externalDependencies.consensus" }}
+  {{- $flavors := include "mzmon.externalDependencies.consensusFlavors" $ | fromYaml }}
+  {{- $out := dict }}
+  {{- range $flavor, $_ := $flavors }}
+    {{- $_ := set $out $flavor list }}
+  {{- end }}
+  {{- $deps := $.Values.externalDependencies | default dict }}
+  {{- if kindIs "map" $deps }}
+    {{- range ( ternary $deps.consensus list ( kindIs "slice" $deps.consensus ) ) }}
+      {{- if kindIs "map" . }}
+        {{- $flavor := toString .flavor }}
+        {{- $id := toString .resourceId }}
+        {{- if and ( hasKey $out $flavor ) ( regexMatch "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$" $id ) }}
+          {{- $_ := set $out $flavor ( append ( get $out $flavor ) $id | uniq ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- $out | toYaml }}
 {{- end }}
 
 {{- /*
@@ -182,7 +235,7 @@ drop every series that has a namespace.
     {{- $_ := set $alternation $tier ( ternary ( join "|" $list ) "a^" ( gt ( len $list ) 0 ) ) }}
   {{- end }}
   {{- $prefix := ternary "v2_mz_" "mz_" ( eq ( $.Values.materialize.deploymentMode | toString ) "cloud" ) }}
-  {{- dict
+  {{- $substitutions := dict
       "__mzmon_environment_namespaces__" $alternation.environment
       "__mzmon_operator_namespaces__" $alternation.operator
       "__mzmon_excluded_namespaces__" $alternation.exclude
@@ -190,8 +243,16 @@ drop every series that has a namespace.
       "__mzmon_important_workloads__" $alternation.important
       "__mzmon_nonessential_workloads__" $alternation.nonessential
       "__mzmon_daemonset_workloads__" $alternation.daemonset
-      "__mzmon_sql_prefix__" $prefix
-    | toYaml }}
+      "__mzmon_sql_prefix__" $prefix }}
+  {{- /* Resource ids are validated to letters, digits and hyphens, so they need
+         no escaping inside the PromQL string they land in. */}}
+  {{- $flavors := include "mzmon.externalDependencies.consensusFlavors" $ | fromYaml }}
+  {{- $consensus := include "mzmon.externalDependencies.consensus" $ | fromYaml }}
+  {{- range $flavor, $spec := $flavors }}
+    {{- $ids := get $consensus $flavor | default list }}
+    {{- $_ := set $substitutions $spec.token ( ternary ( join "|" $ids ) "a^" ( gt ( len $ids ) 0 ) ) }}
+  {{- end }}
+  {{- $substitutions | toYaml }}
 {{- end }}
 
 {{- /*
@@ -230,10 +291,39 @@ needs this release to deliver it (`mzmon.rules.logRuleSync.enabled`).
 {{- end }}
 
 {{- /*
+The recording rules that install, as a YAML list of `<group>/<record>` keys.
+
+A recording rule installs when rules are enabled and every capability it
+requires is present. There is no default set and no selection: what a recording
+rule costs is a few series, and the alerts and panels that read one need it to
+be there.
+*/}}
+{{- define "mzmon.rules.installedRecords" }}
+  {{- $installed := list }}
+  {{- if $.Values.rules.enabled }}
+    {{- $index := include "mzmon.rules.index" $ | fromYaml }}
+    {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
+    {{- range $key, $record := ( $index.records | default dict ) }}
+      {{- $applies := true }}
+      {{- range $record.requires }}
+        {{- if not ( has . $caps ) }}
+          {{- $applies = false }}
+        {{- end }}
+      {{- end }}
+      {{- if $applies }}
+        {{- $installed = append $installed $key }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- $installed | toYaml }}
+{{- end }}
+
+{{- /*
 One pre-rendered rule file as it installs, as a YAML dict with `groups`.
 
-Each file has its placeholders filled from values, its rules filtered to the
-ones that install (`mzmon.rules.installed`) with `rules.overrides` applied, and
+Each file has its placeholders filled from values, its alerts filtered to the
+ones that install (`mzmon.rules.installed`) with `rules.overrides` applied, its
+recording rules to the ones that install (`mzmon.rules.installedRecords`), and
 any group left empty dropped. A file with nothing left returns no groups. Both
 engines' files go through this, so a rule installs, and is overridden, the same
 way whichever ruler evaluates it.
@@ -250,6 +340,7 @@ Usage:
   {{- $path := .path }}
   {{- $index := include "mzmon.rules.index" $root | fromYaml }}
   {{- $installed := include "mzmon.rules.installed" $root | fromYamlArray }}
+  {{- $installedRecords := include "mzmon.rules.installedRecords" $root | fromYamlArray }}
   {{- $substitutions := include "mzmon.rules.substitutions" $root | fromYaml }}
   {{- $overrides := $root.Values.rules.overrides | default dict }}
   {{- $raw := $root.Files.Get $path }}
@@ -269,7 +360,11 @@ Usage:
   {{- range $group := $doc.groups }}
     {{- $rules := list }}
     {{- range $rule := $group.rules }}
-      {{- if has $rule.alert $installed }}
+      {{- if $rule.record }}
+        {{- if has ( printf "%s/%s" $group.name $rule.record ) $installedRecords }}
+          {{- $rules = append $rules $rule }}
+        {{- end }}
+      {{- else if has $rule.alert $installed }}
         {{- /* `rules.overrides` changes one rule's `for` and labels, never its expression. */}}
         {{- with get $overrides $rule.alert }}
           {{- $rule = deepCopy $rule }}
@@ -423,6 +518,42 @@ Validation for the rules surface.
     {{- $warnings = append $warnings "No Materialize environment namespace is known (rules.namespaces.environment, materialize.namespaces and materialize-system.namespace are all empty), so rules scoped to an environment's pods match nothing." }}
   {{- end }}
 
+  {{- /* externalDependencies: the ids land inside a PromQL string, unescaped. */}}
+  {{- $flavors := include "mzmon.externalDependencies.consensusFlavors" $ | fromYaml }}
+  {{- $flavorNames := keys $flavors | sortAlpha }}
+  {{- $deps := $.Values.externalDependencies | default dict }}
+  {{- if not ( kindIs "map" $deps ) }}
+    {{- $errors = append $errors ( printf "externalDependencies is %s; it is a map with `consensus`." ( toJson $deps ) ) }}
+  {{- else }}
+    {{- range $key, $_ := $deps }}
+      {{- if ne $key "consensus" }}
+        {{- $errors = append $errors ( printf "externalDependencies.%s is not a dependency this chart reads; it takes `consensus`." $key ) }}
+      {{- end }}
+    {{- end }}
+    {{- $entries := $deps.consensus | default list }}
+    {{- if not ( kindIs "slice" $entries ) }}
+      {{- $errors = append $errors ( printf "externalDependencies.consensus is %s; it is a list of `flavor` and `resourceId` pairs." ( toJson $entries ) ) }}
+    {{- else }}
+      {{- range $i, $entry := $entries }}
+        {{- if not ( kindIs "map" $entry ) }}
+          {{- $errors = append $errors ( printf "externalDependencies.consensus[%d] is %s; it is a map with `flavor` and `resourceId`." $i ( toJson $entry ) ) }}
+        {{- else }}
+          {{- range $key, $_ := $entry }}
+            {{- if not ( has $key ( list "flavor" "resourceId" ) ) }}
+              {{- $errors = append $errors ( printf "externalDependencies.consensus[%d].%s is not a field; an entry has `flavor` and `resourceId`." $i $key ) }}
+            {{- end }}
+          {{- end }}
+          {{- if not ( hasKey $flavors ( toString $entry.flavor ) ) }}
+            {{- $errors = append $errors ( printf "externalDependencies.consensus[%d].flavor is %s; it is one of %s." $i ( toJson $entry.flavor ) ( join ", " $flavorNames ) ) }}
+          {{- end }}
+          {{- if not ( and ( kindIs "string" $entry.resourceId ) ( regexMatch "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$" ( toString $entry.resourceId ) ) ) }}
+            {{- $errors = append $errors ( printf "externalDependencies.consensus[%d].resourceId is %s; it is the provider's name for the database, which is letters, digits and hyphens." $i ( toJson $entry.resourceId ) ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
   {{- if $values.enabled }}
     {{- if not ( include "mzmon.thanos.ruler.enabled" $ ) }}
       {{- $warnings = append $warnings "rules.enabled renders PrometheusRule resources, but thanos.ruler is off, so nothing in this release evaluates the PromQL rules. That is only correct if another component in the cluster imports PrometheusRules." }}
@@ -486,6 +617,7 @@ Validation for the rules surface.
     {{- /* A destination filtering below a rule's metrics starves the rule. */}}
     {{- $floor := dig "pipeline" "metrics" "gateway" "destination" "prometheusRemoteWrite" "thanos" "minMetricImportance" "all" ( $.Values | toYaml | fromYaml ) | toString }}
     {{- $rank := dict "essential" 0 "recommended" 1 "extended" 2 "diagnostic" 3 "all" 4 }}
+    {{- $installedRecords := include "mzmon.rules.installedRecords" $ | fromYamlArray }}
     {{- if hasKey $rank $floor }}
       {{- range $name := ( include "mzmon.rules.installed" $ | fromYamlArray ) }}
         {{- $rule := get $index.rules $name }}
@@ -494,6 +626,45 @@ Validation for the rules surface.
             {{- $warnings = append $warnings ( printf "Alert %q reads a metric in the %q tier, but the thanos destination keeps only %q and above, so the rule cannot see it." $name . $floor ) }}
           {{- end }}
         {{- end }}
+      {{- end }}
+      {{- range $key := $installedRecords }}
+        {{- with ( get ( $index.records | default dict ) $key ).minImportance }}
+          {{- if gt ( get $rank . | int ) ( get $rank $floor | int ) }}
+            {{- $warnings = append $warnings ( printf "Recording rule %q reads a metric in the %q tier, but the thanos destination keeps only %q and above, so the rule cannot see it." $key . $floor ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- /* The ruler writes what it records back through the gateway, and the
+           tier filter knows registry metrics only. */}}
+    {{- if and $installedRecords ( ne $floor "all" ) }}
+      {{- $warnings = append $warnings ( printf "The thanos destination keeps only %q metrics and above, and recorded series such as ext:consensus_up carry no tier, so the gateway drops what the recording rules write before it reaches Thanos." $floor ) }}
+    {{- end }}
+
+    {{- /* externalDependencies.consensus is only useful for a database a pull
+           watches, and a pull's databases are only recorded once named there. */}}
+    {{- $consensus := include "mzmon.externalDependencies.consensus" $ | fromYaml }}
+    {{- $provider := dig "metrics" "provider" dict ( $.Values.pipeline | default dict ) }}
+    {{- range $flavor, $ids := $consensus }}
+      {{- $spec := get $flavors $flavor }}
+      {{- $pull := get $provider $spec.values | default dict }}
+      {{- $listPath := printf "pipeline.metrics.provider.%s.%s" $spec.values ( join "." $spec.list ) }}
+      {{- $watched := list }}
+      {{- range ( dig ( index $spec.list 0 ) ( index $spec.list 1 ) ( list ) $pull ) }}
+        {{- $watched = append $watched ( lower ( toString . ) ) }}
+      {{- end }}
+      {{- if $ids }}
+        {{- if not $pull.enabled }}
+          {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the %s database %s, but pipeline.metrics.provider.%s is off, so nothing records its ext:consensus_* series beyond what Materialize itself reports." $flavor ( join ", " $ids ) $spec.values ) }}
+        {{- else }}
+          {{- range $id := $ids }}
+            {{- if not ( has ( lower $id ) $watched ) }}
+              {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the %s database %q, which %s does not list, so the pull does not watch it and its ext:consensus_* series are absent." $flavor $id $listPath ) }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- else if and $pull.enabled $watched }}
+        {{- $warnings = append $warnings ( printf "%s watches %s, but externalDependencies.consensus names none of them as the metadata database, so the %s adapter records no ext:consensus_* series. Name the metadata database there, and leave out any other, such as Grafana's." $listPath ( join ", " $watched ) $flavor ) }}
       {{- end }}
     {{- end }}
   {{- end }}

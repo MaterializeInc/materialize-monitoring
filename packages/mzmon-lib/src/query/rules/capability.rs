@@ -44,6 +44,9 @@ pub enum Capability {
     NodeExporter,
     Loki,
     Alloy,
+    Cloudwatch,
+    CloudMonitoring,
+    AzureMonitor,
     // Set explicitly by an operator.
     SyntheticUptime,
     ExternalUptime,
@@ -70,6 +73,9 @@ impl Capability {
         Capability::NodeExporter,
         Capability::Loki,
         Capability::Alloy,
+        Capability::Cloudwatch,
+        Capability::CloudMonitoring,
+        Capability::AzureMonitor,
         Capability::SyntheticUptime,
         Capability::ExternalUptime,
         Capability::FeatureFlags,
@@ -95,6 +101,9 @@ impl Capability {
             Capability::NodeExporter => "node-exporter",
             Capability::Loki => "loki",
             Capability::Alloy => "alloy",
+            Capability::Cloudwatch => "cloudwatch",
+            Capability::CloudMonitoring => "cloud-monitoring",
+            Capability::AzureMonitor => "azure-monitor",
             Capability::SyntheticUptime => "synthetic-uptime",
             Capability::ExternalUptime => "external-uptime",
             Capability::FeatureFlags => "feature-flags",
@@ -114,7 +123,8 @@ impl Capability {
     /// than an operator listing it in `rules.capabilities`.
     ///
     /// The chart's `mzmon.rules.derivedCapabilities` helper must derive exactly
-    /// these; a helm-unittest pins the list.
+    /// these. Nothing checks the two lists against each other, so a capability
+    /// added here needs its derivation added there by hand.
     pub fn is_derived(self) -> bool {
         matches!(
             self,
@@ -126,6 +136,19 @@ impl Capability {
                 | Capability::NodeExporter
                 | Capability::Loki
                 | Capability::Alloy
+                | Capability::Cloudwatch
+                | Capability::CloudMonitoring
+                | Capability::AzureMonitor
+        )
+    }
+
+    /// Whether this capability is a provider pull, whose families are tiered by
+    /// `pipeline.metrics.provider.<name>.metricImportance` in values rather
+    /// than by the registry queries that read them.
+    pub fn is_provider_pull(self) -> bool {
+        matches!(
+            self,
+            Capability::Cloudwatch | Capability::CloudMonitoring | Capability::AzureMonitor
         )
     }
 }
@@ -213,6 +236,23 @@ const SOURCES: &[(&str, MetricSource)] = &[
         MetricSource::Capability(Capability::Alloy),
     ),
     ("loki_.+", MetricSource::Capability(Capability::Loki)),
+    // The provider pulls (`pipeline.metrics.provider.*`). The families are the
+    // ones the chart tiers per provider in
+    // `mzmon.alloyGateway.provider.metricPatterns`, and `aws_` alone is too
+    // broad: the AWS Load Balancer Controller publishes `aws_api_*` from inside
+    // the cluster.
+    (
+        "aws_(rds|s3|ec2|autoscaling|usage)_.+",
+        MetricSource::Capability(Capability::Cloudwatch),
+    ),
+    (
+        "stackdriver_(cloudsql_database|gcs_bucket|compute_googleapis_com_location)_.+",
+        MetricSource::Capability(Capability::CloudMonitoring),
+    ),
+    (
+        "azure_microsoft_(dbforpostgresql_flexibleservers|storage_storageaccounts_blobservices|containerservice_managedclusters|compute_virtualmachinescalesets)_.+",
+        MetricSource::Capability(Capability::AzureMonitor),
+    ),
     (
         "crdb_dedicated_.+",
         MetricSource::Capability(Capability::CrdbDedicated),
@@ -282,6 +322,15 @@ mod tests {
             ("loki_request_duration_seconds_count", C(Loki)),
             ("container_memory_working_set_bytes", C(Cadvisor)),
             ("kube_pod_status_phase", C(KubeStateMetrics)),
+            ("aws_rds_free_storage_space_minimum", C(Cloudwatch)),
+            (
+                "stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up",
+                C(CloudMonitoring),
+            ),
+            (
+                "azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count",
+                C(AzureMonitor),
+            ),
         ];
         for (metric, expected) in cases {
             assert_eq!(source(metric), Some(expected), "{metric}");
@@ -294,6 +343,8 @@ mod tests {
         // Anchored: a name that merely contains `up` is not neutral.
         assert_eq!(source("setup_total"), None);
         assert_eq!(source("some_vendor_thing_total"), None);
+        // The load balancer controller's own client metrics, not the pull.
+        assert_eq!(source("aws_api_calls_total"), None);
     }
 
     #[test]
@@ -337,6 +388,6 @@ mod tests {
                 assert!(Capability::ALL.contains(c), "{c} missing from ALL");
             }
         }
-        assert_eq!(Capability::ALL.len(), 20);
+        assert_eq!(Capability::ALL.len(), 23);
     }
 }

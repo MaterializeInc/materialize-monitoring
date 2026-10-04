@@ -2,12 +2,13 @@
 name: alerting
 description: |
   This skill should be used when adding, changing, reviewing or vetting an
-  alerting rule: an `alerts:` entry under `packages/queries/`, its severity,
-  capabilities (`requires`) or default-set membership (`enabledByDefault`), the
+  alerting rule or a recording rule: an `alerts:` or `rules:` entry under
+  `packages/queries/`, its severity, capabilities (`requires`) or default-set
+  membership (`enabledByDefault`), the normalized `ext:*` series, the
   `gen-rules` output under `charts/materialize-monitoring/pre-rendered/rules/`,
-  the chart's `rules.*` values, or the promtool unit tests in
-  `packages/queries/tests/`. Also use it when porting a rule from Materialize
-  Cloud's alerting.
+  the chart's `rules.*` or `externalDependencies` values, or the promtool unit
+  tests in `packages/queries/tests/`. Also use it when porting a rule from
+  Materialize Cloud's alerting.
 ---
 
 # Alerting
@@ -22,6 +23,10 @@ nothing to report, so almost every mistake here is silent.
   — how an entry becomes an installed rule, the alerting context and its
   placeholders, capabilities, the default set, what `gen-rules` rejects, and
   the contract every shipped alert keeps. Read the contract before writing PromQL.
+- [Authoring Recording Rules](../../../docs/content/reference/internal/queries/recording-rules.md)
+  — the `<level>:<metric>[:<operation>]` naming convention, the `ext:*`
+  contract (a `flavor` per adapter, absence over a guessed value), and the
+  install-time facts the provider adapters need.
 - [Configuring Alerting](../../../docs/content/alerting/configuring.md) — the
   operator's side: which rules install and the `rules.*` values.
 - [The alerting design doc](../../../docs/content/reference/internal/design-docs/20260917-alerting-self-managed.md)

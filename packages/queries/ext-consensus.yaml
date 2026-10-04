@@ -1,0 +1,275 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# The normalized `ext:consensus_*` series: the metadata database, one contract
+# whatever measured it.
+
+description: |
+  The metadata (consensus) database as a set of recorded series that read the
+  same on every database flavor. Each series has one name, one unit and one
+  label set, and every source that can measure it records it under that name.
+  Alerts and summary panels read these; the flavor-native families stay
+  available for drilldown. The external dependency design doc is the
+  reasoning.
+
+  ## Adapters
+
+  An **adapter** is one source of measurements, and it is one rule group here.
+  Every series carries a `flavor` label naming the adapter that recorded it.
+
+  | Adapter (`flavor`) | Group | Reads | Identified by |
+  |---|---|---|---|
+  | `persist` | `ext_consensus_persist` | Materialize's own calls, `mz_persist_external_*` | `namespace`: the environment that made the calls |
+  | `rds` | `ext_consensus_rds` | The CloudWatch pull | `resource`: the DB instance identifier |
+  | `cloudsql` | `ext_consensus_cloudsql` | The Cloud Monitoring pull | `resource`: the instance name |
+  | `azure-postgres` | `ext_consensus_azure_postgres` | The Azure Monitor pull | `resource`: the flexible server name |
+
+  The `persist` adapter needs nothing configured and is present wherever
+  Materialize is. The provider adapters record only the instances that
+  `externalDependencies.consensus` in the chart names as a metadata database.
+  A provider pull also watches databases that are not one, Grafana's among
+  them, and the provider cannot tell them apart.
+
+  ## Absence is an answer
+
+  An adapter that cannot measure a series records nothing for it. It never
+  records a zero, a constant, or a value derived from a different
+  measurement. CloudWatch publishes neither an RDS instance's allocated
+  storage nor any reachability signal, so the `rds` adapter records no
+  `ext:consensus_storage_used_ratio` and no `ext:consensus_up`. No adapter
+  here can see `max_connections`, so nothing records
+  `ext:consensus_connections_used_ratio` yet; the exporter adapters will.
+
+  ## Freshness
+
+  Provider samples arrive minutes late and every few minutes, so each
+  provider adapter reads its family through `last_over_time(…[15m])`. A
+  stopped pull's last value goes on being recorded for up to 15 minutes.
+  The `persist` adapter reads five-minute rates and is current.
+
+# Diagnostic, so that the rules here never raise the tier of the metrics they
+# read. The provider families are tiered by values
+# (`pipeline.metrics.provider.*.metricImportance`), and Materialize's are
+# already tiered by the dashboards that draw them.
+metricImportanceHint: diagnostic
+
+rules:
+  # --- persist: the client, always on -----------------------------------------
+  - record: ext:consensus_up
+    group: ext_consensus_persist
+    stability: best-effort
+    labels:
+      flavor: persist
+    description:
+      summary: |
+        1 while Materialize's calls to the metadata database succeed, per
+        environment namespace, and 0 when none has succeeded in five minutes.
+      notes: |
+        An environment makes about 80 calls a second while idle, so five
+        minutes without a success is a database it cannot reach rather than one
+        it had no reason to call. A call that hangs counts as not succeeding.
+        Absent when the environment is not being scraped.
+    query:
+      id: ext.consensus.persist.up
+      stability: experimental
+      description:
+        summary: |
+          Whether any metadata database call succeeded in the last five minutes,
+          per environment namespace.
+      promQL: |
+        sum by (namespace) (
+          rate(mz_persist_external_succeeded_count{op=~"consensus_.*"}[5m])
+        ) > bool 0
+
+  - record: ext:consensus_commit_latency_seconds:p99
+    group: ext_consensus_persist
+    stability: best-effort
+    labels:
+      flavor: persist
+    description:
+      summary: |
+        The 99th-percentile time a commit to the metadata database takes, over
+        five minutes, per environment namespace.
+      notes: |
+        A commit is persist's compare-and-set, `op="consensus_cas"`, the only
+        consensus operation with a latency histogram. Measured by the client,
+        so it includes the network and any wait for a pooled connection.
+        Absent when there was no commit in the window.
+    query:
+      id: ext.consensus.persist.commit_latency_p99
+      stability: experimental
+      description:
+        summary: |
+          p99 metadata database commit latency over five minutes, per
+          environment namespace.
+      promQL: |
+        histogram_quantile(0.99,
+          sum by (namespace, le) (
+            rate(mz_persist_external_op_latency_bucket{op="consensus_cas"}[5m])
+          )
+        ) >= 0
+
+  # --- rds: the CloudWatch pull ------------------------------------------------
+  - record: ext:consensus_xid_used_ratio
+    group: ext_consensus_rds
+    stability: best-effort
+    labels:
+      flavor: rds
+    description:
+      summary: |
+        The fraction of PostgreSQL's transaction-ID space each RDS metadata
+        database has used, against the 2^31 at which it stops accepting writes.
+      notes: |
+        From CloudWatch's `MaximumUsedTransactionIDs`.
+    query:
+      id: ext.consensus.rds.xid_used_ratio
+      stability: experimental
+      description:
+        summary: Transaction-ID headroom used, per declared RDS instance.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(aws_rds_maximum_used_transaction_ids_maximum{dimension_DBInstanceIdentifier=~"(?i)%%{consensusRdsResources}"}[15m]),
+            "resource", "$1", "dimension_DBInstanceIdentifier", "(.+)"
+          )
+        ) / 2147483648
+
+  # --- cloudsql: the Cloud Monitoring pull -------------------------------------
+  - record: ext:consensus_up
+    group: ext_consensus_cloudsql
+    stability: best-effort
+    labels:
+      flavor: cloudsql
+    description:
+      summary: |
+        1 while Cloud SQL reports each metadata database instance up, and 0
+        when it reports it down.
+    query:
+      id: ext.consensus.cloudsql.up
+      stability: experimental
+      description:
+        summary: Cloud SQL's `database/up`, per declared instance.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id=~"(?i).+:(%%{consensusCloudsqlResources})"}[15m]),
+            "resource", "$1", "database_id", ".+:(.+)"
+          )
+        )
+
+  - record: ext:consensus_storage_used_ratio
+    group: ext_consensus_cloudsql
+    stability: best-effort
+    labels:
+      flavor: cloudsql
+    description:
+      summary: |
+        The fraction of each Cloud SQL metadata database's provisioned disk in
+        use.
+    query:
+      id: ext.consensus.cloudsql.storage_used_ratio
+      stability: experimental
+      description:
+        summary: Cloud SQL's `database/disk/utilization`, per declared instance.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization{database_id=~"(?i).+:(%%{consensusCloudsqlResources})"}[15m]),
+            "resource", "$1", "database_id", ".+:(.+)"
+          )
+        )
+
+  - record: ext:consensus_xid_used_ratio
+    group: ext_consensus_cloudsql
+    stability: best-effort
+    labels:
+      flavor: cloudsql
+    description:
+      summary: |
+        The fraction of PostgreSQL's transaction-ID space each Cloud SQL
+        metadata database has used.
+      notes: |
+        Cloud SQL publishes this as a ratio of the same 2^31 limit the other
+        adapters divide by.
+    query:
+      id: ext.consensus.cloudsql.xid_used_ratio
+      stability: experimental
+      description:
+        summary: |
+          Cloud SQL's `database/postgresql/transaction_id_utilization`, per
+          declared instance.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization{database_id=~"(?i).+:(%%{consensusCloudsqlResources})"}[15m]),
+            "resource", "$1", "database_id", ".+:(.+)"
+          )
+        )
+
+  # --- azure-postgres: the Azure Monitor pull ----------------------------------
+  - record: ext:consensus_up
+    group: ext_consensus_azure_postgres
+    stability: best-effort
+    labels:
+      flavor: azure-postgres
+    description:
+      summary: |
+        1 while Azure reports each metadata database flexible server alive, and
+        0 when it reports it down.
+    query:
+      id: ext.consensus.azure_postgres.up
+      stability: experimental
+      description:
+        summary: Azure Monitor's `is_db_alive`, per declared flexible server.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName=~"(?i)%%{consensusAzurePostgresResources}"}[15m]),
+            "resource", "$1", "resourceName", "(.+)"
+          )
+        )
+
+  - record: ext:consensus_storage_used_ratio
+    group: ext_consensus_azure_postgres
+    stability: best-effort
+    labels:
+      flavor: azure-postgres
+    description:
+      summary: |
+        The fraction of each metadata database flexible server's provisioned
+        storage in use.
+    query:
+      id: ext.consensus.azure_postgres.storage_used_ratio
+      stability: experimental
+      description:
+        summary: Azure Monitor's `storage_percent`, per declared flexible server.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent{resourceName=~"(?i)%%{consensusAzurePostgresResources}"}[15m]),
+            "resource", "$1", "resourceName", "(.+)"
+          )
+        ) / 100
+
+  - record: ext:consensus_xid_used_ratio
+    group: ext_consensus_azure_postgres
+    stability: best-effort
+    labels:
+      flavor: azure-postgres
+    description:
+      summary: |
+        The fraction of PostgreSQL's transaction-ID space each metadata database
+        flexible server has used, against the 2^31 at which it stops accepting
+        writes.
+    query:
+      id: ext.consensus.azure_postgres.xid_used_ratio
+      stability: experimental
+      description:
+        summary: |
+          Azure Monitor's `maximum_used_transactionIDs`, per declared flexible
+          server.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count{resourceName=~"(?i)%%{consensusAzurePostgresResources}"}[15m]),
+            "resource", "$1", "resourceName", "(.+)"
+          )
+        ) / 2147483648

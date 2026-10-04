@@ -40,11 +40,12 @@ templates:
 tests:
   # --- what installs --------------------------------------------------------
 
+  # Three alert files and the ext-consensus recording rules.
   - it: installs the vetted default set as PrometheusRules
     template: templates/alerts/prometheusrules.yaml
     asserts:
       - hasDocuments:
-          count: 3
+          count: 4
       - isKind:
           of: PrometheusRule
       - equal:
@@ -154,9 +155,24 @@ tests:
         - kubelet-metrics
         - swap-nodes
         - egress-gateway
+      # Every provider adapter, with a declared database each, so the
+      # externalDependencies placeholders are filled too.
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-metadata]
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: test-project
+      pipeline.metrics.provider.gcp.cloudSql.instances: [mz-metadata]
+      pipeline.metrics.provider.azure.enabled: true
+      pipeline.metrics.provider.azure.subscriptionId: 00000000-0000-0000-0000-000000000000
+      pipeline.metrics.provider.azure.postgres.servers: [mz-metadata]
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata}
+        - {flavor: cloudsql, resourceId: mz-metadata}
+        - {flavor: azure-postgres, resourceId: mz-metadata}
     asserts:
       - hasDocuments:
-          count: 3
+          count: 4
 
   # --- placeholders ---------------------------------------------------------
 
@@ -377,7 +393,210 @@ tests:
           path: spec.groups[*].rules[?(@.alert == "clusterd-error-kill")].annotations.runbook_url
           pattern: "common-alerts/#clusterd-error-kill$"
 
+  # --- recording rules ------------------------------------------------------
+
+  # The persist adapter reads Materialize's own calls, so it needs nothing
+  # configured and nothing selected.
+  - it: records the persist adapter wherever Materialize is
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: recording-rules
+      - equal:
+          path: metadata.labels["mzmon.materialize.cloud/flavor"]
+          value: promql
+      - equal:
+          path: spec.groups[?(@.name == "ext_consensus_persist")].rules[?(@.record == "ext:consensus_up")].labels.flavor
+          value: persist
+      - exists:
+          path: spec.groups[?(@.name == "ext_consensus_persist")].rules[?(@.record == "ext:consensus_commit_latency_seconds:p99")]
+
+  - it: leaves a provider adapter out where its pull is off
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata}
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - notExists:
+          path: spec.groups[?(@.name == "ext_consensus_rds")]
+      - notExists:
+          path: spec.groups[?(@.name == "ext_consensus_cloudsql")]
+      - notExists:
+          path: spec.groups[?(@.name == "ext_consensus_azure_postgres")]
+
+  # The pull watches Grafana's database too, and the provider cannot tell the
+  # two apart; only the declared one is a metadata database.
+  - it: records a provider adapter for the declared database only
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-metadata, mz-grafana]
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata}
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "ext_consensus_rds")].rules[?(@.record == "ext:consensus_xid_used_ratio")].expr
+          pattern: 'dimension_DBInstanceIdentifier=~"\(\?i\)mz-metadata"'
+      - notMatchRegex:
+          path: spec.groups[?(@.name == "ext_consensus_rds")].rules[?(@.record == "ext:consensus_xid_used_ratio")].expr
+          pattern: "mz-grafana"
+      - equal:
+          path: spec.groups[?(@.name == "ext_consensus_rds")].rules[?(@.record == "ext:consensus_xid_used_ratio")].labels.flavor
+          value: rds
+
+  - it: records nothing for a provider adapter until its database is declared
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: test-project
+      pipeline.metrics.provider.gcp.cloudSql.instances: [mz-metadata, mz-grafana]
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "ext_consensus_cloudsql")].rules[?(@.record == "ext:consensus_up")].expr
+          pattern: 'database_id=~"\(\?i\)\.\+:\(a\^\)"'
+
+  - it: joins several declared databases of one flavor into one matcher
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      pipeline.metrics.provider.azure.enabled: true
+      pipeline.metrics.provider.azure.subscriptionId: 00000000-0000-0000-0000-000000000000
+      pipeline.metrics.provider.azure.postgres.servers: [mz-a, mz-b]
+      externalDependencies.consensus:
+        - {flavor: azure-postgres, resourceId: mz-a}
+        - {flavor: azure-postgres, resourceId: mz-b}
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "ext_consensus_azure_postgres")].rules[?(@.record == "ext:consensus_storage_used_ratio")].expr
+          pattern: 'resourceName=~"\(\?i\)mz-a\|mz-b"'
+
+  - it: records nothing when rules are off
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      rules.enabled: false
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-metadata]
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata}
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: warns when a pull watches databases none of which is declared
+    template: templates/NOTES.txt
+    set:
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-metadata, mz-grafana]
+    asserts:
+      - matchRegexRaw:
+          pattern: 'pipeline.metrics.provider.cloudwatch.rds.instances watches mz-metadata, mz-grafana, but externalDependencies.consensus names none of them'
+
+  - it: warns when a declared database is not watched by its pull
+    template: templates/NOTES.txt
+    set:
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [mz-grafana]
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'names the rds database "mz-metadata", which pipeline.metrics.provider.cloudwatch.rds.instances does not list'
+
+  - it: warns when a declared database's pull is off
+    template: templates/NOTES.txt
+    set:
+      externalDependencies.consensus:
+        - {flavor: cloudsql, resourceId: mz-metadata}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'names the cloudsql database mz-metadata, but pipeline.metrics.provider.gcp is off'
+
+  - it: matches a declared database to its pull regardless of case
+    template: templates/NOTES.txt
+    set:
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.rds.instances: [MZ-Metadata]
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata}
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "externalDependencies"
+
+  - it: warns that a tiered thanos destination drops recorded series
+    template: templates/NOTES.txt
+    set:
+      pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
+    asserts:
+      - matchRegexRaw:
+          pattern: 'recorded series such as ext:consensus_up carry no tier'
+
   # --- validators -----------------------------------------------------------
+
+  - it: rejects an unknown consensus flavor
+    template: templates/validate.yaml
+    set:
+      externalDependencies.consensus:
+        - {flavor: mysql, resourceId: mz-metadata}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'externalDependencies.consensus\[0\].flavor is "mysql"; it is one of azure-postgres, cloudsql, rds'
+
+  # The id lands in a PromQL string unescaped.
+  - it: rejects a resource id that is not a provider name
+    template: templates/validate.yaml
+    set:
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: 'mz"db'}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'externalDependencies.consensus\[0\].resourceId is "mz\\"db"'
+
+  - it: rejects a field the chart does not read yet
+    template: templates/validate.yaml
+    set:
+      externalDependencies.consensus:
+        - {flavor: rds, resourceId: mz-metadata, environments: [main]}
+    asserts:
+      - failedTemplate:
+          errorPattern: 'externalDependencies.consensus\[0\].environments is not a field'
+
+  - it: rejects a dependency the chart does not read yet
+    template: templates/validate.yaml
+    set:
+      externalDependencies.objectStore: []
+    asserts:
+      - failedTemplate:
+          errorPattern: 'externalDependencies.objectStore is not a dependency this chart reads'
+
+  - it: rejects consensus given as a single entry rather than a list
+    template: templates/validate.yaml
+    set:
+      externalDependencies.consensus:
+        flavor: rds
+        resourceId: mz-metadata
+    asserts:
+      - failedTemplate:
+          errorPattern: 'externalDependencies.consensus is .*; it is a list'
 
   - it: rejects an unknown capability
     template: templates/validate.yaml

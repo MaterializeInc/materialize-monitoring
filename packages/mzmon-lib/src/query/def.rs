@@ -147,6 +147,9 @@ pub struct RuleDef {
     pub query_id: Option<String>,
     #[serde(default)]
     pub query: Option<Box<QueryDef>>,
+    /// Capabilities the rule needs beyond those its metrics imply.
+    #[serde(default)]
+    pub requires: Vec<Capability>,
 }
 
 /// An alerting rule. Like [`RuleDef`], its dependency is one of `queryId` /

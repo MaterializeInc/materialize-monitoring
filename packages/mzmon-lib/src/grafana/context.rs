@@ -558,6 +558,13 @@ pub fn dashboard_context<'a>(
         ("infraImportantWorkloadList", ".+".to_string()),
         ("infraNonessentialWorkloadList", ".+".to_string()),
         ("infraDaemonsetWorkloadList", ".+".to_string()),
+        // Which databases are a metadata database is an install-time value
+        // (`externalDependencies.consensus`) too. A dashboard reading one of
+        // these covers every database the provider pull watches, as the
+        // Infrastructure Cloud Provider dashboard does by design.
+        ("consensusRdsResources", ".+".to_string()),
+        ("consensusCloudsqlResources", ".+".to_string()),
+        ("consensusAzurePostgresResources", ".+".to_string()),
         // Generation, which is a *name* pattern rather than a label matcher --
         // see `GENERATION_NAME_PATTERN`. `:regex` for the same reason as the
         // cluster and replica forms: the value is a fragment of a larger regex,

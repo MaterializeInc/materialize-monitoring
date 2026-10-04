@@ -172,6 +172,11 @@ impl Query {
 }
 
 /// A concrete recording rule in the registry.
+///
+/// Several rules may record the same `record` name, each from a different
+/// source: an adapter of the normalized `ext:*` layer is one group, and every
+/// adapter that can measure a series records it under the same name. A rule is
+/// therefore identified by its group and record together ([`Rule::key`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     pub record: String,
@@ -180,6 +185,19 @@ pub struct Rule {
     pub stability: Stability,
     pub query_id: QueryId,
     pub labels: IndexMap<String, String>,
+    /// Capabilities declared beyond those the rule's metrics imply.
+    pub requires: Vec<Capability>,
+    /// The stem of the registry file the rule was loaded from, when it was
+    /// loaded from one. Rules are rendered one output file per source file.
+    pub source: Option<String>,
+}
+
+impl Rule {
+    /// `<group>/<record>`: the rule's identity, and its key in the chart's rule
+    /// index.
+    pub fn key(&self) -> String {
+        format!("{}/{}", self.group, self.record)
+    }
 }
 
 /// A concrete alerting rule in the registry.

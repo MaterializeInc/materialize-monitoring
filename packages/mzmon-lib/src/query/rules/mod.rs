@@ -7,15 +7,17 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! The registry's alerts as rules for the Thanos and Loki rulers.
+//! The registry's alerts and recording rules as rules for the Thanos and Loki
+//! rulers.
 //!
 //! - [`context`] renders a query for a ruler: install-time placeholders for the
 //!   facts that differ per deployment, and no parameters for the choices a
 //!   dashboard viewer makes.
 //! - [`capability`] is the vocabulary rules are selected by, and the table that
 //!   infers a rule's requirements from the metrics it reads.
-//! - [`render`] validates and renders every alert, PromQL and LogQL, and
-//!   serializes the rule files and the index the chart selects from.
+//! - [`render`] validates and renders every alert, PromQL and LogQL, and every
+//!   recording rule, and serializes the rule files and the index the chart
+//!   selects from.
 
 pub mod capability;
 pub mod context;
@@ -23,4 +25,4 @@ pub mod render;
 
 pub use capability::Capability;
 pub use context::{Placeholder, alerting_context};
-pub use render::{RenderedRule, RuleEngine, RuleError, RuleSet, render_rules};
+pub use render::{RenderedRecord, RenderedRule, RuleEngine, RuleError, RuleSet, render_rules};

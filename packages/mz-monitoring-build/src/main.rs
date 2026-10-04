@@ -43,7 +43,7 @@ enum Command {
     ExtractMetrics(extract_metrics::ExtractMetricsArgs),
     /// Group registry metrics by importance into a metric-tiers.yaml.
     GenMetricTiers(gen_metric_tiers::GenMetricTiersArgs),
-    /// Render the registry's alerts into the chart's pre-rendered Prometheus rules.
+    /// Render the registry's alerts and recording rules into the chart's pre-rendered rules.
     GenRules(gen_rules::GenRulesArgs),
     /// Report which merged PRs each component changelog would collect.
     Changelog(versioning::ChangelogArgs),
