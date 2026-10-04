@@ -1,0 +1,63 @@
+# Cilium, and Hubble beside it.
+#
+# One selector covers three deployments that look the same to Kubernetes: a
+# self-installed upstream Cilium, Azure CNI powered by Cilium, and GKE Dataplane
+# V2 -- whose daemon is named `anetd` but labels itself `k8s-app: cilium` and
+# runs a container literally called `cilium-agent`.
+#
+# **The endpoints name ports rather than addresses, and that is the point.**
+# Cilium only declares `prometheus` and `hubble-metrics` as container ports when
+# metrics are enabled, so a PodMonitor endpoint naming them yields a target
+# exactly when there is something to scrape. That matters because the three
+# deployments disagree: upstream Cilium exposes both when asked, while **GKE
+# Dataplane V2 disables them outright** -- verified against GKE 1.34 running
+# cilium v1.18.7-gke1.35, where :9962 serves nothing and Google's own collector
+# ships the agent's metrics to Cloud Monitoring instead. Addressing the port
+# numerically would put a failing scrape on every GKE node forever; naming the
+# port means GKE simply produces no target, and the dashboard says so.
+#
+# Hubble's port is listed for the same reason and comes with a caveat worth
+# knowing: it exists whenever Hubble does, but it serves *flow* metrics
+# (`hubble_flows_processed_total`, `hubble_drop_total`) only when Hubble's
+# metric set is configured. On GKE it was found serving nothing but Hubble's own
+# health counters.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cni-cilium
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: cni-cilium
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  podMetricsEndpoints:
+    # The agent: endpoint state, policy verdicts, datapath drops, BPF map
+    # pressure.
+    - port: prometheus
+      path: /metrics
+      relabelings:
+        - targetLabel: network_component
+          replacement: cilium
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+    # Hubble: flow-level observability, when its metric set is enabled.
+    - port: hubble-metrics
+      path: /metrics
+      relabelings:
+        - targetLabel: network_component
+          replacement: cilium
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+      metricRelabelings:
+        # Hubble can be configured to label flows with source and destination
+        # pod, which multiplies to the square of the pods talking to each other.
+        # The port-level breakdown is worse again. Neither is a question this
+        # dashboard asks, and both are cheap to add back per-deployment.
+        - sourceLabels: [__name__]
+          regex: hubble_(port_distribution|tcp_flags)_total
+          action: drop
