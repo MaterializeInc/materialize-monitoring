@@ -22,15 +22,10 @@ locals {
           destination = {
             otel = {
               enabled = true
-              googleCloudExporter = merge(
-                {
-                  enabled             = true
-                  minMetricImportance = var.google_cloud_metrics.min_importance
-                },
-                var.google_cloud_metrics.prefix == null ? {} : {
-                  prefix = var.google_cloud_metrics.prefix
-                },
-              )
+              googleCloudExporter = {
+                enabled             = true
+                minMetricImportance = var.google_cloud_metrics.min_importance
+              }
             }
           }
         }
@@ -253,4 +248,14 @@ locals {
       serviceAccount = { annotations = var.gateway_service_account_annotations }
     }
   })]
+}
+
+# `google_cloud_metrics.prefix` is accepted and ignored for the deprecation
+# window, so a caller still passing it keeps planning. A warning rather than an
+# error, because nothing breaks: the export works, it just cannot honor a prefix.
+check "google_cloud_metrics_prefix" {
+  assert {
+    condition     = try(var.google_cloud_metrics.prefix, null) == null
+    error_message = "google_cloud_metrics.prefix is deprecated and ignored. The export writes OTLP to Google's Telemetry API, which names every metric prometheus.googleapis.com/<name>/<kind>. Remove it."
+  }
 }

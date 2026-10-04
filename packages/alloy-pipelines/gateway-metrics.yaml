@@ -22,7 +22,7 @@ blocks:
         - output:
             metrics:
               # switches to gateway-metrics.yaml
-              - otelcol.processor.filter.inputMetricProcessor.input
+              - otelcol.processor.transform.inputMetricProcessor.input
 
   # --- collectors ---
 
@@ -34,6 +34,22 @@ blocks:
         - clustering:
             enabled: true
         - scrape:
+            # Pass each target's `# TYPE` / `# HELP` downstream, so the bridge
+            # above types what it converts: counters become cumulative sums and
+            # a histogram's `_bucket`, `_count` and `_sum` become one histogram
+            # named for its family. Without it every series is an untyped
+            # gauge, which the OTel destinations cannot aggregate natively
+            # (Google Cloud Monitoring names the point kind in the metric type,
+            # and Datadog's rates and percentiles need it too). Thanos sees no
+            # difference for text-format targets: outputBridge turns the same
+            # types back into the same series names.
+            #
+            # Experimental upstream, so the gateway runs at
+            # `--stability.level=experimental`; `alloy validate` does not check
+            # it. Every `prometheus.scrape` on the gateway sets it too.
+            # Pushed remote-write (`prometheus.receive_http`) carries no
+            # metadata and stays untyped.
+            honor_metadata: true
             default_scrape_interval:
               function: coalesce
               arguments:
@@ -75,22 +91,75 @@ blocks:
   # --- main processing pipeline -----------
 
   # Metrics processing choke point, otelcol side (the analog of loki.process
-  # .inputProcessor for logs).
-  # These are applied to ALL metrics.
-  - otelcol.processor.filter:
+  # .inputProcessor for logs). These are applied to ALL metrics.
+  #
+  # The deny list (GATEWAY_DENY_METRICS) names Prometheus series, the way an
+  # operator sees them in Thanos: `foo_total`, `foo_bucket`, `foo_count`. With
+  # types honored, a histogram arrives as ONE metric named for its family
+  # (`foo`) carrying its buckets, count and sum, and a summary as one metric
+  # whose quantile series carry the family name. Matching metric.name alone
+  # would miss `foo_bucket` entirely and drop nothing.
+  #
+  # So a histogram whose buckets are denied, or a summary whose quantiles are,
+  # first has its count and sum pulled out as metrics of their own (unless
+  # those are denied too), and inputMetricDeny then drops what is left.
+  # Denying `foo_bucket` keeps `foo_count` and `foo_sum` flowing, as it did
+  # before types. The per-destination tier filters in the chart
+  # (`mzmon.alloyGateway.otelDest.egressFilter`) are the same idea, inverted.
+  #
+  # `ignore`, because `propagate` would drop the whole payload on one bad
+  # statement, and this sits in front of every destination.
+  - otelcol.processor.transform:
       label: inputMetricProcessor
+      error_mode: ignore
+      blocks:
+        - metric_statements:
+            context: metric
+            statements:
+              - operator: "+"
+                arguments:
+                  - 'extract_count_metric(true) where ((metric.type == METRIC_DATA_TYPE_HISTOGRAM and IsMatch(Concat([metric.name, "_bucket"], ""), "^(?:'
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$")) or (metric.type == METRIC_DATA_TYPE_SUMMARY and IsMatch(metric.name, "^(?:'
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$"))) and not IsMatch(Concat([metric.name, "_count"], ""), "^(?:'
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$")'
+              - operator: "+"
+                arguments:
+                  - 'extract_sum_metric(true) where ((metric.type == METRIC_DATA_TYPE_HISTOGRAM and IsMatch(Concat([metric.name, "_bucket"], ""), "^(?:'
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$")) or (metric.type == METRIC_DATA_TYPE_SUMMARY and IsMatch(metric.name, "^(?:'
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$"))) and not IsMatch(Concat([metric.name, "_sum"], ""), "^(?:'
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$")'
+        - output:
+            metrics:
+              - otelcol.processor.filter.inputMetricDeny.input
+
+  # Drops what the deny list names. Unset, the pattern is `^(?:)$`, which
+  # matches no metric name.
+  - otelcol.processor.filter:
+      label: inputMetricDeny
       blocks:
         - metric_conditions:
             # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/contexts/ottlmetric/README.md
             context: metric
             # each condition is OR'd. If any condition evaluates to true, this metric is dropped
             conditions:
-              # Drop metrics in the denylist. Assembled at config load into
-              # a single OTTL string: IsMatch(metric.name, "^(?:<deny>)$")
+              # A series name on the list: a gauge, a counter, a metric the
+              # transform above pulled out, or a summary's quantiles.
               - operator: "+"
                 arguments:
                   - 'IsMatch(metric.name, "^(?:'
-                  - env: "GATEWAY_DENY_METRICS"
+                  - env: GATEWAY_DENY_METRICS
+                  - ')$")'
+              # A histogram whose buckets are on it.
+              - operator: "+"
+                arguments:
+                  - 'metric.type == METRIC_DATA_TYPE_HISTOGRAM and IsMatch(Concat([metric.name, "_bucket"], ""), "^(?:'
+                  - env: GATEWAY_DENY_METRICS
                   - ')$")'
         - output:
             metrics:

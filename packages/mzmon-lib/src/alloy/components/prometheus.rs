@@ -147,6 +147,11 @@ pub struct PrometheusScrapeBlock {
     /// whose points are hours apart is stamped at the scrape instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub honor_timestamps: Option<Expressable<bool>>,
+    /// Pass the target's `# TYPE` / `# HELP` metadata downstream, so
+    /// `otelcol.receiver.prometheus` can type what it converts. Experimental
+    /// upstream, and gated at build rather than at `alloy validate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub honor_metadata: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub follow_redirects: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -189,6 +194,9 @@ impl ToBlock for PrometheusScrapeBlock {
         }
         if let Some(v) = &self.honor_timestamps {
             attributes.insert("honor_timestamps".into(), v.to_attribute_value()?);
+        }
+        if let Some(v) = self.honor_metadata {
+            attributes.insert("honor_metadata".into(), AttributeValue::Bool(v));
         }
         if let Some(v) = self.follow_redirects {
             attributes.insert("follow_redirects".into(), AttributeValue::Bool(v));
@@ -1782,6 +1790,26 @@ mod tests {
                 .render()
                 .unwrap()
                 .contains("honor_timestamps = argument.honor_timestamps.value\n"),
+        );
+    }
+
+    #[test]
+    fn scrape_honor_metadata_renders() {
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - prometheus.scrape:
+                  targets: ["discovery.relabel.pin.output"]
+                  forward_to: ["argument.forward_to.value"]
+                  honor_metadata: true
+            "#,
+        )
+        .unwrap();
+        assert!(
+            pipeline
+                .render()
+                .unwrap()
+                .contains("honor_metadata = true\n"),
         );
     }
 

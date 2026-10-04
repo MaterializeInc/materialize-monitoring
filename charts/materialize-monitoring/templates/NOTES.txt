@@ -22,7 +22,7 @@ Grafana Alloy (gateway) is installed and configured to process metrics and logs.
     Destination: Generic OTLP
     {{- end -}}
     {{- if .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.enabled }}
-    Destination: Google Cloud Monitoring
+    Destination: Google Cloud Managed Service for Prometheus (OTLP, {{ .Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter.minMetricImportance }} metrics)
     {{- end }}
     {{- if .Values.pipeline.metrics.gateway.destination.otel.datadogExporter.enabled }}
     Destination: Datadog

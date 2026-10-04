@@ -315,6 +315,13 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         thanos,
         checks::thanos::samples_scraped,
     ));
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::typed_names_round_trip",
+        thanos,
+        checks::thanos::typed_names_round_trip,
+    ));
 
     // Alertmanager. Gated on it running in the release namespace, which is
     // where every Service this suite dials is looked up; under split-namespace

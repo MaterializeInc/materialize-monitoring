@@ -13,7 +13,8 @@
 #
 # Google Cloud Monitoring authenticates with the gateway pod's Workload Identity
 # instead of a Secret key — annotate the alloy-gateway ServiceAccount (below) and
-# grant that identity roles/monitoring.metricWriter.
+# grant that identity roles/monitoring.metricWriter. The metrics go over OTLP to
+# the Telemetry API, so the project also needs telemetry.googleapis.com enabled.
 
 # GCM uses the gateway's ambient GCP identity. See gcp-example.values.yaml for the
 # ServiceAccount annotation, reused here.
@@ -35,7 +36,8 @@ pipeline:
         otel:
           enabled: true
 
-          # Google Cloud Monitoring: essentials + dashboard metrics.
+          # Google Cloud Monitoring (as prometheus.googleapis.com/ metrics):
+          # essentials + dashboard metrics.
           googleCloudExporter:
             enabled: true
             minMetricImportance: recommended

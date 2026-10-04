@@ -1,0 +1,209 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# The gateway's OpenTelemetry metric destinations, as `_alloy_helpers.tpl`
+# renders them.
+#
+# Three things these lock down:
+#
+#   1. The tier filter is type-aware. The gateway's scrapes honor metadata, so a
+#      histogram reaches an OTel destination as one metric named for its family,
+#      and an allowlist entry like `foo_bucket` never equals a metric name. A
+#      filter matching metric.name alone drops every histogram, silently.
+#   2. The Google Cloud exporter writes OTLP to the Telemetry API through the
+#      chain Google's reference collector configuration describes, and none of
+#      it is the old `otelcol.exporter.googlecloud`.
+#   3. The gateway runs at the stability level its components need, and the
+#      pre-validate jobs check the config at that level.
+#
+# The OTTL itself was checked against a running Alloy, not here: `alloy
+# validate` does not parse OTTL, and neither can helm-unittest.
+suite: alloy-gateway OpenTelemetry destinations
+release:
+  name: test-mon
+  namespace: monitoring
+set:
+  tags.default: false
+  tags.pipeline: true
+  # Off-cluster, so the reachability validators stay quiet about a Thanos and a
+  # Loki this suite does not deploy.
+  pipeline.logging.gateway.destination.loki.url: https://logs.example.com/loki/api/v1/push
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.url: https://metrics.example.com/api/v1/receive
+  pipeline.metrics.gateway.destination.otel.enabled: true
+  pipeline.metrics.gateway.destination.otel.googleCloudExporter.enabled: true
+tests:
+  # --- the tier filter --------------------------------------------------------
+
+  - it: feeds each destination through a transform and filter pair
+    set:
+      pipeline.metrics.gateway.destination.otel.datadogExporter.enabled: true
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "egressFanOut" \{\s+output \{\s+metrics = \[\s+otelcol\.processor\.transform\.googleCloudMetricEgressFilter\.input,\s+otelcol\.processor\.transform\.datadogMetricEgressFilter\.input,'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.transform "googleCloudMetricEgressFilter" \{[\s\S]*?metrics = \[otelcol\.processor\.filter\.googleCloudMetricEgressFilter\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "googleCloudMetricEgressFilter" \{[\s\S]*?otelcol\.processor\.transform\.googleCloud\.input,'
+
+  - it: keeps a histogram by its buckets and pulls out an allowed count or sum
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      # The filter matches a histogram on `<family>_bucket`, and anything else on
+      # its own name.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '"metric\.type == METRIC_DATA_TYPE_HISTOGRAM and not IsMatch\(Concat\(\[metric\.name, \\"_bucket\\"\], \\"\\"\), \\"\^\(\?:" \+ coalesce\(sys\.env\("GATEWAY_UNFILTERED_GCM_METRICS"\), "\.\*"\) \+ "\)\$\\"\)",'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '"metric\.type != METRIC_DATA_TYPE_HISTOGRAM and not IsMatch\(metric\.name, '
+      # A family split across tiers sends its count alone.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '"extract_count_metric\(true\) where \(\(metric\.type == METRIC_DATA_TYPE_HISTOGRAM and not IsMatch\(Concat\(\[metric\.name, \\"_bucket\\"\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: '"extract_sum_metric\(true\) where '
+
+  - it: still renders the allowlist into the env ConfigMap
+    template: templates/pipelines/cm-alloy-gateway-env.yaml
+    asserts:
+      - matchRegex:
+          path: data.GATEWAY_UNFILTERED_GCM_METRICS
+          pattern: 'loki_request_duration_seconds_count'
+
+  # --- the Google Cloud chain -------------------------------------------------
+
+  - it: writes OTLP to the Telemetry API with Google auth
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.googlecloud'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "googleCloud" \{\s+client \{\s+endpoint\s+= "https://telemetry\.googleapis\.com"\s+compression = "gzip"\s+auth\s+= otelcol\.auth\.google\.googleCloud\.handler'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.google "googleCloud" \{\s*\}'
+
+  - it: chains the processors Google's reference configuration calls for, in order
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.transform "googleCloud" \{[\s\S]*?metrics = \[otelcol\.processor\.groupbyattrs\.googleCloud\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.groupbyattrs "googleCloud" \{\s+keys = \["namespace", "cluster"\][\s\S]*?metrics = \[otelcol\.processor\.resourcedetection\.googleCloud\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.resourcedetection "googleCloud" \{\s+detectors = \["gcp"\][\s\S]*?metrics = \[otelcol\.processor\.metric_start_time\.googleCloud\.input\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.metric_start_time "googleCloud" \{\s+strategy = "subtract_initial_point"[\s\S]*?metrics = \[otelcol\.processor\.batch\.googleCloud\.input\]'
+      # The Telemetry API takes at most 200 points per request.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.batch "googleCloud" \{\s+send_batch_size\s+= 200\s+send_batch_max_size = 200'
+
+  - it: writes untyped series as counters too, and renames prometheus_target collisions
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'copy_metric\(Concat\(\[metric\.name, \\"unknowncounter\\"\], \\":\\"\)\) where metric\.metadata\[\\"prometheus\.type\\"\] == \\"unknown\\"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'set\(attributes\[\\"exported_location\\"\], attributes\[\\"location\\"\]\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'set\(attributes\[\\"exported_project_id\\"\], attributes\[\\"project_id\\"\]\)'
+      # `namespace` is lifted, not renamed: queries filter on it.
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'exported_namespace'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'set\(attributes\[\\"cluster\\"\], \\"" \+ sys\.env\("CLUSTER_NAME"\) \+ "\\"\) where attributes\[\\"cluster\\"\] == nil'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'set\(attributes\[\\"collected_by\\"\], \\"materialize-monitoring\\"\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'context = "scope"\s+statements = \[\s+"set\(scope\.name, \\"\\"\)",\s+"set\(scope\.version, \\"\\"\)",'
+
+  - it: leaves project and location to GKE's metadata server by default
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'context = "resource"'
+
+  - it: sets project and location when given
+    set:
+      pipeline.metrics.gateway.destination.otel.googleCloudExporter.project: my-project
+      pipeline.metrics.gateway.destination.otel.googleCloudExporter.location: us-east1
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'context = "resource"\s+statements = \[\s+"set\(resource\.attributes\[\\"gcp\.project_id\\"\], \\"my-project\\"\)",\s+"set\(resource\.attributes\[\\"location\\"\], \\"us-east1\\"\)",'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.auth\.google "googleCloud" \{\s+project = "my-project"\s+\}'
+
+  - it: does not collide with an OTLP destination over HTTP
+    set:
+      pipeline.metrics.gateway.destination.otel.otlpExporter.enabled: true
+      pipeline.metrics.gateway.destination.otel.otlpExporter.protocol: http
+      pipeline.metrics.gateway.destination.otel.otlpExporter.url: https://otlp.example.com
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "destination" \{'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.exporter\.otlphttp "googleCloud" \{'
+
+  - it: warns about a setting the old exporter had
+    set:
+      pipeline.metrics.gateway.destination.otel.googleCloudExporter.prefix: workload.googleapis.com/mzmon
+    template: NOTES.txt
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: 'googleCloudExporter\.prefix no longer applies'
+
+  - it: says nothing about old settings when none is set
+    template: NOTES.txt
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: 'no longer applies'
+
+  # --- stability level ------------------------------------------------------
+
+  - it: refuses a gateway below the experimental stability level
+    set:
+      alloy-gateway.alloy.stabilityLevel: public-preview
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alloy-gateway\.alloy\.stabilityLevel is "public-preview", but the gateway''s scrapes set honor_metadata'
+
+  - it: validates the gateway config at the gateway's stability level
+    template: templates/pipelines/validator/job-validate-gateway.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].command
+          content: --stability.level=experimental
+
+  - it: validates the agent config at the agent's stability level
+    template: templates/pipelines/validator/job-validate-agent.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].command
+          content: --stability.level=generally-available

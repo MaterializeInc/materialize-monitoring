@@ -268,6 +268,16 @@ $defs:
         anyOf:
           - type: boolean
           - $ref: "./common/expression.schema.yaml"
+      honor_metadata:
+        description: |
+          When true, pass the target's metric metadata (`# TYPE` / `# HELP`)
+          downstream. Without it `otelcol.receiver.prometheus` has no types and
+          makes every series a gauge.
+
+          Experimental: the component fails to build unless Alloy runs with
+          `--stability.level=experimental`. `alloy validate` does not check
+          this, so a config that sets it validates at any level.
+        type: boolean
       follow_redirects:
         description: |
           When true (default), HTTP 3xx redirects are followed.

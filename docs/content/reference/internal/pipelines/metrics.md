@@ -30,7 +30,10 @@ prometheus.operator.podmonitors "default"     (PodMonitor CRs)             ─�
 prometheus.operator.servicemonitors "default" (ServiceMonitor CRs)         ─┴─→ otelcol.receiver.prometheus "inputBridge"  (Prometheus → OTLP) ─┐
 otelcol.receiver.otlp                          (OTLP metrics) ─────────────────────────────────────────────────────────────────────────────┤
                                                                                                                                             ▼
-                     otelcol.processor.filter "inputMetricProcessor"  (otelcol-side processing choke point)
+                     otelcol.processor.transform "inputMetricProcessor"  (otelcol-side processing choke point)
+                                               │
+                                               ▼
+                     otelcol.processor.filter "inputMetricDeny"   (denyMetrics, per Prometheus series)
                                                │
                                                ▼
                      otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 75%, backpressure receivers)
@@ -58,8 +61,41 @@ Cloud provider pulls join the same bridge when enabled: each is an instance of a
 They are covered under [Cloud provider pulls](#cloud-provider-pulls) below.
 
 The operator components enable `clustering` (target load spread across the alloy cluster) and read their scrape defaults from the environment (`GATEWAY_SCRAPE_INTERVAL` / `GATEWAY_SCRAPE_TIMEOUT`, via `coalesce`).
-`inputMetricProcessor` is the single choke point (the otelcol analog of the loki-side `inputProcessor`); a `memory_limiter` + `batch` pair manages the outbound stream; `otelcol.processor.filter "egress"` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
+`inputMetricProcessor` is the single choke point (the otelcol analog of the loki-side `inputProcessor`), and `inputMetricDeny` after it applies `denyMetrics`; a `memory_limiter` + `batch` pair manages the outbound stream; `otelcol.processor.filter "egress"` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
 `outputBridge` sets `add_metric_suffixes=false` so names survive the OTLP round-trip unchanged.
+
+### Typed metrics
+
+Every gateway scrape sets `honor_metadata`: the operator components' `scrape` blocks, the kubelet and kube-proxy scrapes, and the provider pulls' `provider_scrape`.
+Each target's `# TYPE` then reaches `inputBridge`, which converts a counter to a cumulative sum and a histogram's `_bucket`, `_count` and `_sum` series to one histogram named for its family.
+Pushed remote-write carries no metadata and stays untyped, as every series was before.
+
+`honor_metadata` is experimental upstream, so the gateway runs at `--stability.level=experimental`.
+Alloy checks that when it builds the component, not in `alloy validate`.
+The chart therefore refuses to render a gateway at any other level, rather than leave the pre-validate job to pass a config the gateway cannot load.
+
+The types matter to the OTLP destinations, which aggregate natively.
+Google Cloud Monitoring names the kind of point in the metric type (`<name>/counter`, `/histogram`), and Datadog's rates and percentiles need counters and distributions.
+Thanos is unaffected: `outputBridge` turns the same types back into the same series names.
+`thanos::typed_names_round_trip` in `packages/mz-monitoring-e2e` asserts it for one series of each type.
+
+Matching on names changes with the types.
+`denyMetrics` and the tier allowlists name Prometheus series, but a histogram is one metric called `foo`, so neither can match `foo_bucket` against `metric.name` alone.
+Both match per series instead, in a transform and filter pair.
+The transform pulls a histogram's count and sum out as metrics of their own where the buckets are denied, or are outside the tier, and the count or sum is not.
+The filter then decides a histogram by its `_bucket` name and anything else by its own.
+`inputMetricProcessor` and `inputMetricDeny` do this for the deny list; `mzmon.alloyGateway.otelDest.egressFilter` in the chart does it, inverted, per OTLP destination.
+The remote-write destinations filter after `outputBridge`, on Prometheus names, and need none of it.
+
+<!--
+Agent note: measured on the tier-2 kind stack (no Materialize; 2,551 metric names, about 68k series) on
+2026-10-04, toggling only `honor_metadata` in the deployed gateway ConfigMap, ten minutes per window.
+Thanos received the same 2,551 names typed and untyped. Gateway working set, both replicas together, was
+872 MiB untyped against 886 and 806 MiB in two typed windows; Go heap in use 586 against 612 and 546 MiB,
+so no difference beyond run-to-run noise. Alloy's docs say metadata memory grows with the number of
+distinct metric names per target, and a Materialize environment has many more than kind does: re-measure
+on a real install before treating this as settled.
+-->
 
 Everything above `prometheus.relabel "egress"` is shared; everything below it is per destination.
 `pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a map keyed by name, and each entry renders **two** components labelled with that name: a `prometheus.relabel` carrying its importance-tier `keep` rule, feeding a `prometheus.remote_write` carrying its endpoint, auth, and TLS.
@@ -149,11 +185,11 @@ Metric relabeling splits across three places; putting a rule in the wrong one is
 | Phase | Sees | Home | Use for |
 |---|---|---|---|
 | **Target** (pre-scrape) | `__meta_kubernetes_*` | the PodMonitor/ServiceMonitor CRs (`relabelings`, `podTargetLabels`); the operator components' `rule` blocks for cross-cutting rules; the cAdvisor ScrapeConfig | which targets to scrape, promoting pod/node labels, per-target renames |
-| **Metric** (post-scrape) | final label set only | the otelcol processing at `otelcol.processor.filter "inputMetricProcessor"` (add `filter`/`transform` there) | cross-cutting hygiene, cost governance (metric-name drops), dashboard-contract normalization |
+| **Metric** (post-scrape) | final label set only | the otelcol processing at `otelcol.processor.transform "inputMetricProcessor"` and `otelcol.processor.filter "inputMetricDeny"` | cross-cutting hygiene, cost governance (metric-name drops), dashboard-contract normalization |
 | **Identity** | — | `external_labels` on each `remote_write` destination | install/cluster/region stamps |
 
-`inputMetricProcessor` is intentionally a **rule-free passthrough** today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
-It's where the metric `filter`/`transform` work (cardinality tiers) will land as genuinely cross-cutting rules come up.
+`inputMetricProcessor` carries only the deny list's histogram split today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
+It's where further metric `transform` work will land as genuinely cross-cutting rules come up.
 
 Note: identity is stamped as a `cluster` `external_labels` entry on every `remote_write` destination, sourced from
 `env.CLUSTER_NAME`, which the chart fills from `clusterName` (default `default`).

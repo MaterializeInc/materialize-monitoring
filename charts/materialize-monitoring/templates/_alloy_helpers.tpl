@@ -325,7 +325,7 @@ otelcol.receiver.otlp "gateway" {
 
     output {
         metrics = [
-            otelcol.processor.filter.inputMetricProcessor.input,
+            otelcol.processor.transform.inputMetricProcessor.input,
         ]
         logs = [
             otelcol.exporter.loki.bridge.input,
@@ -819,13 +819,34 @@ Usage:
 
 
 {{/*
-Render the alloy-gateway metric egress filter.
+Render the alloy-gateway metric egress filter: one destination's tier allowlist.
 
-Use otelcol.processor.filter.$processorName.input as the fanout chained input.
+Use otelcol.processor.transform.$processorName.input as the fanout chained input.
+
+The allowlist (`metric-tiers.yaml`, through `unfilteredMetricsEnv`) names
+Prometheus series, as the registry's PromQL does: `foo_total`, `foo_bucket`,
+`foo_count`. The gateway's scrapes honor metadata, so a histogram reaches here
+as ONE metric named for its family (`foo`) carrying its buckets, count and sum,
+and a summary as one metric whose quantile series carry the family name.
+Matching metric.name alone would match no histogram at all, and every one
+would silently drop out of the destination.
+
+So the match is per Prometheus series, and it takes two components that share
+`$processorName`:
+
+  * the transform pulls a histogram's count and sum out as metrics of their own
+    when they are allowed and its buckets are not (or a summary's, when its
+    quantiles are not). A family split across tiers —
+    `loki_request_duration_seconds_count` at `essential`, its `_bucket` at
+    `extended` — sends only the count at `essential`, as it did before types.
+  * the filter then keeps a histogram only if its buckets are allowed, and
+    anything else only if its name is.
+
+`inputMetricDeny` in gateway-metrics.yaml is the same idea, inverted.
 
 Args:
   forwardTo: list of destinations to forward metrics to
-  processorName: name of the processor
+  processorName: label of the transform and filter pair
   unfilteredMetricsEnv: environment variable containing unfiltered metrics
 
 Usage:
@@ -833,6 +854,7 @@ Usage:
     "forwardTo" $otelDestValues.otlpExporter.handlers
     "processorName" "otlpMetricEgressFilter"
     "unfilteredMetricsEnv" $otelDestValues.otlpExporter.unfilteredMetricsEnv
+    "root" $
   ) }}
 */}}
 {{- define "mzmon.alloyGateway.otelDest.egressFilter" }}
@@ -840,12 +862,38 @@ Usage:
   {{- $unfilteredMetricsEnv := .unfilteredMetricsEnv | required "unfilteredMetricsEnv is required" }}
   {{- $processorName := .processorName | required "processorName is required" }}
   {{- $root := .root | required "root context is required" -}}
+  {{- /* An OTTL regex literal, assembled at config load: the allowlist, or
+         everything when the variable is unset. */}}
+  {{- $re := printf `\"^(?:" + coalesce(sys.env(%s), ".*") + ")$\"` ( $unfilteredMetricsEnv | quote ) }}
+  {{- $bucket := `Concat([metric.name, \"_bucket\"], \"\")` }}
+  {{- $count := `Concat([metric.name, \"_count\"], \"\")` }}
+  {{- $sum := `Concat([metric.name, \"_sum\"], \"\")` }}
+  {{- /* A histogram whose buckets are not allowed, or a summary whose
+         quantiles are not. */}}
+  {{- $partial := printf `(metric.type == METRIC_DATA_TYPE_HISTOGRAM and not IsMatch(%s, %s)) or (metric.type == METRIC_DATA_TYPE_SUMMARY and not IsMatch(metric.name, %s))` $bucket $re $re }}
+
+otelcol.processor.transform "{{ $processorName }}" {
+    error_mode = "ignore"
+
+    metric_statements {
+        context = "metric"
+        statements = [
+            "extract_count_metric(true) where ({{ $partial }}) and IsMatch({{ $count }}, {{ $re }})",
+            "extract_sum_metric(true) where ({{ $partial }}) and IsMatch({{ $sum }}, {{ $re }})",
+        ]
+    }
+
+    output {
+        metrics = [otelcol.processor.filter.{{ $processorName }}.input]
+    }
+}
 
 otelcol.processor.filter "{{ $processorName }}" {
     metric_conditions {
         context = "metric"
         conditions = [
-            "not IsMatch(metric.name, \"^(?:" + coalesce(sys.env({{ $unfilteredMetricsEnv | quote }}), ".*") + ")$\")",
+            "metric.type == METRIC_DATA_TYPE_HISTOGRAM and not IsMatch({{ $bucket }}, {{ $re }})",
+            "metric.type != METRIC_DATA_TYPE_HISTOGRAM and not IsMatch(metric.name, {{ $re }})",
         ]
     }
 
@@ -856,6 +904,193 @@ otelcol.processor.filter "{{ $processorName }}" {
 {{- end }}
 		    ]
     }
+}
+{{- end }}
+
+{{/*
+Render the Google Cloud metrics export chain: OTLP to the Telemetry API, which
+writes Google Cloud Managed Service for Prometheus (`prometheus.googleapis.com/`)
+metric types. The default `googleCloudExporter.config`.
+
+Follows Google's reference collector configuration for Prometheus data
+(https://docs.cloud.google.com/stackdriver/docs/otlp-metrics/deploy-collector),
+in Alloy's components:
+
+  transform           untyped series also written as counters; labels that
+                      would collide with prometheus_target renamed; `cluster`
+                      and `collected_by`; the scope cleared
+  groupbyattrs        `namespace` and `cluster` lifted onto the resource
+  resourcedetection   `location` and the project, from GKE's metadata server,
+                      unless `location` and `project` set them
+  metric_start_time   the start time a cumulative point needs
+  batch               the Telemetry API's 200 points per request
+  otlphttp            with otelcol.auth.google (ADC; Workload Identity on GKE)
+
+Every component is labelled `googleCloud`, so none collides with the OTLP
+destination's `otelcol.exporter.otlphttp "destination"`.
+
+Usage:
+  {{ include "mzmon.alloyGateway.otelDest.googleCloud" $ }}
+*/}}
+{{- define "mzmon.alloyGateway.otelDest.googleCloud" }}
+  {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
+  {{- $cluster := `\"" + sys.env("CLUSTER_NAME") + "\"` }}
+// Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API.
+otelcol.processor.transform "googleCloud" {
+    error_mode = "ignore"
+
+    // An untyped series is also written as a cumulative counter, so rate()
+    // works on it: `<name>/unknown` and `<name>/unknown:counter`, as Google
+    // Cloud Managed Service for Prometheus's own collectors write them.
+    metric_statements {
+        context = "metric"
+        statements = [
+            "copy_metric(Concat([metric.name, \"unknowncounter\"], \":\")) where metric.metadata[\"prometheus.type\"] == \"unknown\" and not HasSuffix(metric.name, \":unknowncounter\")",
+            "convert_gauge_to_sum(\"cumulative\", true) where HasSuffix(metric.name, \":unknowncounter\")",
+            "set(metric.name, Substring(metric.name, 0, Len(metric.name) - Len(\":unknowncounter\"))) where HasSuffix(metric.name, \":unknowncounter\")",
+        ]
+    }
+
+    // prometheus_target's labels come from the resource. `job` and `instance`
+    // are already there (the scrape target's); a series label of either name,
+    // or of `location` or `project_id`, keeps its value as `exported_<label>`,
+    // as a Prometheus scrape renames a clashing target label. `namespace` and
+    // `cluster` are the series' own and go to the resource below, with
+    // CLUSTER_NAME standing in for a series that has no `cluster`.
+    //
+    // `collected_by` sets these series apart from other Prometheus data in the
+    // project. There is no metric prefix to do it any more, and GKE's managed
+    // kube-state-metrics writes the same metric types under the same `job`.
+    // It is one constant value, so it adds no series.
+    metric_statements {
+        context = "datapoint"
+        statements = [
+  {{- range $label := list "location" "project_id" "job" "instance" }}
+            "set(attributes[\"exported_{{ $label }}\"], attributes[\"{{ $label }}\"]) where attributes[\"{{ $label }}\"] != nil",
+            "delete_key(attributes, \"{{ $label }}\")",
+  {{- end }}
+            "set(attributes[\"cluster\"], {{ $cluster }}) where attributes[\"cluster\"] == nil and {{ $cluster }} != \"\"",
+            "set(attributes[\"collected_by\"], \"materialize-monitoring\") where attributes[\"collected_by\"] == nil",
+        ]
+    }
+
+    // The Telemetry API turns the instrumentation scope into `otel_scope_name`
+    // and `otel_scope_version` labels. Every series here has the same scope,
+    // the Prometheus receiver's, so they say nothing, and the version would
+    // start a new series for everything at each Alloy upgrade. Thanos carries
+    // neither.
+    metric_statements {
+        context = "scope"
+        statements = [
+            "set(scope.name, \"\")",
+            "set(scope.version, \"\")",
+        ]
+    }
+
+  {{- if or $gcm.project $gcm.location }}
+
+    // Where the series go, overriding what the GKE metadata server reports.
+    // `gcp.project_id` and `location` come before cloud.account.id and
+    // cloud.region in the Telemetry API's lookup.
+    metric_statements {
+        context = "resource"
+        statements = [
+    {{- with $gcm.project }}
+            {{ printf "set(resource.attributes[%q], %q)" "gcp.project_id" . | quote }},
+    {{- end }}
+    {{- with $gcm.location }}
+            {{ printf "set(resource.attributes[%q], %q)" "location" . | quote }},
+    {{- end }}
+        ]
+    }
+  {{- end }}
+
+    output {
+        metrics = [otelcol.processor.groupbyattrs.googleCloud.input]
+    }
+}
+
+// Lift `namespace` and `cluster` from each series onto its resource, where the
+// Telemetry API reads prometheus_target's labels. Left on the series they
+// would collide with those labels; renamed, every query filtering on
+// `namespace` would stop matching.
+otelcol.processor.groupbyattrs "googleCloud" {
+    keys = ["namespace", "cluster"]
+
+    output {
+        metrics = [otelcol.processor.resourcedetection.googleCloud.input]
+    }
+}
+
+// `location` (from cloud.region or cloud.availability_zone) and the project
+// (cloud.account.id), from GKE's metadata server; a point without a location is
+// refused. Off GKE this finds nothing, and `location` and `project` supply them.
+// The host attributes describe the gateway's own node, not the series, and are
+// left off.
+otelcol.processor.resourcedetection "googleCloud" {
+    detectors = ["gcp"]
+    override  = false
+
+    gcp {
+        resource_attributes {
+            host.id {
+                enabled = false
+            }
+            host.name {
+                enabled = false
+            }
+            host.type {
+                enabled = false
+            }
+            gcp.gce.instance.hostname {
+                enabled = false
+            }
+            gcp.gce.instance.name {
+                enabled = false
+            }
+        }
+    }
+
+    output {
+        metrics = [otelcol.processor.metric_start_time.googleCloud.input]
+    }
+}
+
+// A cumulative point needs a start time, and a Prometheus scrape has none.
+// Each series' first point becomes its baseline and is not sent; later points
+// are sent relative to it. Stateful, per gateway replica: clustering keeps a
+// target on one replica, and a target that moves restarts from a new baseline.
+otelcol.processor.metric_start_time "googleCloud" {
+    strategy = "subtract_initial_point"
+
+    output {
+        metrics = [otelcol.processor.batch.googleCloud.input]
+    }
+}
+
+// The Telemetry API takes at most 200 points per request.
+otelcol.processor.batch "googleCloud" {
+    send_batch_size     = 200
+    send_batch_max_size = 200
+    timeout             = "5s"
+
+    output {
+        metrics = [otelcol.exporter.otlphttp.googleCloud.input]
+    }
+}
+
+otelcol.exporter.otlphttp "googleCloud" {
+    client {
+        endpoint    = {{ $gcm.endpoint | required "pipeline.metrics.gateway.destination.otel.googleCloudExporter.endpoint must be set" | quote }}
+        compression = {{ $gcm.compression | quote }}
+        auth        = otelcol.auth.google.googleCloud.handler
+    }
+}
+
+otelcol.auth.google "googleCloud" {
+  {{- with $gcm.project }}
+    project = {{ . | quote }}
+  {{- end }}
 }
 {{- end }}
 
@@ -871,7 +1106,7 @@ Usage:
   {{- $forwardTo := list }}
   {{- /* Logs are forwarded only to logs-capable exporters (otlp/datadog), by
          their exporter input — never through the metric egress filters, and
-         never to the metrics-only googlecloud exporter. */}}
+         never to the metrics-only Google Cloud chain. */}}
   {{- $logsForwardTo := list }}
 
   {{- if $otelDestValues.otlpExporter.enabled }}
@@ -882,7 +1117,7 @@ Usage:
       "unfilteredMetricsEnv" $otelDestValues.otlpExporter.unfilteredMetricsEnv
       "root" $
     ) | nindent 0 }}
-    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.otlpMetricEgressFilter.input" }}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.transform.otlpMetricEgressFilter.input" }}
     {{- range $otelDestValues.otlpExporter.handlers }}
       {{- $logsForwardTo = append $logsForwardTo (tpl . $) }}
     {{- end }}
@@ -896,7 +1131,7 @@ Usage:
       "unfilteredMetricsEnv" $otelDestValues.googleCloudExporter.unfilteredMetricsEnv
       "root" $
     ) | nindent 0 }}
-    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.googleCloudMetricEgressFilter.input" -}}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.transform.googleCloudMetricEgressFilter.input" -}}
   {{- end }}
 
   {{- if $otelDestValues.datadogExporter.enabled }}
@@ -907,7 +1142,7 @@ Usage:
       "unfilteredMetricsEnv" $otelDestValues.datadogExporter.unfilteredMetricsEnv
       "root" $
     ) | nindent 0 }}
-    {{- $forwardTo = append $forwardTo "otelcol.processor.filter.datadogMetricEgressFilter.input" }}
+    {{- $forwardTo = append $forwardTo "otelcol.processor.transform.datadogMetricEgressFilter.input" }}
     {{- range $otelDestValues.datadogExporter.handlers }}
       {{- $logsForwardTo = append $logsForwardTo (tpl . $) }}
     {{- end }}
@@ -931,7 +1166,7 @@ otelcol.processor.filter "egressFanOut" {
   {{- end }}
   {{- if $.Values.pipeline.logging.gateway.destination.otel.enabled }}
     {{- if not $logsForwardTo }}
-      {{- fail "pipeline.logging.gateway.destination.otel is enabled, but no logs-capable otel exporter (otlpExporter or datadogExporter) is enabled to receive them (the googlecloud exporter is metrics-only)." }}
+      {{- fail "pipeline.logging.gateway.destination.otel is enabled, but no logs-capable otel exporter (otlpExporter or datadogExporter) is enabled to receive them (the Google Cloud exporter is metrics-only)." }}
     {{- end }}
 
 otelcol.receiver.loki "outputBridge" {
@@ -1229,6 +1464,46 @@ Usage:
       {{- $res := include "mzmon.alloy.validate.otelDestAuth" $ | fromYaml }}
       {{- $errors = concat $errors $res.errors | default list }}
       {{- $warnings = concat $warnings $res.warnings | default list }}
+    {{- end }}
+
+    {{- $res := include "mzmon.alloy.validate.gatewayMetadata" $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate what the gateway's typed metrics depend on.
+
+  1. **The stability level.** Every gateway scrape sets `honor_metadata`, which
+     Alloy refuses to build below `experimental`. `alloy validate` does not check
+     a component's arguments against the level, so the pre-validate job passes
+     and the gateway crashloops instead.
+
+  2. **The `otelcol.exporter.googlecloud` settings.** The Google Cloud exporter
+     writes OTLP to the Telemetry API now, which has no metric prefix and none of
+     the old exporter's knobs. A value still setting one does nothing, which is
+     worth saying rather than leaving it to look like it does.
+
+Usage:
+  {{- $res := include "mzmon.alloy.validate.gatewayMetadata" $ | fromYaml }}
+*/}}
+{{- define "mzmon.alloy.validate.gatewayMetadata" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+
+  {{- $level := dig "alloy" "stabilityLevel" "" ( index $.Values "alloy-gateway" ) }}
+  {{- if ne $level "experimental" }}
+    {{- $errors = append $errors ( printf "alloy-gateway.alloy.stabilityLevel is %q, but the gateway's scrapes set honor_metadata, which Alloy only builds at \"experimental\". The gateway would fail to start. Leave it at \"experimental\"." $level ) }}
+  {{- end }}
+
+  {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
+  {{- range $key := list "prefix" "instrumentation_library_labels" "skip_create_descriptor" "service_resource_labels" }}
+    {{- if hasKey $gcm $key }}
+      {{- $warnings = append $warnings ( printf "pipeline.metrics.gateway.destination.otel.googleCloudExporter.%s no longer applies and is ignored. The exporter writes OTLP to the Telemetry API, whose metrics are always prometheus.googleapis.com/<name>/<kind>." $key ) }}
     {{- end }}
   {{- end }}
 

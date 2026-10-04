@@ -30,9 +30,11 @@ description: |
   servicemonitors} (clustering on; scrape defaults from GATEWAY_SCRAPE_INTERVAL /
   GATEWAY_SCRAPE_TIMEOUT) feed an otelcol.receiver.prometheus "inputBridge" that
   converts Prometheus into OTLP; the OTLP receiver's own metrics join there too.
-  Everything lands in otelcol.processor.filter.inputMetricProcessor — the
-  otelcol-side processing choke point — then flows through a memory_limiter and a
-  batch processor to an otelcol.processor.filter.egress seam. On the way out,
+  Every scrape honors metadata, so the bridge types what it converts.
+  Everything lands in otelcol.processor.transform.inputMetricProcessor — the
+  otelcol-side processing choke point, followed by the inputMetricDeny filter —
+  then flows through a memory_limiter and a batch processor to an
+  otelcol.processor.filter.egress seam. On the way out,
   otelcol.exporter.prometheus "outputBridge" converts OTLP back to Prometheus and
   feeds prometheus.relabel.egress → prometheus.remote_write.
   Target-phase relabeling still lives at the source: in the PodMonitor/
@@ -278,6 +280,8 @@ blocks:
                     - env: GATEWAY_KUBELET_TLS_INSECURE
                     - "false"
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # Typed, like the operator scrapes; see gateway-metrics.yaml.
+      honor_metadata: true
       # Dominant cost lever: ~6.7k series per node per scrape.
       scrape_interval:
         function: coalesce
@@ -358,6 +362,8 @@ blocks:
         # every node and each series lands once per replica.
         - clustering:
             enabled: true
+      # Typed, like the operator scrapes; see gateway-metrics.yaml.
+      honor_metadata: true
       scrape_interval:
         function: coalesce
         arguments:

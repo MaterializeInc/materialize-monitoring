@@ -753,16 +753,22 @@ PYEOF
         echo "    loki s3 endpoint ${expected_ep} reached the chunk and ruler clients"
     fi
 
-    # Same reasoning for the Google Cloud Monitoring exporter: the observable
-    # proof it landed is the per-destination filter env var, which only renders
-    # when the chart actually sees the exporter enabled.
+    # Same reasoning for the Google Cloud exporter: the observable proof it
+    # landed is the per-destination filter env var, which only renders when the
+    # chart actually sees the exporter enabled — and the OTLP exporter aimed at
+    # the Telemetry API, which is what writes.
     if grep -q '"googleCloudExporter"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then
         if ! grep -q 'GATEWAY_UNFILTERED_GCM_METRICS:' "${rendered}"; then
             echo "  !! ${example}: googleCloudExporter is set but no GCM metric filter rendered" >&2
             status=1
             continue
         fi
-        echo "    GCM exporter reached the gateway pipeline"
+        if ! grep -q 'otelcol.exporter.otlphttp "googleCloud"' "${rendered}"; then
+            echo "  !! ${example}: googleCloudExporter is set but no OTLP exporter to the Telemetry API rendered" >&2
+            status=1
+            continue
+        fi
+        echo "    Google Cloud exporter reached the gateway pipeline"
     fi
 
     if grep -q '"datadogExporter"' "${WORK_DIR}/${example}"-[0-9]*.yaml 2>/dev/null; then

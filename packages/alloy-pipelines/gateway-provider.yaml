@@ -68,6 +68,8 @@ blocks:
             scrape_interval: {ref: argument.scrape_interval.value}
             scrape_timeout: {ref: argument.scrape_timeout.value}
             honor_timestamps: {ref: argument.honor_timestamps.value}
+            # Typed, like the gateway's other scrapes; see gateway-metrics.yaml.
+            honor_metadata: true
             blocks:
               - clustering:
                   enabled: true

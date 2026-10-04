@@ -391,17 +391,21 @@ Merged with any annotations `object_storage` contributes, so both can be present
     <tr>
       <td class="tf-var-name"><a name="google_cloud_metrics" href="#google_cloud_metrics">google_<wbr>cloud_<wbr>metrics</a></td>
         <td class="tf-var-type"><em>schema</em></td>
-      <td class="tf-var-desc">Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
-is unaffected either way.
+      <td class="tf-var-desc">Also export metrics to Google Cloud Managed Service for Prometheus from the Alloy gateway, over
+OTLP to the Telemetry API. Null disables it; Thanos is unaffected either way.
 
 `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
-`all` — and each tier includes the ones below it. This is a cost control: GCM bills per custom
-metric and `all` sends the entire surface.
+`all` — and each tier includes the ones below it. This is a cost control: the series land as
+`prometheus.googleapis.com/` metrics, billed per sample ingested, and `all` sends the entire
+surface.
 
-Authentication is ADC only. Bind the gateway ServiceAccount to a Google service account holding
-`roles/monitoring.metricWriter` through `object_storage.gateway_service_account_annotations`;
-failing that it falls back to the node's service account, which works only if that account has
-the role.
+The project needs the `telemetry.googleapis.com` API enabled. Authentication is ADC only. Bind
+the gateway ServiceAccount to a Google service account holding `roles/monitoring.metricWriter`
+through `object_storage.gateway_service_account_annotations`; failing that it falls back to the
+node's service account, which works only if that account has the role.
+
+`prefix` is deprecated and ignored. The Telemetry API names every metric
+`prometheus.googleapis.com/<name>/<kind>`, so there is no prefix to choose.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     min_importance = optional(string, "recommended")
