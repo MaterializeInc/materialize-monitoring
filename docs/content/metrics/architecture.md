@@ -10,7 +10,7 @@ params:
 # Metrics Architecture
 
 This page describes how metrics move through `materialize-monitoring`.
-Every metric enters through the [`alloy-gateway`](../../o11y-glossary/#alloy), which scrapes or receives it, processes it, and writes it to one or more destinations.
+In the bundled stack, every metric enters through the [`alloy-gateway`](../../o11y-glossary/#alloy), which scrapes or receives it, processes it, and writes it to one or more destinations.
 The default destination is the bundled [Thanos](../../o11y-glossary/#thanos).
 Thanos keeps recent data in Receive, keeps everything older as blocks in object storage, and answers [PromQL](../../o11y-glossary/#promql) for Grafana and for the Thanos Ruler.
 
