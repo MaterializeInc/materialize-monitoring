@@ -1569,7 +1569,7 @@ pipeline:
             # -- Handlers to use for the Google Cloud exporter: the first
             # component of the chain in `config`.
             handlers:
-              - otelcol.processor.resourcedetection.googleCloud.input
+              - otelcol.processor.filter.googleCloud.input
 
             # -- Raw configuration for the Google Cloud export chain.
             # @default -- The chain rendered by the chart's `mzmon.alloyGateway.otelDest.googleCloud` helper.

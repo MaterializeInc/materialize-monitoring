@@ -46,7 +46,7 @@ tests:
           pattern: 'otelcol\.processor\.transform "googleCloudMetricEgressFilter" \{[\s\S]*?metrics = \[otelcol\.processor\.filter\.googleCloudMetricEgressFilter\.input\]'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.filter "googleCloudMetricEgressFilter" \{[\s\S]*?otelcol\.processor\.resourcedetection\.googleCloud\.input,'
+          pattern: 'otelcol\.processor\.filter "googleCloudMetricEgressFilter" \{[\s\S]*?otelcol\.processor\.filter\.googleCloud\.input,'
 
   - it: keeps a histogram by its buckets and pulls out an allowed count or sum
     template: templates/pipelines/cm-alloy-gateway.yaml
@@ -92,7 +92,12 @@ tests:
   - it: chains the processors Google's reference configuration calls for, in order
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
-      # Detection first: the transform after it reads cloud.account.id.
+      # Staleness markers out first: they carry no value, and Google's own
+      # exporters drop them too.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.filter "googleCloud" \{\s+metric_conditions \{\s+context\s+= "datapoint"\s+conditions = \[\s+"flags == FLAG_NO_RECORDED_VALUE",[\s\S]*?metrics = \[otelcol\.processor\.resourcedetection\.googleCloud\.input\]'
+      # Detection next: the transform after it reads cloud.account.id.
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'otelcol\.processor\.resourcedetection "googleCloud" \{\s+detectors = \["gcp"\][\s\S]*?metrics = \[otelcol\.processor\.transform\.googleCloud\.input\]'

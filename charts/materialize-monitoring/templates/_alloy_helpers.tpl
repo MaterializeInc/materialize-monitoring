@@ -916,6 +916,7 @@ Follows Google's reference collector configuration for Prometheus data
 (https://docs.cloud.google.com/stackdriver/docs/otlp-metrics/deploy-collector),
 in Alloy's components:
 
+  filter              staleness markers, which Google's exporters drop too
   resourcedetection   the project and `location`, from GKE's metadata server
   transform           `gcp.project_id`, which the Telemetry API requires;
                       untyped series also written as counters; labels that
@@ -937,6 +938,23 @@ Usage:
   {{- $cluster := `\"" + sys.env("CLUSTER_NAME") + "\"` }}
 // Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API.
 //
+// Points flagged "no recorded value" carry nothing to store. The bridge makes
+// one from each Prometheus staleness marker: a series that disappears ends with
+// one, and so does every series of a target that moves to another gateway
+// replica. Google's own exporters drop them the same way.
+otelcol.processor.filter "googleCloud" {
+    metric_conditions {
+        context = "datapoint"
+        conditions = [
+            "flags == FLAG_NO_RECORDED_VALUE",
+        ]
+    }
+
+    output {
+        metrics = [otelcol.processor.resourcedetection.googleCloud.input]
+    }
+}
+
 // The project (cloud.account.id) and `location` (cloud.region or
 // cloud.availability_zone), from GKE's metadata server. Off GKE this finds
 // nothing, and `project` and `location` supply them. The host attributes
