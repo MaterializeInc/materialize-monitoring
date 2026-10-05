@@ -220,9 +220,11 @@ Confirm the halt, and then the recovery, from the Compactor's own metrics.
 `thanos_compact_halted` returns to `0` on the first start with the flags, and `thanos_compact_todo_compactions` falls as the backlog drains:
 
 ```bash
-kubectl -n monitoring exec thanos-compactor-0 -- wget -qO- localhost:10902/metrics \
-  | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
+kubectl -n monitoring port-forward pod/thanos-compactor-0 10902:10902 &
+curl -s localhost:10902/metrics | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
 ```
+
+A port-forward works with any Thanos image, including the shell-less ones the Chainguard and Docker Hardened Images profiles select.
 
 ### Everything suddenly fails, and it worked an hour ago
 

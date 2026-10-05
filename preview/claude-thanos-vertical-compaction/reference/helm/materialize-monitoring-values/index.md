@@ -6925,8 +6925,9 @@ intent. 30d clears both comfortably.
 </td>
       <td class="helm-value-desc">Extra CLI arguments for the Compactor.
 **This is a list, and Helm overwrites lists rather than merging them.**
-The first three entries restate the subchart's defaults, so an override
-has to restate them too.
+The first three entries restate the subchart's defaults, which are also
+Thanos's own, so an override that drops them changes nothing. An override
+that drops either flag below brings back the failure it prevents.
 
 `--compact.enable-vertical-compaction` lets the Compactor merge
 overlapping blocks. Without it, any overlap halts compaction, retention
