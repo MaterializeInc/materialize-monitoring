@@ -1,0 +1,252 @@
+# promtool unit tests for the recording rules rendered from ext-consensus.yaml.
+#
+# Run by `make rules-check` against the `all` scenario
+# (charts/materialize-monitoring/tests/rules/all.values.yaml), which enables
+# every provider pull, each watching `mz-metadata` and `mz-grafana`, and
+# declares only `mz-metadata` in `externalDependencies.consensus`.
+#
+# Each test pins what the normalized layer promises: one name and unit whatever
+# the adapter, a `flavor` naming it, and absence rather than a guessed value when
+# an adapter has nothing to say.
+rule_files:
+  - ext-consensus.yaml
+evaluation_interval: 1m
+# The p99 is an interpolation, which Go compiles to a fused multiply-add on
+# arm64 and not on amd64, so the same promtool image rounds its last bit
+# differently on a laptop and in CI (0.0496 against 0.049600000000000005).
+# Fuzzy comparison tolerates that and nothing coarser.
+fuzzy_compare: true
+tests:
+  # --- persist: ext:consensus_up ------------------------------------------------
+  - name: persist records up while calls succeed
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0+4800x20"
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="consensus_head", pod="mz-clusterd-0"}'
+        values: "0+60x20"
+    promql_expr_test:
+      - expr: ext:consensus_up
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="persist", namespace="materialize-environment"}'
+            value: 1
+
+  # Calls keep failing, or hang, and none succeeds: the database is unreachable
+  # from where Materialize stands, and the series says 0 rather than going away.
+  - name: persist records up as 0 once nothing has succeeded for five minutes
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0+4800x20 96000x20"
+      - series: 'mz_persist_external_failed_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0x20 0+30x20"
+    promql_expr_test:
+      - expr: ext:consensus_up
+        eval_time: 22m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="persist", namespace="materialize-environment"}'
+            value: 1
+      - expr: ext:consensus_up
+        eval_time: 30m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="persist", namespace="materialize-environment"}'
+            value: 0
+
+  # An environment that is not scraped has no observer, which is not the same as
+  # an unreachable database.
+  - name: persist records nothing for an environment it cannot see
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0+4800x10"
+    promql_expr_test:
+      - expr: ext:consensus_up
+        eval_time: 20m
+        exp_samples: []
+
+  # Blob calls share the family and are object storage, not the database.
+  - name: persist up ignores object-storage calls
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0x20"
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="blob_get", pod="mz-environmentd-0"}'
+        values: "0+600x20"
+    promql_expr_test:
+      - expr: ext:consensus_up
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="persist", namespace="materialize-environment"}'
+            value: 0
+
+  # --- persist: ext:consensus_commit_latency_seconds:p99 -------------------------
+  - name: persist records p99 commit latency from the compare-and-set histogram
+    interval: 1m
+    input_series:
+      # Every commit lands between 10ms and 50ms, so the p99 interpolates to
+      # 0.01 + 0.04 * 0.99.
+      - series: 'mz_persist_external_op_latency_bucket{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0", le="0.01"}'
+        values: "0x20"
+      - series: 'mz_persist_external_op_latency_bucket{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0", le="0.05"}'
+        values: "0+100x20"
+      - series: 'mz_persist_external_op_latency_bucket{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0", le="+Inf"}'
+        values: "0+100x20"
+    promql_expr_test:
+      - expr: ext:consensus_commit_latency_seconds:p99
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ext:consensus_commit_latency_seconds:p99{flavor="persist", namespace="materialize-environment"}'
+            value: 0.0496
+
+  # With no commit in the window the quantile is NaN, which is not a latency.
+  - name: persist records no commit latency when nothing committed
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_op_latency_bucket{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0", le="0.05"}'
+        values: "100x20"
+      - series: 'mz_persist_external_op_latency_bucket{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0", le="+Inf"}'
+        values: "100x20"
+    promql_expr_test:
+      - expr: ext:consensus_commit_latency_seconds:p99
+        eval_time: 15m
+        exp_samples: []
+
+  # --- rds ----------------------------------------------------------------------
+  - name: rds records transaction-ID headroom for the declared instance only
+    interval: 1m
+    input_series:
+      - series: 'aws_rds_maximum_used_transaction_ids_maximum{dimension_DBInstanceIdentifier="mz-metadata", instance="mz-metadata", job="integrations/cloudwatch"}'
+        values: "1073741824x10"
+      - series: 'aws_rds_maximum_used_transaction_ids_maximum{dimension_DBInstanceIdentifier="mz-grafana", instance="mz-grafana", job="integrations/cloudwatch"}'
+        values: "2000000000x10"
+    promql_expr_test:
+      - expr: ext:consensus_xid_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_xid_used_ratio{flavor="rds", resource="mz-metadata"}'
+            value: 0.5
+
+  # CloudWatch publishes neither reachability nor allocated storage.
+  - name: rds records no up and no storage ratio
+    interval: 1m
+    input_series:
+      - series: 'aws_rds_free_storage_space_minimum{dimension_DBInstanceIdentifier="mz-metadata"}'
+        values: "1000000000x10"
+    promql_expr_test:
+      - expr: ext:consensus_up{flavor="rds"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ext:consensus_storage_used_ratio{flavor="rds"}
+        eval_time: 5m
+        exp_samples: []
+
+  # A pull every five minutes: the last sample carries for 15 minutes and no
+  # further.
+  - name: a provider sample is recorded for 15 minutes after it arrives
+    interval: 5m
+    input_series:
+      - series: 'aws_rds_maximum_used_transaction_ids_maximum{dimension_DBInstanceIdentifier="mz-metadata"}'
+        values: "1073741824"
+    promql_expr_test:
+      - expr: ext:consensus_xid_used_ratio
+        eval_time: 14m
+        exp_samples:
+          - labels: 'ext:consensus_xid_used_ratio{flavor="rds", resource="mz-metadata"}'
+            value: 0.5
+      - expr: ext:consensus_xid_used_ratio
+        eval_time: 16m
+        exp_samples: []
+
+  # --- cloudsql -----------------------------------------------------------------
+  - name: cloudsql records up, storage and transaction IDs by instance name
+    interval: 1m
+    input_series:
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id="test-project:mz-metadata", project_id="test-project"}'
+        values: "0x10"
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization{database_id="test-project:mz-metadata", project_id="test-project"}'
+        values: "0.42x10"
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization{database_id="test-project:mz-metadata", project_id="test-project"}'
+        values: "0.05x10"
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization{database_id="test-project:mz-grafana", project_id="test-project"}'
+        values: "0.99x10"
+    promql_expr_test:
+      - expr: ext:consensus_up{flavor="cloudsql"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="cloudsql", resource="mz-metadata"}'
+            value: 0
+      - expr: ext:consensus_storage_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_storage_used_ratio{flavor="cloudsql", resource="mz-metadata"}'
+            value: 0.42
+      - expr: ext:consensus_xid_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_xid_used_ratio{flavor="cloudsql", resource="mz-metadata"}'
+            value: 0.05
+
+  # --- azure-postgres -----------------------------------------------------------
+  - name: azure-postgres converts percent and transaction IDs to ratios
+    interval: 1m
+    input_series:
+      - series: 'azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName="mz-metadata"}'
+        values: "1x10"
+      - series: 'azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent{resourceName="mz-metadata"}'
+        values: "42x10"
+      - series: 'azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count{resourceName="mz-metadata"}'
+        values: "1073741824x10"
+      - series: 'azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent{resourceName="mz-grafana"}'
+        values: "99x10"
+    promql_expr_test:
+      - expr: ext:consensus_up{flavor="azure-postgres"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="azure-postgres", resource="mz-metadata"}'
+            value: 1
+      - expr: ext:consensus_storage_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_storage_used_ratio{flavor="azure-postgres", resource="mz-metadata"}'
+            value: 0.42
+      - expr: ext:consensus_xid_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_xid_used_ratio{flavor="azure-postgres", resource="mz-metadata"}'
+            value: 0.5
+
+  # Azure resource names are case-insensitive, and the exporter does not promise
+  # the case a declaration is written in.
+  - name: azure-postgres matches a declared server regardless of case
+    interval: 1m
+    input_series:
+      - series: 'azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName="MZ-Metadata"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: ext:consensus_up{flavor="azure-postgres"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="azure-postgres", resource="MZ-Metadata"}'
+            value: 1
+
+  # --- one name, every adapter ----------------------------------------------------
+  - name: every adapter records one name with the same unit
+    interval: 1m
+    input_series:
+      - series: 'aws_rds_maximum_used_transaction_ids_maximum{dimension_DBInstanceIdentifier="mz-metadata"}'
+        values: "214748364.8x10"
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization{database_id="test-project:mz-metadata"}'
+        values: "0.1x10"
+      - series: 'azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count{resourceName="mz-metadata"}'
+        values: "214748364.8x10"
+    promql_expr_test:
+      - expr: count by (flavor) (ext:consensus_xid_used_ratio == 0.1)
+        eval_time: 5m
+        exp_samples:
+          - labels: '{flavor="rds"}'
+            value: 1
+          - labels: '{flavor="cloudsql"}'
+            value: 1
+          - labels: '{flavor="azure-postgres"}'
+            value: 1

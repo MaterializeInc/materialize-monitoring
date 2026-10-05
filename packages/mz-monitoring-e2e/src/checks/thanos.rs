@@ -412,6 +412,48 @@ pub async fn loki_rule_groups_evaluated_once(ctx: &Ctx) -> Result<()> {
     .await
 }
 
+/// Every environment whose metadata-database calls reach Thanos has its
+/// `ext:consensus_up` recorded.
+///
+/// A recording rule that never produces a series is invisible to a render test:
+/// the `PrometheusRule` is valid, the ruler loads it, and nothing reads the
+/// empty result. This compares the raw family the `persist` adapter reads with
+/// what it records, so it needs no knowledge of whether Materialize is deployed:
+/// a stack watching no environment has nothing to compare and passes.
+pub async fn consensus_recorded(ctx: &Ctx) -> Result<()> {
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+    let query = "count by (namespace) (mz_persist_external_succeeded_count{op=~\"consensus_.*\"}) \
+                 unless on (namespace) ext:consensus_up{flavor=\"persist\"}";
+
+    retry_until(
+        "every environment's ext:consensus_up is recorded",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let series = instant_query(ctx, &target, query).await?;
+            if series.is_empty() {
+                return Ok(());
+            }
+            let namespaces: Vec<&str> = series
+                .iter()
+                .map(|s| {
+                    s.pointer("/metric/namespace")
+                        .and_then(Value::as_str)
+                        .unwrap_or("<namespace>")
+                })
+                .collect();
+            bail!(
+                "{} report metadata-database calls with no ext:consensus_up recorded. Check that \
+                 the mzmon-ext-consensus PrometheusRule exists, that the Thanos ruler imported it \
+                 (its /api/v1/rules lists the ext_consensus_persist group), and that the ruler's \
+                 remote-write reaches the gateway",
+                namespaces.join(", ")
+            )
+        },
+    )
+    .await
+}
+
 /// Run an instant query and return its result vector.
 /// Run an instant query against a Prometheus-compatible endpoint.
 ///

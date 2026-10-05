@@ -7,14 +7,14 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! `gen-rules`: render the query registry's alerts into rule files for the
-//! chart (`pre-rendered/rules/`).
+//! `gen-rules`: render the query registry's alerts and recording rules into rule
+//! files for the chart (`pre-rendered/rules/`).
 //!
-//! Writes one `groups:` document per registry file and ruler: PromQL rules into
-//! `prometheus/`, which the chart installs as `PrometheusRule` resources for the
-//! Thanos ruler, and LogQL rules into `loki/`, which it delivers to the Loki
-//! ruler. Beside them, `_index.yaml` lists every rule of both kinds, and the
-//! chart reads it to decide which install. The rendering and every check live in
+//! Writes one `groups:` document per registry file and ruler: PromQL rules, and
+//! every recording rule, into `prometheus/`, which the chart installs as
+//! `PrometheusRule` resources for the Thanos ruler, and LogQL rules into `loki/`,
+//! which it delivers to the Loki ruler. Beside them, `_index.yaml` lists every
+//! rule, and the chart reads it to decide which install. The rendering and every check live in
 //! [`mzmon_lib::query::rules`]; this only loads, reports and writes.
 //!
 //! The engine directories are owned by this command: files in them that the
@@ -55,11 +55,11 @@ pub fn gen_rules(args: GenRulesArgs) -> anyhow::Result<()> {
             for error in &errors {
                 eprintln!("error: {error}");
             }
-            let alerts: BTreeSet<&str> = errors.iter().map(|e| e.alert.as_str()).collect();
+            let rules: BTreeSet<&str> = errors.iter().map(|e| e.rule.as_str()).collect();
             bail!(
-                "{} problem(s) in {} alert(s); nothing was written",
+                "{} problem(s) in {} rule(s); nothing was written",
                 errors.len(),
-                alerts.len()
+                rules.len()
             );
         }
     };
@@ -98,10 +98,11 @@ pub fn gen_rules(args: GenRulesArgs) -> anyhow::Result<()> {
         .filter(|r| r.engine == RuleEngine::LogQl)
         .count();
     eprintln!(
-        "wrote {} rules ({} LogQL, {} enabled by default) in {} file(s) -> {}",
+        "wrote {} alerts ({} LogQL, {} enabled by default) and {} recording rules in {} file(s) -> {}",
         rules.rules.len(),
         log_count,
         default_count,
+        rules.records.len(),
         file_count,
         args.out_dir.display()
     );

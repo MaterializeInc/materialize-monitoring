@@ -1919,6 +1919,7 @@
   - op
   name: mz_persist_external_succeeded_count
   usage:
+  - ext.consensus.persist.up
   - materialize.consensus.state.versions
 - importance: recommended
   labels:
@@ -3228,6 +3229,7 @@
   - op
   name: mz_persist_external_op_latency_bucket
   usage:
+  - ext.consensus.persist.commit_latency_p99
   - materialize.consensus.health.commit_latency_p99
   - materialize.consensus.latency.commit
   - materialize.consensus.latency.commit_by_process
@@ -3430,9 +3432,11 @@
   usage:
   - infra.cloud.rds.freeable_memory
 - importance: diagnostic
-  labels: []
+  labels:
+  - dimension_DBInstanceIdentifier
   name: aws_rds_maximum_used_transaction_ids_maximum
   usage:
+  - ext.consensus.rds.xid_used_ratio
   - infra.cloud.db.transaction_ids
 - importance: diagnostic
   labels: []
@@ -3523,14 +3527,18 @@
   usage:
   - infra.cloud.flexible.queue_depth
 - importance: diagnostic
-  labels: []
+  labels:
+  - resourceName
   name: azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count
   usage:
+  - ext.consensus.azure_postgres.up
   - infra.cloud.flexible.alive
 - importance: diagnostic
-  labels: []
+  labels:
+  - resourceName
   name: azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count
   usage:
+  - ext.consensus.azure_postgres.xid_used_ratio
   - infra.cloud.db.transaction_ids
 - importance: diagnostic
   labels: []
@@ -3538,9 +3546,11 @@
   usage:
   - infra.cloud.flexible.memory
 - importance: diagnostic
-  labels: []
+  labels:
+  - resourceName
   name: azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent
   usage:
+  - ext.consensus.azure_postgres.storage_used_ratio
   - infra.cloud.flexible.storage
 - importance: diagnostic
   labels: []
@@ -3582,9 +3592,11 @@
   - infra.cloud.collection.resources
   - infra.cloud.db.cpu
 - importance: diagnostic
-  labels: []
+  labels:
+  - database_id
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization
   usage:
+  - ext.consensus.cloudsql.storage_used_ratio
   - infra.cloud.cloudsql.disk
 - importance: diagnostic
   labels: []
@@ -3603,14 +3615,18 @@
   usage:
   - infra.cloud.cloudsql.backends_by_state
 - importance: diagnostic
-  labels: []
+  labels:
+  - database_id
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization
   usage:
+  - ext.consensus.cloudsql.xid_used_ratio
   - infra.cloud.db.transaction_ids
 - importance: diagnostic
-  labels: []
+  labels:
+  - database_id
   name: stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up
   usage:
+  - ext.consensus.cloudsql.up
   - infra.cloud.cloudsql.up
 - importance: diagnostic
   labels:

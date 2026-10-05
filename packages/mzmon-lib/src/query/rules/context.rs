@@ -58,19 +58,29 @@ pub enum Placeholder {
     NonessentialWorkloads,
     /// A regex alternation of the workloads every node runs.
     DaemonsetWorkloads,
+    /// A regex alternation of the RDS instances that are a metadata database,
+    /// from `externalDependencies.consensus`.
+    ConsensusRds,
+    /// The same for Cloud SQL instances.
+    ConsensusCloudsql,
+    /// The same for Azure Database for PostgreSQL flexible servers.
+    ConsensusAzurePostgres,
 }
 
 impl Placeholder {
     /// Every placeholder, longest token first — the order the chart replaces
     /// them in, so no token is ever a prefix of one replaced before it.
     pub const ALL: &'static [Placeholder] = &[
+        Placeholder::ConsensusAzurePostgres,
         Placeholder::EnvironmentNamespaces,
         Placeholder::NonessentialWorkloads,
         Placeholder::DaemonsetWorkloads,
         Placeholder::ImportantWorkloads,
         Placeholder::ExcludedNamespaces,
         Placeholder::OperatorNamespaces,
+        Placeholder::ConsensusCloudsql,
         Placeholder::CoreWorkloads,
+        Placeholder::ConsensusRds,
         Placeholder::SqlPrefix,
     ];
 
@@ -90,6 +100,9 @@ impl Placeholder {
             Placeholder::ImportantWorkloads => "__mzmon_important_workloads__",
             Placeholder::NonessentialWorkloads => "__mzmon_nonessential_workloads__",
             Placeholder::DaemonsetWorkloads => "__mzmon_daemonset_workloads__",
+            Placeholder::ConsensusRds => "__mzmon_consensus_rds__",
+            Placeholder::ConsensusCloudsql => "__mzmon_consensus_cloudsql__",
+            Placeholder::ConsensusAzurePostgres => "__mzmon_consensus_azure_postgres__",
         }
     }
 
@@ -194,6 +207,22 @@ pub fn alerting_context(
                 .to_string(),
         ),
         ("nodePools", crate::query::render::NODE_POOLS.to_string()),
+        // Which of the databases a provider pull watches is a metadata database
+        // is something only an install knows: the pull also watches Grafana's,
+        // and the provider cannot tell them apart. Bare values, like the
+        // workload tiers, filled from `externalDependencies.consensus`.
+        (
+            "consensusRdsResources",
+            Placeholder::ConsensusRds.token().to_string(),
+        ),
+        (
+            "consensusCloudsqlResources",
+            Placeholder::ConsensusCloudsql.token().to_string(),
+        ),
+        (
+            "consensusAzurePostgresResources",
+            Placeholder::ConsensusAzurePostgres.token().to_string(),
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))

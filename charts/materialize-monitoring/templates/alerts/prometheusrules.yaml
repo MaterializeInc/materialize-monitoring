@@ -1,11 +1,12 @@
 {{- /*
-The bundled PromQL alerting rules, as PrometheusRule resources.
+The bundled PromQL alerting and recording rules, as PrometheusRule resources.
 
 The rules are rendered at build time from the query registry into
 `pre-rendered/rules/prometheus/` (`mz-monitoring-build gen-rules`), one file per
 registry file. Each file is filled in and filtered by `mzmon.rules.groups`, and
 whatever is left is emitted as one PrometheusRule. A file with nothing left
-emits nothing.
+emits nothing. One holding only recording rules is labelled
+`app.kubernetes.io/component: recording-rules`.
 
 These are read by the Thanos ruler's import sidecar
 (`thanos.ruler.autoImportPrometheusRules`); a Prometheus Operator in the same
@@ -19,6 +20,14 @@ PrometheusRules too, labelled `logql`, which the importer's selector leaves out
   {{- $file := base $path }}
   {{- $doc := include "mzmon.rules.groups" ( dict "root" $ "path" $path ) | fromYaml }}
   {{- if $doc.groups }}
+    {{- $component := "recording-rules" }}
+    {{- range $doc.groups }}
+      {{- range .rules }}
+        {{- if .alert }}
+          {{- $component = "alerting-rules" }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -28,7 +37,7 @@ metadata:
   labels:
     {{- include "mzmon.labels" $ | nindent 4 }}
     app.kubernetes.io/part-of: materialize-monitoring
-    app.kubernetes.io/component: alerting-rules
+    app.kubernetes.io/component: {{ $component }}
     {{ include "mzmon.rules.flavorLabel" $ }}: promql
 spec:
   groups:

@@ -2279,7 +2279,7 @@ connections:
       # @default -- `[]`
       valuesFrom: []
 
-# -- (h4) Which alerting rules install: the bundled rule set, gated by what this deployment contains.
+# -- (h4) Which alerting and recording rules install: the bundled rule set, gated by what this deployment contains.
 # @notationType -- (sectionstart) Alerting rules
 # @raw
 #
@@ -2291,16 +2291,21 @@ connections:
 # install only where this release runs both. Where they go once they fire is
 # `alerting`, below.
 #
-# A rule installs when **every capability it requires is present**, and it is
+# An alert installs when **every capability it requires is present**, and it is
 # either in the **default set** or named in `selected`, and it is not named in
 # `disabled`. Capabilities name what a deployment contains, never who operates
 # it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 # derived from what this chart deploys (`materialize`, `kube-state-metrics`,
-# `loki`, …); the rest are listed in `capabilities`. The generated
-# `pre-rendered/rules/_index.yaml` lists every rule with its engine and the
-# capabilities it requires.
+# `loki`, a provider pull, …); the rest are listed in `capabilities`. The
+# generated `pre-rendered/rules/_index.yaml` lists every rule with its engine
+# and the capabilities it requires.
+#
+# A **recording rule** installs wherever its capabilities are present, with no
+# selection: the normalized `ext:*` series are what other rules and panels
+# read, and recording one costs a few series. `selected`, `disabled` and
+# `overrides` name alerts only.
 rules:
-  # -- Install the bundled alerting rules.
+  # -- Install the bundled alerting and recording rules.
   enabled: true
 
   # -- Capabilities this deployment has beyond those the chart derives.
@@ -2323,8 +2328,10 @@ rules:
   #
   # The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
   # `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-  # present when this chart runs the component and collects its metrics. List
-  # one here as well when something outside the chart provides it — your own
+  # present when this chart runs the component and collects its metrics, and
+  # `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
+  # gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
+  # here as well when something outside the chart provides it — your own
   # kube-state-metrics, say. An unknown name fails the render.
   # @default -- `[]`
   capabilities: []
@@ -2476,6 +2483,42 @@ rules:
       - node-driver-registrar
       - node-exporter
       - openebs-lvm-plugin
+
+# -- (h4) The services Materialize depends on and does not run: which of the resources the stack watches are which.
+# @notationType -- (sectionstart) External dependencies
+# @raw
+#
+# A provider pull (`pipeline.metrics.provider.*`) watches every database it is
+# told to, and the provider cannot say which of them is Materialize's metadata
+# database: the Terraform modules add Grafana's database to the same pull. This
+# block says which is which. The normalized `ext:consensus_*` recording rules
+# read only the databases named here, so an undeclared database, Grafana's
+# among them, is never recorded as a metadata database.
+#
+# Nothing here is needed for Materialize's own view of its metadata database,
+# which the `persist` adapter records wherever Materialize is.
+externalDependencies:
+  # -- Metadata (consensus) databases, by flavor and provider resource name.
+  # @raw
+  #
+  # | `flavor` | `resourceId` | Watched by |
+  # |---|---|---|
+  # | `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
+  # | `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
+  # | `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+  #
+  # ```yaml
+  # externalDependencies:
+  #   consensus:
+  #     - flavor: rds
+  #       resourceId: mzmon-prod-db
+  # ```
+  #
+  # The resource has to be watched by its provider pull as well, or there is
+  # nothing to record, and the render warns. Each recorded series carries the
+  # resource as its `resource` label. Matching ignores case.
+  # @default -- `[]`
+  consensus: []
 
 # -- (h4) Where alerts go: receivers, severity presets, and extra routes.
 # @notationType -- (sectionstart) Alert routing
@@ -5088,10 +5131,14 @@ thanos:
     #
     # The Loki ruler keeps a volume for the same WAL, on the argument that
     # buffering derived samples through a metric-store outage is worth a disk.
-    # That argument applies here too and is deliberately not taken yet: this
-    # Ruler evaluates no recording rules, so there is nothing to buffer, and a
-    # 10Gi PVC per replica for an empty WAL is not a default worth shipping.
-    # Revisit when recording rules land.
+    # That argument applies here too and is deliberately not taken: the
+    # recording rules this Ruler evaluates are the `ext:*` layer, a few
+    # low-cardinality series, and the WAL holds them through a store outage on
+    # the pod's own volume. What a PVC would add is keeping them across a pod
+    # rescheduled during that outage, which loses minutes of history rather
+    # than any alert, and a 10Gi PVC per replica is not a default worth shipping
+    # for that. Revisit if a recording rule's history becomes something an
+    # alert or a report depends on.
     persistence:
       enabled: false
 

@@ -198,6 +198,15 @@ $defs:
       - "infraImportantWorkloadList"
       - "infraNonessentialWorkloadList"
       - "infraDaemonsetWorkloadList"
+      # The metadata databases a provider pull watches, per flavor, as bare regex
+      # values: dimension_DBInstanceIdentifier=~"%%{consensusRdsResources}". The
+      # pull also watches databases that are not one, such as Grafana's, and the
+      # provider cannot tell them apart, so which ones are is an install-time
+      # value (`externalDependencies.consensus` in the chart). Cloud SQL's are
+      # instance names, without the project.
+      - "consensusRdsResources"
+      - "consensusCloudsqlResources"
+      - "consensusAzurePostgresResources"
 
   metricImportance:
     description: |
@@ -530,6 +539,12 @@ $defs:
         description: The bundled Loki's own metrics.
       - const: alloy
         description: The bundled Alloy collectors' own metrics.
+      - const: cloudwatch
+        description: The gateway's CloudWatch pull, `pipeline.metrics.provider.cloudwatch` (`aws_rds_*`, `aws_s3_*`, and the EC2, Auto Scaling and usage families).
+      - const: cloud-monitoring
+        description: The gateway's Cloud Monitoring pull, `pipeline.metrics.provider.gcp` (`stackdriver_cloudsql_database_*`, `stackdriver_gcs_bucket_*`, and Compute Engine quota).
+      - const: azure-monitor
+        description: The gateway's Azure Monitor pull, `pipeline.metrics.provider.azure` (`azure_microsoft_dbforpostgresql_flexibleservers_*`, blob storage, AKS and scale sets).
       # Set explicitly by an operator.
       - const: synthetic-uptime
         description: A per-environment probe exporter writing connection and `SELECT 1` results (`can_connect`, `envd_up`, `views_query_successful`). Materialize Cloud runs one; the chart does not.
@@ -559,31 +574,54 @@ $defs:
   recordingRule:
     description: |
       A recording rule for another query.
+
+      Several rules may record the same name, one per group: each adapter of the
+      normalized `ext:*` layer is a group, and every adapter that can measure a
+      series records it under the same name, with its own `flavor` label. A
+      group records a given name once.
     type: object
     properties:
       record:
         type: string
         description: |
-          The resulting metric name for the recording rule.
-          See https://prometheus.io/docs/practices/rules/ for naming conventions.
+          The resulting metric name: `<level>:<metric>[:<operation>]`, after
+          https://prometheus.io/docs/practices/rules/. The metric names a unit
+          the way an exported metric would (`_seconds`, `_ratio`); the operation
+          names a window or a statistic the value depends on (`:rate5m`,
+          `:p99`). A recorded name is a committed surface from its first
+          release, like an alert name.
+        pattern: "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*(:[a-z0-9_]+)?$"
         examples:
-          - mzobject:compute_peek_latency_seconds:p99
+          - ext:consensus_commit_latency_seconds:p99
       group:
         type: string
         description: |
           The group name for the recording rule.
           This is used to group recording rules together in Prometheus.
-          Groups are defined externally.
+          A group holds recording rules or alerts, not both.
         examples:
-          - materialize
+          - ext_consensus_persist
       description:
         $ref: "#/$defs/structuredDescription"
       stability:
         $ref: "#/$defs/stability"
       labels:
+        description: |
+          Static labels on every recorded sample. An `ext:*` record carries
+          `flavor`, naming the adapter that produced it.
         $ref: "#/$defs/labelMap"
+      requires:
+        type: array
+        description: |
+          Capabilities this rule needs that its metrics do not show, exactly as
+          for an alert. A recording rule installs wherever its capabilities are
+          present; there is no default set to select it from.
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/capability"
     allOf:
       - $ref: "#/$defs/requiredDependency"
+    unevaluatedProperties: false
     required:
       - record
       - group

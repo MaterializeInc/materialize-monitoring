@@ -16,3 +16,32 @@ rules:
     - kubelet-metrics
     - swap-nodes
     - egress-gateway
+# Every provider pull, each watching a metadata database and Grafana's, with
+# only the first declared, so every recording-rule adapter installs and the
+# unit tests can show the second is left out.
+pipeline:
+  metrics:
+    provider:
+      cloudwatch:
+        enabled: true
+        region: us-east-1
+        rds:
+          instances: [mz-metadata, mz-grafana]
+      gcp:
+        enabled: true
+        projectId: test-project
+        cloudSql:
+          instances: [mz-metadata, mz-grafana]
+      azure:
+        enabled: true
+        subscriptionId: 00000000-0000-0000-0000-000000000000
+        postgres:
+          servers: [mz-metadata, mz-grafana]
+externalDependencies:
+  consensus:
+    - flavor: rds
+      resourceId: mz-metadata
+    - flavor: cloudsql
+      resourceId: mz-metadata
+    - flavor: azure-postgres
+      resourceId: mz-metadata

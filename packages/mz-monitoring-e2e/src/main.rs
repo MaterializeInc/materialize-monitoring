@@ -374,6 +374,20 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         thanos && loki_ruler,
         checks::thanos::loki_rule_groups_evaluated_once,
     ));
+    // The ruler records, and the result comes back through the gateway, so it
+    // needs both and the bundled rules installed.
+    let rules = ctx
+        .features
+        .get("rules.enabled")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::consensus_recorded",
+        thanos && thanos_ruler && rules,
+        checks::thanos::consensus_recorded,
+    ));
     trials.push(trial(
         runtime,
         ctx,

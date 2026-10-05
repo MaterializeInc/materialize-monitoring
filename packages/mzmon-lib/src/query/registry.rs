@@ -87,6 +87,7 @@ impl MetricOverride {
 #[derive(Debug, Clone, Default)]
 pub struct QueryRegistry {
     queries: IndexMap<QueryId, Query>,
+    /// Keyed by [`Rule::key`], since one record name has a rule per adapter.
     rules: IndexMap<String, Rule>,
     alerts: IndexMap<String, Alert>,
     metric_overrides: Vec<MetricOverride>,
@@ -105,9 +106,11 @@ impl QueryRegistry {
         self.queries.get(id)
     }
 
-    /// Get a recording rule by its `record` name.
-    pub fn rule(&self, record: &str) -> Option<&Rule> {
-        self.rules.get(record)
+    /// Every recording rule that records `record`, one per group that does.
+    pub fn rules_recording<'a>(&'a self, record: &'a str) -> impl Iterator<Item = &'a Rule> {
+        self.rules
+            .values()
+            .filter(move |rule| rule.record == record)
     }
 
     /// Get an alert by its `alert` name.
@@ -183,15 +186,15 @@ impl QueryRegistry {
     }
 
     /// [`load`](Self::load), recording `source` (a registry file stem) on every
-    /// alert the document defines. The file's `alertLabels` fill in any label an
-    /// alert does not set itself.
+    /// recording rule and alert the document defines. The file's `alertLabels`
+    /// fill in any label an alert does not set itself.
     pub fn load_from(&mut self, doc: RegistryDoc, source: Option<&str>) -> Result<()> {
         let hint = doc.metric_importance_hint;
         for query in doc.queries {
             self.register_query(query, hint)?;
         }
         for rule in doc.rules {
-            self.register_rule(rule, hint)?;
+            self.register_rule(rule, hint, source)?;
         }
         for mut alert in doc.alerts {
             for (key, value) in &doc.alert_labels {
@@ -284,22 +287,30 @@ impl QueryRegistry {
     }
 
     /// Register a recording rule, promoting an inline `query` (which inherits the
-    /// file `importance` hint) if present.
-    pub fn register_rule(&mut self, def: RuleDef, importance: Importance) -> Result<()> {
-        if self.rules.contains_key(&def.record) {
-            return Err(Error::DuplicateRule(def.record));
+    /// file `importance` hint) if present. A group may record a name once.
+    pub fn register_rule(
+        &mut self,
+        def: RuleDef,
+        importance: Importance,
+        source: Option<&str>,
+    ) -> Result<()> {
+        let key = format!("{}/{}", def.group, def.record);
+        if self.rules.contains_key(&key) {
+            return Err(Error::DuplicateRule(key));
         }
         let query_id =
-            self.resolve_required_dependency(def.query, def.query_id, &def.record, importance)?;
+            self.resolve_required_dependency(def.query, def.query_id, &key, importance)?;
         let rule = Rule {
-            record: def.record.clone(),
+            record: def.record,
             description: def.description.into(),
             group: def.group,
             stability: def.stability,
             query_id,
             labels: def.labels,
+            requires: def.requires,
+            source: source.map(str::to_string),
         };
-        self.rules.insert(rule.record.clone(), rule);
+        self.rules.insert(key, rule);
         Ok(())
     }
 

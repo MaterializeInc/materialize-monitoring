@@ -33,8 +33,9 @@ pub enum Error {
     #[error("query id {0:?} is already registered")]
     DuplicateQuery(String),
 
-    /// Ditto for a recording-rule `record` name.
-    #[error("rule {0:?} is already registered")]
+    /// Ditto for a recording rule, keyed `<group>/<record>`: one record name has
+    /// a rule per adapter group, and each group records it once.
+    #[error("recording rule {0:?} is already registered")]
     DuplicateRule(String),
 
     /// Ditto for an alert `alert` name.

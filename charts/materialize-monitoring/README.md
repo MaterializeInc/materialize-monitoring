@@ -3496,7 +3496,7 @@ every replica like any other.
 
 #### Alerting rules
 
-Which alerting rules install: the bundled rule set, gated by what this deployment contains.
+Which alerting and recording rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
 (`packages/queries/`) and installed as `PrometheusRule` resources, each
@@ -3506,14 +3506,19 @@ Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
 install only where this release runs both. Where they go once they fire is
 `alerting`, below.
 
-A rule installs when **every capability it requires is present**, and it is
+An alert installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
 `disabled`. Capabilities name what a deployment contains, never who operates
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
-`loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
-capabilities it requires.
+`loki`, a provider pull, …); the rest are listed in `capabilities`. The
+generated `pre-rendered/rules/_index.yaml` lists every rule with its engine
+and the capabilities it requires.
+
+A **recording rule** installs wherever its capabilities are present, with no
+selection: the normalized `ext:*` series are what other rules and panels
+read, and recording one costs a few series. `selected`, `disabled` and
+`overrides` name alerts only.
 
 <table class="helm-values">
   <thead>
@@ -3523,7 +3528,7 @@ capabilities it requires.
       <td class="helm-value-key">rules<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled alerting rules.
+      <td class="helm-value-desc">Install the bundled alerting and recording rules.
 </td>
     </tr>
     <tr>
@@ -3551,8 +3556,10 @@ capabilities it requires.
 
 The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
 `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-present when this chart runs the component and collects its metrics. List
-one here as well when something outside the chart provides it — your own
+present when this chart runs the component and collects its metrics, and
+`cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
+gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
+here as well when something outside the chart provides it — your own
 kube-state-metrics, say. An unknown name fails the render.
 </td>
     </tr>
@@ -3767,6 +3774,53 @@ alone.
 ]</pre>
 </td>
       <td class="helm-value-desc">Containers every node runs, whose requests the `k8s-daemonset-*` rules total against a per-node budget.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+#### External dependencies
+
+The services Materialize depends on and does not run: which of the resources the stack watches are which.
+
+A provider pull (`pipeline.metrics.provider.*`) watches every database it is
+told to, and the provider cannot say which of them is Materialize's metadata
+database: the Terraform modules add Grafana's database to the same pull. This
+block says which is which. The normalized `ext:consensus_*` recording rules
+read only the databases named here, so an undeclared database, Grafana's
+among them, is never recorded as a metadata database.
+
+Nothing here is needed for Materialize's own view of its metadata database,
+which the `persist` adapter records wherever Materialize is.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">externalDependencies<wbr>.consensus</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Metadata (consensus) databases, by flavor and provider resource name.
+
+| `flavor` | `resourceId` | Watched by |
+|---|---|---|
+| `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
+| `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
+| `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+
+```yaml
+externalDependencies:
+  consensus:
+    - flavor: rds
+      resourceId: mzmon-prod-db
+```
+
+The resource has to be watched by its provider pull as well, or there is
+nothing to record, and the render warns. Each recorded series carries the
+resource as its `resource` label. Matching ignores case.
 </td>
     </tr>
   </tbody>
@@ -7447,10 +7501,14 @@ This is a list: restate the entry when adding one.
 
 The Loki ruler keeps a volume for the same WAL, on the argument that
 buffering derived samples through a metric-store outage is worth a disk.
-That argument applies here too and is deliberately not taken yet: this
-Ruler evaluates no recording rules, so there is nothing to buffer, and a
-10Gi PVC per replica for an empty WAL is not a default worth shipping.
-Revisit when recording rules land.
+That argument applies here too and is deliberately not taken: the
+recording rules this Ruler evaluates are the `ext:*` layer, a few
+low-cardinality series, and the WAL holds them through a store outage on
+the pod's own volume. What a PVC would add is keeping them across a pod
+rescheduled during that outage, which loses minutes of history rather
+than any alert, and a 10Gi PVC per replica is not a default worth shipping
+for that. Revisit if a recording rule's history becomes something an
+alert or a report depends on.
 </td>
     </tr>
     <tr>

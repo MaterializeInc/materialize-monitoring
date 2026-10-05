@@ -313,6 +313,11 @@ fn extraction_context<'a>(
         // A whole expression, and the one metric it reads is the one extraction
         // should find.
         ("nodePools", NODE_POOLS),
+        // Resource identifiers. Extraction only reads metric names, so any regex
+        // does.
+        ("consensusRdsResources", ".+"),
+        ("consensusCloudsqlResources", ".+"),
+        ("consensusAzurePostgresResources", ".+"),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

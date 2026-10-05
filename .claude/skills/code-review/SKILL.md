@@ -109,7 +109,7 @@ The reasoning behind each is in **Designing to avoid the cycle** in `docs/conten
 - **Reading a raw `mz_*` metric?**
   Suggest minting a recording rule and pointing the artifact at that instead.
   We guarantee the `record:` name and may change the expression under it freely, so a future upstream rename becomes an expression edit with no customer-visible change.
-  Zero recording rules exist yet, so there is no precedent to match — this is the moment to set one.
+  The `ext:*` layer set the naming convention (`<level>:<metric>[:<operation>]`); see `docs/content/reference/internal/queries/recording-rules.md`.
 - **Renaming for clarity?**
   Suggest adding the new name and leaving the old one working.
   Additions are free; the cycle only starts when the old identifier has to *go*, which is often not actually required.

@@ -1,0 +1,66 @@
+{{/*
+  list-records: renders the recorded series, one heading per name.
+
+  Reads recording rules from assets/queries/*.yaml, and each rule's effective
+  capabilities from the generated rule index (assets/rules/_index.yaml, mounted
+  from the chart's pre-rendered rules), keyed `<group>/<record>`. One name has a
+  rule per adapter, so a name lists every adapter that records it.
+
+  Usage:
+    {{< list-records >}}
+*/}}
+{{- $ruleIndex := dict "records" dict -}}
+{{- with resources.Get "rules/_index.yaml" }}
+  {{- $ruleIndex = .Content | transform.Unmarshal }}
+{{- end }}
+{{- /* name -> list of (registry file, rule) in file then registration order */}}
+{{- $names := slice -}}
+{{- $byName := dict -}}
+{{- range resources.Match "queries/*.yaml" }}
+  {{- $file := path.BaseName .Name }}
+  {{- $queryRegistry := .Content | transform.Unmarshal }}
+  {{- range $queryRegistry.rules }}
+    {{- if not (index $byName .record) }}
+      {{- $names = $names | append .record }}
+      {{- $byName = merge $byName (dict .record slice) }}
+    {{- end }}
+    {{- $byName = merge $byName (dict .record ((index $byName .record) | append (dict "file" $file "rule" .))) }}
+  {{- end }}
+{{- end }}
+{{- if not $names }}
+  <p>No recording rules are bundled.</p>
+{{- else }}
+  {{- range $names }}
+    {{- $record := . }}
+    {{- $id := $record | replaceRE "[^a-zA-Z0-9_-]" "-" }}
+<h3 id="{{ $id }}"><code>{{ $record }}</code>
+  <a class="anchor" href="#{{ $id }}">#</a>
+</h3>
+    {{- range index $byName $record }}
+      {{- $rule := .rule }}
+      {{- $key := printf "%s/%s" $rule.group $rule.record }}
+<h4>{{ with $rule.labels }}{{ range $k, $v := . }}<code>{{ $k }}="{{ $v }}"</code> {{ end }}{{ end }}<small>from <code>{{ .file }}</code>, group <code>{{ $rule.group }}</code></small></h4>
+{{ $rule.description.summary | markdownify }}
+      {{- with $rule.description.notes }}
+{{ . | markdownify }}
+      {{- end }}
+      {{- with index $ruleIndex.records $key }}
+        {{- with .requires }}
+<p><strong>Recorded where:</strong> {{ range $i, $c := . }}{{ if $i }}, {{ end }}<code>{{ $c }}</code>{{ end }}.</p>
+        {{- end }}
+      {{- end }}
+      {{- $expressions := $rule.query.promQL }}
+      {{- if not ( reflect.IsSlice $expressions ) }}
+        {{- $expressions = slice $expressions }}
+      {{- end }}
+      {{- range $expressions }}
+        {{ $query := . }}
+        {{- if reflect.IsMap $query }}
+          {{- $query = $query.template }}
+        {{- end }}
+        {{- $query = $query | replaceRE "%%\\{([^}]+)\\}" "$${$1}" }}
+{{ transform.Highlight $query "promql" | safe.HTML }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
