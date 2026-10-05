@@ -58,6 +58,12 @@
       "pinDigests": false
     },
     {
+      "description": "Leave the mzmon-alloy pins in values.yaml to their regex manager under customManagers. Each pin has a `digest:` beside its `tag:`, and the Alloy subchart pulls by digest when one is set. helm-values never reads `digest:`, so its bump moves the tag and leaves the digest on the previous image, and the chart runs a different Alloy than its values name. Re-enabling `pinDigests` for helm-values does not fix that, because it writes the digest into `tag:` (`v1.17.0-mz1@sha256:...`). Without this rule both managers put their edits for the image on the same branch, each rewriting the same `tag:` line.",
+      "matchManagers": ["helm-values"],
+      "matchPackageNames": ["ghcr.io/materializeinc/mzmon-alloy"],
+      "enabled": false
+    },
+    {
       "description": "Do not pin digests for the checker images the scripts under bin/ run (promtool, logcli). Their annotated variables hold a bare tag (`LOGCLI_VERSION=3.7.8`) and the bin/ regex manager captures no digest, so a `docker:pinDigests` update has nowhere to write one. It fails as `update failure` on every run and parks a permanently errored `pin-dependencies` branch on the dashboard.",
       "matchFileNames": ["bin/**"],
       "matchDatasources": ["docker"],
@@ -223,6 +229,17 @@
         "#\\s?renovate: datasource=(?<datasource>\\S+) packageName=(?<packageName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z0-9_]+\\s*\\??=\\s*\\S+?:(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Update the mzmon-alloy pins in values.yaml (`alloy-agent.image`, `alloy-gateway.image`) as a tag and digest pair. Capturing currentDigest is what moves the `digest:` line with the `tag:` line. It also turns a same-tag re-push, which every container-images release makes, into a digest update. Renovate rewrites only the two captured values, so the digest stays in its own key. The match needs `registry`, `repository`, `tag` and `digest` as consecutive keys in that order. A block that stops matching drops out of Renovate without an error, since helm-values is disabled for this image. `docker` versioning, as helm-values used, only offers tags with the same suffix, so a move from `-mz3` to `-mz4` is a hand edit.",
+      "managerFilePatterns": ["/(^|/)values\\.ya?ml$/"],
+      "matchStrings": [
+        "registry:\\s*(?<registry>\\S+)\\s+repository:\\s*(?<repository>materializeinc/mzmon-alloy)\\s+tag:\\s*(?<currentValue>\\S+)\\s+digest:\\s*(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "{{{registry}}}/{{{repository}}}",
+      "versioningTemplate": "docker"
     }
   ]
 }
