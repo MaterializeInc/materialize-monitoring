@@ -196,6 +196,34 @@ kubectl -n monitoring scale statefulset thanos-compactor --replicas=1
 >
 >  While the Compactor is down, **retention is not enforced** and the bucket grows. That is tolerable for minutes and worth watching over days — it is why compaction falling behind deserves an alert rather than a periodic look.
 
+### `ThanosCompactHalted`: `overlaps found while gathering blocks` {#thanos-compact-halted}
+
+The Compactor pod is `Running` and healthy, but `thanos_compact_halted` is `1` and its log holds one error from shortly after startup:
+
+```text
+level=error msg="critical error detected; halting" err="compaction: group 0@...:
+pre compaction overlap check: overlaps found while gathering blocks.
+[mint: ..., maxt: ..., range: 8s, blocks: 2]: <ulid: ...>, <ulid: ...>"
+```
+
+**Cause.** Two blocks from the same Receive replica overlap by a few seconds.
+Receive writes such a pair across every restart, because it accepts replicated and retried samples older than the block it flushed on shutdown.
+Without vertical compaction the Compactor treats any overlap as corruption and stops.
+Nothing after the halt runs: no compaction, no downsampling, and no retention.
+
+**Fix.** Run the Compactor with `--compact.enable-vertical-compaction` and `--deduplication.replica-label=receive_replica`.
+Both are in the chart default `thanos.compactor.extraArgs`, so a halt means an `extraArgs` override dropped them or the release predates them.
+The Compactor merges the overlapping blocks on its next start, and the blocks need no manual repair.
+The first run after a long halt works through the whole backlog before downsampling catches up.
+
+Confirm the halt, and then the recovery, from the Compactor's own metrics.
+`thanos_compact_halted` returns to `0` on the first start with the flags, and `thanos_compact_todo_compactions` falls as the backlog drains:
+
+```bash
+kubectl -n monitoring exec thanos-compactor-0 -- wget -qO- localhost:10902/metrics \
+  | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
+```
+
 ### Everything suddenly fails, and it worked an hour ago
 
 Terraform cannot reach the cluster, `kubectl` returns an auth error, or a plan that succeeded this morning now fails on the provider rather than on anything you changed.

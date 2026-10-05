@@ -523,6 +523,11 @@ The Thanos **Compactor** compacts raw blocks and produces downsampled resolution
 
 Downsampling keeps long-range queries cheap: a year-wide query reads 1h blocks, not raw samples. Tune these to trade storage cost against how far back high-resolution data stays available.
 
+Each Receive replica uploads its own copy of every block it holds, labelled with `receive_replica`.
+The Compactor deduplicates on that label (`--deduplication.replica-label=receive_replica`), so compacted blocks hold one copy of each series rather than one per replica.
+The same flag enables vertical compaction, which merges the short overlaps Receive writes across a restart instead of halting on them.
+See [Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction) for the upgrade caveats.
+
 ### Components
 
 The bundled Thanos runs as a small set of roles over the shared bucket:

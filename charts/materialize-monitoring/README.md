@@ -6686,7 +6686,8 @@ reason, and it is worth spelling out because Receive looks stateful.
 Durability comes from `--receive.replication-factor=3`, not from disk.
 Blocks ship to object storage every 2h, so the window that exists only
 locally is at most 2h — and every replica uploads its own copy under a
-distinct `replica` external label, which the Compactor deduplicates. A pod
+distinct `receive_replica` external label, which the Compactor
+deduplicates (see `compactor.extraArgs`). A pod
 that comes back with an empty volume has lost its copy of that window, and
 the query path still answers from the surviving replicas.
 
@@ -6917,6 +6918,46 @@ downsamples only from blocks spanning 10d or more. Below those the tier is
 never created at all and long-range queries silently fall back to reading
 raw blocks — slower and more expensive, which is the opposite of the
 intent. 30d clears both comfortably.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--log.level=info",
+  "--log.format=logfmt",
+  "--consistency-delay=30m",
+  "--compact.enable-vertical-compaction",
+  "--deduplication.replica-label=receive_replica"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for the Compactor.
+**This is a list, and Helm overwrites lists rather than merging them.**
+The first three entries restate the subchart's defaults, so an override
+has to restate them too.
+
+`--compact.enable-vertical-compaction` lets the Compactor merge
+overlapping blocks. Without it, any overlap halts compaction, retention
+and downsampling until someone repairs the bucket by hand. Receive
+produces overlaps on every restart: the block it flushes on shutdown ends
+at its last sample, and after restart it accepts replicated and retried
+samples a few seconds older than that. Overlaps of 5–40s were observed
+after ordinary rollouts.
+
+`--deduplication.replica-label=receive_replica` drops the per-pod label
+from block grouping, so the replication factor's copies compact into one
+block. The bucket then holds one copy of each series rather than RF. The
+default merge function deduplicates only identical samples, which is what
+Receive replication writes. Thanos Query still deduplicates the recent
+window on `receive_replica`, so reads are unchanged. A deduplicated group
+holds every series, so above `replicaCount == replicationFactor` a
+compaction group is larger than one replica's was.
+
+Both flags are irreversible for the blocks they touch. The replica label
+alone also turns on vertical compaction (Thanos `cmd/thanos/compact.go`);
+the explicit flag keeps overlaps from halting compaction if an override
+drops the replica label.
 </td>
     </tr>
     <tr>

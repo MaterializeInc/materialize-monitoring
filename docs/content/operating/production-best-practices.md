@@ -759,7 +759,7 @@ An EBS volume cannot be attached from another zone, so a pod whose zone is gone 
 On the write path that converts a recoverable event into an outage that waits on the cloud provider: with RF 3 write quorum is 2, so two Receive pods stuck `Pending` on dead volumes block writes outright, where two `emptyDir` pods would have been rescheduled and rejoined the hashring.
 
 This is the same call the chart already makes for [Loki's ingesters](#4-ingester-durability--rollouts), for the same reason.
-Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `replica` external label, which the Compactor deduplicates.
+Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `receive_replica` external label, which the Compactor deduplicates into one copy (see [Retention & compaction](#thanos-retention-compaction)).
 A pod that returns with an empty volume has lost its copy of that window; the query path still answers from the surviving replicas.
 
 > [!WARNING]
@@ -822,7 +822,7 @@ All of these are `extraArgs`. `[operator]` sets per profile.
 
 > [!WARNING]
 >   **`extraArgs` is a list, and Helm overwrites lists rather than merging them.**
->   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m`, `query.extraArgs` carries `--log.level=info`.
+>   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m` and the [vertical compaction and deduplication flags](#thanos-retention-compaction), `query.extraArgs` carries `--log.level=info`.
 >   Setting `extraArgs` to add a limit **silently drops whatever was already there**, and on Receive that means falling back to Thanos's default replication factor of 1 — the exact failure the quorum table above exists to prevent.
 >   Restate the base arguments in full every time. The shipped profiles do.
 
@@ -899,11 +899,15 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 - [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
 - [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
 
-#### 4. Retention & compaction
+#### 4. Retention & compaction {#thanos-retention-compaction}
 
 - [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d — the medium row of [Retention and downsampling](#retention-and-downsampling).
 - [ ] `[operator]` Set those to your storage budget. Retention is enforced by the Compactor — with it disabled nothing expires and bucket cost grows without bound.
 - [ ] `[operator]` Keep raw retention above the downsampling thresholds (40h for the 5m tier, 10d for the 1h tier). Below them the tier is never produced and long-range queries silently fall back to raw blocks. See [Retention and downsampling](#retention-and-downsampling).
+- [x] `[chart]` **Vertical compaction on** (`--compact.enable-vertical-compaction`). Receive writes slightly overlapping blocks across every restart, and without vertical compaction the first overlap halts the Compactor. A halted Compactor enforces no retention and produces no downsamples. `ThanosCompactHalted` is the signal.
+- [x] `[chart]` **Replicas deduplicated in the bucket** (`--deduplication.replica-label=receive_replica`). The RF copies of each block compact into one, so the bucket holds one copy of each series. Thanos Query still deduplicates Receive's recent window on the same label.
+- [ ] `[operator]` An `extraArgs` override on the Compactor replaces both flags along with `--consistency-delay=30m`. Restate all of them, as with Receive's replication factor.
+- [ ] `[operator]` Deduplication is irreversible, and on an existing bucket it changes the external labels of compacted blocks. Downsampled blocks written before the change cannot be vertically compacted. Thanos marks them `no-compact`, and they keep their per-replica copies until retention expires them.
 - [x] `[chart]` Receive TSDB **local retention 6h** (overriding the subchart's 24h) with WAL compression. Blocks still ship to object storage every 2h — retention is a recent-query cache, not a durability window, and the Store Gateway serves everything older. 6h is what makes the `emptyDir` budget fit a modest node: 24h at the medium envelope is ~7.3Gi per pod, against ~18.8Gi allocatable on a typical GKE node shared with Loki.
 - [ ] `[operator]` Raising local retention raises the ephemeral request with it, roughly linearly. Check [the allocatable warning](#thanos-ephemeral-budget) first — this is the setting most likely to make Receive unschedulable.
 

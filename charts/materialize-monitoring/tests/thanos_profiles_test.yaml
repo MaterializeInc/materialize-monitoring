@@ -197,6 +197,48 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].resources.requests.ephemeral-storage
 
+  # --- Compactor tolerates Receive's restart overlaps -----------------------
+  # Receive writes overlapping blocks across every restart, and without vertical
+  # compaction the first overlap halts compaction, downsampling and retention.
+  # `compactor.extraArgs` is a list, so it also has to restate the subchart's
+  # `--consistency-delay`.
+  - it: medium merges overlaps and deduplicates Receive replicas
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --compact.enable-vertical-compaction
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --deduplication.replica-label=receive_replica
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --consistency-delay=30m
+
+  - it: small keeps the Compactor's overlap handling
+    values:
+      - ../profiles/thanos-small.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --compact.enable-vertical-compaction
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --deduplication.replica-label=receive_replica
+
+  - it: large keeps the Compactor's overlap handling
+    values:
+      - ../profiles/thanos-large.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --compact.enable-vertical-compaction
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --deduplication.replica-label=receive_replica
+
   # --- Receive is ephemeral, and explicitly budgeted ------------------------
   # Receive alone is emptyDir-backed: durability is the replication factor, and a
   # PVC makes an AZ failure worse rather than better (a zonal volume cannot attach
