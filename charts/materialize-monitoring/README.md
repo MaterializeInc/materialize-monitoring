@@ -8711,16 +8711,42 @@ Upstream reference:
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]",
+  "pods=[cluster.environmentd.materialize.cloud/cluster-id,cluster.environmentd.materialize.cloud/replica-id,cluster.environmentd.materialize.cloud/size,materialize.cloud/environment-id]"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+      <td class="helm-value-desc">Node and pod labels copied onto `kube_node_labels` and `kube_pod_labels`.
 
-The node pool, by whichever label the cluster's provisioner sets — Karpenter,
-an EKS managed node group, a GKE node pool or an AKS agent pool — and the
-instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
-by all three. One series per node, so the cost is negligible; add a label here
-rather than `nodes=[*]`, which copies every label on every node.
+kube-state-metrics publishes each label as `label_<key>`, with every
+character outside `[a-zA-Z0-9_]` mapped to `_`. It publishes neither family
+until an entry names a label for that resource.
+
+| Entry   | Labels | Read by |
+| ------- | ------ | ------- |
+| `nodes` | The node pool, by whichever label the provisioner sets (Karpenter, an EKS managed node group, a GKE node pool or an AKS agent pool), the instance type and the zone | The Infrastructure Autoscaling dashboard, which groups nodes by all three |
+| `pods`  | A replica pod's Materialize cluster id, replica id and replica size, and the environment id | Any join from a `kube_pod_*` family to a Materialize cluster or replica, such as cost or requests per replica |
+
+The `pods` labels arrive under the canonical names `cluster_id`,
+`replica_id`, `replica_size` and `environment_id` rather than as `label_*`.
+`prometheus.monitor.http.metricRelabelings` renames them. Only clusterd pods
+carry the first three. No released Materialize operator sets
+`materialize.cloud/environment-id` yet, so `environment_id` is absent until
+one does.
+
+**Cardinality.** Each family has one series per object, whatever the list
+names, because the labels are carried on that one series. A broader list
+costs index size and series churn rather than series count: a label whose
+value changes on a running object ends one series and starts another.
+`pods=[*]` copies every label on every pod in the cluster, including the
+per-rollout hashes and whatever a workload owner chose to set, so name labels
+individually instead.
+
+**Extending the list.** Helm replaces a list rather than merging it, so an
+override restates both entries. Leaving out `nodes` empties every per-pool
+panel with nothing else failing. The Terraform module's
+`kube_state_metrics_pod_labels` appends to the `pods` entry without
+restating it. An ownership label for cost-center allocation is the expected
+addition, and arrives as `label_<key>`.
 </td>
     </tr>
     <tr>
@@ -8816,7 +8842,37 @@ you know it.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "honorLabels": true
+  "honorLabels": true,
+  "metricRelabelings": [
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_cluster_id"
+      ],
+      "targetLabel": "cluster_id"
+    },
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_replica_id"
+      ],
+      "targetLabel": "replica_id"
+    },
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_size"
+      ],
+      "targetLabel": "replica_size"
+    },
+    {
+      "sourceLabels": [
+        "label_materialize_cloud_environment_id"
+      ],
+      "targetLabel": "environment_id"
+    },
+    {
+      "action": "labeldrop",
+      "regex": "label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Keep kube-state-metrics' own labels when they collide with the scrape's.
@@ -8842,6 +8898,63 @@ Both endpoints, so turning `selfMonitor` on does not reintroduce it on the
 half nobody was looking at. The subchart defaults both to `false`.
 
 Asserted by the e2e suite: `kube_state::labels_are_honored`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.prometheus<wbr>.monitor<wbr>.http<wbr>.metricRelabelings</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_cluster_id"
+    ],
+    "targetLabel": "cluster_id"
+  },
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_replica_id"
+    ],
+    "targetLabel": "replica_id"
+  },
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_size"
+    ],
+    "targetLabel": "replica_size"
+  },
+  {
+    "sourceLabels": [
+      "label_materialize_cloud_environment_id"
+    ],
+    "targetLabel": "environment_id"
+  },
+  {
+    "action": "labeldrop",
+    "regex": "label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Rename the Materialize pod labels on `kube_pod_labels` to their canonical names.
+
+| Pod label                                          | Published as     |
+| -------------------------------------------------- | ---------------- |
+| `cluster.environmentd.materialize.cloud/cluster-id` | `cluster_id`     |
+| `cluster.environmentd.materialize.cloud/replica-id` | `replica_id`     |
+| `cluster.environmentd.materialize.cloud/size`       | `replica_size`   |
+| `materialize.cloud/environment-id`                  | `environment_id` |
+
+`cluster_id` and `replica_id` are the names `mz_cluster_info` and
+`mz_replica_info` already carry, so a join through `kube_pod_labels`
+needs no `label_replace`. Without the rename the keys would be
+`label_cluster_environmentd_materialize_cloud_cluster_id` and its
+siblings. The `label_*` form is dropped rather than kept beside the
+canonical one, because nothing read it before these labels were
+allowlisted.
+
+A pod without the label is left alone: the copy writes an empty value,
+which is no label at all. Restate these rules when overriding the
+list, since Helm replaces it.
 </td>
     </tr>
   </tbody>

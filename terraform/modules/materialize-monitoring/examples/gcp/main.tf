@@ -86,6 +86,12 @@ module "monitoring" {
 
   node_selector = { workload = "generic" }
 
+  # An ownership label for cost-center allocation. The render check requires it
+  # inside the `pods` entry beside the chart's Materialize labels, with the
+  # `nodes` entry intact: the module extends the chart's list rather than
+  # replacing it.
+  kube_state_metrics_pod_labels = ["example.com/cost-center"]
+
   # A sentinel, not a realistic class name: the render check requires every
   # volumeClaimTemplate to carry it, which is what proves storage_class.tf's
   # fan-out is complete. GCP carries it because C4/N4 take only Hyperdisk, so the

@@ -217,6 +217,42 @@ variable "install_node_exporter" {
   nullable    = false
 }
 
+variable "kube_state_metrics_pod_labels" {
+  description = <<-EOT
+    Pod labels to publish on `kube_pod_labels`, in addition to the Materialize ones the chart names.
+
+    An ownership label for cost-center allocation is the expected use. Each arrives as
+    `label_<key>`, with every character outside `[a-zA-Z0-9_]` mapped to `_`, and joins to any
+    `kube_pod_*` family on `namespace` and `pod`.
+
+    Appended to the chart's `pods` allowlist entry rather than replacing it. Setting
+    `kube-state-metrics.metricLabelsAllowlist` through `additional_values` instead replaces the
+    whole list, node labels included.
+
+    Name each label. `*` copies every label on every pod, and is refused.
+  EOT
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  # A Kubernetes label key: an optional DNS-subdomain prefix and a name of at most 63 characters.
+  # The check also keeps `*`, `,` and `]` out of the flag, any of which would change what the
+  # allowlist means rather than fail to parse.
+  validation {
+    condition = alltrue([
+      for key in var.kube_state_metrics_pod_labels :
+      can(regex("^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$", key))
+    ])
+    error_message = format(
+      "kube_state_metrics_pod_labels must hold Kubernetes label keys, not patterns. Invalid: %s.",
+      join(", ", [
+        for key in var.kube_state_metrics_pod_labels : jsonencode(key)
+        if !can(regex("^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$", key))
+      ]),
+    )
+  }
+}
+
 # ==============================================================================
 # Sizing
 # ==============================================================================

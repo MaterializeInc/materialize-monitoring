@@ -400,6 +400,35 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         checks::kube_state::pods_are_distinguishable,
     ));
 
+    // No `pods` entry in the allowlist means no `kube_pod_labels` at all, so
+    // there is nothing to bound or join.
+    let pod_labels = checks::kube_state::allowlisted_pod_labels(&ctx.features);
+    trials.push(trial(
+        runtime,
+        ctx,
+        "kube_state::pod_labels_are_bounded",
+        kube_state && pod_labels.is_some(),
+        checks::kube_state::pod_labels_are_bounded,
+    ));
+    // The join also needs a Materialize replica to join to, which the kind tiers
+    // never run. Gated on the cluster rather than the values, because Materialize
+    // is not part of this release: with no replica pod the assertion is
+    // unanswerable, not passing.
+    let joins_replicas = kube_state
+        && pod_labels.is_some_and(|labels| {
+            labels
+                .iter()
+                .any(|k| k == checks::kube_state::CLUSTER_ID_POD_LABEL)
+        })
+        && materialize_replicas_present(runtime, ctx);
+    trials.push(trial(
+        runtime,
+        ctx,
+        "kube_state::pod_labels_join_to_replicas",
+        joins_replicas,
+        checks::kube_state::pod_labels_join_to_replicas,
+    ));
+
     // The node-detail dashboard's join spans both exporters, so it needs both
     // features present before the assertion means anything.
     let node_metrics = kube_state && ctx.features.enabled("node-exporter");
@@ -496,6 +525,24 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
     ));
 
     trials
+}
+
+/// Whether any pod in the cluster is a Materialize replica.
+///
+/// A listing that fails counts as present, so the assertion it gates runs and
+/// reports the error. Treating it as absent would turn a permissions problem
+/// into an ignored test.
+fn materialize_replicas_present(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> bool {
+    match runtime.block_on(
+        ctx.cluster
+            .pods_with_label(checks::kube_state::CLUSTER_ID_POD_LABEL),
+    ) {
+        Ok(pods) => !pods.is_empty(),
+        Err(err) => {
+            eprintln!("warning: could not look for Materialize replica pods ({err:#})");
+            true
+        }
+    }
 }
 
 /// Wrap an async assertion as a trial.

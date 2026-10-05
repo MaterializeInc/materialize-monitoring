@@ -243,6 +243,68 @@ PYEOF
         echo "    cluster_name reached ${cluster_report}"
     fi
 
+    # kube_state_metrics_pod_labels has to extend the chart's `pods` allowlist
+    # entry rather than replace the list. Helm overwrites lists, so the wrong
+    # composition renders a valid flag that has lost the chart's Materialize
+    # labels or its `nodes` entry, and the only symptom is an empty panel. Read
+    # from the rendered Deployment, since that is the flag kube-state-metrics
+    # parses, and against the chart's own values, so the check follows the list
+    # rather than restating it. Gated on the module call, for the reason given
+    # at the credential check below.
+    expected_pod_labels="$(jq -c '
+        .configuration.root_module.module_calls.monitoring.expressions
+        .kube_state_metrics_pod_labels.constant_value // empty
+    ' "${plan_json}" 2>/dev/null || true)"
+    if [ -n "${expected_pod_labels}" ] && [ "${expected_pod_labels}" != "[]" ]; then
+        if ! ksm_report="$(
+            ${PY_RUN} python - "${expected_pod_labels}" "${CHART_DIR}/values.yaml" "${rendered}" <<'PYEOF'
+import json
+import re
+import sys
+
+import yaml
+
+extra = json.loads(sys.argv[1])
+chart = yaml.safe_load(open(sys.argv[2]))["kube-state-metrics"]["metricLabelsAllowlist"]
+entry = re.compile(r"(\w+)=\[([^\]]*)\]")
+
+
+def parse(entries):
+    return {res: labels.split(",") for res, labels in entry.findall(",".join(entries))}
+
+
+want = parse(chart)
+want["pods"] = list(dict.fromkeys(want.get("pods", []) + extra))
+
+flags = []
+with open(sys.argv[3]) as f:
+    for doc in yaml.safe_load_all(f):
+        if not doc or doc.get("kind") != "Deployment":
+            continue
+        for container in doc["spec"]["template"]["spec"]["containers"]:
+            flags += [
+                a.split("=", 1)[1]
+                for a in container.get("args") or []
+                if a.startswith("--metric-labels-allowlist=")
+            ]
+if len(flags) != 1:
+    print(f"{len(flags)} --metric-labels-allowlist flags rendered, expected 1")
+    sys.exit(1)
+got = parse([flags[0]])
+if got != want:
+    print(f"rendered {got}, expected {want}")
+    sys.exit(1)
+print(f"pods=[{len(want['pods'])} labels] beside nodes=[{len(want.get('nodes', []))} labels]")
+PYEOF
+        )"; then
+            echo "  !! ${example}: kube_state_metrics_pod_labels did not compose: ${ksm_report}" >&2
+            echo "     See terraform/modules/materialize-monitoring/kube_state_metrics.tf." >&2
+            status=1
+            continue
+        fi
+        echo "    kube-state-metrics allowlist: ${ksm_report}"
+    fi
+
     # Loki's S3 endpoint, which has no default inside Loki and is not derivable
     # from the bucket or the region: the client rejects an empty one up front
     # ("create bucket: no s3 endpoint in config file") instead of falling through
