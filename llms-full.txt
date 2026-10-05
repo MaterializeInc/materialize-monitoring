@@ -19777,16 +19777,42 @@ Upstream reference:
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]",
+  "pods=[cluster.environmentd.materialize.cloud/cluster-id,cluster.environmentd.materialize.cloud/replica-id,cluster.environmentd.materialize.cloud/size,materialize.cloud/environment-id]"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+      <td class="helm-value-desc">Node and pod labels copied onto `kube_node_labels` and `kube_pod_labels`.
 
-The node pool, by whichever label the cluster's provisioner sets — Karpenter,
-an EKS managed node group, a GKE node pool or an AKS agent pool — and the
-instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
-by all three. One series per node, so the cost is negligible; add a label here
-rather than `nodes=[*]`, which copies every label on every node.
+kube-state-metrics publishes each label as `label_<key>`, with every
+character outside `[a-zA-Z0-9_]` mapped to `_`. It publishes neither family
+until an entry names a label for that resource.
+
+| Entry   | Labels | Read by |
+| ------- | ------ | ------- |
+| `nodes` | The node pool, by whichever label the provisioner sets (Karpenter, an EKS managed node group, a GKE node pool or an AKS agent pool), the instance type and the zone | The Infrastructure Autoscaling dashboard, which groups nodes by all three |
+| `pods`  | A replica pod's Materialize cluster id, replica id and replica size, and the environment id | Any join from a `kube_pod_*` family to a Materialize cluster or replica, such as cost or requests per replica |
+
+The `pods` labels arrive under the canonical names `cluster_id`,
+`replica_id`, `replica_size` and `environment_id` rather than as `label_*`.
+`prometheus.monitor.http.metricRelabelings` renames them. Only clusterd pods
+carry the first three. No released Materialize operator sets
+`materialize.cloud/environment-id` yet, so `environment_id` is absent until
+one does.
+
+**Cardinality.** Each family has one series per object, whatever the list
+names, because the labels are carried on that one series. A broader list
+costs index size and series churn rather than series count: a label whose
+value changes on a running object ends one series and starts another.
+`pods=[*]` copies every label on every pod in the cluster, including the
+per-rollout hashes and whatever a workload owner chose to set, so name labels
+individually instead.
+
+**Extending the list.** Helm replaces a list rather than merging it, so an
+override restates both entries. Leaving out `nodes` empties every per-pool
+panel with nothing else failing. The Terraform module's
+`kube_state_metrics_pod_labels` appends to the `pods` entry without
+restating it. An ownership label for cost-center allocation is the expected
+addition, and arrives as `label_<key>`.
 </td>
     </tr>
     <tr>
@@ -19882,7 +19908,37 @@ you know it.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "honorLabels": true
+  "honorLabels": true,
+  "metricRelabelings": [
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_cluster_id"
+      ],
+      "targetLabel": "cluster_id"
+    },
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_replica_id"
+      ],
+      "targetLabel": "replica_id"
+    },
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_size"
+      ],
+      "targetLabel": "replica_size"
+    },
+    {
+      "sourceLabels": [
+        "label_materialize_cloud_environment_id"
+      ],
+      "targetLabel": "environment_id"
+    },
+    {
+      "action": "labeldrop",
+      "regex": "label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Keep kube-state-metrics' own labels when they collide with the scrape's.
@@ -19908,6 +19964,63 @@ Both endpoints, so turning `selfMonitor` on does not reintroduce it on the
 half nobody was looking at. The subchart defaults both to `false`.
 
 Asserted by the e2e suite: `kube_state::labels_are_honored`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.prometheus<wbr>.monitor<wbr>.http<wbr>.metricRelabelings</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_cluster_id"
+    ],
+    "targetLabel": "cluster_id"
+  },
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_replica_id"
+    ],
+    "targetLabel": "replica_id"
+  },
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_size"
+    ],
+    "targetLabel": "replica_size"
+  },
+  {
+    "sourceLabels": [
+      "label_materialize_cloud_environment_id"
+    ],
+    "targetLabel": "environment_id"
+  },
+  {
+    "action": "labeldrop",
+    "regex": "label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Rename the Materialize pod labels on `kube_pod_labels` to their canonical names.
+
+| Pod label                                          | Published as     |
+| -------------------------------------------------- | ---------------- |
+| `cluster.environmentd.materialize.cloud/cluster-id` | `cluster_id`     |
+| `cluster.environmentd.materialize.cloud/replica-id` | `replica_id`     |
+| `cluster.environmentd.materialize.cloud/size`       | `replica_size`   |
+| `materialize.cloud/environment-id`                  | `environment_id` |
+
+`cluster_id` and `replica_id` are the names `mz_cluster_info` and
+`mz_replica_info` already carry, so a join through `kube_pod_labels`
+needs no `label_replace`. Without the rename the keys would be
+`label_cluster_environmentd_materialize_cloud_cluster_id` and its
+siblings. The `label_*` form is dropped rather than kept beside the
+canonical one, because nothing read it before these labels were
+allowlisted.
+
+A pod without the label is left alone: the copy writes an empty value,
+which is no label at all. Restate these rules when overriding the
+list, since Helm replaces it.
 </td>
     </tr>
   </tbody>
@@ -20610,7 +20723,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `materialize-monitoring-crds/`: CRDs chart (`Chart.yaml`, `Chart.lock`, `values.yaml`, `README.md`, `README.md.gotmpl`, `tests/`)
       * `charts/`: the vendored `prometheus-operator-crds` tarball, plus `grafana-operator-crds/` deflated from the upstream operator chart, which publishes no CRDs chart of its own — generated by `bin/extract-grafana-operator-crds.sh` (`make grafana-operator-crds`)
   * `terraform/` (see [Terraform Modules](../design-docs/20260803-terraform-modules/)): the cloud-agnostic module that installs the released charts. Versioned as part of the `materialize-monitoring` component rather than on a stream of its own; per-cloud wrappers live in `materialize-terraform-self-managed`
-    * `modules/materialize-monitoring/`: the module. Concern per file — `values.tf` (composition order), `scheduling.tf` and `storage_class.tf` (subchart fan-outs), `destinations.tf` (extra metric destinations), `config_hash.tf` (the pod-template hash that rolls Alloy)
+    * `modules/materialize-monitoring/`: the module. Concern per file — `values.tf` (composition order), `scheduling.tf`, `storage_class.tf` and `kube_state_metrics.tf` (subchart fan-outs), `destinations.tf` (extra metric destinations), `config_hash.tf` (the pod-template hash that rolls Alloy)
       * `examples/{aws,gcp}/`: not deployable roots — plan targets for the tier-0 render check. Both clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
@@ -21855,6 +21968,23 @@ the cluster reduces that to "has any certificate".
     # Terraform even though the chart has always taken the field.
     group = optional(string, "cert-manager.io")
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="kube_state_metrics_pod_labels" href="#kube_state_metrics_pod_labels">kube_<wbr>state_<wbr>metrics_<wbr>pod_<wbr>labels</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Pod labels to publish on `kube_pod_labels`, in addition to the Materialize ones the chart names.
+
+An ownership label for cost-center allocation is the expected use. Each arrives as
+`label_<key>`, with every character outside `[a-zA-Z0-9_]` mapped to `_`, and joins to any
+`kube_pod_*` family on `namespace` and `pod`.
+
+Appended to the chart's `pods` allowlist entry rather than replacing it. Setting
+`kube-state-metrics.metricLabelsAllowlist` through `additional_values` instead replaces the
+whole list, node labels included.
+
+Name each label. `*` copies every label on every pod, and is refused.
+</td>
+        <td class="tf-var-default"><code>[]</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="materialize_instance_namespace" href="#materialize_instance_namespace">materialize_<wbr>instance_<wbr>namespace</a></td>
@@ -23725,6 +23855,39 @@ flag. An install from before it has every per-pool panel empty, and those panels
 **The node families are vetted.** `node-health` and `node-debug` were authored before any dashboard used them and were
 long flagged as unreviewed. All 87 of their expressions were run against a live cluster while this was built and all 87
 returned data, as did all 103 rendered Prometheus queries and all 5 Loki ones.
+
+## Materialize replicas on pod families
+
+`kube_pod_labels` names the Materialize cluster and replica a pod runs, as `cluster_id`, `replica_id` and `replica_size`.
+Only clusterd pods carry them.
+It will also carry `environment_id` once the Materialize operator sets the `materialize.cloud/environment-id` pod label,
+which no released operator does yet.
+The chart's `kube-state-metrics.metricLabelsAllowlist` publishes the pod labels, and the monitor's `metricRelabelings`
+renames them from the `label_*` form kube-state-metrics writes.
+
+A `kube_pod_*` family joins onto it on `namespace` and `pod`:
+
+```promql
+max by (namespace, cluster_id, replica_id) (
+  sum by (namespace, cluster_id, replica_id, instance) (
+    kube_pod_container_resource_requests{resource="memory"}
+    * on (namespace, pod) group_left (cluster_id, replica_id)
+    group by (namespace, pod, cluster_id, replica_id) (kube_pod_labels{cluster_id!=""})
+  )
+)
+```
+
+| Part | Why |
+| --- | --- |
+| `group by` around `kube_pod_labels` | Drops `instance`. An HA kube-state-metrics reports every pod once per replica, and without it the join fails as many-to-many |
+| `instance` in the inner `sum`, outer `max` | The same replicas would otherwise double the left-hand side; the convention `materialize-kubernetes.yaml` established |
+| `namespace` in every `by` | A cluster id is unique only within an environment. `s1` and `u1` exist in every one |
+| `cluster_id!=""` | Keeps the result to replica pods |
+
+This is the replacement for matching replica pods by name (`pod=~".*-cluster-<id>-replica-<id>-.*"`), which the queries
+in `materialize-kubernetes.yaml` predate and still use.
+`kube_state::pod_labels_join_to_replicas` in the e2e suite asserts the join against the API server's pods, on any
+cluster that runs a replica.
 
 ## Deployment generations (blue/green)
 
