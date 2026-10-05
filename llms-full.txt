@@ -547,6 +547,8 @@ Loki writes all durable data to object storage (S3-compatible, GCS, or Azure Blo
 
 Thanos is included in `materialize-monitoring` as its default metrics storage and querying backend.
 
+For the full flow, with diagrams of collection, the write path, the block lifecycle, the read path and rule evaluation, see [Metrics > Metrics Architecture](../metrics/architecture/).
+
 Refer to [Thanos Design](https://thanos.io/tip/thanos/design.md/) for more details on the architecture of Thanos.
 
 The Thanos Receiver path includes:
@@ -564,7 +566,7 @@ The Thanos Query path includes:
 Additional components include:
 * A `thanos-compactor` singleton deployment that operates against the storage layer to compact, manage retention, and downsample metrics.
 * A `thanos-ruler` deployment that runs the `Ruler` component for alerting and recording rules.
-  * The `Ruler` subcomponent evaluates alerting and recording rules against incoming metrics.
+  * The `Ruler` subcomponent evaluates alerting and recording rules by querying `thanos-query`, and remote-writes the results to `alloy-gateway`.
 
 ## `grafana`: Grafana
 
@@ -2077,6 +2079,318 @@ On the Helm path every `[consumer]` item is yours, including the buckets and wor
 
 
 --------------------------------------------------------------------------------
+title: "Architecture"
+url: https://materializeinc.github.io/materialize-monitoring/metrics/architecture/index.md
+--------------------------------------------------------------------------------
+
+# Metrics Architecture
+
+This page describes how metrics move through `materialize-monitoring`.
+In the bundled stack, every metric enters through the [`alloy-gateway`](../../o11y-glossary/#alloy), which scrapes or receives it, processes it, and writes it to one or more destinations.
+The default destination is the bundled [Thanos](../../o11y-glossary/#thanos).
+Thanos keeps recent data in Receive, keeps everything older as blocks in object storage, and answers [PromQL](../../o11y-glossary/#promql) for Grafana and for the Thanos Ruler.
+
+The other pages in this section cover each stage in depth:
+
+| Page | Covers |
+|---|---|
+| [Collecting](../collecting/overview/) | The five ways metrics reach the gateway, and its ingress ports |
+| [Scraping](../scraping/) | Monitor discovery, the kubelet scrape, and scrape configurations for a separately run Prometheus |
+| [Storing](../storing/) | Destinations, importance tiers, the denylist, object storage, retention and downsampling |
+| [Querying](../querying/) | PromQL through Grafana and the Thanos Query API |
+| [Alerting > Configuring](../../alerting/configuring/) | The Thanos Ruler, and how `PrometheusRule` resources reach it |
+
+The production checklist for this backend is [Production Best Practices > Metrics (Thanos)](../../operating/production-best-practices/#metrics-thanos).
+The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+
+## End-to-end dataflow
+
+```mermaid
+flowchart TB
+  src["Sources<br/>monitor targets · kubelets<br/>cloud APIs · pushers"]
+  graf["Grafana"]
+  ruler["Thanos Ruler"]
+  gw["alloy-gateway"]
+  query["Thanos Query"]
+  am["Alertmanager"]
+  other["Other destinations<br/>AMP · OTLP backends"]
+  recv["Thanos Receive<br/>RF 3"]
+  sg["Thanos Store Gateway"]
+  bucket[("Object storage")]
+  comp["Thanos Compactor"]
+
+  src --> gw
+  ruler -->|"rule results"| gw
+  ruler -->|"PromQL"| query
+  ruler -->|"alerts"| am
+  graf -->|"PromQL"| query
+  gw -.->|"optional"| other
+  gw -->|"remote-write"| recv
+  query -->|"recent"| recv
+  query -->|"historical"| sg
+  recv -->|"2h blocks"| bucket
+  sg -->|"read blocks"| bucket
+  bucket <-->|"rewrite blocks"| comp
+```
+
+Writes flow downward.
+The gateway [collects](#collection) from every source, runs the shared [processing pipeline](#gateway-pipeline), and writes each destination its own filtered copy.
+[Thanos Receive](#thanos-receive) replicates each write to three pods, serves the recent window, and uploads a block to object storage every two hours.
+The [Compactor](#block-lifecycle) merges, deduplicates, downsamples, and expires those blocks in place.
+
+Reads flow upward from Grafana into [Thanos Query](#read-path), which merges recent data from Receive with historical data from the Store Gateway.
+The [Thanos Ruler](#rule-evaluation) queries the same path, sends alerts to Alertmanager, and writes its results back into the gateway, so rule output takes the same route as every other metric.
+
+## Collection {#collection}
+
+All metric collection runs in the `alloy-gateway` Deployment.
+The `alloy-agent` DaemonSet collects logs only.
+Container metrics come from the kubelet, which the gateway scrapes directly, so no per-node metrics agent is needed.
+
+| Source | Reaches the gateway by | Default |
+|---|---|---|
+| `PodMonitor` and `ServiceMonitor` targets | Scrape, discovered from every monitor in the cluster | On. The chart ships monitors for Materialize, kube-state-metrics, node-exporter and each stack component |
+| Kubelet `/metrics/cadvisor` | Scrape of every node's kubelet | On, every 60s |
+| kube-proxy | Scrape, discovered by a server-side pod selector | On where kube-proxy runs |
+| Cloud provider monitoring APIs | Pull through an in-process exporter | Off |
+| Prometheus remote-write | Push to `:9090` | Listener on |
+| OTLP | Push to `:4317` (gRPC) or `:4318` (HTTP) | Listener on |
+| Thanos Ruler and Loki Ruler | Remote-write push to `:9090` | On |
+
+The gateway replicas form an [Alloy cluster](https://grafana.com/docs/alloy/latest/get-started/clustering/).
+Every scrape and pull is clustered, so each target has one owner among the replicas.
+Adding a replica spreads scrape load without duplicating samples.
+A cloud provider's API is therefore called once per interval, however many replicas run.
+
+*See more:* [Collecting](../collecting/overview/), [Scraping](../scraping/), and [Cloud Provider Metrics](../collecting/cloud-provider-metrics/).
+
+### Inside the gateway {#gateway-pipeline}
+
+```mermaid
+flowchart TB
+  scrape["Scrapes and pulls<br/>monitors · kubelet · kube-proxy · providers"]
+  rw["prometheus.receive_http :9090<br/>fills job / instance on pushed samples"]
+  otlpin["otelcol.receiver.otlp<br/>:4317 / :4318"]
+  bridge["inputBridge<br/>Prometheus → OTLP"]
+
+  subgraph proc["Shared processing"]
+    transform["inputMetricProcessor"]
+    deny["inputMetricDeny<br/>denyMetrics"]
+    limit["memory_limiter<br/>refuses at 75%"]
+    batch["batch"]
+    transform --> deny --> limit --> batch
+  end
+
+  egress{"egress seam"}
+
+  subgraph promdest["Per remote-write destination"]
+    out["outputBridge<br/>OTLP → Prometheus"]
+    tierp["tier filter<br/>minMetricImportance"]
+    wal["prometheus.remote_write<br/>own WAL · cluster external label"]
+    out --> tierp --> wal
+  end
+
+  subgraph oteldest["Per OTLP exporter"]
+    tiero["tier filter<br/>minMetricImportance"]
+    exp["otlp · googlecloud · datadog exporter"]
+    tiero --> exp
+  end
+
+  scrape --> bridge
+  rw --> bridge
+  bridge --> transform
+  otlpin --> transform
+  batch --> egress
+  egress --> out
+  egress -.->|"when enabled"| tiero
+```
+
+Prometheus input is bridged into OTLP at the start, processed by `otelcol.processor.*` components, and bridged back for remote-write.
+Every scrape keeps the target's metric type, so a counter or histogram arrives typed at an OTLP destination.
+The memory limiter refuses new data at 75% of its limit, and the refusal propagates back to the receivers as backpressure.
+
+The stream forks after the shared stages.
+Each destination has its own importance-tier filter **upstream** of its writer.
+A remote-write destination's write-ahead log therefore holds only the series that destination accepts, and a stuck destination backs up its own WAL and no other.
+Each remote-write destination also stamps a `cluster` external label.
+
+*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+
+## Thanos write path {#write-path}
+
+### Thanos Receive {#thanos-receive}
+
+```mermaid
+flowchart TB
+  gw["alloy-gateway<br/>thanos destination"]
+  svc["thanos-receive Service :10908"]
+  router["any Receive pod<br/>routes the request"]
+  ring(("ketama hashring<br/>3 owners per series"))
+  own0["receive-0<br/>head + WAL"]
+  own1["receive-1<br/>head + WAL"]
+  own2["receive-2<br/>head + WAL"]
+  bucket[("Object storage<br/>one 2h block per pod<br/>receive_replica=&lt;pod&gt;")]
+
+  gw -->|"remote-write"| svc --> router --> ring
+  ring --> own0
+  ring -->|"gRPC :10901"| own1
+  ring -->|"gRPC :10901"| own2
+  own0 --> bucket
+  own1 --> bucket
+  own2 --> bucket
+```
+
+Receive runs in `standalone` mode, where every pod both routes and ingests.
+The pod that takes a request hashes each series onto an auto-generated ketama hashring and forwards it to the pods that own it.
+With replication factor 3 a write succeeds once two of the three owners accept it.
+
+At the default 3 replicas every pod owns every series.
+The `thanos-large` profile runs 6, and each series then lives on 3 of the 6.
+
+Each pod keeps its head and WAL on an `emptyDir`, cuts a block every two hours, and uploads it to object storage.
+Local retention is 6h, which serves the recent window to queries until the Store Gateway has the uploaded blocks.
+Every pod uploads its own copy of what it holds, labelled with its own `receive_replica`.
+The [Compactor](#block-lifecycle) later merges those copies into one.
+
+*See more:* [Production Best Practices > Receive](../../operating/production-best-practices/#receive-replication-is-the-availability-lever-not-mode) for the quorum table and zone spread,
+and [Storage: ephemeral by default](../../operating/production-best-practices/#thanos-ephemeral-storage) for why Receive has no volume.
+
+## Object storage and the block lifecycle {#block-lifecycle}
+
+```mermaid
+flowchart TB
+  b0["2h block<br/>receive-0"]
+  b1["2h block<br/>receive-1"]
+  b2["2h block<br/>receive-2"]
+  merge["deduplicate on receive_replica<br/>vertical compaction"]
+  levels["compact 8h → 2d → 14d"]
+  ds["downsample<br/>5m from ≥ 40h · 1h from ≥ 10d"]
+  ret["retention<br/>raw 30d · 5m 90d · 1h 365d"]
+  del["marked for deletion<br/>removed after 48h"]
+
+  b0 --> merge
+  b1 --> merge
+  b2 --> merge
+  merge --> levels --> ds
+  levels -->|"replaced sources"| del
+  ds --> ret --> del
+```
+
+Object storage is the only durable copy of metric data.
+Every other Thanos component either writes blocks into it or reads them out.
+
+The Compactor is a **singleton**, because two compactors against one bucket corrupt it.
+It works only on blocks older than its 30m consistency delay, so it never reads a block whose upload is still in progress.
+
+| Stage | What happens |
+|---|---|
+| Deduplicate | Blocks are grouped by their external labels with `receive_replica` removed, so each replica's copy of a window lands in one group. Vertical compaction merges them into a single block and drops identical samples |
+| Compact | Blocks are merged into longer ranges, 2h into 8h, 8h into 2d, and 2d into 14d |
+| Downsample | A raw block spanning 40h or more gets a 5m copy. A 5m block spanning 10d or more gets a 1h copy |
+| Retain | Each resolution expires on its own horizon, by default raw 30d, 5m 90d and 1h 365d |
+| Delete | A block that a compaction replaced, or that retention expired, is marked for deletion and removed 48h later. The delay lets the Store Gateway load the replacement before the source disappears |
+
+Vertical compaction also absorbs the few seconds of overlap Receive writes when a pod restarts.
+Without it, the first overlap halts the Compactor, and a halted Compactor runs none of the stages above.
+
+The Store Gateway reads blocks directly from the bucket and keeps an index-header cache on its own volume.
+
+*See more:* [Storing > Retention and downsampling](../storing/#retention-and-downsampling),
+[Production Best Practices > Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction),
+and [`ThanosCompactHalted`](../../operating/o11y-troubleshooting/#thanos-compact-halted).
+
+## Read path {#read-path}
+
+```mermaid
+flowchart TB
+  graf["Grafana<br/>Thanos datasource"]
+  qfe["Thanos Query Frontend<br/>splitting · result cache"]
+  query["Thanos Query<br/>deduplicates on<br/>receive_replica · ruler_replica · prometheus_replica"]
+  receive["Thanos Receive<br/>head + last 6h of blocks"]
+  store["Thanos Store Gateway<br/>uploaded blocks"]
+  ruler["Thanos Ruler"]
+  bucket[("Object storage")]
+
+  graf -->|"PromQL :9090"| query
+  graf -.->|"thanos-large: PromQL"| qfe
+  qfe -.-> query
+  query -->|"StoreAPI gRPC"| receive
+  query -->|"StoreAPI gRPC"| store
+  query -->|"rules · alerts gRPC"| ruler
+  store --> bucket
+  ruler -->|"PromQL :9090"| query
+```
+
+Thanos Query presents a Prometheus-compatible API and holds no data of its own.
+It discovers Receive, the Store Gateway and the Ruler through DNS SRV lookups, and fans each query out over gRPC.
+
+A query that spans recent and historical data reads both, and Query merges the overlap.
+It then deduplicates on the replica labels.
+Each Receive replica's copy of a series, each Ruler replica's copy of a rule result, and a deduplicated block from the bucket all collapse to one series.
+
+Grafana's `Thanos` datasource points at Thanos Query.
+The `thanos-large` profile enables the Query Frontend and moves the datasource to it, while the Ruler stays on Thanos Query, so rules never evaluate against a cached result.
+
+*See more:* [Querying](../querying/) and [Alerting > Configuring](../../alerting/configuring/#the-rulers-do-not-follow-the-query-frontend).
+
+## Rule evaluation {#rule-evaluation}
+
+```mermaid
+flowchart TB
+  pr["PrometheusRule resources<br/>flavor ≠ logql"]
+  sidecar["import sidecar<br/>lists every 60s · reloads"]
+  ruler["Thanos Ruler<br/>2 replicas · stateless"]
+  query["Thanos Query"]
+  am["Alertmanager<br/>every replica"]
+  gw["alloy-gateway :9090"]
+  receive["Thanos Receive"]
+
+  pr --> sidecar --> ruler
+  ruler -->|"PromQL"| query
+  ruler -->|"alerts"| am
+  ruler -->|"ALERTS · recording results"| gw
+  gw --> receive
+```
+
+The Thanos Ruler is stateless.
+It evaluates by querying Thanos Query, keeps no TSDB of its own, and remote-writes every result to the gateway.
+Rule output therefore reaches every destination the gateway writes to, and not only the bundled Thanos.
+
+Both replicas evaluate every rule.
+Each stamps its own `ruler_replica`, Thanos Query deduplicates on that label, and Alertmanager deduplicates the notifications.
+The gateway fills in `job="thanos-ruler"` and a constant `instance` on the Ruler's samples.
+The two replicas' series then differ only in `ruler_replica`, which is the label Query deduplicates on.
+
+The Loki Ruler's recording rules arrive the same way, as remote-write to the gateway.
+
+*See more:* [Alerting > Configuring](../../alerting/configuring/) for rule delivery and stateless mode, and [Alert Architecture](../../alerting/architecture/) for what Alertmanager does next.
+
+## Destinations beyond the bundled Thanos {#other-destinations}
+
+The gateway writes to any number of destinations at once, each filtered to its own importance tier.
+The bundled Thanos is the default entry in that map, and it can be removed.
+
+| Profile | Shape |
+|---|---|
+| `aws-amp-fanout` | Full fidelity in the bundled Thanos, and only essential series in Amazon Managed Prometheus |
+| `otlp-metrics-honeycomb` | Gateway metrics to a generic OTLP backend |
+| `otel-metrics-fanout` | Several OTLP backends at once, each on its own tier |
+
+A deployment that already runs its own Prometheus can skip the gateway entirely and scrape Materialize with the configurations on [Scraping](../scraping/).
+
+*See more:* [Storing > Other Metric Storage Backends](../storing/#other-metric-storage-backends).
+
+## See more
+
+- [Thanos components](https://thanos.io/tip/components/receive.md/) (official): Receive, Store, Compact, Query, Query Frontend and Rule.
+- [Thanos Receive hashrings and replication](https://thanos.io/tip/proposals-done/201812-thanos-remote-receive.md/) (official).
+- [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
+- [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
+- [Metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal): the gateway's pipeline, component by component.
+- [o11y Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
+
+
+--------------------------------------------------------------------------------
 title: "Overview"
 url: https://materializeinc.github.io/materialize-monitoring/metrics/collecting/overview/index.md
 --------------------------------------------------------------------------------
@@ -2923,6 +3237,11 @@ The Thanos **Compactor** compacts raw blocks and produces downsampled resolution
 
 Downsampling keeps long-range queries cheap: a year-wide query reads 1h blocks, not raw samples. Tune these to trade storage cost against how far back high-resolution data stays available.
 
+Each Receive replica uploads its own copy of every block it holds, labelled with `receive_replica`.
+The Compactor deduplicates on that label (`--deduplication.replica-label=receive_replica`), so compacted blocks hold one copy of each series rather than one per replica.
+The same flag enables vertical compaction, which merges the short overlaps Receive writes across a restart instead of halting on them.
+See [Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction) for the upgrade caveats.
+
 ### Components
 
 The bundled Thanos runs as a small set of roles over the shared bucket:
@@ -2932,7 +3251,9 @@ The bundled Thanos runs as a small set of roles over the shared bucket:
 - **Compactor** — a **singleton** that compacts and downsamples blocks in the bucket (owns retention).
 - **Query** — federates recent data (Receive) and historical data (Store Gateway) behind one PromQL endpoint.
 
-`queryFrontend` and `ruler` are available but off by default (`thanos.queryFrontend` / `thanos.ruler`).
+The **Ruler** is on by default and evaluates PromQL rules.
+`queryFrontend` is off by default and enabled by the `thanos-large` profile.
+See [Metrics Architecture](../architecture/) for how the roles connect.
 
 ## Other Metric Storage Backends
 
@@ -8054,7 +8375,7 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 ## Metrics (Thanos)
 
-For the architecture these items configure, see [Metrics](../../metrics/).
+For the architecture these items configure, see [Metrics Architecture](../../metrics/architecture/).
 
 Thanos is **on par with Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets, autoscaling, and zone-aware topology spread are all in place.
 What remains unchecked below is mostly `[operator]` and `[consumer]` work — decisions and cloud resources the chart cannot make for you.
@@ -8269,7 +8590,7 @@ An EBS volume cannot be attached from another zone, so a pod whose zone is gone 
 On the write path that converts a recoverable event into an outage that waits on the cloud provider: with RF 3 write quorum is 2, so two Receive pods stuck `Pending` on dead volumes block writes outright, where two `emptyDir` pods would have been rescheduled and rejoined the hashring.
 
 This is the same call the chart already makes for [Loki's ingesters](#4-ingester-durability--rollouts), for the same reason.
-Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `replica` external label, which the Compactor deduplicates.
+Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `receive_replica` external label, which the Compactor deduplicates into one copy (see [Retention & compaction](#thanos-retention-compaction)).
 A pod that returns with an empty volume has lost its copy of that window; the query path still answers from the surviving replicas.
 
 > [!WARNING]
@@ -8332,7 +8653,7 @@ All of these are `extraArgs`. `[operator]` sets per profile.
 
 > [!WARNING]
 >   **`extraArgs` is a list, and Helm overwrites lists rather than merging them.**
->   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m`, `query.extraArgs` carries `--log.level=info`.
+>   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m` and the [vertical compaction and deduplication flags](#thanos-retention-compaction), `query.extraArgs` carries `--log.level=info`.
 >   Setting `extraArgs` to add a limit **silently drops whatever was already there**, and on Receive that means falling back to Thanos's default replication factor of 1 — the exact failure the quorum table above exists to prevent.
 >   Restate the base arguments in full every time. The shipped profiles do.
 
@@ -8409,11 +8730,15 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 - [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
 - [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
 
-#### 4. Retention & compaction
+#### 4. Retention & compaction {#thanos-retention-compaction}
 
 - [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d — the medium row of [Retention and downsampling](#retention-and-downsampling).
 - [ ] `[operator]` Set those to your storage budget. Retention is enforced by the Compactor — with it disabled nothing expires and bucket cost grows without bound.
 - [ ] `[operator]` Keep raw retention above the downsampling thresholds (40h for the 5m tier, 10d for the 1h tier). Below them the tier is never produced and long-range queries silently fall back to raw blocks. See [Retention and downsampling](#retention-and-downsampling).
+- [x] `[chart]` **Vertical compaction on** (`--compact.enable-vertical-compaction`). Receive writes slightly overlapping blocks across every restart, and without vertical compaction the first overlap halts the Compactor. A halted Compactor enforces no retention and produces no downsamples. `ThanosCompactHalted` is the signal.
+- [x] `[chart]` **Replicas deduplicated in the bucket** (`--deduplication.replica-label=receive_replica`). The RF copies of each block compact into one, so the bucket holds one copy of each series. Thanos Query still deduplicates Receive's recent window on the same label.
+- [ ] `[operator]` An `extraArgs` override on the Compactor replaces the whole list. Restate both flags, as with Receive's replication factor. The list's other entries, `--log.level=info`, `--log.format=logfmt` and `--consistency-delay=30m`, match Thanos's own defaults, so dropping them changes nothing.
+- [ ] `[operator]` Deduplication is irreversible, and on an existing bucket it changes the external labels of compacted blocks. Downsampled blocks written before the change cannot be vertically compacted. Thanos marks them `no-compact`, and they keep their per-replica copies until retention expires them.
 - [x] `[chart]` Receive TSDB **local retention 6h** (overriding the subchart's 24h) with WAL compression. Blocks still ship to object storage every 2h — retention is a recent-query cache, not a durability window, and the Store Gateway serves everything older. 6h is what makes the `emptyDir` budget fit a modest node: 24h at the medium envelope is ~7.3Gi per pod, against ~18.8Gi allocatable on a typical GKE node shared with Loki.
 - [ ] `[operator]` Raising local retention raises the ephemeral request with it, roughly linearly. Check [the allocatable warning](#thanos-ephemeral-budget) first — this is the setting most likely to make Receive unschedulable.
 
@@ -8441,7 +8766,7 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 
 ### See also
 
-- [Metrics](../../metrics/) — the metrics architecture these items configure.
+- [Metrics Architecture](../../metrics/architecture/) — the metrics architecture these items configure.
 - [Storing](../../metrics/storing/) — object storage and retention in depth.
 - [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.
 - [Thanos Compactor documentation](https://thanos.io/tip/components/compact.md/) (official) — compaction levels, downsampling thresholds, and why the singleton constraint exists.
@@ -8862,6 +9187,36 @@ kubectl -n monitoring scale statefulset thanos-compactor --replicas=1
 >  If you are on an `Immediate` class and the replacement PVC lands back in the unusable zone, the escape is to give the pod a temporary `nodeSelector` for a healthy zone (`topology.kubernetes.io/zone`) so provisioning follows it, or to point the Compactor at a `WaitForFirstConsumer` class and let it bind on the next attempt.
 >
 >  While the Compactor is down, **retention is not enforced** and the bucket grows. That is tolerable for minutes and worth watching over days — it is why compaction falling behind deserves an alert rather than a periodic look.
+
+### `ThanosCompactHalted`: `overlaps found while gathering blocks` {#thanos-compact-halted}
+
+The Compactor pod is `Running` and healthy, but `thanos_compact_halted` is `1` and its log holds one error from shortly after startup:
+
+```text
+level=error msg="critical error detected; halting" err="compaction: group 0@...:
+pre compaction overlap check: overlaps found while gathering blocks.
+[mint: ..., maxt: ..., range: 8s, blocks: 2]: <ulid: ...>, <ulid: ...>"
+```
+
+**Cause.** Two blocks from the same Receive replica overlap by a few seconds.
+Receive writes such a pair across every restart, because it accepts replicated and retried samples older than the block it flushed on shutdown.
+Without vertical compaction the Compactor treats any overlap as corruption and stops.
+Nothing after the halt runs: no compaction, no downsampling, and no retention.
+
+**Fix.** Run the Compactor with `--compact.enable-vertical-compaction` and `--deduplication.replica-label=receive_replica`.
+Both are in the chart default `thanos.compactor.extraArgs`, so a halt means an `extraArgs` override dropped them or the release predates them.
+The Compactor merges the overlapping blocks on its next start, and the blocks need no manual repair.
+The first run after a long halt works through the whole backlog before downsampling catches up.
+
+Confirm the halt, and then the recovery, from the Compactor's own metrics.
+`thanos_compact_halted` returns to `0` on the first start with the flags, and `thanos_compact_todo_compactions` falls as the backlog drains:
+
+```bash
+kubectl -n monitoring port-forward pod/thanos-compactor-0 10902:10902 &
+curl -s localhost:10902/metrics | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
+```
+
+A port-forward works with any Thanos image, including the shell-less ones the Chainguard and Docker Hardened Images profiles select.
 
 ### Everything suddenly fails, and it worked an hour ago
 
@@ -17799,7 +18154,8 @@ reason, and it is worth spelling out because Receive looks stateful.
 Durability comes from `--receive.replication-factor=3`, not from disk.
 Blocks ship to object storage every 2h, so the window that exists only
 locally is at most 2h — and every replica uploads its own copy under a
-distinct `replica` external label, which the Compactor deduplicates. A pod
+distinct `receive_replica` external label, which the Compactor
+deduplicates (see `compactor.extraArgs`). A pod
 that comes back with an empty volume has lost its copy of that window, and
 the query path still answers from the surviving replicas.
 
@@ -18030,6 +18386,47 @@ downsamples only from blocks spanning 10d or more. Below those the tier is
 never created at all and long-range queries silently fall back to reading
 raw blocks — slower and more expensive, which is the opposite of the
 intent. 30d clears both comfortably.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--log.level=info",
+  "--log.format=logfmt",
+  "--consistency-delay=30m",
+  "--compact.enable-vertical-compaction",
+  "--deduplication.replica-label=receive_replica"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for the Compactor.
+**This is a list, and Helm overwrites lists rather than merging them.**
+The first three entries restate the subchart's defaults, which are also
+Thanos's own, so an override that drops them changes nothing. An override
+that drops either flag below brings back the failure it prevents.
+
+`--compact.enable-vertical-compaction` lets the Compactor merge
+overlapping blocks. Without it, any overlap halts compaction, retention
+and downsampling until someone repairs the bucket by hand. Receive
+produces overlaps on every restart: the block it flushes on shutdown ends
+at its last sample, and after restart it accepts replicated and retried
+samples a few seconds older than that. Overlaps of 5–40s were observed
+after ordinary rollouts.
+
+`--deduplication.replica-label=receive_replica` drops the per-pod label
+from block grouping, so the replication factor's copies compact into one
+block. The bucket then holds one copy of each series rather than RF. The
+default merge function deduplicates only identical samples, which is what
+Receive replication writes. Thanos Query still deduplicates the recent
+window on `receive_replica`, so reads are unchanged. A deduplicated group
+holds every series, so above `replicaCount == replicationFactor` a
+compaction group is larger than one replica's was.
+
+Both flags are irreversible for the blocks they touch. The replica label
+alone also turns on vertical compaction (Thanos `cmd/thanos/compact.go`);
+the explicit flag keeps overlaps from halting compaction if an override
+drops the replica label.
 </td>
     </tr>
     <tr>
