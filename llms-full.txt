@@ -6372,7 +6372,7 @@ A rule installs when all of the following hold:
 | A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
-The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
+The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy, and each cloud provider pull the gateway runs.
 Everything else is listed explicitly; the full list and what each means are in the chart's `values.yaml` under `rules.capabilities`.
 A selected rule whose capabilities are missing is still not installed, and the render says so.
 
@@ -6406,6 +6406,38 @@ An override names an alert, and the render fails on an alert that does not exist
 The Terraform module takes all of `rules.*` as its `alert_rules` input; see [Configuring Alerting through Terraform](../terraform/#tuning-the-bundled-rules).
 
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
+
+## Recorded series
+
+The chart also ships recording rules, which the Thanos ruler evaluates into series of their own.
+The first are the `ext:consensus_*` series, which describe the metadata database the same way on every database flavor.
+[Recorded Series](../../reference/recorded-series/) lists every one.
+
+A recording rule installs wherever its capabilities are present, whenever `rules.enabled` is true.
+It is not in the default set and is never selected, so `rules.selected`, `rules.disabled` and `rules.overrides` do not apply to it.
+
+Materialize's own view of its metadata database needs nothing configured.
+The cloud provider's view needs two things: the provider pull, `pipeline.metrics.provider.*`, watching the database, and `externalDependencies.consensus` naming it as a metadata database.
+
+```yaml
+externalDependencies:
+  consensus:
+    - flavor: rds
+      resourceId: mzmon-prod-db
+```
+
+The second is needed because a pull also watches databases that are not a metadata database, Grafana's among them, and the provider cannot tell them apart.
+A database the pull watches and `externalDependencies.consensus` does not name is never recorded as a metadata database.
+The render warns when a pull watches databases and none of them is named, and when a named database is not watched.
+
+| `flavor` | `resourceId` |
+|---|---|
+| `rds` | The DB instance identifier, as listed in `pipeline.metrics.provider.cloudwatch.rds.instances` |
+| `cloudsql` | The instance name, as listed in `pipeline.metrics.provider.gcp.cloudSql.instances` |
+| `azure-postgres` | The flexible server name, as listed in `pipeline.metrics.provider.azure.postgres.servers` |
+
+A recorded series has no metric tier.
+A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
 
 ## Two evaluators, one notifier
 
@@ -6538,6 +6570,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `rules.logTenants` | the static tenant | Loki tenants the gateway writes the log-derived rules into |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
+| `externalDependencies.consensus` | `[]` | Which databases a provider pull watches are a metadata database, for the `ext:consensus_*` series |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
@@ -10261,6 +10294,8 @@ are end-user voice; see [Dashboard Style Guidelines]({{< relref "../dashboard/st
 
 - **[Authoring Alerts]({{< relref "alerts.md" >}})** — how an `alerts:` entry becomes an installed Prometheus rule: the
   alerting context, capabilities, the default set, and what `gen-rules` rejects.
+- **[Authoring Recording Rules]({{< relref "recording-rules.md" >}})** — how a `rules:` entry becomes a recorded series:
+  the naming convention, the normalized `ext:*` contract, and the install-time facts its adapters need.
 - **[Datadog Translations]({{< relref "datadog.md" >}})** — the PromQL→Datadog mapping, the OTLP naming assumptions it
   rests on, and the gaps where Datadog's language cannot express what the PromQL does.
 
@@ -10343,10 +10378,10 @@ Adding or changing a query has effects beyond the query itself:
   The converse also holds, because tiers select by metric *name*. A query naming a generic family such as
   `go_goroutines` admits every target's copy of it, not only the copy the query was written for, which is why
   `infra-alloy.yaml` holds its Go runtime families at `extended`.
-- **Alerting rules** (`mz-monitoring-build gen-rules`) render every `alerts:` entry into
-  `charts/materialize-monitoring/pre-rendered/rules/prometheus/`, which the chart installs as `PrometheusRule` resources.
-  An alert's query renders through its own context and is held to stricter checks than a panel's; see
-  [Authoring Alerts]({{< relref "alerts.md" >}}).
+- **Alerting and recording rules** (`mz-monitoring-build gen-rules`) render every `alerts:` and `rules:` entry into
+  `charts/materialize-monitoring/pre-rendered/rules/`, which the chart installs as `PrometheusRule` resources.
+  A rule's query renders through its own context and is held to stricter checks than a panel's; see
+  [Authoring Alerts]({{< relref "alerts.md" >}}) and [Authoring Recording Rules]({{< relref "recording-rules.md" >}}).
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries]({{< relref "../../common-queries.md" >}}) from it.
   There is no generated intermediate to refresh.
@@ -10868,6 +10903,7 @@ An alert is written once, in the query registry, and becomes a rule through `mz-
 An alert whose query is PromQL is installed as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
 An alert whose query is LogQL is installed as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway writes into the Loki ruler, and the Loki ruler evaluates it.
 This page is the conventions a contributor follows when adding or changing an alert, and what the tooling checks on their behalf.
+Recording rules render through the same context and are [Authoring Recording Rules]({{< relref "recording-rules.md" >}}).
 Where the alert goes once it fires is [Alert Channels]({{< relref "../../../alerting/channels.md" >}}); why the stack is shaped this way is the [alerting design doc]({{< relref "../design-docs/20260917-alerting-self-managed.md" >}}).
 
 {{< rfc-2119 >}}
@@ -10936,6 +10972,7 @@ Those parameters render to a `__mzmon_*__` token that the chart replaces at inst
 | `infraNonessentialWorkloadList` | `__mzmon_nonessential_workloads__` | `rules.infraWorkloads.nonessential` |
 | `infraDaemonsetWorkloadList` | `__mzmon_daemonset_workloads__` | `rules.infraWorkloads.daemonset` |
 | `mzEnvironmentFilter` | `materialize_cloud_organization_name=~".+"` | nothing; a rule covers every environment |
+| `consensusRdsResources`, `consensusCloudsqlResources`, `consensusAzurePostgresResources` | `__mzmon_consensus_rds__` and so on, bare values | `externalDependencies.consensus`, per flavor; see [Install-time facts]({{< relref "recording-rules.md" >}}#install-time-facts) |
 
 An empty namespace list or workload tier renders as `a^`, a regex that matches nothing, rather than as an empty string.
 
@@ -10974,10 +11011,12 @@ The effective set, inferred and declared, is recorded per rule in `_index.yaml`,
 | Kind | Capabilities | Present when |
 |---|---|---|
 | Derived | `materialize`, `materialize-sql`, `materialize-operator`, `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` | This chart runs the component and collects its metrics |
+| Derived | `cloudwatch`, `cloud-monitoring`, `azure-monitor` | The gateway runs that provider pull, `pipeline.metrics.provider.{cloudwatch,gcp,azure}` |
 | Explicit | `synthetic-uptime`, `external-uptime`, `feature-flags`, `frontegg-auth`, `memory-limiter`, `crdb-dedicated`, `cilium`, `coredns`, `cert-manager`, `kubelet-metrics`, `swap-nodes`, `egress-gateway` | An operator lists it in `rules.capabilities` |
 
 Adding a capability means adding it to the `Capability` enum, to the `capability` enum in `mzmon-query.schema.yaml`, and, for a derived one, to `mzmon.rules.derivedCapabilities` in the chart.
-Tests fail when the three disagree.
+A test fails when the first two disagree.
+Nothing checks the chart's list against them, so a derived capability's derivation is added there by hand.
 A capability SHOULD NOT be added for a single rule; a tag that applies to one rule is a label pretending to be a category.
 
 ## The default set
@@ -14562,7 +14601,7 @@ every replica like any other.
 
 #### Alerting rules
 
-Which alerting rules install: the bundled rule set, gated by what this deployment contains.
+Which alerting and recording rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
 (`packages/queries/`) and installed as `PrometheusRule` resources, each
@@ -14572,14 +14611,19 @@ Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
 install only where this release runs both. Where they go once they fire is
 `alerting`, below.
 
-A rule installs when **every capability it requires is present**, and it is
+An alert installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
 `disabled`. Capabilities name what a deployment contains, never who operates
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
-`loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
-capabilities it requires.
+`loki`, a provider pull, …); the rest are listed in `capabilities`. The
+generated `pre-rendered/rules/_index.yaml` lists every rule with its engine
+and the capabilities it requires.
+
+A **recording rule** installs wherever its capabilities are present, with no
+selection: the normalized `ext:*` series are what other rules and panels
+read, and recording one costs a few series. `selected`, `disabled` and
+`overrides` name alerts only.
 
 <table class="helm-values">
   <thead>
@@ -14589,7 +14633,7 @@ capabilities it requires.
       <td class="helm-value-key">rules<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled alerting rules.
+      <td class="helm-value-desc">Install the bundled alerting and recording rules.
 </td>
     </tr>
     <tr>
@@ -14617,8 +14661,10 @@ capabilities it requires.
 
 The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
 `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-present when this chart runs the component and collects its metrics. List
-one here as well when something outside the chart provides it — your own
+present when this chart runs the component and collects its metrics, and
+`cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
+gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
+here as well when something outside the chart provides it — your own
 kube-state-metrics, say. An unknown name fails the render.
 </td>
     </tr>
@@ -14833,6 +14879,53 @@ alone.
 ]</pre>
 </td>
       <td class="helm-value-desc">Containers every node runs, whose requests the `k8s-daemonset-*` rules total against a per-node budget.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+#### External dependencies
+
+The services Materialize depends on and does not run: which of the resources the stack watches are which.
+
+A provider pull (`pipeline.metrics.provider.*`) watches every database it is
+told to, and the provider cannot say which of them is Materialize's metadata
+database: the Terraform modules add Grafana's database to the same pull. This
+block says which is which. The normalized `ext:consensus_*` recording rules
+read only the databases named here, so an undeclared database, Grafana's
+among them, is never recorded as a metadata database.
+
+Nothing here is needed for Materialize's own view of its metadata database,
+which the `persist` adapter records wherever Materialize is.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">externalDependencies<wbr>.consensus</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Metadata (consensus) databases, by flavor and provider resource name.
+
+| `flavor` | `resourceId` | Watched by |
+|---|---|---|
+| `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
+| `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
+| `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+
+```yaml
+externalDependencies:
+  consensus:
+    - flavor: rds
+      resourceId: mzmon-prod-db
+```
+
+The resource has to be watched by its provider pull as well, or there is
+nothing to record, and the render warns. Each recorded series carries the
+resource as its `resource` label. Matching ignores case.
 </td>
     </tr>
   </tbody>
@@ -18513,10 +18606,14 @@ This is a list: restate the entry when adding one.
 
 The Loki ruler keeps a volume for the same WAL, on the argument that
 buffering derived samples through a metric-store outage is worth a disk.
-That argument applies here too and is deliberately not taken yet: this
-Ruler evaluates no recording rules, so there is nothing to buffer, and a
-10Gi PVC per replica for an empty WAL is not a default worth shipping.
-Revisit when recording rules land.
+That argument applies here too and is deliberately not taken: the
+recording rules this Ruler evaluates are the `ext:*` layer, a few
+low-cardinality series, and the WAL holds them through a store outage on
+the pod's own volume. What a PVC would add is keeping them across a pod
+rescheduled during that outage, which loses minutes of history rather
+than any alert, and a 10Gi PVC per replica is not a default worth shipping
+for that. Revisit if a recording rule's history becomes something an
+alert or a report depends on.
 </td>
     </tr>
     <tr>
@@ -20694,7 +20791,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter — and `node-*.yaml` for node-exporter) — the metric/log/alert query definitions, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter — `node-*.yaml` for node-exporter, and `ext-*.yaml` for the normalized `ext:*` recording rules, one adapter per rule group) — the metric/log/alert query definitions and recording rules, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`; `tests/` holds the `promtool test rules` cases for the rendered rules
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor; see the [roadmap]({{< relref "roadmap.md" >}}#collection-gaps-these-depend-on)
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
@@ -22279,6 +22376,150 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_remote_write_url"></a> [remote_write_url](#output_remote_write_url) | Thanos Receive remote-write endpoint, for writers outside this stack. |
 | <a name="output_service_account_names"></a> [service_account_names](#output_service_account_names) | ServiceAccount names the chart renders for storage-bound components. |
 | <a name="output_workload_identity_subjects"></a> [workload_identity_subjects](#output_workload_identity_subjects) | `system:serviceaccount:<namespace>:<sa>` subjects for the components that bind to cloud object storage. Use these when building IRSA / Workload Identity trust policies. |
+
+
+--------------------------------------------------------------------------------
+title: "Authoring Recording Rules"
+url: https://materializeinc.github.io/materialize-monitoring/reference/internal/queries/recording-rules/index.md
+--------------------------------------------------------------------------------
+
+# Authoring Recording Rules
+
+A recording rule is written once, in the query registry, under `rules:`, and becomes a rule through `mz-monitoring-build gen-rules`, beside the alerts.
+The chart installs it as a `PrometheusRule`, the Thanos ruler evaluates it, and its result travels back through the alloy-gateway into Thanos like any other metric.
+This page is the conventions a contributor follows when adding one, and what the tooling checks.
+The first recording rules are the normalized `ext:*` layer for the metadata database, and the [external dependency design doc]({{< relref "../design-docs/20260920-external-dependency-monitoring.md" >}}#a-normalized-contract-with-flavor-native-passthrough) is why that layer exists.
+[Authoring Alerts]({{< relref "alerts.md" >}}) covers what the two kinds of rule share: the alerting context, its placeholders, and capability inference.
+
+{{< rfc-2119 >}}
+
+<!--
+Agent note: the `alerting` skill routes here for recording rules. Keep "What gen-rules rejects" in step with
+render_record() and check_record_collisions() in packages/mzmon-lib/src/query/rules/render.rs.
+-->
+
+## From registry entry to recorded series
+
+| Stage | Where | What happens |
+|---|---|---|
+| Author | `packages/queries/*.yaml`, a `rules:` entry | The rule names its query inline or by `queryId`, its `record` name, its `group`, and static `labels` |
+| Validate | `bin/mz-monitoring-check check-queries` (pre-commit) | Schema validation, including the `record` name's shape |
+| Render | `make rules` (`mz-monitoring-build gen-rules`) | Renders through the alerting context, infers capabilities, and fails on any problem |
+| Output | `charts/materialize-monitoring/pre-rendered/rules/prometheus/` | The registry file's groups, recording rules beside any alerts, and an entry under `records:` in `_index.yaml`, keyed `<group>/<record>` |
+| Install | `templates/alerts/prometheusrules.yaml` | Fills the placeholders, and keeps every recording rule whose capabilities are present |
+| Evaluate | The Thanos ruler | Remote-writes the result to the alloy-gateway, which forwards it to every destination |
+| Check | `make rules-check`, and `thanos::consensus_recorded` in the E2E suite | promtool over the rendered chart and the unit tests; a live comparison of what is recorded against what it reads |
+
+A recording rule has no default set and is never selected.
+It installs wherever its capabilities are present, because a recorded series costs a few series and every consumer of one needs it to be there.
+`rules.selected`, `rules.disabled` and `rules.overrides` name alerts only.
+
+A recorded sample reaches Thanos with more labels than the rule wrote.
+The gateway stamps `job` and `instance` as `thanos-ruler`, the destination adds `cluster`, and Thanos Receive adds `tenant_id`.
+Each ruler replica also stamps its own `ruler_replica`, which Thanos Query deduplicates on, so a reader sees one series per name.
+A consumer that joins on a recorded series SHOULD name its labels with `on (…)`.
+
+## Naming
+
+**A record name is `<level>:<metric>[:<operation>]`,** after the [Prometheus convention](https://prometheus.io/docs/practices/rules/).
+`gen-rules` and the schema both reject any other shape.
+
+| Part | Says | Example |
+|---|---|---|
+| `level` | The layer the series belongs to | `ext`, the normalized external-dependency layer |
+| `metric` | What is measured, and its unit, as an exported metric would name them | `consensus_commit_latency_seconds`, `consensus_xid_used_ratio` |
+| `operation` | A window or a statistic the value depends on | `:rate5m`, `:p99` |
+
+The operation suffix is how a reader tells a p99 from a mean without reading the rule.
+A later p50 is then a new name rather than a change to what an existing name means.
+A value that does not depend on a window, such as a ratio read from a provider gauge, carries no operation.
+
+A record name MUST NOT encode which source measured it.
+That is the `flavor` label's job, and it is what lets every source record one name.
+
+A record name is a committed surface from the release that first ships it, like an alert name.
+Renaming one after that owes the deprecation cycle in [Versioning]({{< relref "../versioning.md" >}}#stability-guarantees).
+
+## The `ext:*` contract
+
+An **adapter** is one source of measurements for an external dependency, such as Materialize's own persist client or a cloud provider's monitoring API.
+Each adapter is one rule group, and every adapter that can measure a series records it under the same name.
+
+| Rule | Why |
+|---|---|
+| Every `ext:*` series MUST carry a static `flavor` label naming its adapter | It tells two adapters' series apart, and it is what a dashboard discovers adapters from. `gen-rules` rejects an `ext:*` rule without one |
+| An adapter that cannot measure a series MUST record nothing for it | Absence and zero mean different things to an alert. CloudWatch publishes no allocated storage for RDS, so the `rds` adapter records no storage ratio |
+| An adapter MUST NOT record a value derived from a different measurement | A mean is not a p99, and an average write latency is not a commit latency |
+| A quantity with a ceiling SHOULD be recorded as a ratio from 0 to 1 | A threshold on bytes has to be re-derived for every instance size |
+| A series SHOULD carry the identity of what it measures and nothing else | `namespace` for the persist adapter; `resource`, the provider's name for the database, for a provider adapter. The label set is part of the contract |
+
+The adapters for the metadata database are in `packages/queries/ext-consensus.yaml`, and [Recorded Series]({{< relref "../../recorded-series.md" >}}) lists what each records.
+
+A group records a given name once, and two rules MUST NOT write the same series.
+`gen-rules` rejects two rules with the same name and the same static labels, since they would overwrite each other's samples whenever both have data.
+A group holds recording rules or alerts, not both, because alerts are selected by group and recording rules are not.
+
+## Install-time facts
+
+A provider pull watches every database it is told to, including databases that are not a metadata database: the Terraform modules add Grafana's to the same pull.
+The provider cannot tell them apart, so which ones are a metadata database is an install-time value, `externalDependencies.consensus` in the chart.
+Each provider adapter matches its resource label against a placeholder the chart fills from it.
+
+| Parameter | Renders to | The chart fills it from |
+|---|---|---|
+| `consensusRdsResources` | `__mzmon_consensus_rds__` | The `resourceId` of each `externalDependencies.consensus` entry with `flavor: rds` |
+| `consensusCloudsqlResources` | `__mzmon_consensus_cloudsql__` | The same, for `flavor: cloudsql` |
+| `consensusAzurePostgresResources` | `__mzmon_consensus_azure_postgres__` | The same, for `flavor: azure-postgres` |
+
+An undeclared flavor renders as `a^`, which matches nothing, so its adapter records nothing.
+The adapters match with `(?i)`, because the providers do not promise the case a name was declared in.
+
+## Capabilities and tiers
+
+A recording rule's capabilities are inferred from its metrics, exactly as an alert's are.
+The three provider pulls are capabilities the chart derives from `pipeline.metrics.provider.*`: `cloudwatch`, `cloud-monitoring` and `azure-monitor`.
+A recording rule that reads only `up` MUST declare what it is about with `requires`.
+
+A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
+A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
+
+A recorded series has no metric tier, so a destination filtering by `minMetricImportance` drops it.
+The bundled `thanos` destination keeps everything by default, and the chart warns when it does not.
+Giving recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
+
+## What `gen-rules` rejects
+
+| Check | Why |
+|---|---|
+| The name is `<level>:<metric>[:<operation>]`, lowercase snake_case | Names become a committed surface |
+| The group is snake_case, and holds no alerts | Alerts are selected by group, and recording rules are not |
+| Static label names are valid and do not start with `__`, and no value is empty | An empty value is no label at all |
+| An `ext:*` rule carries `flavor` | The contract above |
+| No other rule writes the same name with the same labels | The two would overwrite each other |
+| The query is PromQL, with exactly one expression | Nothing delivers recording rules to the Loki ruler |
+| The expression renders and parses, and no placeholder, Grafana variable or unknown token remains | As for an alert |
+| Every metric has a known source | A rule reading a metric nothing produces records nothing |
+
+**A rule cannot read a recorded series yet.**
+An alert on `ext:consensus_up` applies wherever any one of that series' adapters applies, and capabilities can only require all of a set.
+`gen-rules` rejects such an alert until capabilities can express it, which is [DEP-367](https://linear.app/materializeinc/issue/DEP-367).
+
+## Testing a recording rule
+
+**Unit tests.**
+`packages/queries/tests/<registry-file>.test.yaml` holds `promtool test rules` cases, run by `make rules-check` against the `all` scenario.
+That scenario enables every provider pull and declares one database per flavor, so every adapter installs.
+A test SHOULD assert the recorded value and labels with `promql_expr_test`, and SHOULD include the case where the adapter has nothing to say and records nothing.
+A file asserting an interpolated value, such as a quantile, SHOULD set `fuzzy_compare: true`.
+Go fuses the interpolation's multiply-add on arm64 and not on amd64, so the same promtool image rounds the last bit differently on a laptop and in CI.
+
+**Live evaluation.**
+Before a rule ships, its expression SHOULD be run against a real install, read-only, with the placeholders substituted, and its result compared with the flavor-native query it normalizes.
+A provider adapter SHOULD also be run with nothing declared, to confirm it records nothing.
+
+**End to end.**
+`thanos::consensus_recorded` checks that every environment whose metadata-database calls reach Thanos also has `ext:consensus_up` recorded.
+A recording rule that never produces a series passes every render test, and this is the check that sees it.
 
 
 --------------------------------------------------------------------------------
@@ -24727,6 +24968,34 @@ like our bundled Thanos provider.
 
 
 --------------------------------------------------------------------------------
+title: "Recorded Series"
+url: https://materializeinc.github.io/materialize-monitoring/reference/recorded-series/index.md
+--------------------------------------------------------------------------------
+
+# Recorded Series
+
+These are the series the chart's recording rules write, generated from the query registry.
+A recorded series is a metric name this repository mints, so it reads the same whatever produced the measurement underneath it.
+The Thanos ruler evaluates the rules and writes the results back through the alloy-gateway, so a recorded series is queryable wherever the gateway's other metrics are.
+
+Every `ext:*` series is part of the normalized layer for an external dependency.
+One name is recorded by each **adapter** that can measure it, and the `flavor` label names the adapter.
+
+| Label | On | Holds |
+|---|---|---|
+| `flavor` | Every `ext:*` series | The adapter that recorded it: `persist` is Materialize's own measurement, and `rds`, `cloudsql` and `azure-postgres` are a cloud provider's |
+| `namespace` | Series from `persist` | The Materialize environment's namespace |
+| `resource` | Series from a cloud provider | The database's name at the provider, as declared in `externalDependencies.consensus` |
+
+An adapter that cannot measure a series records nothing for it, rather than a zero.
+The provider adapters record only the databases `externalDependencies.consensus` declares; see [Configuring Alerting](../../alerting/configuring/#recorded-series).
+
+Recorded-series names are covered by the [stability policy](../stability/) from the release that first ships them, like alert names.
+
+{{% list-records %}}
+
+
+--------------------------------------------------------------------------------
 title: "Custom Resource Definitions (CRDs)"
 url: https://materializeinc.github.io/materialize-monitoring/reference/crds/index.md
 --------------------------------------------------------------------------------
@@ -25138,7 +25407,7 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | Split `persist-failures` into consensus, blob and persist-internal alerts ([DEP-292](https://linear.app/materializeinc/issue/DEP-292)) | OO-M2 | ⬜ |
 | Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe ([DEP-293](https://linear.app/materializeinc/issue/DEP-293)). Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
 | The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry ([DEP-294](https://linear.app/materializeinc/issue/DEP-294)) | OO-M2 | 🔨 (**`mz_persist_*` done**: `materialize-persist.yaml` and `materialize-consensus.yaml`, 60 queries between them, every one run against the three reference installs. `loki_objstore_*` was already on `infra-loki`. `thanos_objstore_*` is still read by nothing) |
-| The normalized `ext:*` recording-rule layer ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)) | OO-M2 | ⬜ |
+| The normalized `ext:*` recording-rule layer ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)) | OO-M2 | 🔨 (**The producer, the naming decision and the metadata database are done.** `gen-rules` renders the registry's `rules:` branch beside the alerts, and the chart installs a recording rule wherever its capabilities are present, with no selection. Names are `<level>:<metric>[:<operation>]`, so the commit p99 is `ext:consensus_commit_latency_seconds:p99`. Every `ext:*` series carries `flavor`, naming its adapter, and either `namespace` or `resource`. `ext-consensus.yaml` has four adapters. `persist` needs nothing configured and records `ext:consensus_up` and the commit p99 from Materialize's own calls. `rds`, `cloudsql` and `azure-postgres` record up, storage and transaction-ID ratios where their provider publishes each, and only for the databases `externalDependencies.consensus` names: every Terraform-configured pull also watches Grafana's database, and the provider cannot tell the two apart. The three provider pulls are derived capabilities. Every expression was run against the three reference installs and agreed with `infra-cloud`'s, with Grafana's database left out. On the EKS install the rendered `PrometheusRule` was applied on its own: both ruler replicas loaded it within a minute, all three series reached Thanos through the gateway as one series each, and the new `thanos::consensus_recorded` E2E assertion, which had failed there before, passed. **Outstanding:** `ext:consensus_connections_used_ratio`, which no adapter can record until one reads `max_connections` ([DEP-297](https://linear.app/materializeinc/issue/DEP-297), [DEP-298](https://linear.app/materializeinc/issue/DEP-298)); the `ext:objstore_*` families; the Terraform wrappers setting `externalDependencies.consensus` ([DEP-366](https://linear.app/materializeinc/issue/DEP-366)); alerts reading a recorded series, which capabilities cannot yet express ([DEP-367](https://linear.app/materializeinc/issue/DEP-367)); and a metric tier for recorded series, without which a filtered destination drops them ([DEP-368](https://linear.app/materializeinc/issue/DEP-368))) |
 | ~~`infra-deps` dashboard~~ → `env-persist`, `env-consensus` and `infra-cloud`, with provider rows discovered from the pull's `up` and a negated fallback ([DEP-296](https://linear.app/materializeinc/issue/DEP-296)) | OO-M2 | ✅ (Split three ways by product direction: the client's view of each dependency is environment-scoped and belongs with Materialize, while the provider's view carries no environment label and belongs with the platform. Each is built around incidents in the reference installs' own logs — a Cloud SQL instance out of connection slots, an RDS instance refusing connections, and a GCS persist bucket holding over a hundred times its live data in soft-deleted objects. The client dashboards read no `ext:*` series, since none are recorded; `infra-cloud` draws one expression per provider instead of a normalized one. The dashboards release grows from 551,100 to 683,928 bytes, 65% of the Secret ceiling. Every query was run against the reference installs: the client dashboards against all three clouds live, and the provider rows live against each cloud's pull, where all 17 Azure families matched the names derived from the exporter's naming rules before any Azure data existed) |
 | The **exporter** vantage point — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant ([DEP-297](https://linear.app/materializeinc/issue/DEP-297)) | OO-M2 | ⬜ |
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters ([DEP-298](https://linear.app/materializeinc/issue/DEP-298)) | OO-M2 | ⬜ |
@@ -25170,7 +25439,8 @@ They read `crdb_dedicated_*`, which is CockroachDB Cloud's metric-export prefix 
 Fixing either alone would still have produced silence.
 Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions managed **PostgreSQL**, nothing in the registry names a `pg_*` family, and CNPG is arriving in customer clusters — so no flavor is the one that waits.
 
-**The design is the first consumer of the query registry's `rules:` branch**, which has no producer, leaving `pre-rendered/rules/{prometheus,thanos,loki}/` empty.
+**The design is the first consumer of the query registry's `rules:` branch**, which had no producer when it was written.
+`gen-rules` now renders it, and `ext-consensus.yaml` is its first content ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)).
 The evaluated-rule path it also depends on is owned by [Alerting in self-managed](../design-docs/20260917-alerting-self-managed/), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
 Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
 
@@ -25297,11 +25567,11 @@ Every component needed to alert is in the chart, and no two of them are connecte
 |---|---|---|
 | Alerting design doc plus review | — | ✅ ([design doc](../design-docs/20260917-alerting-self-managed/) ready) |
 | Base alert set (severity profiles + runbook stubs) | FCO-M2 | 🔨 (the definitions live in the query registry and **ship as rules**: `templates/alerts/prometheusrules.yaml` installs them as `PrometheusRule` resources, which the Thanos ruler imports. They are split by who acts on them, and every alert carries an `audience` label a route can match: `materialize-alerts.yaml` and `infra-alerts.yaml` are the platform's, and `materialize-workload-alerts.yaml` holds what user clusters' owners act on. **Thirty-one are in the default set**, each evaluated against the self-managed test installs without firing falsely: twenty-eight PromQL rules, and the three log-derived ones in `materialize-log-alerts.yaml`. They include freshness, hydration and memory for the system clusters, hydration, memory and OOM kills for user clusters, replica readiness, and a fast environmentd-down, adapted from rules the context-graph team proposed. User-cluster freshness is opt-in: calibrated against a production fleet, an absolute threshold fires mostly on clusters behind by design, which waits on workloads declaring their tier ([DEP-335](https://linear.app/materializeinc/issue/DEP-335)). The other ported rules install only when selected, pending triage: an audit of all 89 against a live install, Cloud's source and incident history found 24 that evaluated correctly on self-managed as ported, and a content pass since has adopted the registry's parameters, replaced `deploymentMode: cloud-only`, and fixed the divide-by-zero, latching and join defects behind most of the rest. Runbook links point at [Common Alerts](../../common-alerts/) until runbooks exist) |
-| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/)) |
+| `gen-rules` — render the registry's alerts into `pre-rendered/rules/` | OO-M2 | ✅ (PromQL into `prometheus/` and LogQL into `loki/`, with one `_index.yaml` listing both; LogQL is checked for shape here and parsed with `logcli` in `make rules-check`. Renders through an alerting context: deployment-specific values — environment and operator namespaces, excluded namespaces, the SQL metric prefix — are placeholders the chart fills at install time, and the viewer-selection parameters (`interval`, `range`) are absent, so the design doc's range trap is a render error. `mzEnvironmentName` became a real join that attaches the environment name from the Materialize scrape targets without ever failing an evaluation. Every problem is a hard error, all reported at once: names, severities, durations, parse failures, unrendered placeholders, Grafana variables, and metrics nothing is known to produce. `promtool check rules` runs on the output in `cargo test` and on several rendered scenarios in `make rules-check`, with `promtool test rules` cases in `packages/queries/tests/` for every fixed defect. The schema's `knownParameter` enum is now enforced too; it had never been referenced, so a misspelt placeholder passed `check-queries`. See [Authoring Alerts](../queries/alerts/). Since [DEP-295](https://linear.app/materializeinc/issue/DEP-295) it renders recording rules as well; see [Authoring Recording Rules](../queries/recording-rules/)) |
 | Thanos Ruler on by default, stateless, remote-writing to the gateway | OO-M2 | ✅ (both rulers now notify the bundled Alertmanager and remote-write through the gateway; see below. The writes had been failing since the gateway's metrics path moved to an OTLP bridge, which refuses samples without `job` and `instance`; fixed with [DEP-323](https://linear.app/materializeinc/issue/DEP-323)) |
 | Loki ruler wired to Alertmanager and the gateway | OO-M2 | ✅ (the two replicas shard the rule groups, so each rule is evaluated once rather than once per replica; fixed with [DEP-327](https://linear.app/materializeinc/issue/DEP-327)) |
 | Loki rules in Grafana's alerting UI, through the nginx Loki gateway on the read path | — | ✅ (the Loki datasource points at the gateway, which routes rule and alert state to the ruler and refuses rule edits, so Grafana lists the rules read-only; the E2E check `grafana::loki_rules_listed` asserts both. See [Gateway / ingress](../design-docs/20260627-loki-production-infrastructure/#gateway--ingress) for why nginx's DNS objection does not apply) |
-| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. No recording rule is written yet) |
+| Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. The first recording rules ship as well: the `ext:consensus_*` layer, evaluated by the Thanos ruler ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)). The Loki ruler still evaluates none) |
 | Log-derived alert definitions in the query registry | OO-M2 | ✅ (`materialize-log-alerts.yaml` ports Cloud's clicked-in Loki rules by shape rather than verbatim: `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` in the default set, `trace-logging-enabled` opt-in, and the hanging-query rule dropped because its error came from the removed gRPC transport. See [Authoring Alerts](../queries/alerts/#log-derived-alerts)) |
 | Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
@@ -26119,10 +26389,11 @@ The cycle is the fallback, not the goal.
 Most breaking changes are avoidable at design time, and these are the levers worth reaching for first.
 
 **Publish a recording rule, not a raw metric.**
-The strongest lever we have, and unused — the registry defines zero recording rules today.
+The strongest lever we have.
 A `record:` name is ours, and the schema already says the expression behind it may change freely.
-So an artifact that reads `mzobject:compute_peek_latency_seconds:p99` instead of a raw `mz_*` metric turns an upstream rename into an expression edit with no customer-visible change at all.
+So an artifact that reads `ext:consensus_commit_latency_seconds:p99` instead of a raw `mz_persist_*` histogram turns an upstream rename into an expression edit with no customer-visible change at all.
 That converts a [coordinated-surface](#stability-guarantees) risk, which we do not control, into an owned one we fully control.
+The normalized `ext:*` layer is the first use, and [Authoring Recording Rules](../queries/recording-rules/) is the naming convention it set.
 
 **Add; do not rename.**
 Additions are free in any release.
@@ -31313,6 +31584,29 @@ Naming this family is not free, and the window has closed since this was first d
 The [alerting design](../20260917-alerting-self-managed/) makes alert and recording-rule names a committed surface from the release that first ships rules, which settles the roadmap's open naming decision.
 `ext:*` would be the first recorded series in the repository, so the convention it sets is the one every later rule inherits.
 
+### As built: the metadata database's adapters
+
+<!-- Agent note: recorded as a decision rather than rewriting the section above, which is the reasoning that was reviewed. -->
+
+[DEP-295](https://linear.app/materializeinc/issue/DEP-295) built the recording-rule producer and the metadata database's half of the contract, in `packages/queries/ext-consensus.yaml`.
+[Authoring Recording Rules](../../queries/recording-rules/) is the convention it set, and [Recorded Series](../../../recorded-series/) lists the result.
+
+| Decision | As built |
+|---|---|
+| The naming convention | `<level>:<metric>[:<operation>]`. A window or statistic is an operation suffix, so the p99 is `ext:consensus_commit_latency_seconds:p99` and the objstore one will be `ext:objstore_request_duration_seconds:p99` |
+| The label set | `flavor` on every series, plus `namespace` from the client or `resource` from a provider. Nothing else is promised |
+| The client's `flavor` | `persist`, the client that measured it, which is also what the objstore client series will carry |
+| The provider flavors | `rds`, `cloudsql`, `azure-postgres` |
+| Applicability | The three provider pulls are capabilities the chart derives from `pipeline.metrics.provider.*`: `cloudwatch`, `cloud-monitoring`, `azure-monitor`. A recording rule installs wherever its capabilities are present, with no default set |
+| The committed surface | The names and label sets are committed, as documented recording rules under the stability policy. This settles the first open question below |
+
+Four departures from the sections above.
+
+- **The `externalDependencies` block is partly here already.** Every Terraform-configured pull also watches Grafana's database, and a provider adapter cannot tell it from the metadata database, so recording every pulled database would have named Grafana's a consensus database. The provider adapters therefore record only the databases `externalDependencies.consensus` lists, as `{flavor, resourceId}` pairs. `name` and `environments` stay with [DEP-303](https://linear.app/materializeinc/issue/DEP-303).
+- **`ext:consensus_up` has a client adapter.** It is 0 when no metadata-database call has succeeded in five minutes, and absent only when the environment is not scraped. CloudWatch publishes no reachability signal, so `rds` records no `up`.
+- **`ext:consensus_connections_used_ratio` has no producer.** No provider publishes `max_connections`, and the client does not publish its pool's ceiling. The exporter adapters are the first that can record it.
+- **`ext:consensus_cpu_ratio`, `ext:consensus_database_bytes` and `ext:consensus_version_info` are not recorded.** No alert reads the first yet, and the other two need the exporter.
+
 ## The consensus database
 
 ### PostgreSQL, managed or self-hosted
@@ -31845,8 +32139,8 @@ Four questions from the first draft are settled and are recorded here rather tha
 | Whether adapter applicability is a cloud flag | **A capability tag**, shared with the alerting design rather than reimplemented |
 | Where the consensus view lives (DEP-233 scope 1) | **`infra-deps`, in the `infra-*` family.** The dependency belongs to the platform, not to an environment, and Troubleshooting links into it rather than owning it |
 
-- [ ] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides.
-- [ ] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious.
+- [x] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides. **Settled: committed**, as documented recording rules; see [As built](#as-built-the-metadata-databases-adapters).
+- [x] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious. **Settled: recording rules**, which [DEP-295](https://linear.app/materializeinc/issue/DEP-295) built.
 - [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
 - [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.

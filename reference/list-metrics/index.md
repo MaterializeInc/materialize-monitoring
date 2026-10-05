@@ -2761,6 +2761,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#ext.consensus.persist.up">ext.consensus.persist.up</a></li>
                 <li><a href="../common-queries#materialize.consensus.state.versions">materialize.consensus.state.versions</a></li>
             </ul>
         </details>

@@ -19,7 +19,7 @@ date: 2026-09-20
         </tr>
         <tr>
           <th>lastmod</th>
-          <td>2026-09-29 00:00:00 &#43;0000 UTC</td>
+          <td>2026-10-04 00:00:00 &#43;0000 UTC</td>
         </tr>
         <tr>
           <th>publishdate</th>
@@ -490,6 +490,29 @@ The cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS, and 
 Naming this family is not free, and the window has closed since this was first drafted.
 The [alerting design](../20260917-alerting-self-managed/) makes alert and recording-rule names a committed surface from the release that first ships rules, which settles the roadmap's open naming decision.
 `ext:*` would be the first recorded series in the repository, so the convention it sets is the one every later rule inherits.
+
+### As built: the metadata database's adapters
+
+<!-- Agent note: recorded as a decision rather than rewriting the section above, which is the reasoning that was reviewed. -->
+
+[DEP-295](https://linear.app/materializeinc/issue/DEP-295) built the recording-rule producer and the metadata database's half of the contract, in `packages/queries/ext-consensus.yaml`.
+[Authoring Recording Rules](../../queries/recording-rules/) is the convention it set, and [Recorded Series](../../../recorded-series/) lists the result.
+
+| Decision | As built |
+|---|---|
+| The naming convention | `<level>:<metric>[:<operation>]`. A window or statistic is an operation suffix, so the p99 is `ext:consensus_commit_latency_seconds:p99` and the objstore one will be `ext:objstore_request_duration_seconds:p99` |
+| The label set | `flavor` on every series, plus `namespace` from the client or `resource` from a provider. Nothing else is promised |
+| The client's `flavor` | `persist`, the client that measured it, which is also what the objstore client series will carry |
+| The provider flavors | `rds`, `cloudsql`, `azure-postgres` |
+| Applicability | The three provider pulls are capabilities the chart derives from `pipeline.metrics.provider.*`: `cloudwatch`, `cloud-monitoring`, `azure-monitor`. A recording rule installs wherever its capabilities are present, with no default set |
+| The committed surface | The names and label sets are committed, as documented recording rules under the stability policy. This settles the first open question below |
+
+Four departures from the sections above.
+
+- **The `externalDependencies` block is partly here already.** Every Terraform-configured pull also watches Grafana's database, and a provider adapter cannot tell it from the metadata database, so recording every pulled database would have named Grafana's a consensus database. The provider adapters therefore record only the databases `externalDependencies.consensus` lists, as `{flavor, resourceId}` pairs. `name` and `environments` stay with [DEP-303](https://linear.app/materializeinc/issue/DEP-303).
+- **`ext:consensus_up` has a client adapter.** It is 0 when no metadata-database call has succeeded in five minutes, and absent only when the environment is not scraped. CloudWatch publishes no reachability signal, so `rds` records no `up`.
+- **`ext:consensus_connections_used_ratio` has no producer.** No provider publishes `max_connections`, and the client does not publish its pool's ceiling. The exporter adapters are the first that can record it.
+- **`ext:consensus_cpu_ratio`, `ext:consensus_database_bytes` and `ext:consensus_version_info` are not recorded.** No alert reads the first yet, and the other two need the exporter.
 
 ## The consensus database
 
@@ -1023,8 +1046,8 @@ Four questions from the first draft are settled and are recorded here rather tha
 | Whether adapter applicability is a cloud flag | **A capability tag**, shared with the alerting design rather than reimplemented |
 | Where the consensus view lives (DEP-233 scope 1) | **`infra-deps`, in the `infra-*` family.** The dependency belongs to the platform, not to an environment, and Troubleshooting links into it rather than owning it |
 
-- [ ] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides.
-- [ ] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious.
+- [x] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides. **Settled: committed**, as documented recording rules; see [As built](#as-built-the-metadata-databases-adapters).
+- [x] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious. **Settled: recording rules**, which [DEP-295](https://linear.app/materializeinc/issue/DEP-295) built.
 - [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
 - [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.

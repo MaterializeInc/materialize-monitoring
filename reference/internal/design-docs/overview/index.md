@@ -82,7 +82,7 @@ A new doc starts at Draft.
     <li>
       <a href="/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/">Monitoring Materialize&#39;s External Dependencies</a>
       <ul>
-            <li><strong>lastmod:</strong> 2026-09-29 00:00:00 &#43;0000 UTC</li>
+            <li><strong>lastmod:</strong> 2026-10-04 00:00:00 &#43;0000 UTC</li>
             <li><strong>status:</strong> Ready</li>
       </ul>
     </li>

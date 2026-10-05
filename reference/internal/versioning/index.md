@@ -165,10 +165,11 @@ The cycle is the fallback, not the goal.
 Most breaking changes are avoidable at design time, and these are the levers worth reaching for first.
 
 **Publish a recording rule, not a raw metric.**
-The strongest lever we have, and unused — the registry defines zero recording rules today.
+The strongest lever we have.
 A `record:` name is ours, and the schema already says the expression behind it may change freely.
-So an artifact that reads `mzobject:compute_peek_latency_seconds:p99` instead of a raw `mz_*` metric turns an upstream rename into an expression edit with no customer-visible change at all.
+So an artifact that reads `ext:consensus_commit_latency_seconds:p99` instead of a raw `mz_persist_*` histogram turns an upstream rename into an expression edit with no customer-visible change at all.
 That converts a [coordinated-surface](#stability-guarantees) risk, which we do not control, into an owned one we fully control.
+The normalized `ext:*` layer is the first use, and [Authoring Recording Rules](../queries/recording-rules/) is the naming convention it set.
 
 **Add; do not rename.**
 Additions are free in any release.
