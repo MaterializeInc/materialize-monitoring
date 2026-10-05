@@ -488,6 +488,7 @@ locals {
     local.gateway_service_account_document,
     local.scheduling_document,
     local.zone_spread_document,
+    local.ksm_pod_labels_document,
     # Chart surface a caller sets rather than wiring the module computes; see
     # alerting.tf. Order against the rest does not matter, since nothing above
     # writes `rules` or `alerting`.

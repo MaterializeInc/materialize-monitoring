@@ -1166,6 +1166,39 @@ flag. An install from before it has every per-pool panel empty, and those panels
 long flagged as unreviewed. All 87 of their expressions were run against a live cluster while this was built and all 87
 returned data, as did all 103 rendered Prometheus queries and all 5 Loki ones.
 
+## Materialize replicas on pod families
+
+`kube_pod_labels` names the Materialize cluster and replica a pod runs, as `cluster_id`, `replica_id` and `replica_size`.
+Only clusterd pods carry them.
+It will also carry `environment_id` once the Materialize operator sets the `materialize.cloud/environment-id` pod label,
+which no released operator does yet.
+The chart's `kube-state-metrics.metricLabelsAllowlist` publishes the pod labels, and the monitor's `metricRelabelings`
+renames them from the `label_*` form kube-state-metrics writes.
+
+A `kube_pod_*` family joins onto it on `namespace` and `pod`:
+
+```promql
+max by (namespace, cluster_id, replica_id) (
+  sum by (namespace, cluster_id, replica_id, instance) (
+    kube_pod_container_resource_requests{resource="memory"}
+    * on (namespace, pod) group_left (cluster_id, replica_id)
+    group by (namespace, pod, cluster_id, replica_id) (kube_pod_labels{cluster_id!=""})
+  )
+)
+```
+
+| Part | Why |
+| --- | --- |
+| `group by` around `kube_pod_labels` | Drops `instance`. An HA kube-state-metrics reports every pod once per replica, and without it the join fails as many-to-many |
+| `instance` in the inner `sum`, outer `max` | The same replicas would otherwise double the left-hand side; the convention `materialize-kubernetes.yaml` established |
+| `namespace` in every `by` | A cluster id is unique only within an environment. `s1` and `u1` exist in every one |
+| `cluster_id!=""` | Keeps the result to replica pods |
+
+This is the replacement for matching replica pods by name (`pod=~".*-cluster-<id>-replica-<id>-.*"`), which the queries
+in `materialize-kubernetes.yaml` predate and still use.
+`kube_state::pod_labels_join_to_replicas` in the e2e suite asserts the join against the API server's pods, on any
+cluster that runs a replica.
+
 ## Deployment generations (blue/green)
 
 What the Generations tab is built on, and the `$mzGenerationList` selector that drives it.

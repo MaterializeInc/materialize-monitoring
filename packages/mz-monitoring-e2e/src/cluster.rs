@@ -39,7 +39,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use http_body_util::BodyExt;
-use k8s_openapi::api::core::v1::{Secret, Service};
+use k8s_openapi::api::core::v1::{Pod, Secret, Service};
 use kube::api::{Api, ApiResource, DynamicObject, GroupVersionKind, ListParams};
 use kube::config::{KubeConfigOptions, Kubeconfig};
 use kube::{Client, Config};
@@ -243,6 +243,20 @@ impl Cluster {
             .await
             .with_context(|| format!("deleting Secret {name} in {}", self.namespace))?;
         Ok(())
+    }
+
+    /// Pods in every namespace that carry the label `key`, whatever its value.
+    ///
+    /// Cluster-wide rather than scoped to the release namespace, because the
+    /// pods this is asked about are Materialize's, which live in namespaces the
+    /// release does not own.
+    pub async fn pods_with_label(&self, key: &str) -> Result<Vec<Pod>> {
+        let api: Api<Pod> = Api::all(self.client.clone());
+        let list = api
+            .list(&ListParams::default().labels(key))
+            .await
+            .with_context(|| format!("listing pods labelled {key} in every namespace"))?;
+        Ok(list.items)
     }
 
     /// List custom resources of one kind in the release namespace.

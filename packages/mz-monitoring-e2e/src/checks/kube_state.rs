@@ -29,14 +29,42 @@
 //! collision rather than trying to check each panel: that no `exported_*` label
 //! exists on the families our queries depend on, and that `kube_pod_info` still
 //! distinguishes pods from one another.
+//!
+//! The pod-label checks cover the other half of the exporter's identity: which
+//! pod labels `kube_pod_labels` carries. The allowlist decides that, and both of
+//! its failure modes are quiet. Too narrow, and a join to a Materialize replica
+//! matches nothing. Too broad, and the cost arrives later, as index size and
+//! churn in the store.
 
 use anyhow::{Result, bail};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cluster::{ServiceTarget, encode};
 use crate::ctx::Ctx;
+use crate::features::Features;
 use crate::retry::retry_until;
+
+/// The pod label orchestratord puts on every replica pod, naming its cluster.
+pub const CLUSTER_ID_POD_LABEL: &str = "cluster.environmentd.materialize.cloud/cluster-id";
+
+/// The same pods' replica id.
+const REPLICA_ID_POD_LABEL: &str = "cluster.environmentd.materialize.cloud/replica-id";
+
+/// Requests per Materialize replica, through `kube_pod_labels`.
+///
+/// The shape a cost or right-sizing panel takes. Requests rather than
+/// `kube_pod_info` because a join is only worth asserting on a family someone
+/// would aggregate, and orchestratord sets requests on every replica pod.
+///
+/// The `group by` on the right drops `instance`, so the join holds when more
+/// than one kube-state-metrics replica reports the same pod. Without it every
+/// pod matches once per replica and the join fails as many-to-many.
+const REPLICA_JOIN_QUERY: &str = r#"group by (namespace, cluster_id, replica_id) (
+  kube_pod_container_resource_requests{resource="memory"}
+  * on (namespace, pod) group_left (cluster_id, replica_id)
+  group by (namespace, pod, cluster_id, replica_id) (kube_pod_labels{cluster_id!=""})
+)"#;
 
 const QUERY_SERVICE: &str = "thanos-query";
 const QUERY_PORT: u16 = 9090;
@@ -195,6 +223,217 @@ pub async fn pods_are_distinguishable(ctx: &Ctx) -> Result<()> {
     .await
 }
 
+/// The pod labels the release's kube-state-metrics allowlist names.
+///
+/// `None` when the allowlist has no `pods` entry, in which case
+/// kube-state-metrics does not publish `kube_pod_labels` at all and there is
+/// nothing to assert.
+pub fn allowlisted_pod_labels(features: &Features) -> Option<Vec<String>> {
+    let entries = features
+        .get("kube-state-metrics.metricLabelsAllowlist")?
+        .as_array()?;
+    let flag = entries
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join(",");
+    parse_allowlist(&flag).remove("pods")
+}
+
+/// Split a `--metric-labels-allowlist` value into its resources.
+///
+/// The syntax is `<resource>=[<key>,...]`, comma-separated. A label key cannot
+/// contain `]`, so the first one after an opening bracket closes it.
+fn parse_allowlist(flag: &str) -> BTreeMap<String, Vec<String>> {
+    let mut resources: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut rest = flag;
+    while let Some(open) = rest.find("=[") {
+        let Some(len) = rest[open..].find(']') else {
+            break;
+        };
+        let resource = rest[..open].trim_start_matches(',').trim();
+        let keys = rest[open + 2..open + len]
+            .split(',')
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .map(String::from);
+        resources
+            .entry(resource.to_owned())
+            .or_default()
+            .extend(keys);
+        rest = &rest[open + len + 1..];
+    }
+    resources
+}
+
+/// The label name kube-state-metrics publishes a pod label under.
+fn published_name(key: &str) -> String {
+    let sanitized: String = key
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("label_{sanitized}")
+}
+
+/// `kube_pod_labels` stays one series per pod and carries only what the
+/// allowlist names.
+///
+/// The cardinality bound on the family. Neither failure below breaks anything
+/// when it starts:
+///
+/// - A pod with more than one current series from one scrape target is being
+///   scraped twice, by two jobs or two collectors. Counted per `instance`,
+///   because each kube-state-metrics replica of an HA deployment legitimately
+///   reports every pod, and by `uid` rather than by name, so a StatefulSet pod
+///   recreated under the same name is not mistaken for it. A label changed on a
+///   running pod does not show here, because the old series goes stale at the
+///   next scrape.
+/// - A `label_*` name the allowlist does not account for means something
+///   broader than the list is copying labels: a wildcard, or a second flag.
+///   Names the monitor renames to a canonical form simply do not appear.
+///
+/// Runs on every tier. Once the allowlist names a pod label, kube-state-metrics
+/// publishes the family for every pod in the cluster, the stack's own included,
+/// so it is a self-monitoring series.
+pub async fn pod_labels_are_bounded(ctx: &Ctx) -> Result<()> {
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+    let allowed = allowlisted_pod_labels(&ctx.features).unwrap_or_default();
+
+    // Not retried: no amount of waiting makes a wildcard narrower.
+    if allowed.iter().any(|k| k.contains('*')) {
+        bail!(
+            "the kube-state-metrics allowlist copies every pod label (`pods=[{}]`), so \
+             kube_pod_labels has no bound. Name the labels individually",
+            allowed.join(",")
+        );
+    }
+    let allowed_names: BTreeSet<String> = allowed.iter().map(|k| published_name(k)).collect();
+
+    retry_until(
+        "kube_pod_labels stays one series per pod, within its allowlist",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let series = instant_query(ctx, &target, "kube_pod_labels").await?;
+            if series.is_empty() {
+                bail!("kube_pod_labels has not reported yet");
+            }
+
+            let repeated = instant_query(
+                ctx,
+                &target,
+                "count by (uid, instance) (kube_pod_labels) > 1",
+            )
+            .await?;
+            if !repeated.is_empty() {
+                bail!(
+                    "{} pod(s) carry more than one current kube_pod_labels series from the \
+                     same kube-state-metrics target, so it is being scraped twice. Pod uids: \
+                     {:?}",
+                    repeated.len(),
+                    repeated
+                        .iter()
+                        .filter_map(|s| s.pointer("/metric/uid").and_then(Value::as_str))
+                        .take(5)
+                        .collect::<Vec<_>>()
+                );
+            }
+
+            let unexpected: BTreeSet<&str> = series
+                .iter()
+                .filter_map(|s| s.pointer("/metric").and_then(Value::as_object))
+                .flat_map(|labels| labels.keys())
+                .map(String::as_str)
+                .filter(|name| name.starts_with("label_") && !allowed_names.contains(*name))
+                .collect();
+            if !unexpected.is_empty() {
+                bail!(
+                    "kube_pod_labels carries {} label(s) the allowlist does not name, so \
+                     something broader than `kube-state-metrics.metricLabelsAllowlist` is \
+                     copying pod labels: {}",
+                    unexpected.len(),
+                    unexpected.into_iter().collect::<Vec<_>>().join(", ")
+                );
+            }
+
+            Ok(())
+        },
+    )
+    .await
+}
+
+/// A join through `kube_pod_labels` yields a series per Materialize replica.
+///
+/// The reason the allowlist names the Materialize labels: any `kube_pod_*`
+/// family, grouped by cluster and replica rather than by namespace. It needs two
+/// halves to agree, in two subchart keys: the allowlist copies the labels, and
+/// the monitor's `metricRelabelings` renames them to `cluster_id` and
+/// `replica_id`. Either half missing leaves the join matching nothing.
+///
+/// Compared against the pods themselves, read from the API server, so a replica
+/// that is missing reports by name. Only runs where a Materialize replica
+/// exists; the kind tiers run none.
+pub async fn pod_labels_join_to_replicas(ctx: &Ctx) -> Result<()> {
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+
+    retry_until(
+        "a join through kube_pod_labels yields a series per Materialize replica",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let pods = ctx.cluster.pods_with_label(CLUSTER_ID_POD_LABEL).await?;
+            let want: BTreeSet<(String, String, String)> = pods
+                .iter()
+                .filter_map(|pod| {
+                    let labels = pod.metadata.labels.as_ref()?;
+                    Some((
+                        pod.metadata.namespace.clone()?,
+                        labels.get(CLUSTER_ID_POD_LABEL)?.clone(),
+                        labels.get(REPLICA_ID_POD_LABEL)?.clone(),
+                    ))
+                })
+                .collect();
+            if want.is_empty() {
+                bail!("no pod carries {CLUSTER_ID_POD_LABEL} any more");
+            }
+
+            let series = instant_query(ctx, &target, REPLICA_JOIN_QUERY).await?;
+            let got: BTreeSet<(String, String, String)> = series
+                .iter()
+                .filter_map(|s| {
+                    let label = |name: &str| {
+                        s.pointer(&format!("/metric/{name}"))
+                            .and_then(Value::as_str)
+                            .map(String::from)
+                    };
+                    Some((
+                        label("namespace")?,
+                        label("cluster_id")?,
+                        label("replica_id")?,
+                    ))
+                })
+                .collect();
+
+            if got == want {
+                return Ok(());
+            }
+            let missing: Vec<_> = want.difference(&got).collect();
+            let extra: Vec<_> = got.difference(&want).collect();
+            bail!(
+                "requests joined through kube_pod_labels name {} replica(s), and the API \
+                 server has {}. Missing (namespace, cluster_id, replica_id): {missing:?}; not \
+                 on any pod: {extra:?}. With every replica missing, check that \
+                 `kube-state-metrics.metricLabelsAllowlist` names {CLUSTER_ID_POD_LABEL} and \
+                 that `kube-state-metrics.prometheus.monitor.http.metricRelabelings` renames \
+                 it. With only some missing, check those pods set a memory request",
+                got.len(),
+                want.len()
+            )
+        },
+    )
+    .await
+}
+
 /// Run an instant query and return its result vector.
 async fn instant_query(ctx: &Ctx, target: &ServiceTarget, query: &str) -> Result<Vec<Value>> {
     let path = format!("api/v1/query?query={}", encode(query));
@@ -258,5 +497,60 @@ mod tests {
             stale.is_empty(),
             "the e2e check names kube_* families no query uses any more: {stale:?}"
         );
+    }
+
+    /// The allowlist reads the same whether its resources are one list item or
+    /// several, which is the difference between the chart's shape and a
+    /// hand-written override.
+    #[test]
+    fn allowlist_parses_per_resource() {
+        let split = parse_allowlist("nodes=[a.io/x,b],pods=[c.io/y]");
+        assert_eq!(split["nodes"], ["a.io/x", "b"]);
+        assert_eq!(split["pods"], ["c.io/y"]);
+
+        let features = Features::from_values(serde_json::json!({
+            "kube-state-metrics": {
+                "metricLabelsAllowlist": ["nodes=[a]", "pods=[c.io/y,d]", "pods=[e]"],
+            }
+        }));
+        assert_eq!(
+            allowlisted_pod_labels(&features).unwrap(),
+            ["c.io/y", "d", "e"]
+        );
+
+        let no_pods = Features::from_values(serde_json::json!({
+            "kube-state-metrics": { "metricLabelsAllowlist": ["nodes=[a]"] }
+        }));
+        assert!(allowlisted_pod_labels(&no_pods).is_none());
+    }
+
+    /// The chart's own allowlist names the label the join assertion is gated on.
+    /// If it stops doing so, that assertion goes quietly ignored on every tier.
+    #[test]
+    fn chart_allowlists_the_cluster_id() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../charts/materialize-monitoring/values.yaml");
+        let text = std::fs::read_to_string(&path).expect("read the chart's values.yaml");
+        let entry = text
+            .lines()
+            .map(str::trim)
+            .find_map(|line| line.strip_prefix("- pods=["))
+            .expect("the chart's allowlist has a pods entry");
+        let flag = format!("pods=[{entry}");
+        assert!(
+            parse_allowlist(&flag)["pods"]
+                .iter()
+                .any(|k| k == CLUSTER_ID_POD_LABEL),
+            "{flag} does not name {CLUSTER_ID_POD_LABEL}"
+        );
+    }
+
+    #[test]
+    fn published_names_match_kube_state_metrics() {
+        assert_eq!(
+            published_name("cluster.environmentd.materialize.cloud/cluster-id"),
+            "label_cluster_environmentd_materialize_cloud_cluster_id"
+        );
+        assert_eq!(published_name("team"), "label_team");
     }
 }

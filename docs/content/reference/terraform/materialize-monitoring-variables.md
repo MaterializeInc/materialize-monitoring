@@ -640,6 +640,23 @@ the cluster reduces that to "has any certificate".
   })</code></pre></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="kube_state_metrics_pod_labels" href="#kube_state_metrics_pod_labels">kube_<wbr>state_<wbr>metrics_<wbr>pod_<wbr>labels</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Pod labels to publish on `kube_pod_labels`, in addition to the Materialize ones the chart names.
+
+An ownership label for cost-center allocation is the expected use. Each arrives as
+`label_<key>`, with every character outside `[a-zA-Z0-9_]` mapped to `_`, and joins to any
+`kube_pod_*` family on `namespace` and `pod`.
+
+Appended to the chart's `pods` allowlist entry rather than replacing it. Setting
+`kube-state-metrics.metricLabelsAllowlist` through `additional_values` instead replaces the
+whole list, node labels included.
+
+Name each label. `*` copies every label on every pod, and is refused.
+</td>
+        <td class="tf-var-default"><code>[]</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="materialize_instance_namespace" href="#materialize_instance_namespace">materialize_<wbr>instance_<wbr>namespace</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Namespace the Materialize instance runs in. Used to scope scrape targets.</td>
