@@ -11,6 +11,11 @@
 rule_files:
   - ext-consensus.yaml
 evaluation_interval: 1m
+# The p99 is an interpolation, which Go compiles to a fused multiply-add on
+# arm64 and not on amd64, so the same promtool image rounds its last bit
+# differently on a laptop and in CI (0.0496 against 0.049600000000000005).
+# Fuzzy comparison tolerates that and nothing coarser.
+fuzzy_compare: true
 tests:
   # --- persist: ext:consensus_up ------------------------------------------------
   - name: persist records up while calls succeed

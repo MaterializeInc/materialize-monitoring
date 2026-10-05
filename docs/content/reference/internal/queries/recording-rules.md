@@ -134,6 +134,8 @@ An alert on `ext:consensus_up` applies wherever any one of that series' adapters
 `packages/queries/tests/<registry-file>.test.yaml` holds `promtool test rules` cases, run by `make rules-check` against the `all` scenario.
 That scenario enables every provider pull and declares one database per flavor, so every adapter installs.
 A test SHOULD assert the recorded value and labels with `promql_expr_test`, and SHOULD include the case where the adapter has nothing to say and records nothing.
+A file asserting an interpolated value, such as a quantile, SHOULD set `fuzzy_compare: true`.
+Go fuses the interpolation's multiply-add on arm64 and not on amd64, so the same promtool image rounds the last bit differently on a laptop and in CI.
 
 **Live evaluation.**
 Before a rule ships, its expression SHOULD be run against a real install, read-only, with the placeholders substituted, and its result compared with the flavor-native query it normalizes.
