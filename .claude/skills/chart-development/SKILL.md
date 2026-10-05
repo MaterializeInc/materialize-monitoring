@@ -267,6 +267,10 @@ Unit tests should be written and updated as templates are updated.
 Snapshot tests should be generally updated as part of feature changes, but
 do require careful reviews on the changesets to ensure that the changes are
 expected and correct.
+On a PR nobody has checked out, typically a Renovate bump, the
+`regenerate-snapshots` label regenerates them in CI and pushes one commit
+for review; see the
+[Releasing page](../../../docs/content/reference/internal/releasing.md#regenerate-snapshots).
 
 Helm unittests are safe to run locally, do not require a live Kubernetes cluster,
 and do run quite quickly, so they should be run frequently during development.

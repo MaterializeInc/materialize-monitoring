@@ -1,0 +1,117 @@
+name: regenerate-snapshots
+
+# Regenerates the helm-unittest snapshots on a PR labeled `regenerate-snapshots`,
+# pushes them as one commit, and asks Copilot to review the result. A dependency
+# bump that moves rendered output (a Loki image tag, say) then needs no local
+# checkout to get its snapshots back in line.
+#
+# This is deliberately not part of `auto-format`, and nothing applies the label
+# by default. A formatter's output is correct by construction; a regenerated
+# snapshot is merely whatever the chart now renders, so someone has to read the
+# diff before it merges.
+#
+# For the same reason the label is one-shot: the run removes it when it
+# finishes, whether or not anything changed. Content pushed afterwards (a
+# Renovate rebase onto a newer version, for instance) needs the label applied
+# again rather than having its snapshots silently regenerated. Triggering on
+# `labeled` alone also means neither our own push (`synchronize`) nor the label
+# removal (`unlabeled`) can re-trigger this workflow.
+#
+# Apply it after `auto-format` has finished on the PR. Snapshots render from the
+# vendored subchart archives, which `auto-format` refreshes on a chart bump, and
+# a push from `auto-format` mid-run makes this run's push fail rather than land
+# on top of it.
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  # Removing the label and requesting the Copilot review.
+  pull-requests: write
+
+concurrency:
+  group: regenerate-snapshots-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate-snapshots:
+    if: github.event.label.name == 'regenerate-snapshots'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          # Same token as auto-format, for the same reason: a push made with the
+          # default GITHUB_TOKEN does not trigger the PR's required checks.
+          token: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          # The subchart archives the snapshots render from are LFS-tracked.
+          lfs: true
+      # helm is preinstalled on the runner image, as in the `helm unittest` job
+      # of test.yaml. The plugin version is what decides the rendered output, and
+      # the Makefile pin keeps it the one that job checks against.
+      - name: Install helm-unittest plugin
+        run: make helm-unittest-install
+      # `--update-snapshot` rewrites mismatched snapshots instead of failing on
+      # them, but any other failing assertion still fails the run, so nothing is
+      # committed for a PR whose tests are broken for some other reason.
+      - name: Regenerate snapshots
+        run: make helm-update-snapshots
+      - name: Commit and push if anything changed
+        id: push
+        run: |
+          snapshots=(charts/*/tests/__snapshot__)
+          if [ -z "$(git status --porcelain -- "${snapshots[@]}")" ]; then
+            echo "Snapshots are already up to date."
+            echo "Snapshots were already up to date; nothing to commit." >> "$GITHUB_STEP_SUMMARY"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${snapshots[@]}"
+          git commit -m "test: regenerate helm-unittest snapshots" \
+            -m "Applied by the regenerate-snapshots workflow. Review the diff before merging."
+          if ! git push; then
+            echo "::error::The PR branch moved while snapshots were regenerating. Apply the label again once it settles."
+            exit 1
+          fi
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "Pushed $(git rev-parse --short HEAD). Review the snapshot diff before merging."
+            echo
+            echo '```'
+            git show --stat --format= HEAD
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Copilot's automatic review runs when a PR opens, so it has not seen the
+      # snapshot diff. On bot-authored PRs it has not run at all so far, which
+      # makes this the first Copilot review a Renovate PR gets.
+      #
+      # GitHub documents requesting `copilot-pull-request-reviewer[bot]` through
+      # the REST API, but not whether a bot account may make that request. A
+      # failure is therefore a warning rather than a failed run: the snapshots
+      # have landed either way, and a reviewer can still ask from the PR's
+      # Reviewers menu.
+      - name: Request a Copilot review
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer[bot]' >/dev/null; then
+            echo "::warning::Could not request a Copilot review. Request one from the PR's Reviewers menu."
+          fi
+      # Runs even when an earlier step failed, so a failed run can be retried by
+      # applying the label again. Tolerates the label already being gone, which
+      # happens when a re-applied label cancels a run that has reached this step.
+      - name: Remove the label
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label regenerate-snapshots \
+            || echo "::warning::Could not remove the regenerate-snapshots label."
