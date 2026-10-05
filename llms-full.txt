@@ -876,6 +876,7 @@ Google's managed, Prometheus-compatible metrics store, backed by Monarch.
 Not a separate product from [GCM](#gcm) but an ingestion path *into* it, landing data under the `prometheus.googleapis.com/` domain where it's queryable by PromQL and usable in GCM dashboards and alerts.
 Billed per sample ingested — cheaper and more cardinality-tolerant than the `workload.googleapis.com/` domain — retains 24 months, and (like [AMP](#amp)) doesn't scrape: you push to it via [remote-write](#remote-write) or [OTLP](#otlp).
 The natural long-term store for GCP-centralized customers, replacing a self-run [Thanos](#thanos).
+The gateway's Google Cloud destination writes here, over OTLP to the Telemetry API.
 
 ## Kubernetes integration
 
@@ -1430,13 +1431,16 @@ Thanos is always the primary metric store. These fan out in addition to it, from
 
 | Variable | Default | Notes |
 |---|---|---|
-| `enable_google_cloud_metrics` | `false` | GCP only. Export to Google Cloud Monitoring. Creates a service account with `roles/monitoring.metricWriter` and binds the gateway to it |
+| `enable_google_cloud_metrics` | `false` | GCP only. Export to Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API. Creates a service account with `roles/monitoring.metricWriter` and binds the gateway to it |
 | `google_cloud_metrics_min_importance` | `"recommended"` | `essential`, `recommended`, `extended`, `diagnostic`, or `all`. Each tier includes the ones below it |
-| `google_cloud_metrics_prefix` | `null` | Metric name prefix. Defaults to `workload.googleapis.com/mzmon` |
+| `google_cloud_metrics_prefix` | `null` | Deprecated and ignored. Every metric is `prometheus.googleapis.com/<name>/<kind>`, so there is no prefix to choose |
+
+The project needs the `telemetry.googleapis.com` API enabled.
 
 `min_importance` is a **cost control**, not a filter for convenience.
-Cloud Monitoring bills per custom metric and per sample, so the tier you pick sets the bill.
+Cloud Monitoring bills these metrics per sample ingested, so the tier you pick sets the bill.
 `recommended` covers the dashboards; `all` sends the full surface and is a diagnostic setting, not a steady state.
+[Metrics > Storing](../../metrics/storing/#gcm) has the prices and a measured install.
 
 The tiers come from the same `metric-tiers.yaml` the chart uses, so a Terraform-selected tier and a Helm-selected one always mean the same set.
 See [Metrics > Storing](../../metrics/storing/) for what each tier contains.
@@ -2679,6 +2683,15 @@ pipeline:
 
 Reach for the denylist to shed a metric everywhere (cost, cardinality, noise); reach for `minMetricImportance` to tune what an *individual* backend receives.
 
+Entries in both the denylist and the tiers name Prometheus series, as Thanos shows them: `foo_total`, `foo_bucket`, `foo_count`.
+Inside the gateway a typed histogram is one metric named for its family, and the match is made per series all the same.
+
+| Entry names | Effect on a histogram `foo` |
+|---|---|
+| `foo_bucket` on the denylist | `foo_count` and `foo_sum` still reach every destination; the buckets do not |
+| `foo_count` in a tier, `foo_bucket` in a lower one | A destination on the higher tier receives `foo_count` alone |
+| `foo_bucket` in a tier | A destination on that tier receives the whole histogram |
+
 ### Through Terraform
 
 The `materialize-monitoring` module exposes the OTLP-family destinations directly, each taking the same `min_importance` tier documented above:
@@ -2986,7 +2999,13 @@ For a ready-made starting point — generic OTLP to Honeycomb, including the hea
 
 ### Google Cloud Monitoring (GCM) {#gcm}
 
-`googleCloudExporter` writes to Google Cloud Monitoring under the metric prefix `workload.googleapis.com/mzmon`:
+`googleCloudExporter` writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
+The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
+
+> [!NOTE]
+>   Before v0.31.0 this destination wrote `workload.googleapis.com/mzmon/<name>` through `otelcol.exporter.googlecloud`.
+>   Upgrading moves every series to `prometheus.googleapis.com/<name>/<kind>`, so dashboards and alerting policies reading the old metric types stop receiving data.
+>   The project needs the `telemetry.googleapis.com` API enabled, and `prefix` no longer exists.
 
 ```yaml
 pipeline:
@@ -3000,12 +3019,62 @@ pipeline:
             minMetricImportance: recommended
 ```
 
-Authentication uses **Workload Identity** — annotate the `alloy-gateway` ServiceAccount with the target Google service account and leave credentials out of the config, so the SDK's default chain uses the ambient identity.
+The project needs the `telemetry.googleapis.com` API enabled.
+Authentication uses **Workload Identity**: the `alloy-gateway` ServiceAccount is annotated with a Google service account, and `otelcol.auth.google` takes the ambient identity with no credentials in the config.
 The token-exchange mechanics are the same as [Thanos on GCS](#granting-object-storage-access-workload-identity) above, but on the gateway's ServiceAccount rather than Thanos's.
-Grant that identity `roles/monitoring.metricWriter` on the project.
-GCM supports only `gzip` compression.
+That identity needs `roles/monitoring.metricWriter` on the project.
 
-Because GCM is metered, it defaults to `minMetricImportance: recommended`; raise it to `essential` to write even less, or lower the floor if you want more history there.
+#### What it costs
+
+Samples ingested into `prometheus.googleapis.com/` are billed per sample.
+The `workload.googleapis.com/` custom metrics it wrote before v0.31.0 are billed per byte, at 8 bytes a point.
+
+| Domain | Billed by | List price | Measured at `recommended` |
+|---|---|---|---|
+| `workload.googleapis.com/` (`otelcol.exporter.googlecloud` before v0.31.0) | MiB ingested | $0.26 per MiB, about $2 per million points | 307 MiB a day across 212 metric types, about $2,400 a month |
+| `prometheus.googleapis.com/` (OTLP to the Telemetry API) | Samples ingested | $0.06 per million samples | The same points as samples, about $75 a month |
+
+A histogram point is billed as two samples plus one per non-empty bucket, so a histogram costs no more than its buckets did as separate points.
+An untyped series is written twice, as `/unknown` and `/unknown:counter`, and each scrape target adds a `target_info` series.
+Both are small next to the total.
+
+<!--
+Agent note: the measured row is from the heather-mzmon GCP test install (internal), read from
+monitoring.googleapis.com/billing/bytes_ingested in September 2026 (DEP-331). The $75 a month prices
+the same point count as samples; re-measure from billing/samples_ingested once the OTLP export has run
+there for a day.
+-->
+
+#### What arrives
+
+The metric type carries the kind of point: `prometheus.googleapis.com/<name>/gauge`, `/counter`, `/histogram` or `/summary`.
+PromQL takes the bare name, as it does against Thanos, and a histogram answers to `<name>_bucket`, `<name>_count` and `<name>_sum`.
+The kind comes from each target's `# TYPE` line, because every gateway scrape sets `honor_metadata`.
+Pushed remote-write carries no types, so it arrives untyped.
+
+Cloud Monitoring files every series under a `prometheus_target` resource.
+
+| Label | Value |
+|---|---|
+| `project_id` | The project the gateway runs in, or `googleCloudExporter.project` |
+| `location` | The GKE cluster's region or zone, or `googleCloudExporter.location` |
+| `cluster` | The series' own `cluster` label, or else `CLUSTER_NAME`, which is the `cluster` every other destination carries |
+| `namespace` | The series' own `namespace` label, as in Thanos |
+| `job`, `instance` | The scrape target's |
+
+A series label named `location`, `project_id`, `job` or `instance` keeps its value as `exported_<label>`.
+Every series also carries `collected_by="materialize-monitoring"`.
+That label separates these series from other Prometheus data in the project: GKE's managed kube-state-metrics writes the same metric types under the same `job`.
+
+Counters and histograms are cumulative, and Cloud Monitoring requires a start time on each point, which a Prometheus scrape does not supply.
+The gateway takes each series' first point as its baseline and does not send it.
+A counter's raw value in Cloud Monitoring therefore differs from Thanos, while `rate()` and `increase()` agree.
+
+Off GKE there is no metadata server to supply the project and the location, and the Telemetry API refuses a point without a location.
+`googleCloudExporter.project` and `googleCloudExporter.location` supply them.
+
+Because the destination is metered, it defaults to `minMetricImportance: recommended`.
+`essential` writes less; a lower floor keeps more there.
 
 ### Datadog {#datadog}
 
@@ -3026,7 +3095,7 @@ pipeline:
 
 The API key is read from the `GATEWAY_OTEL_DEST_DATADOG_API_KEY` environment variable — source it from a Secret; never inline it in values.
 Set `url` to your Datadog site (for example `datadoghq.com` or `datadoghq.eu`); `metricEndpoint` and `logsEndpoint` default to the matching intake URLs.
-Like GCM, it defaults to `minMetricImportance: recommended`.
+Like Google Cloud, it defaults to `minMetricImportance: recommended`.
 The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and GCM enabled together, each on its own tier.
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)
@@ -3601,9 +3670,9 @@ A registry tier admits a metric at that tier and above, so `metricImportance` de
 
 A destination that bills per series, such as Datadog or a BYOC fan-out, therefore does not receive them unless its floor or the provider's tier is changed.
 
-The Google Cloud Monitoring destination deserves the same care on an install that also pulls from GCP.
+The Google Cloud destination deserves the same care on an install that also pulls from GCP.
 Its default floor is `recommended`, which keeps the pulled families out.
-Raising either would write each series back into Cloud Monitoring as a custom `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
+Raising either would write each series back into Cloud Monitoring as a `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
 The pull does not read those types back, so it does not loop.
 
 ## What is deliberately not pulled
@@ -13413,14 +13482,51 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to a Google Cloud Monitoring / Cloud Logging destination.
+      <td class="helm-value-desc">Enable writing metrics to Google Cloud Managed Service for Prometheus.
+
+Metrics go over OTLP to Google's
+[Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview)
+(`telemetry.googleapis.com`) and land as `prometheus.googleapis.com/`
+metric types, queryable with PromQL in Cloud Monitoring. They are
+billed as Prometheus samples ingested, not per byte as custom
+`workload.googleapis.com/` metrics are.
+
+**Names.** The metric type carries the point kind:
+`prometheus.googleapis.com/<name>/gauge`, `/counter`, `/histogram`,
+`/summary`, and `/unknown` plus `/unknown:counter` for an untyped
+series. The gateway's scrapes honor metadata, so the kind is the one
+the target declares. PromQL takes the bare name, as it does in
+Thanos, and a histogram answers to `<name>_bucket`, `_count` and
+`_sum`. There is no prefix to set: the Telemetry API accepts only
+`prometheus.googleapis.com` or no domain at all.
+
+**Labels.** Cloud Monitoring files each series under a
+`prometheus_target` resource whose labels are `project_id`,
+`location`, `cluster`, `namespace`, `job` and `instance`. `job` and
+`instance` are the scrape target's. `namespace` is the series' own,
+as in Thanos. `cluster` is `CLUSTER_NAME` (the `cluster` label every
+other destination carries) unless the series has one of its own.
+`location` and the project come from the GKE metadata server unless
+`location` and `project` below say otherwise. A series that already
+carries a `location`, `project_id`, `job` or `instance` label keeps
+it as `exported_<label>`. Every series also carries
+`collected_by="materialize-monitoring"`, which sets it apart from
+other Prometheus data in the project: GKE's managed
+kube-state-metrics, for one, writes the same metric types under the
+same `job`.
+
+**Auth** is the gateway's ambient Google identity (Workload Identity
+on GKE) through `otelcol.auth.google`, which needs
+`roles/monitoring.metricWriter` and the `telemetry.googleapis.com`
+API enabled on the project. That component is public preview, which
+the gateway's `experimental` stability level already allows.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
-      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.
+      <td class="helm-value-desc">Compression for the OTLP request body.
 </td>
     </tr>
     <tr>
@@ -13431,21 +13537,42 @@ Multiple exporters can be enabled at once.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.endpoint</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"https://telemetry.googleapis.com"</code></td>
+      <td class="helm-value-desc">Telemetry API endpoint. Override for a Private Service Connect endpoint.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.project</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Google Cloud project to write to. Empty writes to the project the gateway runs in, as GKE's metadata server reports it. Required off GKE: `otelcol.auth.google` will not start without a project, and nothing else supplies one there.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.location</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">`location` label for every series: a Google Cloud region or zone. Empty uses the GKE cluster's own. Required off GKE: the Telemetry API refuses a point without one.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.handlers</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "otelcol.exporter.googlecloud.destination.input"
+  "otelcol.processor.filter.googleCloud.input"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter.
+      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter: the first component of the chain in `config`.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.config</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>An `otelcol.exporter.googlecloud.destination` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.googlecloud block. The default config uses Workload Identity Federation (WIF) to authenticate to GCP.
+      <td class="helm-value-default"><code>The chain rendered by the chart's `mzmon.alloyGateway.otelDest.googleCloud` helper.</code></td>
+      <td class="helm-value-desc">Raw configuration for the Google Cloud export chain. Override it only to change the chain itself; every component is labelled `googleCloud`, and `handlers` must name its first one.
 </td>
     </tr>
     <tr>
@@ -15562,8 +15689,17 @@ Upstream reference:
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.stabilityLevel</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"generally-available"</code></td>
+      <td class="helm-value-default"><code>"experimental"</code></td>
       <td class="helm-value-desc">Stability level of alloy components.
+
+`experimental`, because every gateway scrape sets `honor_metadata`, which
+Alloy refuses to build below that level. It is what types the metrics the
+OpenTelemetry destinations receive. The Google Cloud exporter's
+`otelcol.auth.google` is public preview and needs no more than this.
+
+A lower level renders an error rather than a gateway that crashloops:
+`alloy validate`, and so the pre-validate job, does not check a component's
+arguments against it.
 </td>
     </tr>
     <tr>
@@ -20182,7 +20318,10 @@ prometheus.operator.podmonitors "default"     (PodMonitor CRs)             ─�
 prometheus.operator.servicemonitors "default" (ServiceMonitor CRs)         ─┴─→ otelcol.receiver.prometheus "inputBridge"  (Prometheus → OTLP) ─┐
 otelcol.receiver.otlp                          (OTLP metrics) ─────────────────────────────────────────────────────────────────────────────┤
                                                                                                                                             ▼
-                     otelcol.processor.filter "inputMetricProcessor"  (otelcol-side processing choke point)
+                     otelcol.processor.transform "inputMetricProcessor"  (otelcol-side processing choke point)
+                                               │
+                                               ▼
+                     otelcol.processor.filter "inputMetricDeny"   (denyMetrics, per Prometheus series)
                                                │
                                                ▼
                      otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 75%, backpressure receivers)
@@ -20210,8 +20349,44 @@ Cloud provider pulls join the same bridge when enabled: each is an instance of a
 They are covered under [Cloud provider pulls](#cloud-provider-pulls) below.
 
 The operator components enable `clustering` (target load spread across the alloy cluster) and read their scrape defaults from the environment (`GATEWAY_SCRAPE_INTERVAL` / `GATEWAY_SCRAPE_TIMEOUT`, via `coalesce`).
-`inputMetricProcessor` is the single choke point (the otelcol analog of the loki-side `inputProcessor`); a `memory_limiter` + `batch` pair manages the outbound stream; `otelcol.processor.filter "egress"` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
+`inputMetricProcessor` is the single choke point (the otelcol analog of the loki-side `inputProcessor`), and `inputMetricDeny` after it applies `denyMetrics`; a `memory_limiter` + `batch` pair manages the outbound stream; `otelcol.processor.filter "egress"` is a type-neutral seam so the destination can be swapped without editing the committed pipeline (mirrors the loki side).
 `outputBridge` sets `add_metric_suffixes=false` so names survive the OTLP round-trip unchanged.
+
+### Typed metrics
+
+Every gateway scrape sets `honor_metadata`: the operator components' `scrape` blocks, the kubelet and kube-proxy scrapes, and the provider pulls' `provider_scrape`.
+Each target's `# TYPE` then reaches `inputBridge`, which converts a counter to a cumulative sum and a histogram's `_bucket`, `_count` and `_sum` series to one histogram named for its family.
+Pushed remote-write carries no metadata and stays untyped, as every series was before.
+
+`honor_metadata` is experimental upstream, so the gateway runs at `--stability.level=experimental`.
+Alloy checks that when it builds the component, not in `alloy validate`.
+The chart therefore refuses to render a gateway at any other level, rather than leave the pre-validate job to pass a config the gateway cannot load.
+
+The types matter to the OTLP destinations, which aggregate natively.
+Google Cloud Monitoring names the kind of point in the metric type (`<name>/counter`, `/histogram`), and Datadog's rates and percentiles need counters and distributions.
+Thanos is unaffected: `outputBridge` turns the same types back into the same series names.
+`thanos::typed_names_round_trip` in `packages/mz-monitoring-e2e` asserts it for one series of each type.
+
+Matching on names changes with the types.
+`denyMetrics` and the tier allowlists name Prometheus series, but a histogram is one metric called `foo`, so neither can match `foo_bucket` against `metric.name` alone.
+Both match per series instead, in a transform and filter pair.
+The transform pulls a histogram's count and sum out as metrics of their own where the buckets are denied, or are outside the tier, and the count or sum is not.
+The filter then decides a histogram by its `_bucket` name and anything else by its own.
+`inputMetricProcessor` and `inputMetricDeny` do this for the deny list; `mzmon.alloyGateway.otelDest.egressFilter` in the chart does it, inverted, per OTLP destination.
+The remote-write destinations filter after `outputBridge`, on Prometheus names, and need none of it.
+
+<!--
+Agent note: measured on the tier-2 kind stack (no Materialize; 2,551 metric names, about 68k series) on
+2026-10-04, toggling only `honor_metadata` in the deployed gateway ConfigMap, ten minutes per window.
+Thanos received the same 2,551 names typed and untyped. Gateway working set, both replicas together, was
+872 MiB untyped against 886 and 806 MiB in two typed windows; Go heap in use 586 against 612 and 546 MiB,
+so no difference beyond run-to-run noise. Alloy's docs say metadata memory grows with the number of
+distinct metric names per target, so it was re-measured on the GCP test install (internal) with a
+Materialize environment, on 2026-10-05: two gateway replicas went from 1,131 MiB working set, 826 MiB
+heap and 0.117 cores (Alloy v1.19.2, untyped, the googlecloud exporter) to 1,052 MiB, 753 MiB and 0.103
+cores (Alloy v1.20.0, typed, the OTLP chain). Three things changed at once there, so it bounds the cost
+of typing rather than isolating it: no increase.
+-->
 
 Everything above `prometheus.relabel "egress"` is shared; everything below it is per destination.
 `pipeline.metrics.gateway.destination.prometheusRemoteWrite` is a map keyed by name, and each entry renders **two** components labelled with that name: a `prometheus.relabel` carrying its importance-tier `keep` rule, feeding a `prometheus.remote_write` carrying its endpoint, auth, and TLS.
@@ -20301,11 +20476,11 @@ Metric relabeling splits across three places; putting a rule in the wrong one is
 | Phase | Sees | Home | Use for |
 |---|---|---|---|
 | **Target** (pre-scrape) | `__meta_kubernetes_*` | the PodMonitor/ServiceMonitor CRs (`relabelings`, `podTargetLabels`); the operator components' `rule` blocks for cross-cutting rules; the cAdvisor ScrapeConfig | which targets to scrape, promoting pod/node labels, per-target renames |
-| **Metric** (post-scrape) | final label set only | the otelcol processing at `otelcol.processor.filter "inputMetricProcessor"` (add `filter`/`transform` there) | cross-cutting hygiene, cost governance (metric-name drops), dashboard-contract normalization |
+| **Metric** (post-scrape) | final label set only | the otelcol processing at `otelcol.processor.transform "inputMetricProcessor"` and `otelcol.processor.filter "inputMetricDeny"` | cross-cutting hygiene, cost governance (metric-name drops), dashboard-contract normalization |
 | **Identity** | — | `external_labels` on each `remote_write` destination | install/cluster/region stamps |
 
-`inputMetricProcessor` is intentionally a **rule-free passthrough** today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
-It's where the metric `filter`/`transform` work (cardinality tiers) will land as genuinely cross-cutting rules come up.
+`inputMetricProcessor` carries only the deny list's histogram split today: sources are assumed not to push junk labels in the first place, per-target hygiene lives in the (curated) CRs, and node-label curation lives in the cAdvisor ScrapeConfig.
+It's where further metric `transform` work will land as genuinely cross-cutting rules come up.
 
 Note: identity is stamped as a `cluster` `external_labels` entry on every `remote_write` destination, sourced from
 `env.CLUSTER_NAME`, which the chart fills from `clusterName` (default `default`).
@@ -21429,17 +21604,21 @@ Merged with any annotations `object_storage` contributes, so both can be present
     <tr>
       <td class="tf-var-name"><a name="google_cloud_metrics" href="#google_cloud_metrics">google_<wbr>cloud_<wbr>metrics</a></td>
         <td class="tf-var-type"><em>schema</em></td>
-      <td class="tf-var-desc">Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
-is unaffected either way.
+      <td class="tf-var-desc">Also export metrics to Google Cloud Managed Service for Prometheus from the Alloy gateway, over
+OTLP to the Telemetry API. Null disables it; Thanos is unaffected either way.
 
 `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
-`all` — and each tier includes the ones below it. This is a cost control: GCM bills per custom
-metric and `all` sends the entire surface.
+`all` — and each tier includes the ones below it. This is a cost control: the series land as
+`prometheus.googleapis.com/` metrics, billed per sample ingested, and `all` sends the entire
+surface.
 
-Authentication is ADC only. Bind the gateway ServiceAccount to a Google service account holding
-`roles/monitoring.metricWriter` through `object_storage.gateway_service_account_annotations`;
-failing that it falls back to the node's service account, which works only if that account has
-the role.
+The project needs the `telemetry.googleapis.com` API enabled. Authentication is ADC only. Bind
+the gateway ServiceAccount to a Google service account holding `roles/monitoring.metricWriter`
+through `object_storage.gateway_service_account_annotations`; failing that it falls back to the
+node's service account, which works only if that account has the role.
+
+`prefix` is deprecated and ignored. The Telemetry API names every metric
+`prometheus.googleapis.com/<name>/<kind>`, so there is no prefix to choose.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     min_importance = optional(string, "recommended")
@@ -24868,6 +25047,7 @@ The agent and gateway pipelines are in place, the OTLP export path shipped with 
 | **Multi-line Rust panics** ([DEP-255](https://linear.app/materializeinc/issue/DEP-255)) — a panic arrived as ~20 unrelated entries with no level and no message | OO-M2 | ✅ (`inputProcessor` opens with a `stage.multiline` that merges the block, and a later block gives the merged entry `level=CRITICAL`, a `msg` naming the source location, and `panic_thread` / `panic_location` as structured metadata. `stage.multiline` is new to the typed model and the first stage here that carries state across entries. Merging sits ahead of the drops and the rate limit, because `stage.limit` runs with `drop: true` and a backtrace with holes in it reads as complete and is not; the `longer_than: "1MB"` ceiling still applies to the merged entry, which is what discards the separate multi-MiB-line panic variant we deliberately do not carry. `firstline` is inverted from how it reads — it matches the *start* of a record and non-matching lines append — so it must match every ordinary line of the stream, and one expression covers both Materialize log families. Measured rather than assumed: a stream whose format never matches is unaffected, since entries pass through singly until the first match; environmentd's non-JSON startup banner is on stdout while tracing and panics are on stderr, and `stage.cri` makes `stream` a label, so the banner cannot contaminate the JSON; and `max_wait_time` is the delivery mechanism rather than a rare fallback, because a panic is the last thing a process writes. Verified end to end against a real `mz_panic` on a live install, with the false-positive and stdout-banner cases covered too. **Fixed alongside:** `balancerd` and `materialize-operator` log tracing's plain text layer rather than JSON and nothing parsed it — 100% of both services' lines were UNKNOWN, 41,631 of them from the operator in 6h, all in the bucket the rate limiter drops from. **Outstanding:** log-derived alerting on panics, a panel on `env-logs`, and moving the merge to the agent if the two-replica split ever needs to be zero) |
 | Agent → gateway transport over **OTLP/gRPC with a node-local WAL** ([DEP-189](https://linear.app/materializeinc/issue/DEP-189); `hostPath`, compaction-bounded); gateway stays stateless and backend fan-outs are unchanged | CLOM | ⬜ |
 | `otelcol.processor.transform` before the log bridge ([DEP-223](https://linear.app/materializeinc/issue/DEP-223)) — becomes load-bearing once agent logs arrive as OTLP | CLOM | ⬜ |
+| **Google Cloud metrics over OTLP** to the Telemetry API, typed ([DEP-331](https://linear.app/materializeinc/issue/DEP-331)) — the `workload.googleapis.com/` export billed per byte, about 33× the per-sample price of `prometheus.googleapis.com/`, and every series arrived untyped | OO-M3 | ✅ (`googleCloudExporter` writes OTLP to `telemetry.googleapis.com` through `otelcol.auth.google`, after the processors Google's reference collector uses; every gateway scrape sets `honor_metadata`, so the gateway runs at `experimental`. The deny list and the OTLP tier filters match per Prometheus series, splitting a histogram where its count is wanted and its buckets are not. Running on the GCP test install at about 460 points a second with no increase in gateway memory; on kind the Thanos round trip renames nothing (`thanos::typed_names_round_trip`). `prefix` is gone from the values and deprecated in the module and the GCP wrapper, which documents `telemetry.googleapis.com` as a prerequisite; series carry `collected_by="materialize-monitoring"` instead) |
 | [Backup log collection path](https://linear.app/materializeinc/issue/CLO-180) for alloy-agent failures — before it, an agent crash lost the logs explaining why | OO-M2 | ✅ |
 | Ingest secret filter — `loki.secretfilter` ahead of parsing, with Materialize rules, `stage.luhn` for card numbers, a sampleable `DEBUG`/`TRACE` tier against queueing, and the `mz-monitoring-canary` producer ([design](../design-docs/20260924-log-secret-filtering/)). GA from Alloy v1.20.0 and acceptable at public preview before it; not blocked on BYOC. Tracked as [DEP-308](https://linear.app/materializeinc/issue/DEP-308) under [DEP-306](https://linear.app/materializeinc/issue/DEP-306) | BYOC-CP | ⬜ |
 
