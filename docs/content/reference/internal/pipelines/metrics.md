@@ -93,8 +93,11 @@ Agent note: measured on the tier-2 kind stack (no Materialize; 2,551 metric name
 Thanos received the same 2,551 names typed and untyped. Gateway working set, both replicas together, was
 872 MiB untyped against 886 and 806 MiB in two typed windows; Go heap in use 586 against 612 and 546 MiB,
 so no difference beyond run-to-run noise. Alloy's docs say metadata memory grows with the number of
-distinct metric names per target, and a Materialize environment has many more than kind does: re-measure
-on a real install before treating this as settled.
+distinct metric names per target, so it was re-measured on the GCP test install (internal) with a
+Materialize environment, on 2026-10-05: two gateway replicas went from 1,131 MiB working set, 826 MiB
+heap and 0.117 cores (Alloy v1.19.2, untyped, the googlecloud exporter) to 1,052 MiB, 753 MiB and 0.103
+cores (Alloy v1.20.0, typed, the OTLP chain). Three things changed at once there, so it bounds the cost
+of typing rather than isolating it: no increase.
 -->
 
 Everything above `prometheus.relabel "egress"` is shared; everything below it is per destination.
