@@ -4,7 +4,7 @@
 otelcol.receiver.prometheus "inputBridge" {
 	output {
 		metrics = [
-			otelcol.processor.filter.inputMetricProcessor.input,
+			otelcol.processor.transform.inputMetricProcessor.input,
 		]
 	}
 }
@@ -21,6 +21,7 @@ prometheus.operator.podmonitors "default" {
 	scrape {
 		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
 		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+		honor_metadata          = true
 	}
 
 	rule {
@@ -68,6 +69,7 @@ prometheus.operator.servicemonitors "default" {
 	scrape {
 		default_scrape_interval = coalesce(sys.env("GATEWAY_SCRAPE_INTERVAL"), "30s")
 		default_scrape_timeout  = coalesce(sys.env("GATEWAY_SCRAPE_TIMEOUT"), "10s")
+		honor_metadata          = true
 	}
 
 	rule {
@@ -103,11 +105,30 @@ prometheus.operator.servicemonitors "default" {
 	}
 }
 
-otelcol.processor.filter "inputMetricProcessor" {
+otelcol.processor.transform "inputMetricProcessor" {
+	error_mode = "ignore"
+
+	metric_statements {
+		context = "metric"
+		statements = [
+			"extract_count_metric(true) where ((metric.type == METRIC_DATA_TYPE_HISTOGRAM and IsMatch(Concat([metric.name, \"_bucket\"], \"\"), \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")) or (metric.type == METRIC_DATA_TYPE_SUMMARY and IsMatch(metric.name, \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\"))) and not IsMatch(Concat([metric.name, \"_count\"], \"\"), \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")",
+			"extract_sum_metric(true) where ((metric.type == METRIC_DATA_TYPE_HISTOGRAM and IsMatch(Concat([metric.name, \"_bucket\"], \"\"), \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")) or (metric.type == METRIC_DATA_TYPE_SUMMARY and IsMatch(metric.name, \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\"))) and not IsMatch(Concat([metric.name, \"_sum\"], \"\"), \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")",
+		]
+	}
+
+	output {
+		metrics = [
+			otelcol.processor.filter.inputMetricDeny.input,
+		]
+	}
+}
+
+otelcol.processor.filter "inputMetricDeny" {
 	metric_conditions {
 		context = "metric"
 		conditions = [
 			"IsMatch(metric.name, \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")",
+			"metric.type == METRIC_DATA_TYPE_HISTOGRAM and IsMatch(Concat([metric.name, \"_bucket\"], \"\"), \"^(?:" + sys.env("GATEWAY_DENY_METRICS") + ")$\")",
 		]
 	}
 

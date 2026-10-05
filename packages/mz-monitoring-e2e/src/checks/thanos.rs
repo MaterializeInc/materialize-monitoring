@@ -7,7 +7,8 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Thanos: is the store fanout healthy, and is anything actually being scraped.
+//! Thanos: is the store fanout healthy, is anything actually being scraped, and
+//! does it arrive under the names it was scraped with.
 //!
 //! These do not run at tier 1 — Thanos needs object storage in every deployment
 //! shape it supports, so a hermetic kind run cannot include it, and every
@@ -168,6 +169,102 @@ pub async fn samples_scraped(ctx: &Ctx) -> Result<()> {
         },
     )
     .await
+}
+
+/// One series of each Prometheus type, and the names it must reach Thanos under.
+///
+/// All from Alloy's own `/metrics`, which the gateway scrapes in every install
+/// that has Thanos, so none of them depends on Materialize running.
+const TYPED_NAMES: &[(&str, &str)] = &[
+    ("counter", "process_cpu_seconds_total"),
+    ("gauge", "go_goroutines"),
+    (
+        "histogram buckets",
+        "alloy_component_evaluation_seconds_bucket",
+    ),
+    (
+        "histogram count",
+        "alloy_component_evaluation_seconds_count",
+    ),
+    ("histogram sum", "alloy_component_evaluation_seconds_sum"),
+    ("summary quantiles", "go_gc_duration_seconds"),
+    ("summary count", "go_gc_duration_seconds_count"),
+    ("summary sum", "go_gc_duration_seconds_sum"),
+];
+
+/// What those series would be called had the round trip renamed them: the
+/// counter without `_total`, the histogram under its bare family name.
+const RENAMED_NAMES: &[&str] = &["process_cpu_seconds", "alloy_component_evaluation_seconds"];
+
+/// Typed series reach Thanos under the names they were scraped with.
+///
+/// The gateway's scrapes honor metadata, so the series it converts to OTLP are
+/// typed: a counter becomes a cumulative sum, and a histogram's `_bucket`,
+/// `_count` and `_sum` become one histogram named for its family.
+/// `otelcol.exporter.prometheus "outputBridge"` turns them back into Prometheus
+/// series on the way to Thanos. Were that to come back renamed — a counter
+/// without its `_total`, a histogram under its family name — every dashboard and
+/// alert reading the old name would go quiet, and nothing else here would fail.
+pub async fn typed_names_round_trip(ctx: &Ctx) -> Result<()> {
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+    let names: Vec<&str> = TYPED_NAMES
+        .iter()
+        .map(|(_, name)| *name)
+        .chain(RENAMED_NAMES.iter().copied())
+        .collect();
+    let query = format!(
+        "count by (__name__) ({{__name__=~\"{}\"}})",
+        names.join("|")
+    );
+
+    retry_until(
+        "typed series reach thanos under their scraped names",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let series = instant_query(ctx, &target, &query).await?;
+            let present: Vec<&str> = series
+                .iter()
+                .filter_map(|s| s.pointer("/metric/__name__").and_then(Value::as_str))
+                .collect();
+            check_typed_names(&present)
+        },
+    )
+    .await
+}
+
+/// The half of [`typed_names_round_trip`] that needs no cluster.
+fn check_typed_names(present: &[&str]) -> Result<()> {
+    let missing: Vec<String> = TYPED_NAMES
+        .iter()
+        .filter(|(_, name)| !present.contains(name))
+        .map(|(kind, name)| format!("{name} ({kind})"))
+        .collect();
+    let renamed: Vec<&str> = RENAMED_NAMES
+        .iter()
+        .copied()
+        .filter(|name| present.contains(name))
+        .collect();
+
+    if missing.is_empty() && renamed.is_empty() {
+        return Ok(());
+    }
+    let mut problems = Vec::new();
+    if !missing.is_empty() {
+        problems.push(format!("missing from thanos: {}", missing.join(", ")));
+    }
+    if !renamed.is_empty() {
+        problems.push(format!(
+            "present under a renamed form: {}",
+            renamed.join(", ")
+        ));
+    }
+    bail!(
+        "{}. The gateway's OTLP round trip (otelcol.receiver.prometheus \"inputBridge\" -> \
+         otelcol.exporter.prometheus \"outputBridge\") no longer gives typed series back their \
+         scraped names; check outputBridge's add_metric_suffixes and the scrapes' honor_metadata",
+        problems.join("; ")
+    )
 }
 
 /// Both rulers' remote-write to the gateway is keeping up.
@@ -363,8 +460,44 @@ fn expect_success(body: &Value) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::sample_value;
+    use super::{RENAMED_NAMES, TYPED_NAMES, check_typed_names, sample_value};
     use serde_json::json;
+
+    fn all_typed() -> Vec<&'static str> {
+        TYPED_NAMES.iter().map(|(_, name)| *name).collect()
+    }
+
+    #[test]
+    fn every_typed_name_present_passes() {
+        assert!(check_typed_names(&all_typed()).is_ok());
+    }
+
+    /// A counter that lost `_total` shows up twice: missing under its own name,
+    /// present under the renamed one.
+    #[test]
+    fn a_counter_without_total_fails_on_both_counts() {
+        let mut present = all_typed();
+        present.retain(|name| *name != "process_cpu_seconds_total");
+        present.push("process_cpu_seconds");
+        let err = check_typed_names(&present).unwrap_err().to_string();
+        assert!(
+            err.contains("missing from thanos: process_cpu_seconds_total (counter)"),
+            "{err}"
+        );
+        assert!(
+            err.contains("present under a renamed form: process_cpu_seconds"),
+            "{err}"
+        );
+    }
+
+    /// Old series linger in the lookback window after a bad rollout, so the
+    /// renamed form fails the check even with every expected name present.
+    #[test]
+    fn a_renamed_form_alongside_the_right_one_still_fails() {
+        let mut present = all_typed();
+        present.push(RENAMED_NAMES[1]);
+        assert!(check_typed_names(&present).is_err());
+    }
 
     /// Pins the string encoding. `as_f64` on this returns `None`, which would
     /// make every "is it scraping" assertion read as zero and fail on a healthy

@@ -53,6 +53,9 @@ spec:
           command:
             - alloy
             - validate
+            # The level the pipeline runs at: a component below it fails
+            # validation, as it would fail to load.
+            - --stability.level={{ $agentValues.alloy.stabilityLevel }}
             - /etc/alloy/{{ include "mzmon.alloyAgent.configMap.key" $ }}
           securityContext:
             {{- toYaml $pipelineValues.preValidateJob.containerSecurityContext | nindent 12 }}

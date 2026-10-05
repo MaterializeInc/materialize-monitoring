@@ -293,9 +293,9 @@ A registry tier admits a metric at that tier and above, so `metricImportance` de
 
 A destination that bills per series, such as Datadog or a BYOC fan-out, therefore does not receive them unless its floor or the provider's tier is changed.
 
-The Google Cloud Monitoring destination deserves the same care on an install that also pulls from GCP.
+The Google Cloud destination deserves the same care on an install that also pulls from GCP.
 Its default floor is `recommended`, which keeps the pulled families out.
-Raising either would write each series back into Cloud Monitoring as a custom `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
+Raising either would write each series back into Cloud Monitoring as a `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
 The pull does not read those types back, so it does not loop.
 
 ## What is deliberately not pulled

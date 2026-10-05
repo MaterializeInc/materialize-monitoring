@@ -60,6 +60,7 @@ declare "provider_scrape" {
 		scrape_interval = argument.scrape_interval.value
 		scrape_timeout = argument.scrape_timeout.value
 		honor_timestamps = argument.honor_timestamps.value
+		honor_metadata = true
 
 		clustering {
 			enabled = true
