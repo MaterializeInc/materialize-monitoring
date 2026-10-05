@@ -121,6 +121,10 @@ An alert whose only metric is `up` MUST declare what it is about, since `up` exi
 An alert that depends on a label only some deployments add, such as a node label, SHOULD declare the capability that adds it.
 The effective set, inferred and declared, is recorded per rule in `_index.yaml`, which is how a reviewer sees it.
 
+**A recorded series is not a capability.**
+An alert reading one, such as `ext:consensus_up`, installs wherever any one of the recording rules that could produce it installs, and `_index.yaml` records those under the alert's `reads`.
+[Reading a recorded series](/materialize-monitoring/reference/internal/queries/recording-rules/#reading-a-recorded-series) has the rules.
+
 | Kind | Capabilities | Present when |
 |---|---|---|
 | Derived | `materialize`, `materialize-sql`, `materialize-operator`, `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` | This chart runs the component and collects its metrics |
@@ -164,6 +168,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
 | Every metric has a known source | A rule reading a metric nothing produces never fires |
+| A recorded series it reads has a recording rule that can produce what it selects | A selector every recording rule's labels contradict never matches anything |
 | `deploymentMode` is not a label | Applicability is `requires`, not a label nothing reads |
 
 ## The contract for a shipped alert

@@ -110,9 +110,10 @@ A recording rule that reads only `up` MUST declare what it is about with `requir
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
 A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
 
-A recorded series has no metric tier, so a destination filtering by `minMetricImportance` drops it.
-The bundled `thanos` destination keeps everything by default, and the chart warns when it does not.
-Giving recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
+A recorded series has a metric tier only when a registry query names it, which an alert reading it does: `ext:consensus_up` takes the tier of `materialize-alerts.yaml`.
+A destination filtering by `minMetricImportance` drops the others.
+The bundled `thanos` destination keeps everything by default, and the chart warns, naming them, when it does not.
+Giving every recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
 
 ## What `gen-rules` rejects
 
@@ -126,10 +127,25 @@ Giving recorded series a tier is [DEP-368](https://linear.app/materializeinc/iss
 | The query is PromQL, with exactly one expression | Nothing delivers recording rules to the Loki ruler |
 | The expression renders and parses, and no placeholder, Grafana variable or unknown token remains | As for an alert |
 | Every metric has a known source | A rule reading a metric nothing produces records nothing |
+| A recording rule reads no other recorded series | One rule's applicability would depend on another's through the chart, and nothing needs that |
 
-**A rule cannot read a recorded series yet.**
-An alert on `ext:consensus_up` applies wherever any one of that series' adapters applies, and capabilities can only require all of a set.
-`gen-rules` rejects such an alert until capabilities can express it, which is [DEP-367](https://linear.app/materializeinc/issue/DEP-367).
+## Reading a recorded series
+
+An alert MAY read a recorded series, and the normalized layer exists so that alerts read it rather than a flavor-native family.
+A recorded series exists wherever any one of its recording rules installs, and capabilities can only say that all of a set are present.
+So `gen-rules` records each recorded series an alert reads beside its capabilities, under `reads` in `_index.yaml`, with the recording rules that could produce what the alert selects.
+The chart installs the alert only where, for every series it reads, at least one of those rules installs.
+
+| Selector | Could be produced by |
+|---|---|
+| `ext:consensus_up` | Every rule recording it: `persist`, `cloudsql`, `azure-postgres`. The alert installs wherever Materialize is |
+| `ext:consensus_up{flavor="cloudsql"}` | `cloudsql` only. The alert installs where the Cloud Monitoring pull runs |
+| `ext:consensus_up{namespace="prod"}` | Every rule recording it, since none sets `namespace` statically |
+
+A rule is ruled out only by its static labels, because a matcher on any other label could match whatever the rule's expression produces.
+A selector that every rule's static labels contradict is an error.
+The alert's other metrics still add their capabilities as usual, so an alert reading `ext:consensus_up` and `mz_*` needs `materialize` as well.
+[Common Alerts](/materialize-monitoring/reference/common-alerts/) lists what each alert reads.
 
 ## Testing a recording rule
 

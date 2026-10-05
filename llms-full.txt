@@ -6370,6 +6370,7 @@ A rule installs when all of the following hold:
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
 | A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
+| A rule reading a recorded series also needs one of the recording rules that produce it to install | see [Recorded series](#recorded-series) |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
 The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy, and each cloud provider pull the gateway runs.
@@ -6436,7 +6437,9 @@ The render warns when a pull watches databases and none of them is named, and wh
 | `cloudsql` | The instance name, as listed in `pipeline.metrics.provider.gcp.cloudSql.instances` |
 | `azure-postgres` | The flexible server name, as listed in `pipeline.metrics.provider.azure.postgres.servers` |
 
-A recorded series has no metric tier.
+An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
+
+A recorded series that no bundled alert reads has no metric tier.
 A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
 
 ## Two evaluators, one notifier
@@ -11008,6 +11011,10 @@ An alert whose only metric is `up` MUST declare what it is about, since `up` exi
 An alert that depends on a label only some deployments add, such as a node label, SHOULD declare the capability that adds it.
 The effective set, inferred and declared, is recorded per rule in `_index.yaml`, which is how a reviewer sees it.
 
+**A recorded series is not a capability.**
+An alert reading one, such as `ext:consensus_up`, installs wherever any one of the recording rules that could produce it installs, and `_index.yaml` records those under the alert's `reads`.
+[Reading a recorded series]({{< relref "recording-rules.md" >}}#reading-a-recorded-series) has the rules.
+
 | Kind | Capabilities | Present when |
 |---|---|---|
 | Derived | `materialize`, `materialize-sql`, `materialize-operator`, `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` | This chart runs the component and collects its metrics |
@@ -11051,6 +11058,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
 | Every metric has a known source | A rule reading a metric nothing produces never fires |
+| A recorded series it reads has a recording rule that can produce what it selects | A selector every recording rule's labels contradict never matches anything |
 | `deploymentMode` is not a label | Applicability is `requires`, not a label nothing reads |
 
 ## The contract for a shipped alert
@@ -22483,9 +22491,10 @@ A recording rule that reads only `up` MUST declare what it is about with `requir
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
 A file's hint rolls up to every metric its queries read, and a recording rule is no reason to send a metric to more destinations.
 
-A recorded series has no metric tier, so a destination filtering by `minMetricImportance` drops it.
-The bundled `thanos` destination keeps everything by default, and the chart warns when it does not.
-Giving recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
+A recorded series has a metric tier only when a registry query names it, which an alert reading it does: `ext:consensus_up` takes the tier of `materialize-alerts.yaml`.
+A destination filtering by `minMetricImportance` drops the others.
+The bundled `thanos` destination keeps everything by default, and the chart warns, naming them, when it does not.
+Giving every recorded series a tier is [DEP-368](https://linear.app/materializeinc/issue/DEP-368).
 
 ## What `gen-rules` rejects
 
@@ -22499,10 +22508,25 @@ Giving recorded series a tier is [DEP-368](https://linear.app/materializeinc/iss
 | The query is PromQL, with exactly one expression | Nothing delivers recording rules to the Loki ruler |
 | The expression renders and parses, and no placeholder, Grafana variable or unknown token remains | As for an alert |
 | Every metric has a known source | A rule reading a metric nothing produces records nothing |
+| A recording rule reads no other recorded series | One rule's applicability would depend on another's through the chart, and nothing needs that |
 
-**A rule cannot read a recorded series yet.**
-An alert on `ext:consensus_up` applies wherever any one of that series' adapters applies, and capabilities can only require all of a set.
-`gen-rules` rejects such an alert until capabilities can express it, which is [DEP-367](https://linear.app/materializeinc/issue/DEP-367).
+## Reading a recorded series
+
+An alert MAY read a recorded series, and the normalized layer exists so that alerts read it rather than a flavor-native family.
+A recorded series exists wherever any one of its recording rules installs, and capabilities can only say that all of a set are present.
+So `gen-rules` records each recorded series an alert reads beside its capabilities, under `reads` in `_index.yaml`, with the recording rules that could produce what the alert selects.
+The chart installs the alert only where, for every series it reads, at least one of those rules installs.
+
+| Selector | Could be produced by |
+|---|---|
+| `ext:consensus_up` | Every rule recording it: `persist`, `cloudsql`, `azure-postgres`. The alert installs wherever Materialize is |
+| `ext:consensus_up{flavor="cloudsql"}` | `cloudsql` only. The alert installs where the Cloud Monitoring pull runs |
+| `ext:consensus_up{namespace="prod"}` | Every rule recording it, since none sets `namespace` statically |
+
+A rule is ruled out only by its static labels, because a matcher on any other label could match whatever the rule's expression produces.
+A selector that every rule's static labels contradict is an error.
+The alert's other metrics still add their capabilities as usual, so an alert reading `ext:consensus_up` and `mz_*` needs `materialize` as well.
+[Common Alerts]({{< relref "../../common-alerts.md" >}}) lists what each alert reads.
 
 ## Testing a recording rule
 
@@ -25404,10 +25428,10 @@ Tracked as [DEP-233](https://linear.app/materializeinc/issue/DEP-233) and design
 | Item | Milestone | Status |
 |---|---|---|
 | External dependency monitoring ([DEP-233](https://linear.app/materializeinc/issue/DEP-233)) — design doc plus review | OO-M2 | ✅ ([design doc](../design-docs/20260920-external-dependency-monitoring/) ready) |
-| Split `persist-failures` into consensus, blob and persist-internal alerts ([DEP-292](https://linear.app/materializeinc/issue/DEP-292)) | OO-M2 | ⬜ |
+| Split `persist-failures` into consensus, blob and persist-internal alerts ([DEP-292](https://linear.app/materializeinc/issue/DEP-292)) | OO-M2 | ✅ (`consensus-unreachable` is critical and reads the normalized `ext:consensus_up`, so Materialize's view or a provider's can raise it; `consensus-failures` is a warning on ten minutes of *indeterminate* consensus failures, the only ones Materialize counts as faults, since transaction conflicts are expected; `blob-failures` is a warning on failed object-storage calls, by operation. All three are in the default set. `persist-failures` keeps ten persist-internal counters at `notice`, and loses `mz_persist_cmd_failed_count`, which fails whenever a dependency does, and two counters Materialize has never published. Calibrated on three weeks of the three reference installs: every consensus failure there was a restart's burst of five to nine minutes except one, a Cloud SQL instance out of connection slots during an environmentd rollout, which held for ten minutes and is the one `consensus-failures` fires on. Reading a recorded series needed [DEP-367](https://linear.app/materializeinc/issue/DEP-367): an alert records the recording rules that could produce each series it reads, narrowed by its selector's matchers, and installs where one of them does) |
 | Day 0 — render-time validation of the dependency configuration, and an install-time connectivity probe ([DEP-293](https://linear.app/materializeinc/issue/DEP-293)). Adjacent to the Day 1 readiness dashboard ([DEP-224](https://linear.app/materializeinc/issue/DEP-224)), which asks whether the *cluster* is ready rather than whether the *dependencies* are reachable | OO-M2 | ⬜ |
 | The **client** vantage point — `mz_persist_*`, `loki_objstore_*`, `thanos_objstore_*` into the query registry ([DEP-294](https://linear.app/materializeinc/issue/DEP-294)) | OO-M2 | 🔨 (**`mz_persist_*` done**: `materialize-persist.yaml` and `materialize-consensus.yaml`, 60 queries between them, every one run against the three reference installs. `loki_objstore_*` was already on `infra-loki`. `thanos_objstore_*` is still read by nothing) |
-| The normalized `ext:*` recording-rule layer ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)) | OO-M2 | 🔨 (**The producer, the naming decision and the metadata database are done.** `gen-rules` renders the registry's `rules:` branch beside the alerts, and the chart installs a recording rule wherever its capabilities are present, with no selection. Names are `<level>:<metric>[:<operation>]`, so the commit p99 is `ext:consensus_commit_latency_seconds:p99`. Every `ext:*` series carries `flavor`, naming its adapter, and either `namespace` or `resource`. `ext-consensus.yaml` has four adapters. `persist` needs nothing configured and records `ext:consensus_up` and the commit p99 from Materialize's own calls. `rds`, `cloudsql` and `azure-postgres` record up, storage and transaction-ID ratios where their provider publishes each, and only for the databases `externalDependencies.consensus` names: every Terraform-configured pull also watches Grafana's database, and the provider cannot tell the two apart. The three provider pulls are derived capabilities. Every expression was run against the three reference installs and agreed with `infra-cloud`'s, with Grafana's database left out. On the EKS install the rendered `PrometheusRule` was applied on its own: both ruler replicas loaded it within a minute, all three series reached Thanos through the gateway as one series each, and the new `thanos::consensus_recorded` E2E assertion, which had failed there before, passed. **Outstanding:** `ext:consensus_connections_used_ratio`, which no adapter can record until one reads `max_connections` ([DEP-297](https://linear.app/materializeinc/issue/DEP-297), [DEP-298](https://linear.app/materializeinc/issue/DEP-298)); the `ext:objstore_*` families; the Terraform wrappers setting `externalDependencies.consensus` ([DEP-366](https://linear.app/materializeinc/issue/DEP-366)); alerts reading a recorded series, which capabilities cannot yet express ([DEP-367](https://linear.app/materializeinc/issue/DEP-367)); and a metric tier for recorded series, without which a filtered destination drops them ([DEP-368](https://linear.app/materializeinc/issue/DEP-368))) |
+| The normalized `ext:*` recording-rule layer ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)) | OO-M2 | 🔨 (**The producer, the naming decision and the metadata database are done.** `gen-rules` renders the registry's `rules:` branch beside the alerts, and the chart installs a recording rule wherever its capabilities are present, with no selection. Names are `<level>:<metric>[:<operation>]`, so the commit p99 is `ext:consensus_commit_latency_seconds:p99`. Every `ext:*` series carries `flavor`, naming its adapter, and either `namespace` or `resource`. `ext-consensus.yaml` has four adapters. `persist` needs nothing configured and records `ext:consensus_up` and the commit p99 from Materialize's own calls. `rds`, `cloudsql` and `azure-postgres` record up, storage and transaction-ID ratios where their provider publishes each, and only for the databases `externalDependencies.consensus` names: every Terraform-configured pull also watches Grafana's database, and the provider cannot tell the two apart. The three provider pulls are derived capabilities. Every expression was run against the three reference installs and agreed with `infra-cloud`'s, with Grafana's database left out. On the EKS install the rendered `PrometheusRule` was applied on its own: both ruler replicas loaded it within a minute, all three series reached Thanos through the gateway as one series each, and the new `thanos::consensus_recorded` E2E assertion, which had failed there before, passed. **Outstanding:** `ext:consensus_connections_used_ratio`, which no adapter can record until one reads `max_connections` ([DEP-297](https://linear.app/materializeinc/issue/DEP-297), [DEP-298](https://linear.app/materializeinc/issue/DEP-298)); the `ext:objstore_*` families; the Terraform wrappers setting `externalDependencies.consensus` ([DEP-366](https://linear.app/materializeinc/issue/DEP-366)); and a metric tier for the recorded series no alert reads, without which a filtered destination drops them ([DEP-368](https://linear.app/materializeinc/issue/DEP-368)). Alerts read recorded series since [DEP-367](https://linear.app/materializeinc/issue/DEP-367)) |
 | ~~`infra-deps` dashboard~~ → `env-persist`, `env-consensus` and `infra-cloud`, with provider rows discovered from the pull's `up` and a negated fallback ([DEP-296](https://linear.app/materializeinc/issue/DEP-296)) | OO-M2 | ✅ (Split three ways by product direction: the client's view of each dependency is environment-scoped and belongs with Materialize, while the provider's view carries no environment label and belongs with the platform. Each is built around incidents in the reference installs' own logs — a Cloud SQL instance out of connection slots, an RDS instance refusing connections, and a GCS persist bucket holding over a hundred times its live data in soft-deleted objects. The client dashboards read no `ext:*` series, since none are recorded; `infra-cloud` draws one expression per provider instead of a normalized one. The dashboards release grows from 551,100 to 683,928 bytes, 65% of the Secret ceiling. Every query was run against the reference installs: the client dashboards against all three clouds live, and the provider rows live against each cloud's pull, where all 17 Azure families matched the names derived from the exporter's naming rules before any Azure data existed) |
 | The **exporter** vantage point — a multi-target `postgres_exporter` subchart, with a transaction-ID-age query, per-database sizes, and a documented grant ([DEP-297](https://linear.app/materializeinc/issue/DEP-297)) | OO-M2 | ⬜ |
 | PostgreSQL, self-hosted CockroachDB and CNPG adapters ([DEP-298](https://linear.app/materializeinc/issue/DEP-298)) | OO-M2 | ⬜ |
@@ -25444,10 +25468,11 @@ Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions
 The evaluated-rule path it also depends on is owned by [Alerting in self-managed](../design-docs/20260917-alerting-self-managed/), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
 Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
 
-**One alert covers both dependencies, and it is the shortest path to value here.**
-`persist-failures` `or`s sixteen counters at `severity: notice` with `for: 15m`, and its degraded text concedes that a sustained rate *points at object storage or consensus trouble*.
-Its severity and window are set by its least serious member, its runbook cannot be written because it covers two dependencies with different ones, and its description names CockroachDB on deployments that run PostgreSQL.
-Splitting it needs no adapter, no exporter and no new collection — only the evaluated-rule path everything else here waits on.
+**One alert covered both dependencies, and splitting it was the shortest path to value here.**
+When the design was drafted, `persist-failures` `or`ed sixteen counters at `severity: notice` with `for: 15m`, and its degraded text conceded that a sustained rate *points at object storage or consensus trouble*.
+Its severity and window were set by its least serious member, no runbook could be written for it because it covered two dependencies with different ones, and its description named CockroachDB on deployments that run PostgreSQL.
+Splitting it needed no adapter, no exporter and no new collection, only the evaluated-rule path.
+[DEP-292](https://linear.app/materializeinc/issue/DEP-292) has since split it into `consensus-unreachable`, `consensus-failures` and `blob-failures`, and `persist-failures` now covers persist's own failures alone.
 
 **Persist does report degradation, for the operations that matter most.**
 Drafting the design concluded that neither persist path emitted latency or retry-rate; building the dashboards found otherwise.
@@ -31962,6 +31987,21 @@ What remains of `persist-failures` keeps the counters that are genuinely persist
 Its description is corrected in the same pass.
 
 This is the piece of DEP-233 with the shortest path to value: it needs no adapter, no exporter and no new collection, only the evaluated-rule path that everything else here also waits on.
+
+**As built** ([DEP-292](https://linear.app/materializeinc/issue/DEP-292)):
+
+| Alert | Severity | Reads | In the default set |
+|---|---|---|---|
+| `consensus-unreachable` | critical, after 5m | `ext:consensus_up == 0`, from any adapter | Yes |
+| `consensus-failures` | warning, after 10m | Indeterminate consensus failures over 0.1/s (`mz_persist_consensus_failures`) | Yes |
+| `blob-failures` | warning, after 10m | Failed object-storage calls over 0.1/s, by operation | Yes |
+| `persist-failures` | notice, after 15m | Ten persist-internal counters | No, as before |
+
+Three things the split found.
+`mz_persist_external_failed_count` counts transaction conflicts, which Materialize expects and retries, so the consensus alert reads `mz_persist_consensus_failures`, which counts only the indeterminate failures.
+`mz_persist_cmd_failed_count` fails whenever a dependency does, so it left `persist-failures` rather than double-report.
+And two of the sixteen counters, `mz_persist_columnar_validation_count` and `mz_txn_placeholder_schema_apply`, have never been published by Materialize, so the old alert's set was effectively fourteen.
+The blob alert reads the raw counter until `ext:objstore_request_errors:rate5m` exists.
 
 ### How these reach a human
 

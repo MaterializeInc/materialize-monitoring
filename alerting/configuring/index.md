@@ -41,6 +41,7 @@ A rule installs when all of the following hold:
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
 | A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
+| A rule reading a recorded series also needs one of the recording rules that produce it to install | see [Recorded series](#recorded-series) |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
 The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy, and each cloud provider pull the gateway runs.
@@ -107,7 +108,9 @@ The render warns when a pull watches databases and none of them is named, and wh
 | `cloudsql` | The instance name, as listed in `pipeline.metrics.provider.gcp.cloudSql.instances` |
 | `azure-postgres` | The flexible server name, as listed in `pipeline.metrics.provider.azure.postgres.servers` |
 
-A recorded series has no metric tier.
+An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
+
+A recorded series that no bundled alert reads has no metric tier.
 A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
 
 ## Two evaluators, one notifier
