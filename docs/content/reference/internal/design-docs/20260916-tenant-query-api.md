@@ -274,7 +274,7 @@ Behind a SQL login that is harmless.
 On a public HTTP endpoint every request carrying a random `kid` costs two outbound calls to the identity provider.
 
 **A rejected token gets a 401 with `WWW-Authenticate: Bearer error="invalid_token"`, and the response does not say which check failed.**
-The proxy logs the reason with `sub` and `jti`, and never logs the token.
+The proxy logs the rejection reason and never logs the token. It includes `sub` and `jti` only when they were obtained from a signature-verified token.
 It strips `Authorization` before forwarding, along with the tenant-shaped headers.
 
 ### The claim contract
@@ -585,7 +585,7 @@ The endpoint set and per-endpoint semantics follow `prom-label-proxy` as of v0.1
 | `/api/v1/query`, `/api/v1/query_range`, `/api/v1/query_exemplars` | Every selector in the expression is rewritten |
 | `/api/v1/series`, `/federate` | Every `match[]` is rewritten |
 | `/api/v1/labels`, `/api/v1/label/<name>/values` | Every `match[]` is rewritten, and a request with no `match[]` gets one carrying only the tenant matcher |
-| `/api/v1/rules`, `/api/v1/alerts` | Forwarded, and the response is filtered to entries carrying the tenant label |
+| `/api/v1/rules`, `/api/v1/alerts` | Forwarded; as an explicit exception to request-path step 9, the response is filtered to entries whose tenant label equals the verified tenant before it is streamed |
 | Anything else | Not proxied |
 
 Errors use the Prometheus API's JSON error shape, which Grafana renders in place.
