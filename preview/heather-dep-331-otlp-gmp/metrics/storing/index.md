@@ -569,6 +569,11 @@ For a ready-made starting point — generic OTLP to Honeycomb, including the hea
 `googleCloudExporter` writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
 The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
 
+> [!NOTE]
+>   Before v0.31.0 this destination wrote `workload.googleapis.com/mzmon/<name>` through `otelcol.exporter.googlecloud`.
+>   Upgrading moves every series to `prometheus.googleapis.com/<name>/<kind>`, so dashboards and alerting policies reading the old metric types stop receiving data.
+>   The project needs the `telemetry.googleapis.com` API enabled, and `prefix` no longer exists.
+
 ```yaml
 pipeline:
   metrics:
@@ -589,11 +594,11 @@ That identity needs `roles/monitoring.metricWriter` on the project.
 #### What it costs
 
 Samples ingested into `prometheus.googleapis.com/` are billed per sample.
-The `workload.googleapis.com/` custom metrics this exporter wrote before are billed per byte, at 8 bytes a point.
+The `workload.googleapis.com/` custom metrics it wrote before v0.31.0 are billed per byte, at 8 bytes a point.
 
 | Domain | Billed by | List price | Measured at `recommended` |
 |---|---|---|---|
-| `workload.googleapis.com/` (the earlier `otelcol.exporter.googlecloud`) | MiB ingested | $0.258 per MiB, about $1.97 per million points | 307 MiB a day across 212 metric types, about $2,370 a month |
+| `workload.googleapis.com/` (`otelcol.exporter.googlecloud` before v0.31.0) | MiB ingested | $0.26 per MiB, about $2 per million points | 307 MiB a day across 212 metric types, about $2,400 a month |
 | `prometheus.googleapis.com/` (OTLP to the Telemetry API) | Samples ingested | $0.06 per million samples | The same points as samples, about $75 a month |
 
 A histogram point is billed as two samples plus one per non-empty bucket, so a histogram costs no more than its buckets did as separate points.
