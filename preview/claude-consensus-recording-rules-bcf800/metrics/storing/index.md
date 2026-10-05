@@ -283,6 +283,15 @@ pipeline:
 
 Reach for the denylist to shed a metric everywhere (cost, cardinality, noise); reach for `minMetricImportance` to tune what an *individual* backend receives.
 
+Entries in both the denylist and the tiers name Prometheus series, as Thanos shows them: `foo_total`, `foo_bucket`, `foo_count`.
+Inside the gateway a typed histogram is one metric named for its family, and the match is made per series all the same.
+
+| Entry names | Effect on a histogram `foo` |
+|---|---|
+| `foo_bucket` on the denylist | `foo_count` and `foo_sum` still reach every destination; the buckets do not |
+| `foo_count` in a tier, `foo_bucket` in a lower one | A destination on the higher tier receives `foo_count` alone |
+| `foo_bucket` in a tier | A destination on that tier receives the whole histogram |
+
 ### Through Terraform
 
 The `materialize-monitoring` module exposes the OTLP-family destinations directly, each taking the same `min_importance` tier documented above:
@@ -557,7 +566,13 @@ For a ready-made starting point — generic OTLP to Honeycomb, including the hea
 
 ### Google Cloud Monitoring (GCM) {#gcm}
 
-`googleCloudExporter` writes to Google Cloud Monitoring under the metric prefix `workload.googleapis.com/mzmon`:
+`googleCloudExporter` writes OTLP to Google's [Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview) (`telemetry.googleapis.com`).
+The Telemetry API stores the series in Cloud Monitoring as Google Cloud Managed Service for Prometheus metrics, under `prometheus.googleapis.com/`, where PromQL reads them.
+
+> [!NOTE]
+>   Before v0.31.0 this destination wrote `workload.googleapis.com/mzmon/<name>` through `otelcol.exporter.googlecloud`.
+>   Upgrading moves every series to `prometheus.googleapis.com/<name>/<kind>`, so dashboards and alerting policies reading the old metric types stop receiving data.
+>   The project needs the `telemetry.googleapis.com` API enabled, and `prefix` no longer exists.
 
 ```yaml
 pipeline:
@@ -571,12 +586,62 @@ pipeline:
             minMetricImportance: recommended
 ```
 
-Authentication uses **Workload Identity** — annotate the `alloy-gateway` ServiceAccount with the target Google service account and leave credentials out of the config, so the SDK's default chain uses the ambient identity.
+The project needs the `telemetry.googleapis.com` API enabled.
+Authentication uses **Workload Identity**: the `alloy-gateway` ServiceAccount is annotated with a Google service account, and `otelcol.auth.google` takes the ambient identity with no credentials in the config.
 The token-exchange mechanics are the same as [Thanos on GCS](#granting-object-storage-access-workload-identity) above, but on the gateway's ServiceAccount rather than Thanos's.
-Grant that identity `roles/monitoring.metricWriter` on the project.
-GCM supports only `gzip` compression.
+That identity needs `roles/monitoring.metricWriter` on the project.
 
-Because GCM is metered, it defaults to `minMetricImportance: recommended`; raise it to `essential` to write even less, or lower the floor if you want more history there.
+#### What it costs
+
+Samples ingested into `prometheus.googleapis.com/` are billed per sample.
+The `workload.googleapis.com/` custom metrics it wrote before v0.31.0 are billed per byte, at 8 bytes a point.
+
+| Domain | Billed by | List price | Measured at `recommended` |
+|---|---|---|---|
+| `workload.googleapis.com/` (`otelcol.exporter.googlecloud` before v0.31.0) | MiB ingested | $0.26 per MiB, about $2 per million points | 307 MiB a day across 212 metric types, about $2,400 a month |
+| `prometheus.googleapis.com/` (OTLP to the Telemetry API) | Samples ingested | $0.06 per million samples | The same points as samples, about $75 a month |
+
+A histogram point is billed as two samples plus one per non-empty bucket, so a histogram costs no more than its buckets did as separate points.
+An untyped series is written twice, as `/unknown` and `/unknown:counter`, and each scrape target adds a `target_info` series.
+Both are small next to the total.
+
+<!--
+Agent note: the measured row is from the heather-mzmon GCP test install (internal), read from
+monitoring.googleapis.com/billing/bytes_ingested in September 2026 (DEP-331). The $75 a month prices
+the same point count as samples; re-measure from billing/samples_ingested once the OTLP export has run
+there for a day.
+-->
+
+#### What arrives
+
+The metric type carries the kind of point: `prometheus.googleapis.com/<name>/gauge`, `/counter`, `/histogram` or `/summary`.
+PromQL takes the bare name, as it does against Thanos, and a histogram answers to `<name>_bucket`, `<name>_count` and `<name>_sum`.
+The kind comes from each target's `# TYPE` line, because every gateway scrape sets `honor_metadata`.
+Pushed remote-write carries no types, so it arrives untyped.
+
+Cloud Monitoring files every series under a `prometheus_target` resource.
+
+| Label | Value |
+|---|---|
+| `project_id` | The project the gateway runs in, or `googleCloudExporter.project` |
+| `location` | The GKE cluster's region or zone, or `googleCloudExporter.location` |
+| `cluster` | The series' own `cluster` label, or else `CLUSTER_NAME`, which is the `cluster` every other destination carries |
+| `namespace` | The series' own `namespace` label, as in Thanos |
+| `job`, `instance` | The scrape target's |
+
+A series label named `location`, `project_id`, `job` or `instance` keeps its value as `exported_<label>`.
+Every series also carries `collected_by="materialize-monitoring"`.
+That label separates these series from other Prometheus data in the project: GKE's managed kube-state-metrics writes the same metric types under the same `job`.
+
+Counters and histograms are cumulative, and Cloud Monitoring requires a start time on each point, which a Prometheus scrape does not supply.
+The gateway takes each series' first point as its baseline and does not send it.
+A counter's raw value in Cloud Monitoring therefore differs from Thanos, while `rate()` and `increase()` agree.
+
+Off GKE there is no metadata server to supply the project and the location, and the Telemetry API refuses a point without a location.
+`googleCloudExporter.project` and `googleCloudExporter.location` supply them.
+
+Because the destination is metered, it defaults to `minMetricImportance: recommended`.
+`essential` writes less; a lower floor keeps more there.
 
 ### Datadog {#datadog}
 
@@ -597,7 +662,7 @@ pipeline:
 
 The API key is read from the `GATEWAY_OTEL_DEST_DATADOG_API_KEY` environment variable — source it from a Secret; never inline it in values.
 Set `url` to your Datadog site (for example `datadoghq.com` or `datadoghq.eu`); `metricEndpoint` and `logsEndpoint` default to the matching intake URLs.
-Like GCM, it defaults to `minMetricImportance: recommended`.
+Like Google Cloud, it defaults to `minMetricImportance: recommended`.
 The [`otel-metrics-fanout.values.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/otel-metrics-fanout.values.yaml) profile shows Datadog and GCM enabled together, each on its own tier.
 
 ### Amazon Managed Prometheus (SigV4 + IRSA)

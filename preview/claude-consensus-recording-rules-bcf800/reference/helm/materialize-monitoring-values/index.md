@@ -2407,14 +2407,51 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to a Google Cloud Monitoring / Cloud Logging destination.
+      <td class="helm-value-desc">Enable writing metrics to Google Cloud Managed Service for Prometheus.
+
+Metrics go over OTLP to Google's
+[Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview)
+(`telemetry.googleapis.com`) and land as `prometheus.googleapis.com/`
+metric types, queryable with PromQL in Cloud Monitoring. They are
+billed as Prometheus samples ingested, not per byte as custom
+`workload.googleapis.com/` metrics are.
+
+**Names.** The metric type carries the point kind:
+`prometheus.googleapis.com/<name>/gauge`, `/counter`, `/histogram`,
+`/summary`, and `/unknown` plus `/unknown:counter` for an untyped
+series. The gateway's scrapes honor metadata, so the kind is the one
+the target declares. PromQL takes the bare name, as it does in
+Thanos, and a histogram answers to `<name>_bucket`, `_count` and
+`_sum`. There is no prefix to set: the Telemetry API accepts only
+`prometheus.googleapis.com` or no domain at all.
+
+**Labels.** Cloud Monitoring files each series under a
+`prometheus_target` resource whose labels are `project_id`,
+`location`, `cluster`, `namespace`, `job` and `instance`. `job` and
+`instance` are the scrape target's. `namespace` is the series' own,
+as in Thanos. `cluster` is `CLUSTER_NAME` (the `cluster` label every
+other destination carries) unless the series has one of its own.
+`location` and the project come from the GKE metadata server unless
+`location` and `project` below say otherwise. A series that already
+carries a `location`, `project_id`, `job` or `instance` label keeps
+it as `exported_<label>`. Every series also carries
+`collected_by="materialize-monitoring"`, which sets it apart from
+other Prometheus data in the project: GKE's managed
+kube-state-metrics, for one, writes the same metric types under the
+same `job`.
+
+**Auth** is the gateway's ambient Google identity (Workload Identity
+on GKE) through `otelcol.auth.google`, which needs
+`roles/monitoring.metricWriter` and the `telemetry.googleapis.com`
+API enabled on the project. That component is public preview, which
+the gateway's `experimental` stability level already allows.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
-      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.
+      <td class="helm-value-desc">Compression for the OTLP request body.
 </td>
     </tr>
     <tr>
@@ -2425,21 +2462,42 @@ Multiple exporters can be enabled at once.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.endpoint</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"https://telemetry.googleapis.com"</code></td>
+      <td class="helm-value-desc">Telemetry API endpoint. Override for a Private Service Connect endpoint.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.project</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Google Cloud project to write to. Empty writes to the project the gateway runs in, as GKE's metadata server reports it. Required off GKE: `otelcol.auth.google` will not start without a project, and nothing else supplies one there.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.location</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">`location` label for every series: a Google Cloud region or zone. Empty uses the GKE cluster's own. Required off GKE: the Telemetry API refuses a point without one.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.handlers</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "otelcol.exporter.googlecloud.destination.input"
+  "otelcol.processor.filter.googleCloud.input"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter.
+      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter: the first component of the chain in `config`.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.config</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>An `otelcol.exporter.googlecloud.destination` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.googlecloud block. The default config uses Workload Identity Federation (WIF) to authenticate to GCP.
+      <td class="helm-value-default"><code>The chain rendered by the chart's `mzmon.alloyGateway.otelDest.googleCloud` helper.</code></td>
+      <td class="helm-value-desc">Raw configuration for the Google Cloud export chain. Override it only to change the chain itself; every component is labelled `googleCloud`, and `handlers` must name its first one.
 </td>
     </tr>
     <tr>
@@ -4610,8 +4668,17 @@ Upstream reference:
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.stabilityLevel</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"generally-available"</code></td>
+      <td class="helm-value-default"><code>"experimental"</code></td>
       <td class="helm-value-desc">Stability level of alloy components.
+
+`experimental`, because every gateway scrape sets `honor_metadata`, which
+Alloy refuses to build below that level. It is what types the metrics the
+OpenTelemetry destinations receive. The Google Cloud exporter's
+`otelcol.auth.google` is public preview and needs no more than this.
+
+A lower level renders an error rather than a gateway that crashloops:
+`alloy validate`, and so the pre-validate job, does not check a component's
+arguments against it.
 </td>
     </tr>
     <tr>
