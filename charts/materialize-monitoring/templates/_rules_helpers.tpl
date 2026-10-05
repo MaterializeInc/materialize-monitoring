@@ -261,13 +261,18 @@ The names of the rules that install, as a YAML list.
 A rule installs when rules are enabled, every capability it requires is
 present, it is in the default set or named (or its group named, or `*`) in
 `rules.selected`, and it is not named in `rules.disabled`. A LogQL rule also
-needs this release to deliver it (`mzmon.rules.logRuleSync.enabled`).
+needs this release to deliver it (`mzmon.rules.logRuleSync.enabled`). A rule
+reading a recorded series also needs, for each one it reads, at least one of
+the recording rules that could produce it to install
+(`mzmon.rules.installedRecords`): a recorded series exists wherever any one of
+its adapters does.
 */}}
 {{- define "mzmon.rules.installed" }}
   {{- $installed := list }}
   {{- if $.Values.rules.enabled }}
     {{- $index := include "mzmon.rules.index" $ | fromYaml }}
     {{- $caps := include "mzmon.rules.capabilities" $ | fromYamlArray }}
+    {{- $installedRecords := include "mzmon.rules.installedRecords" $ | fromYamlArray }}
     {{- $selected := $.Values.rules.selected | default list }}
     {{- $disabled := $.Values.rules.disabled | default list }}
     {{- $logRuleSync := include "mzmon.rules.logRuleSync.enabled" $ }}
@@ -281,6 +286,9 @@ needs this release to deliver it (`mzmon.rules.logRuleSync.enabled`).
       {{- if and ( eq ( $rule.engine | default "promql" ) "logql" ) ( not $logRuleSync ) }}
         {{- $applies = false }}
       {{- end }}
+      {{- if include "mzmon.rules.unrecordedReads" ( dict "rule" $rule "installedRecords" $installedRecords ) }}
+        {{- $applies = false }}
+      {{- end }}
       {{- $chosen := or $rule.enabledByDefault ( has $name $selected ) ( has $rule.group $selected ) ( has "*" $selected ) }}
       {{- if and $applies $chosen ( not ( has $name $disabled ) ) }}
         {{- $installed = append $installed $name }}
@@ -288,6 +296,29 @@ needs this release to deliver it (`mzmon.rules.logRuleSync.enabled`).
     {{- end }}
   {{- end }}
   {{- $installed | toYaml }}
+{{- end }}
+
+{{- /*
+The recorded series a rule reads that no installed recording rule produces,
+comma-separated, or an empty string when every one it reads is recorded here.
+
+Usage:
+  {{- $missing := include "mzmon.rules.unrecordedReads" ( dict "rule" $rule "installedRecords" $installedRecords ) }}
+*/}}
+{{- define "mzmon.rules.unrecordedReads" }}
+  {{- $missing := list }}
+  {{- range $read := ( .rule.reads | default list ) }}
+    {{- $produced := false }}
+    {{- range $read.from }}
+      {{- if has . $.installedRecords }}
+        {{- $produced = true }}
+      {{- end }}
+    {{- end }}
+    {{- if not $produced }}
+      {{- $missing = append $missing $read.record }}
+    {{- end }}
+  {{- end }}
+  {{- $missing | uniq | join ", " }}
 {{- end }}
 
 {{- /*
@@ -581,6 +612,9 @@ Validation for the rules surface.
         {{- if $missing }}
           {{- $warnings = append $warnings ( printf "rules.selected names %q, which requires %s that this deployment does not have, so it is not installed. Add %s to rules.capabilities if the deployment does." $name ( join ", " $missing ) ( join ", " $missing ) ) }}
         {{- end }}
+        {{- with include "mzmon.rules.unrecordedReads" ( dict "rule" . "installedRecords" ( include "mzmon.rules.installedRecords" $ | fromYamlArray ) ) }}
+          {{- $warnings = append $warnings ( printf "rules.selected names %q, which reads %s, and no recording rule this deployment installs records it, so it is not installed. Recorded Series lists what each adapter needs." $name . ) }}
+        {{- end }}
       {{- end }}
     {{- end }}
 
@@ -636,9 +670,26 @@ Validation for the rules surface.
       {{- end }}
     {{- end }}
     {{- /* The ruler writes what it records back through the gateway, and the
-           tier filter knows registry metrics only. */}}
-    {{- if and $installedRecords ( ne $floor "all" ) }}
-      {{- $warnings = append $warnings ( printf "The thanos destination keeps only %q metrics and above, and recorded series such as ext:consensus_up carry no tier, so the gateway drops what the recording rules write before it reaches Thanos." $floor ) }}
+           tier filter keeps a recorded name only if a registry query names it,
+           which an alert reading it does. */}}
+    {{- if and $installedRecords ( hasKey $rank $floor ) ( ne $floor "all" ) }}
+      {{- $tiers := $.Files.Get "pre-rendered/metrics/metric-tiers.yaml" | fromYaml }}
+      {{- $kept := list }}
+      {{- range $level := list "essential" "recommended" "extended" "diagnostic" }}
+        {{- if le ( get $rank $level | int ) ( get $rank $floor | int ) }}
+          {{- $kept = concat $kept ( get $tiers $level | default list ) }}
+        {{- end }}
+      {{- end }}
+      {{- $dropped := list }}
+      {{- range $key := $installedRecords }}
+        {{- $record := ( get $index.records $key ).record }}
+        {{- if not ( has $record $kept ) }}
+          {{- $dropped = append $dropped $record }}
+        {{- end }}
+      {{- end }}
+      {{- with $dropped | uniq | sortAlpha }}
+        {{- $warnings = append $warnings ( printf "The thanos destination keeps only %q metrics and above, and the recorded series %s have no tier at that level, so the gateway drops them before they reach Thanos." $floor ( join ", " . ) ) }}
+      {{- end }}
     {{- end }}
 
     {{- /* externalDependencies.consensus is only useful for a database a pull

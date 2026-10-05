@@ -42,6 +42,12 @@ Labels:
           {{- with .requires }}
 <strong>Requires:</strong> {{ range $i, $c := . }}{{ if $i }}, {{ end }}<code>{{ $c }}</code>{{ end }}.
           {{- end }}
+          {{- /* A recorded series exists wherever any one of its adapters does, so
+                 each one read is listed with the adapters (rule groups) that can
+                 produce what the alert selects. */}}
+          {{- range .reads }}
+<strong>Reads:</strong> <a href="{{ relref $.Page "/reference/recorded-series.md" }}#{{ .record | replaceRE "[^a-zA-Z0-9_-]" "-" }}"><code>{{ .record }}</code></a>, recorded by any of {{ range $i, $k := .from }}{{ if $i }}, {{ end }}<code>{{ index (split $k "/") 0 }}</code>{{ end }}.
+          {{- end }}
 </p>
         {{- end }}
         {{- /* A rule's query is PromQL for the Thanos ruler or LogQL for the Loki

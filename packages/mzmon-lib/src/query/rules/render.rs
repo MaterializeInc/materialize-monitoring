@@ -32,11 +32,12 @@ use std::fmt;
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
+use promql_parser::label::{METRIC_NAME, Matchers};
 use regex::Regex;
 use serde::Serialize;
 
 use crate::query::docgen::extract_metric_docs;
-use crate::query::extract::ExtractedMetric;
+use crate::query::extract::{ExtractedMetric, named_selectors};
 use crate::query::importance::Importance;
 use crate::query::model::{Alert, QueryEngine, Rule};
 use crate::query::registry::QueryRegistry;
@@ -124,6 +125,25 @@ pub struct RenderedRule {
     /// destination filtering below it does not receive everything the rule
     /// needs.
     pub min_importance: Option<Importance>,
+    /// The recorded series the rule reads. It applies only where, for each
+    /// one, at least one of the recording rules that could produce it installs.
+    pub reads: Vec<RecordRead>,
+}
+
+/// A recorded series a rule reads, and which recording rules could produce what
+/// it selects.
+///
+/// A recorded series has a rule per adapter, and the series exists wherever any
+/// one of them installs, which a set of capabilities that must all be present
+/// cannot say. So a rule reading one carries this instead, and the chart checks
+/// it against the recording rules it installs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct RecordRead {
+    pub record: String,
+    /// `<group>/<record>` keys, narrowed to the rules whose static labels the
+    /// selector's matchers allow: `ext:consensus_up{flavor="rds"}` names only
+    /// the `rds` adapter.
+    pub from: Vec<String>,
 }
 
 /// One recording rule, rendered and validated.
@@ -409,6 +429,7 @@ fn render_one(
         registry,
         &alert.query_id,
         &alert.requires,
+        Reader::Alert,
         contexts,
         importance,
         problems,
@@ -427,6 +448,7 @@ fn render_one(
         requires: rendered.requires,
         enabled_by_default: alert.enabled_by_default,
         min_importance: rendered.min_importance,
+        reads: rendered.reads,
     })
 }
 
@@ -476,6 +498,7 @@ fn render_record(
         registry,
         &rule.query_id,
         &rule.requires,
+        Reader::Record,
         contexts,
         importance,
         problems,
@@ -506,6 +529,18 @@ struct RenderedExpr {
     expr: String,
     requires: BTreeSet<Capability>,
     min_importance: Option<Importance>,
+    reads: Vec<RecordRead>,
+}
+
+/// Which kind of rule an expression belongs to, which decides whether it may
+/// read a recorded series.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reader {
+    Alert,
+    /// A recording rule reading another recorded series would make one rule's
+    /// applicability depend on another's, through the chart, and nothing needs
+    /// that yet.
+    Record,
 }
 
 /// Render the query `query_id` names for whichever ruler its language selects,
@@ -514,6 +549,7 @@ fn render_expr(
     registry: &QueryRegistry,
     query_id: &str,
     declared: &[Capability],
+    reader: Reader,
     contexts: &Contexts,
     importance: &HashMap<String, Importance>,
     problems: &mut Vec<String>,
@@ -564,12 +600,12 @@ fn render_expr(
         }
     };
 
-    let (requires, min_importance) = match engine {
+    let (requires, min_importance, reads) = match engine {
         RuleEngine::PromQl => {
             check_promql_expr(&expr, problems);
-            let requires = match query.render(&contexts.inference) {
+            let (requires, reads) = match query.render(&contexts.inference) {
                 Ok(mut rendered) => {
-                    infer_requires(registry, &rendered.remove(0), declared, problems)
+                    infer_requires(registry, &rendered.remove(0), declared, reader, problems)
                 }
                 Err(err) => {
                     problems.push(format!("rendering for capability inference failed: {err}"));
@@ -589,7 +625,7 @@ fn render_expr(
                             .filter_map(|m| importance.get(&normalize_sql_prefix(&m.name)).copied())
                             .min_by_key(|i| i.rank())
                     });
-            (requires, min_importance)
+            (requires, min_importance, reads)
         }
         // A log rule reads no metrics, so there is nothing to infer from and no
         // metric tier a destination could filter it out of. Whether the logs it
@@ -597,7 +633,7 @@ fn render_expr(
         // chart's to decide.
         RuleEngine::LogQl => {
             check_logql_expr(&expr, problems);
-            (declared.iter().copied().collect(), None)
+            (declared.iter().copied().collect(), None, Vec::new())
         }
     };
 
@@ -606,6 +642,7 @@ fn render_expr(
         expr,
         requires,
         min_importance,
+        reads,
     })
 }
 
@@ -758,41 +795,63 @@ fn check_tokens(expr: &str, problems: &mut Vec<String>) {
     }
 }
 
-/// The capabilities `expr` needs, from the metrics it names, plus `declared`.
+/// The capabilities `expr` needs, from the metrics it names, plus `declared`,
+/// and the recorded series it reads.
 fn infer_requires(
     registry: &QueryRegistry,
     expr: &str,
     declared: &[Capability],
+    reader: Reader,
     problems: &mut Vec<String>,
-) -> BTreeSet<Capability> {
+) -> (BTreeSet<Capability>, Vec<RecordRead>) {
     let mut requires: BTreeSet<Capability> = declared.iter().copied().collect();
-    let metrics = match ExtractedMetric::extract_from_promql(expr) {
-        Ok(metrics) => metrics,
+    let mut reads: Vec<RecordRead> = Vec::new();
+    let selectors = match named_selectors(expr) {
+        Ok(selectors) => selectors,
         // Already reported by `check_expr`.
-        Err(_) => return requires,
+        Err(_) => return (requires, reads),
     };
-    if metrics.is_empty() {
+    if selectors.is_empty() {
         problems.push(
             "the expression names no metric, so what it needs cannot be inferred or checked".into(),
         );
-        return requires;
+        return (requires, reads);
     }
     let mut named_capability = false;
     let mut unknown = false;
-    for metric in &metrics {
-        // A recorded series applies wherever any one of its adapters does, which
-        // a set of capabilities that must all be present cannot say.
-        if registry.rules_recording(&metric.name).next().is_some() {
-            unknown = true;
-            problems.push(format!(
-                "`{}` is a recorded series, and a rule cannot read one yet: what it requires is \
-                 whichever of its adapters applies, and capabilities can only require all of \
-                 them",
-                metric.name
-            ));
+    for selector in &selectors {
+        let Some(name) = selector.name.as_deref() else {
+            continue;
+        };
+        if registry.rules_recording(name).next().is_some() {
+            match reader {
+                Reader::Alert => match read_of(registry, name, &selector.matchers) {
+                    Some(read) => {
+                        named_capability = true;
+                        if !reads.contains(&read) {
+                            reads.push(read);
+                        }
+                    }
+                    None => {
+                        unknown = true;
+                        problems.push(format!(
+                            "`{selector}` selects a recorded series none of whose recording rules \
+                             can produce it: each one's static labels contradict the selector's \
+                             matchers"
+                        ));
+                    }
+                },
+                Reader::Record => {
+                    unknown = true;
+                    problems.push(format!(
+                        "`{name}` is a recorded series, and a recording rule cannot read another \
+                         one"
+                    ));
+                }
+            }
             continue;
         }
-        match capability_for_metric(&metric.name) {
+        match capability_for_metric(name) {
             Some(MetricSource::Capability(capability)) => {
                 named_capability = true;
                 requires.insert(capability);
@@ -801,9 +860,8 @@ fn infer_requires(
             None => {
                 unknown = true;
                 problems.push(format!(
-                    "nothing is known to produce `{}`; add its source to the capability table in \
-                 packages/mzmon-lib/src/query/rules/capability.rs",
-                    metric.name
+                    "nothing is known to produce `{name}`; add its source to the capability table \
+                     in packages/mzmon-lib/src/query/rules/capability.rs"
                 ));
             }
         }
@@ -815,7 +873,41 @@ fn infer_requires(
                 .into(),
         );
     }
-    requires
+    reads.sort();
+    (requires, reads)
+}
+
+/// The recording rules that could produce what a selector of `record` with
+/// `matchers` selects, or `None` when none could.
+///
+/// A rule is ruled out only by its static labels: a matcher on a label the rule
+/// does not set statically could match whatever the rule's expression produces.
+/// A selector with `or` groups needs one group to allow the rule.
+fn read_of(registry: &QueryRegistry, record: &str, matchers: &Matchers) -> Option<RecordRead> {
+    let groups: Vec<&Vec<_>> = if matchers.or_matchers.is_empty() {
+        vec![&matchers.matchers]
+    } else {
+        matchers.or_matchers.iter().collect()
+    };
+    let from: Vec<String> = registry
+        .rules_recording(record)
+        .filter(|rule| {
+            groups.iter().any(|group| {
+                group.iter().all(|matcher| {
+                    matcher.name == METRIC_NAME
+                        || rule
+                            .labels
+                            .get(&matcher.name)
+                            .is_none_or(|value| matcher.is_match(value))
+                })
+            })
+        })
+        .map(|rule| rule.key())
+        .collect();
+    (!from.is_empty()).then(|| RecordRead {
+        record: record.to_string(),
+        from,
+    })
 }
 
 /// Build the annotations: `summary`, a `description` from the structured prose,
@@ -955,6 +1047,8 @@ struct IndexRuleDoc<'a> {
     enabled_by_default: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     min_importance: Option<String>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    reads: &'a [RecordRead],
 }
 
 #[derive(Serialize)]
@@ -1076,6 +1170,7 @@ impl RuleSet {
                             requires: rule.requires.iter().map(|c| c.as_str()).collect(),
                             enabled_by_default: rule.enabled_by_default,
                             min_importance: rule.min_importance.map(|i| i.to_string()),
+                            reads: &rule.reads,
                         },
                     )
                 })
@@ -1103,9 +1198,10 @@ impl RuleSet {
 #
 # What the chart needs to decide which rules install: each alert's engine (which
 # ruler evaluates it, and so which directory its file is in), its capabilities
-# (inferred from the metrics it reads, plus any it declares) and whether it is in
-# the default set; each recording rule's capabilities, keyed `<group>/<record>`;
-# and the vocabularies the chart validates values against.
+# (inferred from the metrics it reads, plus any it declares), the recorded series
+# it reads and which recording rules could produce each, and whether it is in the
+# default set; each recording rule's capabilities, keyed `<group>/<record>`; and
+# the vocabularies the chart validates values against.
 ";
         Ok(format!("{header}{}", serde_yaml_ng::to_string(&doc)?))
     }
@@ -1935,25 +2031,124 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn a_rule_cannot_read_a_recorded_series_yet() {
-        let mut registry = records_registry(&record("g", "ext:x", "{flavor: a}", "mz_a", ""));
+    /// Two adapters recording `ext:x`, and an alerts file reading from it.
+    fn reading(alert_promql: &str) -> Result<RuleSet, Vec<RuleError>> {
+        let mut registry = records_registry(&format!(
+            "{}{}",
+            record("ext_a", "ext:x", "{flavor: a}", "mz_a", ""),
+            record(
+                "ext_b",
+                "ext:x",
+                "{flavor: b}",
+                "stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up",
+                ""
+            ),
+        ));
         registry
             .load_from(
                 RegistryDoc::from_yaml_str(&format!(
                     "description: test\nmetricImportanceHint: essential\nalertLabels: {{audience: platform}}\nalerts:\n{}",
-                    alert("reads-a-record", LABELS, "ext:x > 0", "")
+                    alert("reads-a-record", LABELS, alert_promql, "")
                 ))
                 .unwrap(),
                 Some("test-alerts"),
             )
             .unwrap();
-        let errs: Vec<String> = render_rules(&registry)
-            .expect_err("reads a record")
+        render_rules(&registry)
+    }
+
+    fn read(record: &str, from: &[&str]) -> RecordRead {
+        RecordRead {
+            record: record.into(),
+            from: from.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn an_alert_reading_a_recorded_series_applies_wherever_one_adapter_does() {
+        let set = reading("ext:x == 0").unwrap();
+        let rule = &set.rules[0];
+        // Nothing every adapter needs, so no capability at all.
+        assert!(rule.requires.is_empty(), "{:?}", rule.requires);
+        assert_eq!(
+            rule.reads,
+            vec![read("ext:x", &["ext_a/ext:x", "ext_b/ext:x"])]
+        );
+        let index = set.index_yaml().unwrap();
+        assert!(index.contains("reads:"), "{index}");
+        assert!(index.contains("- record: ext:x"), "{index}");
+        assert!(index.contains("- ext_b/ext:x"), "{index}");
+    }
+
+    #[test]
+    fn a_selector_narrows_the_adapters_by_their_static_labels() {
+        let only_a = |promql: &str| reading(promql).unwrap().rules[0].reads.clone();
+        assert_eq!(
+            only_a(r#"ext:x{flavor="a"} == 0"#),
+            vec![read("ext:x", &["ext_a/ext:x"])]
+        );
+        assert_eq!(
+            only_a(r#"ext:x{flavor!="b"} == 0"#),
+            vec![read("ext:x", &["ext_a/ext:x"])]
+        );
+        assert_eq!(
+            only_a(r#"ext:x{flavor=~"a|b"} == 0"#),
+            vec![read("ext:x", &["ext_a/ext:x", "ext_b/ext:x"])]
+        );
+        assert_eq!(
+            only_a(r#"ext:x{flavor="a" or flavor="b"} == 0"#),
+            vec![read("ext:x", &["ext_a/ext:x", "ext_b/ext:x"])]
+        );
+        // A label no adapter sets statically rules nothing out.
+        assert_eq!(
+            only_a(r#"ext:x{namespace="env"} == 0"#),
+            vec![read("ext:x", &["ext_a/ext:x", "ext_b/ext:x"])]
+        );
+        // Each selector is its own requirement, and a repeated one is one.
+        assert_eq!(
+            only_a(r#"ext:x{flavor="a"} == 0 or ext:x{flavor="b"} == 0 or ext:x{flavor="a"} > 1"#),
+            vec![
+                read("ext:x", &["ext_a/ext:x"]),
+                read("ext:x", &["ext_b/ext:x"])
+            ]
+        );
+    }
+
+    #[test]
+    fn a_selector_no_adapter_can_satisfy_is_an_error() {
+        let errs: Vec<String> = reading(r#"ext:x{flavor="rds"} == 0"#)
+            .expect_err("no producer")
             .into_iter()
             .map(|e| e.message)
             .collect();
-        assert!(has(&errs, "is a recorded series"), "{errs:?}");
+        assert!(
+            has(&errs, "none of whose recording rules can produce it"),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn a_recorded_series_beside_a_metric_keeps_the_metrics_capability() {
+        let set = reading("ext:x == 0 and on () mz_y > 0").unwrap();
+        let rule = &set.rules[0];
+        assert_eq!(
+            rule.requires.iter().collect::<Vec<_>>(),
+            vec![&Capability::Materialize]
+        );
+        assert_eq!(rule.reads.len(), 1);
+    }
+
+    #[test]
+    fn a_recording_rule_cannot_read_another() {
+        let errs = record_errors(&format!(
+            "{}{}",
+            record("g", "ext:x", "{flavor: a}", "mz_a", ""),
+            record("h", "ext:y", "{flavor: a}", "ext:x * 2", ""),
+        ));
+        assert!(
+            has(&errs, "a recording rule cannot read another"),
+            "{errs:?}"
+        );
     }
 
     #[test]
