@@ -916,12 +916,12 @@ Follows Google's reference collector configuration for Prometheus data
 (https://docs.cloud.google.com/stackdriver/docs/otlp-metrics/deploy-collector),
 in Alloy's components:
 
-  transform           untyped series also written as counters; labels that
+  resourcedetection   the project and `location`, from GKE's metadata server
+  transform           `gcp.project_id`, which the Telemetry API requires;
+                      untyped series also written as counters; labels that
                       would collide with prometheus_target renamed; `cluster`
                       and `collected_by`; the scope cleared
   groupbyattrs        `namespace` and `cluster` lifted onto the resource
-  resourcedetection   `location` and the project, from GKE's metadata server,
-                      unless `location` and `project` set them
   metric_start_time   the start time a cumulative point needs
   batch               the Telemetry API's 200 points per request
   otlphttp            with otelcol.auth.google (ADC; Workload Identity on GKE)
@@ -936,8 +936,59 @@ Usage:
   {{- $gcm := $.Values.pipeline.metrics.gateway.destination.otel.googleCloudExporter }}
   {{- $cluster := `\"" + sys.env("CLUSTER_NAME") + "\"` }}
 // Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API.
+//
+// The project (cloud.account.id) and `location` (cloud.region or
+// cloud.availability_zone), from GKE's metadata server. Off GKE this finds
+// nothing, and `project` and `location` supply them. The host attributes
+// describe the gateway's own node, not the series, and are left off.
+otelcol.processor.resourcedetection "googleCloud" {
+    detectors = ["gcp"]
+    override  = false
+
+    gcp {
+        resource_attributes {
+            host.id {
+                enabled = false
+            }
+            host.name {
+                enabled = false
+            }
+            host.type {
+                enabled = false
+            }
+            gcp.gce.instance.hostname {
+                enabled = false
+            }
+            gcp.gce.instance.name {
+                enabled = false
+            }
+        }
+    }
+
+    output {
+        metrics = [otelcol.processor.transform.googleCloud.input]
+    }
+}
+
 otelcol.processor.transform "googleCloud" {
     error_mode = "ignore"
+
+    // The Telemetry API refuses a resource without `gcp.project_id` ("Resource
+    // is missing required attribute"); cloud.account.id alone is not enough.
+    // `project` overrides the detected project, and `location` the detected
+    // region, which the Telemetry API reads before cloud.region.
+    metric_statements {
+        context = "resource"
+        statements = [
+  {{- with $gcm.project }}
+            {{ printf "set(resource.attributes[%q], %q)" "gcp.project_id" . | quote }},
+  {{- end }}
+  {{- with $gcm.location }}
+            {{ printf "set(resource.attributes[%q], %q)" "location" . | quote }},
+  {{- end }}
+            "set(resource.attributes[\"gcp.project_id\"], resource.attributes[\"cloud.account.id\"]) where resource.attributes[\"gcp.project_id\"] == nil",
+        ]
+    }
 
     // An untyped series is also written as a cumulative counter, so rate()
     // works on it: `<name>/unknown` and `<name>/unknown:counter`, as Google
@@ -987,24 +1038,6 @@ otelcol.processor.transform "googleCloud" {
         ]
     }
 
-  {{- if or $gcm.project $gcm.location }}
-
-    // Where the series go, overriding what the GKE metadata server reports.
-    // `gcp.project_id` and `location` come before cloud.account.id and
-    // cloud.region in the Telemetry API's lookup.
-    metric_statements {
-        context = "resource"
-        statements = [
-    {{- with $gcm.project }}
-            {{ printf "set(resource.attributes[%q], %q)" "gcp.project_id" . | quote }},
-    {{- end }}
-    {{- with $gcm.location }}
-            {{ printf "set(resource.attributes[%q], %q)" "location" . | quote }},
-    {{- end }}
-        ]
-    }
-  {{- end }}
-
     output {
         metrics = [otelcol.processor.groupbyattrs.googleCloud.input]
     }
@@ -1016,40 +1049,6 @@ otelcol.processor.transform "googleCloud" {
 // `namespace` would stop matching.
 otelcol.processor.groupbyattrs "googleCloud" {
     keys = ["namespace", "cluster"]
-
-    output {
-        metrics = [otelcol.processor.resourcedetection.googleCloud.input]
-    }
-}
-
-// `location` (from cloud.region or cloud.availability_zone) and the project
-// (cloud.account.id), from GKE's metadata server; a point without a location is
-// refused. Off GKE this finds nothing, and `location` and `project` supply them.
-// The host attributes describe the gateway's own node, not the series, and are
-// left off.
-otelcol.processor.resourcedetection "googleCloud" {
-    detectors = ["gcp"]
-    override  = false
-
-    gcp {
-        resource_attributes {
-            host.id {
-                enabled = false
-            }
-            host.name {
-                enabled = false
-            }
-            host.type {
-                enabled = false
-            }
-            gcp.gce.instance.hostname {
-                enabled = false
-            }
-            gcp.gce.instance.name {
-                enabled = false
-            }
-        }
-    }
 
     output {
         metrics = [otelcol.processor.metric_start_time.googleCloud.input]

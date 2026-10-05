@@ -46,7 +46,7 @@ tests:
           pattern: 'otelcol\.processor\.transform "googleCloudMetricEgressFilter" \{[\s\S]*?metrics = \[otelcol\.processor\.filter\.googleCloudMetricEgressFilter\.input\]'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.filter "googleCloudMetricEgressFilter" \{[\s\S]*?otelcol\.processor\.transform\.googleCloud\.input,'
+          pattern: 'otelcol\.processor\.filter "googleCloudMetricEgressFilter" \{[\s\S]*?otelcol\.processor\.resourcedetection\.googleCloud\.input,'
 
   - it: keeps a histogram by its buckets and pulls out an allowed count or sum
     template: templates/pipelines/cm-alloy-gateway.yaml
@@ -92,15 +92,16 @@ tests:
   - it: chains the processors Google's reference configuration calls for, in order
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
+      # Detection first: the transform after it reads cloud.account.id.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'otelcol\.processor\.resourcedetection "googleCloud" \{\s+detectors = \["gcp"\][\s\S]*?metrics = \[otelcol\.processor\.transform\.googleCloud\.input\]'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'otelcol\.processor\.transform "googleCloud" \{[\s\S]*?metrics = \[otelcol\.processor\.groupbyattrs\.googleCloud\.input\]'
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.groupbyattrs "googleCloud" \{\s+keys = \["namespace", "cluster"\][\s\S]*?metrics = \[otelcol\.processor\.resourcedetection\.googleCloud\.input\]'
-      - matchRegex:
-          path: data["config.alloy"]
-          pattern: 'otelcol\.processor\.resourcedetection "googleCloud" \{\s+detectors = \["gcp"\][\s\S]*?metrics = \[otelcol\.processor\.metric_start_time\.googleCloud\.input\]'
+          pattern: 'otelcol\.processor\.groupbyattrs "googleCloud" \{\s+keys = \["namespace", "cluster"\][\s\S]*?metrics = \[otelcol\.processor\.metric_start_time\.googleCloud\.input\]'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'otelcol\.processor\.metric_start_time "googleCloud" \{\s+strategy = "subtract_initial_point"[\s\S]*?metrics = \[otelcol\.processor\.batch\.googleCloud\.input\]'
@@ -135,12 +136,18 @@ tests:
           path: data["config.alloy"]
           pattern: 'context = "scope"\s+statements = \[\s+"set\(scope\.name, \\"\\"\)",\s+"set\(scope\.version, \\"\\"\)",'
 
-  - it: leaves project and location to GKE's metadata server by default
+  # The Telemetry API refuses a resource without gcp.project_id, and the GKE
+  # detector sets only cloud.account.id. Every gateway on GKE failed every
+  # request until this was copied across.
+  - it: takes gcp.project_id from the detected project by default
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'context = "resource"\s+statements = \[\s+"set\(resource\.attributes\[\\"gcp\.project_id\\"\], resource\.attributes\[\\"cloud\.account\.id\\"\]\) where resource\.attributes\[\\"gcp\.project_id\\"\] == nil",\s+\]'
       - notMatchRegex:
           path: data["config.alloy"]
-          pattern: 'context = "resource"'
+          pattern: 'otelcol\.auth\.google "googleCloud" \{\s+project'
 
   - it: sets project and location when given
     set:

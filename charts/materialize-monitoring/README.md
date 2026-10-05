@@ -2496,7 +2496,7 @@ the gateway's `experimental` stability level already allows.
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "otelcol.processor.transform.googleCloud.input"
+  "otelcol.processor.resourcedetection.googleCloud.input"
 ]</pre>
 </td>
       <td class="helm-value-desc">Handlers to use for the Google Cloud exporter: the first component of the chain in `config`.
