@@ -15,9 +15,58 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.31.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.32.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.31.0
+
+* Expose Materialize pod labels on kube_pod_labels
+    * [materialize-monitoring#479](https://github.com/MaterializeInc/materialize-monitoring/pull/479)
+    * `kube_pod_labels` now names the Materialize cluster and replica a pod runs, as `cluster_id`, `replica_id` and `replica_size`, and `environment_id` once the Materialize operator sets the `materialize.cloud/environment-id` pod label.
+        * Published by a new `pods` entry in `kube-state-metrics.metricLabelsAllowlist` and renamed from the `label_*` form by `kube-state-metrics.prometheus.monitor.http.metricRelabelings`. Helm replaces lists, so an override of either restates the chart's entries.
+        * Join a `kube_pod_*` family onto it on `namespace` and `pod`, and wrap `kube_pod_labels` in `group by` first, or the join fails under more than one kube-state-metrics replica.
+    * New Terraform input `kube_state_metrics_pod_labels` adds pod labels, such as an ownership label for cost-center allocation, to that allowlist entry without restating it. Each arrives as `label_<key>`.
+* Google Cloud metrics: export over OTLP to the Telemetry API, typed
+    * [materialize-monitoring#474](https://github.com/MaterializeInc/materialize-monitoring/pull/474)
+    * **Changed:** the Google Cloud metrics destination writes somewhere else. `googleCloudExporter` (Terraform `google_cloud_metrics`) now sends OTLP to Google's Telemetry API instead of using `otelcol.exporter.googlecloud`, and metrics land as `prometheus.googleapis.com/<name>/<kind>` instead of `workload.googleapis.com/mzmon/<name>`. **Cloud Monitoring dashboards, alerting policies and anything else reading the old metric types stop receiving data and have to be repointed.** The old types are not deleted.
+        * **Enable the `telemetry.googleapis.com` API on the project before upgrading with this destination on.** Without it every export is refused, and nothing else fails. `roles/monitoring.metricWriter` is still the only role needed.
+        * Metrics are billed per sample ingested instead of per byte, about $75 a month at `recommended` on a test install where the old export cost about $2,400.
+        * Series carry the `prometheus_target` labels (`project_id`, `location`, `cluster`, `namespace`, `job`, `instance`) and `collected_by="materialize-monitoring"`.
+        * Counter values start from zero at the gateway's first scrape, so they differ from Thanos; `rate()` and `increase()` agree.
+        * New values `googleCloudExporter.project` and `googleCloudExporter.location` are needed only off GKE.
+    * **Changed:** there is no metric prefix any more. `googleCloudExporter.prefix` is removed from the chart values, along with `instrumentation_library_labels`, `skip_create_descriptor` and `service_resource_labels`; setting any of them renders a warning and does nothing.
+    * **Deprecated:** Terraform `google_cloud_metrics.prefix` is ignored and warns at plan time; remove it. There is no replacement, because the Telemetry API has no prefix to choose. Everything else in `google_cloud_metrics` is unchanged.
+    * **Changed:** the gateway's scrapes honor metric metadata, so every OTLP destination (Google Cloud, Datadog, generic OTLP) receives typed metrics: counters as cumulative sums, histograms as histograms. Metric names in Datadog change accordingly. Thanos and other remote-write destinations are unchanged.
+    * `alloy-gateway.alloy.stabilityLevel` now defaults to `experimental`, which the scrapes require; the chart refuses any other level.
+    * The agent and gateway now run the Alloy v1.20.0 image their `image.tag` names. Since the bump to `v1.20.0-mz3`, a stale `image.digest` had kept both on Alloy v1.19.2.
+    * `denyMetrics` entries match per Prometheus series against typed histograms: denying `foo_bucket` still keeps `foo_count` and `foo_sum`.
+* Update grafana-operator to v5.25.0
+    * [materialize-monitoring#460](https://github.com/MaterializeInc/materialize-monitoring/pull/460)
+* Update docker.io/kiwigrid/k8s-sidecar Docker tag to v2.11.2
+    * [materialize-monitoring#458](https://github.com/MaterializeInc/materialize-monitoring/pull/458)
+    * [`v2.11.2`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.11.2)
+    * [`v2.11.1`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.11.1)
+    * [`v2.11.0`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.11.0)
+    * [`v2.10.3`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.10.3)
+* Update kube-state-metrics Helm Chart to v8.6.0
+    * [materialize-monitoring#461](https://github.com/MaterializeInc/materialize-monitoring/pull/461)
+* Update ghcr.io/materializeinc/mzmon-alloy Docker tag to v1.20.0
+    * [materialize-monitoring#459](https://github.com/MaterializeInc/materialize-monitoring/pull/459)
+* Update quay.io/prometheus-operator/prometheus-config-reloader Docker tag to v0.94.1
+    * [materialize-monitoring#464](https://github.com/MaterializeInc/materialize-monitoring/pull/464)
+* Update quay.io/prometheus/alertmanager Docker tag to v0.34.1
+    * [materialize-monitoring#453](https://github.com/MaterializeInc/materialize-monitoring/pull/453)
+    * [`v0.34.1`](https://redirect.github.com/prometheus/alertmanager/releases/tag/v0.34.1): 0.34.1 / 2026-09-17
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.11.0..v0.12.0
+    * Update Rust crate hyper-util to v0.1.21
+        * [materialize-monitoring#404](https://github.com/MaterializeInc/materialize-monitoring/pull/404)
+        * [`v0.1.21`](https://redirect.github.com/hyperium/hyper-util/blob/HEAD/CHANGELOG.md#0121-2026-09-24)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.30.0
 
