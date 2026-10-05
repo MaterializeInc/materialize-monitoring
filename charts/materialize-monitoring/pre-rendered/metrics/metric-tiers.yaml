@@ -52,6 +52,7 @@ essential:
 - crdb_dedicated_sql_service_latency_bucket
 - crdb_dedicated_sys_cpu_combined_percent_normalized
 - crdb_dedicated_sys_totalmem
+- ext:consensus_up
 - kube_deployment_status_condition
 - kube_deployment_status_replicas_ready
 - kube_deployment_status_replicas_unavailable
@@ -102,10 +103,7 @@ essential:
 - mz_metrics_resource_usage
 - mz_parameter_frontend_last_cse_time_seconds
 - mz_parameter_frontend_last_sse_time_seconds
-- mz_persist_blob_failures
-- mz_persist_cmd_failed_count
 - mz_persist_columnar_op_count
-- mz_persist_columnar_validation_count
 - mz_persist_compaction_dropped
 - mz_persist_compaction_failed
 - mz_persist_compaction_noop
@@ -121,7 +119,6 @@ essential:
 - mz_source_offset_committed
 - mz_source_offset_known
 - mz_time_to_first_row_seconds_bucket
-- mz_txn_placeholder_schema_apply
 - node_boot_time_seconds
 - node_cpu_seconds_total
 - node_disk_io_time_seconds_total

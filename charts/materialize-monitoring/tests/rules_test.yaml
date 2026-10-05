@@ -542,13 +542,70 @@ tests:
       - notMatchRegexRaw:
           pattern: "externalDependencies"
 
-  - it: warns that a tiered thanos destination drops recorded series
+  # An alert reading a recorded series gives it the alert's tier; the others
+  # have none.
+  - it: warns that a tiered thanos destination drops recorded series no alert reads
     template: templates/NOTES.txt
     set:
       pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.minMetricImportance: recommended
     asserts:
       - matchRegexRaw:
-          pattern: 'recorded series such as ext:consensus_up carry no tier'
+          pattern: 'the recorded series ext:consensus_commit_latency_seconds:p99 have no tier at that level'
+
+  # --- alerts reading recorded series ----------------------------------------
+
+  # `consensus-unreachable` reads ext:consensus_up, which the persist adapter
+  # records wherever Materialize is, so it installs with no capability of its own.
+  - it: installs an alert on a recorded series where one of its adapters installs
+    template: templates/alerts/prometheusrules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - exists:
+          path: spec.groups[?(@.name == "consensus")].rules[?(@.alert == "consensus-unreachable")]
+      - equal:
+          path: spec.groups[?(@.name == "consensus")].rules[?(@.alert == "consensus-unreachable")].expr
+          value: min by (flavor, namespace, resource) (ext:consensus_up) == 0
+
+  - it: leaves an alert on a recorded series out where nothing records it
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      materialize.environmentd.serviceMonitor.enabled: false
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "consensus-unreachable")]
+
+  # Any one adapter is enough: a provider's alone keeps it installed.
+  - it: installs an alert on a recorded series from a provider adapter alone
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      materialize.environmentd.serviceMonitor.enabled: false
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: test-project
+      pipeline.metrics.provider.gcp.cloudSql.instances: [mz-metadata]
+      externalDependencies.consensus:
+        - {flavor: cloudsql, resourceId: mz-metadata}
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-alerts
+    asserts:
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "consensus-unreachable")]
+      - notExists:
+          path: spec.groups[*].rules[?(@.alert == "consensus-failures")]
+
+  - it: warns when a selected alert reads a recorded series nothing records
+    template: templates/NOTES.txt
+    set:
+      materialize.environmentd.serviceMonitor.enabled: false
+      rules.selected: ["consensus-unreachable"]
+    asserts:
+      - matchRegexRaw:
+          pattern: 'rules.selected names "consensus-unreachable", which reads ext:consensus_up, and no recording rule this deployment installs records it'
 
   # --- validators -----------------------------------------------------------
 

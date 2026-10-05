@@ -670,23 +670,89 @@ groups:
         suggests a platform-wide issue rather than a single environment. Check
         console and environmentd health.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#console-errors
+- name: consensus
+  rules:
+  - alert: consensus-unreachable
+    expr: min by (flavor, namespace, resource) (ext:consensus_up) == 0
+    for: 5m
+    labels:
+      severity: critical
+      component: consensus
+      audience: platform
+    annotations:
+      summary: |-
+        Materialize cannot reach its metadata database, so nothing it stores can
+        change and every write is stalled.
+      description: |-
+        With `flavor="persist"`, no call from the environment in `namespace` has
+        succeeded in at least five minutes. With a provider flavor (`rds`,
+        `cloudsql`, `azure-postgres`), the cloud provider reports the database
+        named by `resource` as down. Check that the database is running, that it
+        accepts connections from the cluster, and that it has free connection
+        slots; then the host, port, database and credentials in the metadata
+        backend URL. Materialize Consensus, _Overview_, shows the database's own
+        error text from the client side.
+
+        `consensus-failures` is the partial form of the same fault: calls failing
+        while some still succeed.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#consensus-unreachable
+  - alert: consensus-failures
+    expr: sum by (namespace) (rate(mz_persist_consensus_failures[5m])) > 0.1
+    for: 10m
+    labels:
+      severity: warning
+      component: consensus
+      audience: platform
+    annotations:
+      summary: |-
+        Calls to the metadata database are failing with indeterminate errors,
+        and Materialize is retrying its writes.
+      description: |-
+        The database is accepting some calls and refusing or timing out others.
+        Freshness degrades everywhere while it lasts. The usual cause is the
+        database running out of connection slots, which an environmentd rollout
+        can cause by briefly running two generations: check its connection count
+        against `max_connections`. A slow or overloaded database, or a network
+        path dropping connections, presents the same way. The environment's
+        logs carry the database's own error text, on lines reading
+        `received an indeterminate error`.
+
+        Counts indeterminate failures only. Transaction conflicts are
+        determinate, expected, and retried, and never count. Short bursts
+        accompany restarts and are normal; ten minutes of them is not.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#consensus-failures
+- name: object_storage
+  rules:
+  - alert: blob-failures
+    expr: sum by (namespace, op) (rate(mz_persist_external_failed_count{op=~"blob_.*"}[5m])) > 0.1
+    for: 10m
+    labels:
+      severity: warning
+      component: object-storage
+      audience: platform
+    annotations:
+      summary: |-
+        Calls to the object store holding Materialize's data are failing, by
+        operation.
+      description: |-
+        Persist retries a failed call, so data is not lost, but writes,
+        compaction and reads of the operation in `op` slow down or stall while
+        it lasts. Check the bucket exists and the environment's identity can
+        reach it, then throttling or errors on the provider's side. Materialize
+        Persist (Storage), _Overview_, shows failures by operation and the
+        store's own error text.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#blob-failures
 - name: persist
   rules:
   - alert: persist-failures
     expr: |-
-      sum by (namespace, metric) (rate(label_replace(mz_persist_blob_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      or sum by (namespace, metric) (rate(label_replace(mz_persist_consensus_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      or sum by (namespace, metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+      sum by (namespace, metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_lease_timeout_read, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
       or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_noop, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
       or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_failed, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_external_blob_delete_noop_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      or sum by (namespace, metric) (rate(label_replace(mz_persist_external_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      or sum by (namespace, metric) (rate(label_replace(mz_persist_cmd_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_dropped, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_pushdown_parts_mismatched_stats_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      or sum by (namespace, metric) (rate(label_replace(mz_persist_columnar_validation_count{result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      or sum by (namespace, metric) (rate(label_replace(mz_txn_placeholder_schema_apply, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_columnar_op_count{op="validation", result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_schema_cache_fetch_state_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
       or sum by (namespace, metric) (rate(label_replace(mz_persist_shard_unconsolidated_snapshot, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
@@ -696,11 +762,13 @@ groups:
       component: persist
       audience: platform
     annotations:
-      summary: Failures in Persist that should be rare are happening frequently.
+      summary: Failures inside Persist that should be rare are happening frequently.
       description: |-
-        Persist retries most transient errors, so a sustained failure rate points
-        at object storage or metadata-database (consensus) trouble. The `metric`
-        label names the specific failure counter.
+        These count persist's own work going wrong: compaction failing or being
+        dropped, read leases timing out, state updates taking the slow path,
+        invalid columnar data, and mismatched statistics. The `metric` label
+        names the counter. Failed calls to the metadata database or the object
+        store are `consensus-failures` and `blob-failures`.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#persist-failures
 - name: environment_health
   rules:

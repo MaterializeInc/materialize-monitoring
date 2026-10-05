@@ -316,6 +316,11 @@
   usage:
   - infra.cockroachdb.sql_memory_pressure_high
 - importance: essential
+  labels: []
+  name: ext:consensus_up
+  usage:
+  - materialize.consensus.alerts.unreachable
+- importance: essential
   labels:
   - condition
   - deployment
@@ -792,26 +797,10 @@
   usage:
   - materialize.launchdarkly.stale_sse
 - importance: essential
-  labels: []
-  name: mz_persist_blob_failures
-  usage:
-  - materialize.persist.failures
-- importance: essential
-  labels: []
-  name: mz_persist_cmd_failed_count
-  usage:
-  - materialize.persist.failures
-- importance: essential
   labels:
   - op
   - result
   name: mz_persist_columnar_op_count
-  usage:
-  - materialize.persist.failures
-- importance: essential
-  labels:
-  - result
-  name: mz_persist_columnar_validation_count
   usage:
   - materialize.persist.failures
 - importance: essential
@@ -838,7 +827,7 @@
   labels: []
   name: mz_persist_consensus_failures
   usage:
-  - materialize.persist.failures
+  - materialize.consensus.alerts.failures
 - importance: essential
   labels: []
   name: mz_persist_external_blob_delete_noop_count
@@ -852,7 +841,7 @@
   usage:
   - materialize.consensus.failures.by_operation
   - materialize.consensus.health.failed_ops
-  - materialize.persist.failures
+  - materialize.persist.alerts.blob_failures
   - materialize.persist.failures.by_operation
   - materialize.persist.health.failed_ops
 - importance: essential
@@ -912,11 +901,6 @@
   name: mz_time_to_first_row_seconds_bucket
   usage:
   - materialize.console.query_latency
-- importance: essential
-  labels: []
-  name: mz_txn_placeholder_schema_apply
-  usage:
-  - materialize.persist.failures
 - importance: essential
   labels: []
   name: mz_views_query_successful
