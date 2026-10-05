@@ -275,10 +275,11 @@ Meanwhile every cloud wrapper in `materialize-terraform-self-managed` provisions
 The evaluated-rule path it also depends on is owned by [Alerting in self-managed](../design-docs/20260917-alerting-self-managed/), whose finding that `thanos.ruler.enabled` is the switch — rather than the `PrometheusRule` template the empty `templates/alerts/` directory invites — applies here unchanged.
 Adapter applicability reuses that design's **capability tags** rather than a second mechanism: `postgres`, `cnpg`, `crdb-dedicated`, `s3-compatible` describe what an adapter requires, where a cloud axis cannot express an on-premise MinIO or a CNPG cluster on EKS.
 
-**One alert covered both dependencies, and splitting it was the shortest path to value here.** [DEP-292](https://linear.app/materializeinc/issue/DEP-292) has since split it.
-`persist-failures` `or`s sixteen counters at `severity: notice` with `for: 15m`, and its degraded text concedes that a sustained rate *points at object storage or consensus trouble*.
-Its severity and window are set by its least serious member, its runbook cannot be written because it covers two dependencies with different ones, and its description names CockroachDB on deployments that run PostgreSQL.
-Splitting it needs no adapter, no exporter and no new collection — only the evaluated-rule path everything else here waits on.
+**One alert covered both dependencies, and splitting it was the shortest path to value here.**
+When the design was drafted, `persist-failures` `or`ed sixteen counters at `severity: notice` with `for: 15m`, and its degraded text conceded that a sustained rate *points at object storage or consensus trouble*.
+Its severity and window were set by its least serious member, no runbook could be written for it because it covered two dependencies with different ones, and its description named CockroachDB on deployments that run PostgreSQL.
+Splitting it needed no adapter, no exporter and no new collection, only the evaluated-rule path.
+[DEP-292](https://linear.app/materializeinc/issue/DEP-292) has since split it into `consensus-unreachable`, `consensus-failures` and `blob-failures`, and `persist-failures` now covers persist's own failures alone.
 
 **Persist does report degradation, for the operations that matter most.**
 Drafting the design concluded that neither persist path emitted latency or retry-rate; building the dashboards found otherwise.

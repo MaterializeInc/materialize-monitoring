@@ -883,6 +883,12 @@ fn infer_requires(
 /// A rule is ruled out only by its static labels: a matcher on a label the rule
 /// does not set statically could match whatever the rule's expression produces.
 /// A selector with `or` groups needs one group to allow the rule.
+///
+/// PromQL has no matcher common to every `or` group: `{a="1", b="2" or c="3"}`
+/// is `(a, b) or (c)`. The parser stores it that way, moving every plain
+/// matcher into the first group once it meets an `or`, so the plain list is
+/// empty whenever there are groups, and reading the groups alone loses nothing.
+/// `a_mixed_or_selector_is_its_groups` pins that.
 fn read_of(registry: &QueryRegistry, record: &str, matchers: &Matchers) -> Option<RecordRead> {
     let groups: Vec<&Vec<_>> = if matchers.or_matchers.is_empty() {
         vec![&matchers.matchers]
@@ -2111,6 +2117,30 @@ mod tests {
                 read("ext:x", &["ext_a/ext:x"]),
                 read("ext:x", &["ext_b/ext:x"])
             ]
+        );
+    }
+
+    /// `read_of` reads the `or` groups alone when there are any. That is right
+    /// only while the parser leaves no plain matcher beside them, which is how
+    /// PromQL defines `or` in a selector.
+    #[test]
+    fn a_mixed_or_selector_is_its_groups() {
+        let selector = r#"ext:x{flavor="a", namespace="n" or flavor="b"}"#;
+        let parsed = &named_selectors(selector).unwrap()[0];
+        assert!(parsed.matchers.matchers.is_empty(), "{parsed:?}");
+        assert_eq!(parsed.matchers.or_matchers.len(), 2, "{parsed:?}");
+
+        let reads = |promql: &str| reading(promql).unwrap().rules[0].reads.clone();
+        // (flavor="a", namespace="n") or (flavor="b"): each group allows one.
+        assert_eq!(
+            reads(&format!("{selector} == 0")),
+            vec![read("ext:x", &["ext_a/ext:x", "ext_b/ext:x"])]
+        );
+        // The first group's `flavor` rules out `b` there, and the second allows
+        // only `a`.
+        assert_eq!(
+            reads(r#"ext:x{flavor="a", namespace="n" or flavor="a"} == 0"#),
+            vec![read("ext:x", &["ext_a/ext:x"])]
         );
     }
 
