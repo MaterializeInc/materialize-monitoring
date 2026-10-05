@@ -537,7 +537,9 @@ The bundled Thanos runs as a small set of roles over the shared bucket:
 - **Compactor** — a **singleton** that compacts and downsamples blocks in the bucket (owns retention).
 - **Query** — federates recent data (Receive) and historical data (Store Gateway) behind one PromQL endpoint.
 
-`queryFrontend` and `ruler` are available but off by default (`thanos.queryFrontend` / `thanos.ruler`).
+The **Ruler** is on by default and evaluates PromQL rules.
+`queryFrontend` is off by default and enabled by the `thanos-large` profile.
+See [Metrics Architecture](../architecture/) for how the roles connect.
 
 ## Other Metric Storage Backends
 

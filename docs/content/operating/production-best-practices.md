@@ -544,7 +544,7 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 ## Metrics (Thanos)
 
-For the architecture these items configure, see [Metrics](../../metrics/).
+For the architecture these items configure, see [Metrics Architecture](../../metrics/architecture/).
 
 Thanos is **on par with Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets, autoscaling, and zone-aware topology spread are all in place.
 What remains unchecked below is mostly `[operator]` and `[consumer]` work — decisions and cloud resources the chart cannot make for you.
@@ -935,7 +935,7 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 
 ### See also
 
-- [Metrics](../../metrics/) — the metrics architecture these items configure.
+- [Metrics Architecture](../../metrics/architecture/) — the metrics architecture these items configure.
 - [Storing](../../metrics/storing/) — object storage and retention in depth.
 - [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.
 - [Thanos Compactor documentation](https://thanos.io/tip/components/compact.md/) (official) — compaction levels, downsampling thresholds, and why the singleton constraint exists.
