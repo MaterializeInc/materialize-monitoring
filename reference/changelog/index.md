@@ -15,9 +15,46 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.34.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.1.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.0.0
+
+The first stable release of the Helm chart and the Terraform module, which share this version.
+From here, a breaking change to the committed surface owes a deprecation cycle under the [stability guarantees](https://materializeinc.github.io/materialize-monitoring/reference/stability/).
+Before 1.0, a breaking change could ride a minor release.
+
+On top of v0.33.0, this release carries only the dependency updates below.
+An install on an older 0.x release should read [Upgrading](https://materializeinc.github.io/materialize-monitoring/operating/upgrading/) first, which covers the StatefulSet fields an upgrade cannot patch.
+
+### What 1.0 ships
+
+| Area | At 1.0 |
+|---|---|
+| Delivery | The umbrella chart, published to GHCR as an OCI artifact, and the Terraform module that installs it. The per-cloud wrappers in `materialize-terraform-self-managed` turn observability on by default. Profiles cover sizing, scheduling, storage class, private registries, Grafana ingress and persistence, and mTLS. The optional CRDs chart and the dashboards chart keep version streams of their own |
+| Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls [provider metrics](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/cloud-provider-metrics/) from CloudWatch, Cloud Monitoring and Azure Monitor. A multi-line Rust panic arrives as one log entry |
+| Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
+| Dashboards | Through the dashboards chart: `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize, and `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform underneath. See [All Dashboards](https://materializeinc.github.io/materialize-monitoring/dashboards/all/) |
+| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-four alerts are in the default set, three of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are part of the committed surface. See [Alert Architecture](https://materializeinc.github.io/materialize-monitoring/alerting/architecture/) |
+| Security | A NetworkPolicy on every component, opt-in mTLS through cert-manager in three phases, and Trivy scanning of the rendered chart and the published images |
+| Qualification | Render checks against every Terraform example, two kind end-to-end tiers, and an end-to-end suite run against real cloud installs |
+| Release | A SemVer stream per artifact, a changelog carrying the notes each pull request wrote for consumers, and a committed-surface check at release time |
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.12.0..v0.13.0</summary>
+
+    * Update Rust crate tokio to v1.53.2
+        * [materialize-monitoring#490](https://github.com/MaterializeInc/materialize-monitoring/pull/490)
+        * [`v1.53.2`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.2): Tokio v1.53.2
+    * Write the chart README badge in release PRs, and collapse dependency rollups
+        * [materialize-monitoring#489](https://github.com/MaterializeInc/materialize-monitoring/pull/489)
+        * Dependency rollups in `CHANGELOG.md` (`Included <component> @ vPREV..vNEW`) collapse the PRs nested under them in a `<details>`.
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.33.0
 
