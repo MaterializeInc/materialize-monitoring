@@ -8,9 +8,26 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.34.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.1.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.0.0
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.12.0..v0.13.0</summary>
+
+    * Update Rust crate tokio to v1.53.2
+        * [materialize-monitoring#490](https://github.com/MaterializeInc/materialize-monitoring/pull/490)
+        * [`v1.53.2`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.2): Tokio v1.53.2
+    * Write the chart README badge in release PRs, and collapse dependency rollups
+        * [materialize-monitoring#489](https://github.com/MaterializeInc/materialize-monitoring/pull/489)
+        * Dependency rollups in `CHANGELOG.md` (`Included <component> @ vPREV..vNEW`) collapse the PRs nested under them in a `<details>`.
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.33.0
 
