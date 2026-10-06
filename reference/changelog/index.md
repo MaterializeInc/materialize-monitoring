@@ -15,9 +15,30 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v0.33.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.34.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v0.33.0
+
+* Ship default notification templates that link to Grafana
+    * [materialize-monitoring#488](https://github.com/MaterializeInc/materialize-monitoring/pull/488)
+    * The chart ships default notification templates and makes them Alertmanager's built-in defaults (`alerting.defaultTemplates`, on by default). Receivers that set no `title`, `text` or link of their own now get:
+        * A subject naming the alert, `cluster/namespace` and severity. This changes Slack titles, email subjects and PagerDuty/Opsgenie incident titles.
+        * A Slack body with the summary, description, one line per alert, and links to the runbook, the alert group in Grafana and a pre-filled Grafana silence. Slack colour follows severity.
+        * Links into Grafana instead of Alertmanager's pod address. Set `alerting.defaultTemplates: false` to keep Alertmanager's built-ins.
+    * New `alerting.grafanaURL`: the address people open Grafana at, for those links. Empty derives it from `grafana.ini.server.root_url`, or from `connections.grafana.external.url` for an external Grafana. With no address, notifications carry no Grafana links, and the render warns once a receiver exists.
+    * `alerting.templates` files now load after the chart's `mzmon.gotmpl`, so redefining a name there (including Alertmanager's built-ins such as `slack.default.text`) overrides the chart's. The `mzmon.` template prefix is reserved for the chart.
+    * Terraform: `alerting.default_templates` and `alerting.grafana_url`.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.12.0..v0.13.0
+    * Update Rust crate jsonschema to v0.58.5
+        * [materialize-monitoring#486](https://github.com/MaterializeInc/materialize-monitoring/pull/486)
+        * [`v0.58.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0585---2026-10-02)
 
 ## mzmon-lib (shared library) v0.13.0 (Unreleased)
 
