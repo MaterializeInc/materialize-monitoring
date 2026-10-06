@@ -7,12 +7,6 @@ weight: 80
 
 Each artifact releases on its own version stream (see [Versioning](../versioning/)).
 
-<!-- The state machine below is the intended design; the tooling to drive it is
-not built yet. Today `mz-monitoring-build changelog --write` populates and
-hoists unreleased sections directly — that write path will be reworked to drive
-version-update PRs as described here. Until then, do not run `--write` against
-the placeholder-style CHANGELOG.md on main; it would clobber the placeholders. -->
-
 ## Changes-pending placeholders
 
 The top of `CHANGELOG.md` holds one **unreleased placeholder per component that has changes**, with the body `_Changes Pending_`.
@@ -26,6 +20,7 @@ A "Release `<component>` vX.Y.Z" PR (branch `version-update/<component>`):
 - Replaces that component's `_Changes Pending_` placeholder **in place** with the real entries and drops `(Unreleased)`, promoting it to a released section.
 - Inserts a fresh `_Changes Pending_` placeholder for the next version at the **top** of the file.
 - Bumps the component's `version_paths` to the released version.
+- Rewrites the helm-docs version badge in the `README.md` beside a bumped `Chart.yaml`.
 
 The released version stays at its original location; only the new placeholder is hoisted to the top.
 A released section can therefore sit above other components' unreleased placeholders — the changelog parser is order-independent, so this is fine.
@@ -64,7 +59,9 @@ Two other things are expressed by editing this heading rather than by a flag: se
 
 `mz-monitoring-build propose-bumps` is the command that maintains the version-update PRs. For each changelog-enabled component with changes since its last release tag, it:
 
-- recreates the `version-update/<component>` branch as a **single commit atop the base**, applying that component's [`release`](../versioning/) changelog + version + `uv.lock` edits (the version is not in the branch name);
+- recreates the `version-update/<component>` branch as a **single commit atop the base**,
+  applying that component's [`release`](../versioning/) changelog, version, chart README badge and `uv.lock` edits
+  (the version is not in the branch name);
 - force-pushes the branch (stateless) and either opens the PR or refreshes the open one's title/body so the description tracks the new commit.
 
 The PR body is the component's released changelog section. New PRs are labeled `auto-format` (`--label`, empty to disable) so the [auto-format](#auto-format) workflow can fix anything the commit cannot regenerate.
@@ -206,15 +203,32 @@ Renaming the component **key** is a different and larger change: the key is the 
 
 ## Auto-format
 
-`propose-bumps` builds branches via the GitHub API, so it cannot run formatters; the bump commit therefore leaves generated artifacts stale (e.g. the `helm-docs` chart README badge after a Chart.yaml version bump). Rather than install a toolchain in `propose-bumps`, the [`auto-format`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/auto-format.yaml) workflow runs the repo's formatters (`make helm-docs`, `cargo fmt`, `ruff`) on any PR labeled `auto-format` and pushes a single `style:` commit if anything changed. The same mechanism covers GitHub UI edits and renovate PRs — just apply the label.
+`propose-bumps` builds branches via the GitHub API, so it cannot run formatters or generators.
+Rather than install a toolchain in `propose-bumps`,
+the [`auto-format`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.github/workflows/auto-format.yaml) workflow
+runs the repo's formatters (`make helm-docs`, `cargo fmt`, `ruff`) on any PR labeled `auto-format`
+and pushes a single `style:` commit if anything changed.
+The same mechanism covers GitHub UI edits and renovate PRs, by applying the label.
+
+On a version-update PR, auto-format is a backstop and is expected to find nothing.
+The generated output that follows a version is written by `propose-bumps` itself, in the bump commit:
+
+| Bumped file | Also written | Generator it stands in for |
+|---|---|---|
+| `Chart.yaml` | The version badge in the `README.md` beside it | `make helm-docs` |
+| `pyproject.toml` | That package's `version` in `uv.lock` | `uv lock` |
+
+Each is a single targeted line, so `propose-bumps` needs no toolchain to write it.
+Waiting on auto-format for it would leave every force-push of a version-update branch stale until the `style:` commit lands,
+and that commit re-runs the PR's checks.
+`every_versioned_chart_readme_has_a_rewritable_badge` in `versioning.rs` fails if a helm-docs upgrade changes the badge's format,
+so the rewrite cannot silently stop matching.
 
 **Token requirement:** a label/PR event raised by the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's loop-prevention).
 For `auto-format` to fire from `propose-bumps`, `propose-bumps` must authenticate with a **PAT or GitHub App token** (`MATERIALIZE_BOT_TOKEN`), not the default `GITHUB_TOKEN`.
 The auto-format commit is likewise pushed with `MATERIALIZE_BOT_TOKEN` so it triggers the PR's required checks (lint/test) and lets auto-merge proceed.
 That push re-triggers `auto-format` once, but the formatters are idempotent, so the second run finds nothing to commit and exits — the loop is bounded to a single no-op run.
 If the token is unset the push falls back to the default `GITHUB_TOKEN`, restoring the old no-re-trigger behavior (and leaving required checks unrun on the style commit).
-
-`propose-bumps` still syncs `uv.lock` inline for now; once auto-format reliably handles lockfiles that inline logic can be dropped (deferred — only generated docs were stale in practice).
 
 ## The committed-surface check {#the-committed-surface-check}
 
@@ -263,6 +277,7 @@ No separate section, no extra tooling — the prefix is the whole convention.
 ## Cascade and ordering
 
 - Releasing a dependency updates its dependents' version-update PRs (cascade), recording an `Included <dep> @ vPREV..vNEW` entry.
+  The PRs nested under that entry are collapsed in a `<details>` (see [Cascade](../versioning/#cascade)).
 - The wording is "Included" rather than "Updated" because a dependent may reference a dependency version that is queued but not yet released.
 - When the tag must exist (e.g. for a release artifact that pins the dependency), release dependencies before their dependents.
 

@@ -15,7 +15,8 @@
 //! - `release` — generates a `version-update/<component>` PR's changelog: it
 //!   promotes that component's `_Changes Pending_` placeholder in place into a
 //!   released section populated with its changes, inserts a fresh placeholder
-//!   at the top, and bumps the component's `version_paths`.
+//!   at the top, and bumps the component's `version_paths` (and the helm-docs
+//!   version badge in a bumped chart's README).
 //!
 //! Merged PRs in a commit range are attributed to a component by longest-prefix
 //! match against `content_paths` (minus `content_exclude`). Attribution works
@@ -31,9 +32,9 @@
 //! A component bumps when it has a directly-attributed PR. Bumps then cascade
 //! (transitively) to changelog-enabled dependents, which record an
 //! "Included <dep> @ vPREV..vNEW" entry (single version when there is no prior
-//! release), with the dependency's own PRs nested beneath. A PR touching
-//! several components appears in each, so every release's notes read on their
-//! own.
+//! release), with the dependency's own PRs nested beneath it in a collapsed
+//! `<details>`. A PR touching several components appears in each, so every
+//! release's notes read on their own.
 //!
 //! Both subcommands default to a dry run; `--write` applies the changes.
 
@@ -622,6 +623,11 @@ fn render_section(name: &str, c: &Component, ctx: &RenderCtx<'_>) -> Vec<String>
     let mut deps = Vec::new();
     let mut visited: HashSet<String> = HashSet::new();
     render_deps(c, 0, ctx, &mut seen, &mut visited, &mut deps);
+    // A collapsed rollup ends in the blank line that closes its HTML block; the
+    // section's own trailing blank does that job for the last one.
+    while deps.last().is_some_and(String::is_empty) {
+        deps.pop();
+    }
     if !deps.is_empty() {
         if !body.is_empty() {
             body.push(String::new());
@@ -633,10 +639,15 @@ fn render_section(name: &str, c: &Component, ctx: &RenderCtx<'_>) -> Vec<String>
     body
 }
 
-/// Emit `* Updated <dep> to vX` lines (at `level`) for each bumped
-/// changelog-enabled dependency, with its not-yet-seen PRs nested one level
-/// beneath and its own dependencies recursed deeper. `visited` guards cycles
+/// Emit an `Included <dep> @ vPREV..vNEW` rollup (at `level`) for each bumped
+/// changelog-enabled dependency, with its not-yet-seen PRs and its own
+/// dependencies nested beneath it (see [`push_dep`]). `visited` guards cycles
 /// and keeps each dependency to a single rollup per section.
+///
+/// Every dependency at this level, and its PRs, is claimed before any of them
+/// is descended into. So a dependency that is direct here is rolled up here
+/// rather than under a sibling it is also a dependency of, and a PR touching two
+/// siblings goes to the one declared first.
 fn render_deps(
     c: &Component,
     level: usize,
@@ -645,9 +656,7 @@ fn render_deps(
     visited: &mut HashSet<String>,
     out: &mut Vec<String>,
 ) {
-    let indent = "    ".repeat(level);
-    let mut children: Vec<String> = Vec::new();
-    // Emit this component's direct bumped dependencies at the current level...
+    let mut claimed: Vec<(&str, String, Vec<String>)> = Vec::new();
     for dep in &c.dependencies {
         let is_changelog_dep = ctx.comps.get(dep).is_some_and(|d| d.changelog);
         if !is_changelog_dep || !ctx.bumping.contains(dep) {
@@ -656,7 +665,6 @@ fn render_deps(
         if !visited.insert(dep.clone()) {
             continue; // already rolled up elsewhere in this section
         }
-        let dc = &ctx.comps[dep];
         let target = ctx.versions[dep];
         // Span the dependency's released version (if any) to its new version;
         // a single version when there is no prior release. "Included" rather
@@ -667,18 +675,47 @@ fn render_deps(
             }
             _ => target.changelog(),
         };
-        out.push(format!("{indent}* Included {} @ {span}", dc.title));
+        let summary = format!("Included {} @ {span}", ctx.comps[dep].title);
+        let mut nested = Vec::new();
         for a in ctx.attributed {
             if a.owners.contains_key(dep) && seen.insert(a.pr.key()) {
-                push_pr(out, a.pr, level + 1, ctx.notes);
+                push_pr(&mut nested, a.pr, level + 1, ctx.notes);
             }
         }
-        children.push(dep.clone());
+        claimed.push((dep.as_str(), summary, nested));
     }
-    // ...then recurse for their transitive dependencies, nested one level deeper.
-    for dep in children {
-        render_deps(&ctx.comps[&dep], level + 1, ctx, seen, visited, out);
+    for (dep, summary, mut nested) in claimed {
+        render_deps(&ctx.comps[dep], level + 1, ctx, seen, visited, &mut nested);
+        push_dep(out, &summary, nested, level);
     }
+}
+
+/// Append one dependency rollup at the given indent level. One with nothing
+/// nested is a plain bullet. Otherwise `nested` is collapsed under a
+/// `<details>` inside the bullet, because a rarely released dependent can
+/// accumulate a long list of its dependencies' PRs.
+///
+/// The blank lines are load-bearing. CommonMark ends an HTML block only at a
+/// blank line, so without them the nested Markdown would render as raw text.
+fn push_dep(out: &mut Vec<String>, summary: &str, nested: Vec<String>, level: usize) {
+    let indent = "    ".repeat(level);
+    if nested.is_empty() {
+        out.push(format!("{indent}* {summary}"));
+        return;
+    }
+    let summary = summary
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    out.push(format!("{indent}* <details><summary>{summary}</summary>"));
+    out.push(String::new());
+    out.extend(nested);
+    if out.last().is_some_and(|l| !l.is_empty()) {
+        out.push(String::new());
+    }
+    // Indented to the bullet's content column, so it closes inside the item.
+    out.push(format!("{indent}  </details>"));
+    out.push(String::new());
 }
 
 /// Generate the changelog for a `version-update/<component>` PR.
@@ -780,6 +817,46 @@ fn rewrite_version(path: &Path, new: &str) -> anyhow::Result<(String, String)> {
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let toml = path.extension().and_then(|e| e.to_str()) == Some("toml");
     rewrite_version_str(&text, toml, new).with_context(|| format!("in {}", path.display()))
+}
+
+/// The version badge helm-docs renders into a chart's README for `version`,
+/// from its `chart.versionBadge` template at the repo's default badge style.
+fn helm_docs_version_badge(version: &str) -> String {
+    let escaped = version.replace('-', "--");
+    format!(
+        "![Version: {version}](https://img.shields.io/badge/Version-{escaped}-informational?style=flat-square)"
+    )
+}
+
+/// Rewrite the helm-docs version badge in `readme` from `old` to `new`, or
+/// `None` when it carries no badge for `old`.
+fn rewrite_version_badge(readme: &str, old: &str, new: &str) -> Option<String> {
+    let badge = helm_docs_version_badge(old);
+    readme
+        .contains(&badge)
+        .then(|| readme.replacen(&badge, &helm_docs_version_badge(new), 1))
+}
+
+/// The `README.md` beside a bumped `Chart.yaml`, with its helm-docs version
+/// badge moved from `old` to `new`, or `None` when there is no README or no
+/// badge in it.
+///
+/// The branch `propose-bumps` builds cannot run helm-docs, and the badge is the
+/// only part of a chart's README that follows the chart version. Writing it
+/// here means a version-update PR is complete as committed, instead of
+/// waiting on the `auto-format` workflow for its one line.
+fn rewrite_chart_readme(
+    chart_yaml: &Path,
+    old: &str,
+    new: &str,
+) -> anyhow::Result<Option<(PathBuf, String)>> {
+    let readme = chart_yaml.with_file_name("README.md");
+    if !readme.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(&readme)
+        .with_context(|| format!("reading {}", readme.display()))?;
+    Ok(rewrite_version_badge(&text, old, new).map(|content| (readme, content)))
 }
 
 /// The `[project].name` of a `pyproject.toml` — the package name `uv.lock`
@@ -888,7 +965,7 @@ pub(crate) struct ReleasePlan {
     pub(crate) changelog_content: String,
     /// Just the released component's section (heading + body), for PR bodies.
     pub(crate) section: String,
-    /// Version-file / uv.lock edits as (path, new content).
+    /// Version-file / chart README / uv.lock edits as (path, new content).
     pub(crate) version_files: Vec<(PathBuf, String)>,
     /// Human-readable per-edit lines for dry-run output.
     pub(crate) summary: Vec<String>,
@@ -954,20 +1031,34 @@ pub(crate) fn plan_release(
 
     // Version-file edits bump only the released component. Bumping a pyproject
     // also bumps that package's entry in uv.lock, so the lockfile does not drift
-    // out of date behind the version files.
+    // out of date behind the version files. Bumping a Chart.yaml also bumps the
+    // version badge in the README helm-docs renders beside it.
     let mut version_files: Vec<(PathBuf, String)> = Vec::new();
     let mut summary: Vec<String> = Vec::new();
     let mut lock_packages: Vec<String> = Vec::new();
     for vp in &comps[target].version_paths {
         let path = PathBuf::from(vp);
         let (old, content) = rewrite_version(&path, &released_plain)?;
-        if path.file_name().and_then(|n| n.to_str()) == Some("pyproject.toml")
+        let file_name = path.file_name().and_then(|n| n.to_str());
+        if file_name == Some("pyproject.toml")
             && let Some(name) = pyproject_name(&content)
         {
             lock_packages.push(name);
         }
+        let readme = if file_name == Some("Chart.yaml") {
+            rewrite_chart_readme(&path, &old, &released_plain)?
+        } else {
+            None
+        };
         summary.push(format!("{}: {old} -> {released_plain}", path.display()));
         version_files.push((path, content));
+        if let Some((readme, content)) = readme {
+            summary.push(format!(
+                "{} [version badge: {old} -> {released_plain}]",
+                readme.display()
+            ));
+            version_files.push((readme, content));
+        }
     }
 
     if !lock_packages.is_empty() && uv_lock_path.exists() {
@@ -1575,17 +1666,20 @@ mod tests {
         let pipe = render_section("pipe", &cs["pipe"], &ctx);
         assert_eq!(
             pipe,
-            vec![
-                "* Lib and pipe work".to_string(),
-                link(11),
-                String::new(),
-                "### Dependencies".to_string(),
-                String::new(),
-                "* Included lib @ v0.4.0..v0.5.0".to_string(),
-                "    * Lib only".to_string(),
-                format!("    {}", link(12)),
-                "        * Renamed a metric".to_string(),
-            ]
+            strs(&[
+                "* Lib and pipe work",
+                &link(11),
+                "",
+                "### Dependencies",
+                "",
+                "* <details><summary>Included lib @ v0.4.0..v0.5.0</summary>",
+                "",
+                "    * Lib only",
+                &format!("    {}", link(12)),
+                "        * Renamed a metric",
+                "",
+                "  </details>",
+            ])
         );
 
         // Chart: no first-class; direct deps first; lib shown once (not nested
@@ -1593,17 +1687,94 @@ mod tests {
         let chart = render_section("chart", &cs["chart"], &ctx);
         assert_eq!(
             chart,
-            vec![
-                "### Dependencies".to_string(),
-                String::new(),
-                "* Included pipe @ v0.2.0".to_string(),
-                "    * Lib and pipe work".to_string(),
-                format!("    {}", link(11)),
-                "* Included lib @ v0.4.0..v0.5.0".to_string(),
-                "    * Lib only".to_string(),
-                format!("    {}", link(12)),
-                "        * Renamed a metric".to_string(),
-            ]
+            strs(&[
+                "### Dependencies",
+                "",
+                "* <details><summary>Included pipe @ v0.2.0</summary>",
+                "",
+                "    * Lib and pipe work",
+                &format!("    {}", link(11)),
+                "",
+                "  </details>",
+                "",
+                "* <details><summary>Included lib @ v0.4.0..v0.5.0</summary>",
+                "",
+                "    * Lib only",
+                &format!("    {}", link(12)),
+                "        * Renamed a metric",
+                "",
+                "  </details>",
+            ])
+        );
+    }
+
+    #[test]
+    fn render_section_nests_transitive_deps_inside_their_parent() {
+        // chart -> {pipe, scr}, both -> lib, and only lib has a PR. Both pipe
+        // and scr bump by cascade alone; lib is rolled up under pipe, the
+        // sibling declared first, and nowhere else.
+        let cs = comps(vec![
+            ("lib", comp(true, "lib", &[], &["lib/"], &[], &[])),
+            ("pipe", comp(true, "pipe", &[], &["pipe/"], &[], &["lib"])),
+            ("scr", comp(true, "scr", &[], &["scr/"], &[], &["lib"])),
+            (
+                "chart",
+                comp(true, "chart", &[], &["chart/"], &[], &["pipe", "scr"]),
+            ),
+        ]);
+        let merges = vec![pr(Some(1), Some("Lib fix"), None, &["lib/x"])];
+        let attributed = attribute(&merges, &cs);
+        let bumping = compute_bumps(&cs, &attributed);
+        let versions: IndexMap<String, SemVer> = [
+            ("lib", semver(0, 5, 0)),
+            ("pipe", semver(0, 2, 0)),
+            ("scr", semver(0, 3, 0)),
+            ("chart", semver(0, 4, 0)),
+        ]
+        .into_iter()
+        .map(|(n, v)| (n.to_string(), v))
+        .collect();
+        let prev = IndexMap::new();
+        let empty = NoteMap::new();
+        let ctx = RenderCtx {
+            comps: &cs,
+            attributed: &attributed,
+            bumping: &bumping,
+            versions: &versions,
+            prev: &prev,
+            notes: &empty,
+        };
+
+        // lib's rollup sits inside pipe's <details>, not after scr; scr has
+        // nothing left to nest and stays a plain bullet.
+        assert_eq!(
+            render_section("chart", &cs["chart"], &ctx),
+            strs(&[
+                "### Dependencies",
+                "",
+                "* <details><summary>Included pipe @ v0.2.0</summary>",
+                "",
+                "    * <details><summary>Included lib @ v0.5.0</summary>",
+                "",
+                "        * Lib fix",
+                &format!("        {}", link(1)),
+                "",
+                "      </details>",
+                "",
+                "  </details>",
+                "",
+                "* Included scr @ v0.3.0",
+            ])
+        );
+    }
+
+    #[test]
+    fn push_dep_escapes_the_summary() {
+        let mut out = Vec::new();
+        push_dep(&mut out, "Included A & <B>", strs(&["    * x"]), 0);
+        assert_eq!(
+            out[0],
+            "* <details><summary>Included A &amp; &lt;B&gt;</summary>"
         );
     }
 
@@ -1729,6 +1900,57 @@ mod tests {
         // Missing trailing newline is preserved.
         let (_, new) = rewrite_version_str("version = \"1\"", true, "2").unwrap();
         assert!(!new.ends_with('\n'));
+    }
+
+    // ---- rewrite_version_badge ------------------------------------------
+
+    #[test]
+    fn rewrite_version_badge_moves_only_the_version_badge() {
+        let readme = "# chart\n\n![Version: 0.32.0](https://img.shields.io/badge/Version-0.32.0-informational?style=flat-square) ![AppVersion: 0.32.0](https://img.shields.io/badge/AppVersion-0.32.0-informational?style=flat-square)\n";
+        let out = rewrite_version_badge(readme, "0.32.0", "0.33.0").unwrap();
+        assert!(out.contains(
+            "![Version: 0.33.0](https://img.shields.io/badge/Version-0.33.0-informational?style=flat-square)"
+        ));
+        // An AppVersion that happens to match is not the chart version.
+        assert!(out.contains("![AppVersion: 0.32.0]"));
+        assert!(out.ends_with('\n'));
+
+        // No badge for the old version: nothing to rewrite.
+        assert_eq!(rewrite_version_badge(readme, "0.31.0", "0.33.0"), None);
+        assert_eq!(rewrite_version_badge("# chart\n", "0.32.0", "0.33.0"), None);
+    }
+
+    #[test]
+    fn helm_docs_version_badge_escapes_dashes_in_the_url_only() {
+        assert_eq!(
+            helm_docs_version_badge("1.0.0-rc.1"),
+            "![Version: 1.0.0-rc.1](https://img.shields.io/badge/Version-1.0.0--rc.1-informational?style=flat-square)"
+        );
+    }
+
+    /// Every chart a component versions carries the badge `propose-bumps`
+    /// rewrites. `make helm-docs` is held fresh by lint, so a helm-docs upgrade
+    /// or template change that moves the badge fails here rather than quietly
+    /// handing the line back to `auto-format`.
+    #[test]
+    fn every_versioned_chart_readme_has_a_rewritable_badge() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let comps = load_components(&root.join("packages/components.yaml")).unwrap();
+        let mut charts = 0;
+        for vp in comps.values().flat_map(|c| &c.version_paths) {
+            if !vp.ends_with("/Chart.yaml") {
+                continue;
+            }
+            let chart_yaml = root.join(vp);
+            let (version, _) = rewrite_version(&chart_yaml, "0.0.0").unwrap();
+            let rewritten = rewrite_chart_readme(&chart_yaml, &version, "99.0.0").unwrap();
+            assert!(
+                rewritten.is_some(),
+                "{vp}: no helm-docs badge for {version} in the README beside it"
+            );
+            charts += 1;
+        }
+        assert!(charts > 0, "no Chart.yaml in any component's version_paths");
     }
 
     // ---- pyproject_name / rewrite_lock_version --------------------------
