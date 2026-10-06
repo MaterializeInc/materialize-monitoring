@@ -6513,10 +6513,14 @@ The kubelet refreshes the mounted Secret, the config-reloader sidecar sees the c
 and the whole path takes seconds to about a minute.
 The sidecar is needed because the subchart rolls its pods on a checksum of the ConfigMap it no longer renders.
 
+The Secret also carries the chart's notification templates, `mzmon.gotmpl`, ahead of the files under `alerting.templates`.
+They replace Alertmanager's built-in subjects, Slack body and links, and the links point at Grafana's alerting pages.
+The chart writes Grafana's address into them at render time, from the same setting Grafana builds its own links from.
+[Alert Channels](../channels/#notification-templates) describes them.
+
 `alertmanager.baseURL` is left empty by default and is not pointed at Grafana: Alertmanager builds links into its own UI
 from it, and Grafana serves none of those paths.
 `extraArgs.web.route-prefix: /` keeps every endpoint at the root whatever `baseURL` is set to.
-[Alert Channels](../channels/#links) shows how to link notifications to Grafana instead.
 
 ### The routing tree
 
@@ -6542,8 +6546,9 @@ route names exactly one receiver.
 
 | Check | Where | Catches |
 |---|---|---|
-| Structural validators | Every `helm template` and `helm install` | An unroutable severity, an undefined receiver or time interval, an inline credential, a credential file no volume mounts, a receiver key that is not an integration, a template Alertmanager would not load |
+| Structural validators | Every `helm template` and `helm install` | An unroutable severity, an undefined receiver or time interval, an inline credential, a credential file no volume mounts, a receiver key that is not an integration, a template Alertmanager would not load, a Grafana URL that is not absolute |
 | `amtool check-config` | CI, over representative scenarios (`make alertmanager-config-check`) | The chart generating a tree Alertmanager rejects |
+| `amtool template render` | The same CI run, over the same scenarios | A notification template that parses but fails when a notification is sent |
 | Alertmanager itself | Each reload | Anything else in a receiver body, which the chart passes through without modelling |
 
 The chart does not model receiver types.
@@ -7389,14 +7394,64 @@ The root route's `receiver`, `routes` and `matchers` belong to the chart, and se
 
 ## Notification templates
 
+The chart ships notification templates of its own, and by default they replace Alertmanager's built-in ones.
+A receiver that sets no `title`, `text` or link of its own uses them, so a receiver needs nothing beyond its destination and credentials.
+Alertmanager's built-ins send Slack an empty body, and link every notification to the pod's own address.
+
+| Field | Integrations | The chart's default |
+|---|---|---|
+| Subject or title | Slack, email, PagerDuty, Opsgenie, Microsoft Teams, Discord, Jira and the rest | `[FIRING:2] env-uptime-sla — prod-us-east/materialize-environment (critical)`: the status and count, the alert, `cluster/namespace`, and the severity |
+| Link | Slack's title, PagerDuty's client link, Opsgenie's source, the email button | The alert group in Grafana; see [Links in notifications](#links) |
+| Body | Slack | The summary, the description while firing, one line per alert when there are several, and links to the runbook, the group in Grafana, and a pre-filled silence |
+| Colour | Slack | Red for `critical`, amber for `warning`, blue for anything milder, green once resolved |
+| Footer | Slack | The labels the alerts share that the subject does not already carry |
+
+A firing Slack notification for two alerts reads:
+
+```text
+[FIRING:2] ThanosCompactHalted — prod-us-east/monitoring (warning)
+Thanos Compact has failed to run and is now halted.
+Thanos Compact thanos-compactor has failed to run and now is halted.
+• instance=10.0.0.0:10902 pod=thanos-compactor-0 · since Today 3:11 PM
+• instance=10.0.0.1:10902 pod=thanos-compactor-1 · since Today 3:10 PM
+Runbook · Grafana · Silence
+app=thanos  container=compactor  job=thanos-compactor  service=thanos-compactor
+```
+
+Times are shown in each reader's own time zone.
+The per-alert lines stop at ten firing and ten resolved alerts, and the Grafana link shows the rest.
+A description's hard-wrapped lines are rejoined, because Slack shows every newline; a blank line still separates paragraphs.
+
+`alerting.defaultTemplates: false` restores Alertmanager's built-ins.
+The chart's templates are still loaded, so a receiver can reference them by name.
+
+### The chart's templates
+
+The chart's templates live in `mzmon.gotmpl`, beside the configuration.
+They are defined under the `mzmon.` prefix, which is reserved for them.
+
+| Template | Renders |
+|---|---|
+| `mzmon.subject` | The one-line subject above |
+| `mzmon.slack.text` | The Slack body |
+| `mzmon.slack.links` | The body's last line: runbook, Grafana, silence |
+| `mzmon.url.group` | The notification's alert group in Grafana, or in Alertmanager's own UI |
+| `mzmon.url.silence` | A new silence, pre-filled with every label the notification's alerts share |
+
+### A deployment's own templates
+
 `alerting.templates` adds Go-template files that every receiver can reference.
 Each key is a file name ending in `.tmpl`.
+They load after `mzmon.gotmpl`, so a file that defines a name the chart also defines replaces the chart's definition.
+That covers Alertmanager's built-in names as well, such as `slack.default.text`.
+
+A template of a deployment's own can build on the chart's:
 
 ```yaml
 alerting:
   templates:
     materialize.tmpl: |
-      {{ define "materialize.title" }}[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}{{ end }}
+      {{ define "materialize.title" }}{{ .CommonLabels.severity | toUpper }}: {{ .CommonAnnotations.summary }}{{ end }}
   receivers:
     chat:
       class: [high, normal, low]
@@ -7404,62 +7459,62 @@ alerting:
         slack_configs:
           - channel: "#materialize"
             api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true
             title: '{{ template "materialize.title" . }}'
+            actions:
+              - type: button
+                text: Silence
+                url: '{{ template "mzmon.url.silence" . }}'
 ```
 
 ## Links in notifications {#links}
 
-Alertmanager's default notification templates link to two pages of its own UI: the alert list (`/#/alerts`) and a
-pre-filled silence (`/#/silences/new`).
-It builds both from `alertmanager.baseURL`.
+Notifications link to Grafana's alerting pages, which show the bundled Alertmanager's alerts and silences through the Alertmanager datasource (`connections.datasources.alertmanager`).
+The chart takes Grafana's address from the setting Grafana already builds its own links from.
+
+| `connections.grafana.mode` | Grafana's address comes from |
+|---|---|
+| `bundled` (default) | `grafana.grafana.ini.server.root_url` |
+| `operator` | `connections.grafana.operator.spec.config.server.root_url` |
+| `external` | `connections.grafana.external.url` |
+
+`alerting.grafanaURL` overrides all three.
+It SHOULD be set wherever the derived address is not the one people open Grafana at.
+
+| Deployment | Set |
+|---|---|
+| The bundled Grafana, exposed through `grafana.ingress` | `grafana.grafana.ini.server.root_url`, which Grafana's own share links need too |
+| A Grafana this chart does not deploy, addressed in-cluster | `alerting.grafanaURL`, to its browser-facing address |
+| A `root_url` written with Grafana's `%(domain)s` placeholders | `alerting.grafanaURL`; the chart cannot resolve the placeholders |
+| Grafana reached only through `kubectl port-forward` | `alerting.grafanaURL: http://localhost:3000`, or nothing |
+| Alertmanager exposed, and Grafana not | `alertmanager.baseURL`, below |
+
+With no Grafana address, the links fall back to Alertmanager's own UI when `alertmanager.baseURL` is set, and are left out otherwise.
+A link nobody can open is worse than none.
+The render warns when a receiver exists and notifications would carry no links, and when they would link to an in-cluster address.
+
+The group link opens Grafana's active-notifications view, filtered to the notification's group labels and receiver.
+The silence link opens Grafana's silence editor with every label the alerts share as a matcher, which is the narrowest silence covering everything in the notification.
+The editor shows the matchers before anything is saved.
+Silences created from it live in Alertmanager like any other; see [Maintenance Windows](../maintenance/).
+
+### `alertmanager.baseURL`
+
+`alertmanager.baseURL` is the address of Alertmanager's own UI, and is empty by default.
+Alertmanager's built-in templates link to its alert list (`/#/alerts`) from it.
 
 | Deployment | `alertmanager.baseURL` |
 |---|---|
-| Alertmanager is not exposed (default) | Empty. The links name the pod's own address, which is unreachable from outside the cluster and otherwise harmless |
+| Alertmanager is not exposed (default) | Empty |
 | Alertmanager is exposed, behind authentication | The address operators reach it at. A sub-path is fine, provided the ingress strips it |
-| Operators work from Grafana | Still empty. Build Grafana links in a template instead, as below |
 
 **`alertmanager.baseURL` MUST NOT point at Grafana.**
-Grafana serves neither of Alertmanager's paths, so every link lands on Grafana's home page, and the render warns when the two share a host.
+Grafana serves none of Alertmanager's paths, so every link lands on Grafana's home page, and the render warns when the two share a host.
 
 The chart pins `alertmanager.extraArgs.web.route-prefix` to `/`.
 Without that pin, Alertmanager takes its route prefix from the path of `baseURL`, which would move the API both rulers
 post to, its probes, the reloader and the Grafana datasource.
 The render fails on a `baseURL` with a path once the pin is removed.
-
-### Linking to Grafana instead
-
-Grafana's alerting pages name an Alertmanager by its datasource **name** — `Alertmanager` by default, set by
-`connections.datasources.alertmanager.name` — and take each silence matcher as a `matcher=<label>=<value>` parameter.
-A template builds both links, and a receiver references them.
-
-```yaml
-alerting:
-  templates:
-    grafana-links.tmpl: |
-      {{ define "grafana.alerts.url" -}}
-      https://grafana.example.com/alerting/groups?alertmanager=Alertmanager
-      {{- end }}
-      {{ define "grafana.silence.url" -}}
-      https://grafana.example.com/alerting/silence/new?alertmanager=Alertmanager
-      {{- range .CommonLabels.SortedPairs }}&matcher={{ .Name }}%3D{{ .Value | urlquery }}{{ end }}
-      {{- end }}
-  receivers:
-    chat:
-      class: [high, normal, low]
-      config:
-        slack_configs:
-          - channel: "#materialize"
-            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
-            title_link: '{{ template "grafana.alerts.url" . }}'
-            actions:
-              - type: button
-                text: Silence
-                url: '{{ template "grafana.silence.url" . }}'
-```
-
-The host is the one in `grafana.ini.server.root_url`.
-Silences created from that link live in Alertmanager like any other; see [Maintenance Windows](../maintenance/).
 
 ## Checking a configuration
 
@@ -7473,6 +7528,7 @@ The render checks the structure it can see, and fails the install rather than th
 | An inline credential | Accept it, and the credential would be published with the values |
 | A `*_file` path under no mounted volume | Fail every notification through that receiver, at send time |
 | A template whose name does not end in `.tmpl` | Never load it |
+| An `alerting.grafanaURL` that is not an absolute `http://` or `https://` URL | Send every notification with links nobody can open |
 
 Anything inside a receiver body passes through unchecked, and Alertmanager validates it on reload.
 A rejected configuration leaves the previous one running, and `alertmanager_config_last_reload_successful` drops to 0.
@@ -7525,7 +7581,7 @@ and the Alerting section of getting-started/terraform.md in step with them.
 | Input | Chart values | Configures |
 |---|---|---|
 | `alert_rules` | `rules.*` | Which bundled rules install, and how they are tuned |
-| `alerting` | `alerting.*` | The routing preset, receivers, routes, inhibit rules, time intervals, templates and Alertmanager's `global` block |
+| `alerting` | `alerting.*` | The routing preset, receivers, routes, inhibit rules, time intervals, templates, notification links and Alertmanager's `global` block |
 | `alerting_receiver_secrets` | The `alertmanager-receivers` Secret | Receiver credentials |
 | `alertmanager_namespace` | None | The namespace that Secret is created in |
 
@@ -7612,6 +7668,8 @@ A matcher is an Alertmanager string, so the quotes inside it are escaped in HCL.
 | `inhibit_rules` | `alerting.inhibitRules` | Alertmanager `inhibit_rules`, verbatim |
 | `time_intervals` | `alerting.timeIntervals` | Alertmanager `time_intervals`, verbatim; see [Maintenance Windows](../maintenance/) |
 | `templates` | `alerting.templates` | Notification templates keyed by file name, each ending in `.tmpl` |
+| `default_templates` | `alerting.defaultTemplates` | Whether the chart's notification templates replace Alertmanager's built-ins. On by default |
+| `grafana_url` | `alerting.grafanaURL` | The address people open Grafana at, for the links in notifications. Unset derives it from Grafana's `root_url`, which the module leaves unset unless `additional_values` exposes Grafana; see [Links in notifications](../channels/#links) |
 | `global` | `alerting.global` | Alertmanager's `global` block, verbatim |
 
 ## Credentials
@@ -15481,12 +15539,59 @@ routes:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alerting<wbr>.defaultTemplates</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Make the chart's notification templates every receiver's default.
+
+The chart ships its templates as `mzmon.gotmpl` whatever this says, as
+`mzmon.*` definitions a receiver can reference. On, they also replace
+Alertmanager's built-in defaults, so a receiver that sets no `title`, `text`
+or link of its own gets them:
+
+| Built-in | Becomes |
+| --- | --- |
+| `__subject`, the title or subject of nearly every integration | `[FIRING:2] env-uptime-sla — prod/materialize (critical)`: alert, `cluster/namespace`, severity |
+| `__alertmanagerURL`, every integration's link | The alert group in Grafana, or nothing when Grafana's URL is unknown; Alertmanager's own UI when `alertmanager.baseURL` is set instead |
+| `slack.default.text`, empty upstream | The summary, the description, one line per alert, and links to the runbook, Grafana and a pre-filled silence |
+| `slack.default.color` | By severity rather than red for everything |
+
+A template under `templates` that defines one of these names again still
+wins, because the chart's file is loaded first. Off restores Alertmanager's
+own defaults, whose links name the pod's address.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.grafanaURL</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Grafana's browser-facing URL, for the links in notifications. Empty derives it.
+
+Notifications link to the alert group and to a pre-filled silence in
+Grafana's alerting pages, which read the bundled Alertmanager through the
+`connections.datasources.alertmanager` datasource. Empty takes the URL
+Grafana builds its own links from:
+
+| `connections.grafana.mode` | Derived from |
+| --- | --- |
+| `bundled` | `grafana.grafana.ini.server.root_url` |
+| `operator` | `connections.grafana.operator.spec.config.server.root_url` |
+| `external` | `connections.grafana.external.url` |
+
+Set this when that address is not the one people reach Grafana at: an
+external Grafana addressed in-cluster, or a `root_url` written with
+Grafana's `%(domain)s` placeholders, which the chart cannot resolve. With no
+URL, notifications carry no Grafana links, and the render warns once a
+receiver exists.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alerting<wbr>.templates</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render.
+      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render. They load after the chart's `mzmon.gotmpl`, so a name defined in both takes the definition here. See `defaultTemplates`.
 </td>
     </tr>
     <tr>
@@ -20221,23 +20326,22 @@ relabeling drops the headless Service's targets.
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">Alertmanager's own external URL (`--web.external-url`). Leave it empty unless Alertmanager itself is exposed.
 
-The default notification templates build two kinds of link from it: the
-alert list (`<baseURL>/#/alerts`) and a pre-filled silence
-(`<baseURL>/#/silences/new`). Both are paths in Alertmanager's own UI.
+Alertmanager's built-in notification templates link to its alert list
+(`<baseURL>/#/alerts`) from it. The chart's templates
+(`alerting.defaultTemplates`) link to Grafana instead whenever Grafana's URL
+is known, and fall back to the alert list and a pre-filled silence
+(`<baseURL>/#/silences/new`) only when it is not and this is set.
 
 **Do not point it at Grafana.** Grafana serves neither path, so every link
-lands on Grafana's home page. Grafana's equivalents live under
-`<grafana>/alerting/` and name the Alertmanager datasource by its *name*
-(`connections.datasources.alertmanager.name`), for example
-`/alerting/silence/new?alertmanager=Alertmanager&matcher=alertname%3DFoo`.
-A notification template in `alerting.templates` is the place to build them;
-see Alert Channels.
+lands on Grafana's home page. Set `alerting.grafanaURL`, or Grafana's
+`root_url`, for links into Grafana.
 
-Unset, the links name the pod's own address, which is unreachable from
-outside the cluster but harmless. Set this when Alertmanager is exposed,
-behind authentication, to the address operators reach it at. A path is
-fine: `extraArgs.web.route-prefix` keeps the endpoints at `/`, so an
-ingress serving a sub-path strips the prefix before forwarding.
+Unset, Alertmanager's own links name the pod's address, which is
+unreachable from outside the cluster, and the chart's templates leave them
+out. Set this when Alertmanager is exposed, behind authentication, to the
+address operators reach it at. A path is fine:
+`extraArgs.web.route-prefix` keeps the endpoints at `/`, so an ingress
+serving a sub-path strips the prefix before forwarding.
 </td>
     </tr>
   </tbody>
@@ -21209,6 +21313,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       * `Chart.yaml` / `Chart.lock`: chart metadata; lock pins subchart versions
       * `values.yaml` / `README.md` / `README.md.gotmpl`: profile-driven defaults; README generated from the template via `helm-docs`
       * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`
+      * `files/`: hand-authored files loaded via `{{ .Files.Get }}` and never rendered by Helm — `alertmanager/mzmon.gotmpl` and `alertmanager/defaults.gotmpl`, the notification templates the chart ships in `alertmanager-config`
       * `pre-rendered/`: generated artifacts loaded via `{{ .Files.Get }}`; never hand-edited
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`, `gateway-metrics.alloy`, `gateway-dest-stub.alloy`)
         * `scrapers/`: `classic/` (raw scrape config), `prometheus-operator/` (PodMonitors + ScrapeConfig), `gmp/` (GCP `PodMonitoring`)
@@ -21217,7 +21322,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`)
       * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
-      * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect
+      * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
     * `materialize-monitoring-dashboards/`: the Grafana dashboards, as a chart and release of their own — though not a *component* of their own: it belongs to the existing `dashboards` component, whose version stream it shares with `packages/dashboards/` and `packages/queries/`. Split out because Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew — the umbrella chart's `helm upgrade` began failing outright. It creates `GrafanaManifest` resources and nothing else; the `Grafana` instance, the datasources and the folders stay in the umbrella chart, and this one references them through values it cannot discover (`grafana.instanceSelector`, `grafana.folderUids`)
       * `pre-rendered/dashboards/`: `grafana/` and `datadog/`, written by `mz-monitoring-build gen-dashboards`
       * `templates/`: `dashboards.yaml` (the manifests) and `validate.yaml`
@@ -21951,6 +22056,10 @@ Channels in the docs for worked examples.
   `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
+- `default_templates` — make the chart's notification templates every receiver's default (the
+  chart's default is on): a readable subject and Slack body, and links into Grafana.
+- `grafana_url` — the address people open Grafana at, for those links. Null derives it from
+  Grafana's `root_url`, which is unset unless `additional_values` exposes Grafana.
 
 The Alertmanager-native parts are typed `any` and passed through as written, so every
 integration Alertmanager documents works without a module release.
@@ -21961,15 +22070,17 @@ integration Alertmanager documents works without a module release.
 `alerting_receiver_secrets`. The chart fails the render on an inline credential.
 </td>
         <td class="tf-var-schema"><pre><code>object({
-    preset           = optional(string)
-    presets          = optional(map(map(string)))
-    unknown_severity = optional(string)
-    receivers        = optional(any)
-    routes           = optional(object({ root = optional(any), extra = optional(any) }))
-    inhibit_rules    = optional(any)
-    time_intervals   = optional(any)
-    templates        = optional(map(string))
-    global           = optional(any)
+    preset            = optional(string)
+    presets           = optional(map(map(string)))
+    unknown_severity  = optional(string)
+    receivers         = optional(any)
+    routes            = optional(object({ root = optional(any), extra = optional(any) }))
+    inhibit_rules     = optional(any)
+    time_intervals    = optional(any)
+    templates         = optional(map(string))
+    default_templates = optional(bool)
+    grafana_url       = optional(string)
+    global            = optional(any)
   })</code></pre></td>
     </tr>
     <tr>
@@ -25995,7 +26106,7 @@ Every component needed to alert is in the chart, and no two of them are connecte
 | Loki rules in Grafana's alerting UI, through the nginx Loki gateway on the read path | — | ✅ (the Loki datasource points at the gateway, which routes rule and alert state to the ruler and refuses rule edits, so Grafana lists the rules read-only; the E2E check `grafana::loki_rules_listed` asserts both. See [Gateway / ingress](../design-docs/20260627-loki-production-infrastructure/#gateway--ingress) for why nginx's DNS objection does not apply) |
 | Loki / Thanos rule sets ([DEP-117](https://linear.app/materializeinc/issue/DEP-117); recording rules first-class) | OO-M2 | 🔨 (the PromQL alerting rules ship; see the base alert set. The first LogQL rules ship too, as `PrometheusRule` resources labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway's `loki.rules.kubernetes` writes into the Loki ruler and the Thanos importer leaves out. The first recording rules ship as well: the `ext:consensus_*` layer, evaluated by the Thanos ruler ([DEP-295](https://linear.app/materializeinc/issue/DEP-295)). The Loki ruler still evaluates none) |
 | Log-derived alert definitions in the query registry | OO-M2 | ✅ (`materialize-log-alerts.yaml` ports Cloud's clicked-in Loki rules by shape rather than verbatim: `materialize-panic`, `data-correctness-error` and `persist-filter-pushdown-violation` in the default set, `trace-logging-enabled` opt-in, and the hanging-query rule dropped because its error came from the removed gRPC transport. See [Authoring Alerts](../queries/alerts/#log-derived-alerts)) |
-| Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` runs in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
+| Alertmanager adoption ([DEP-216](https://linear.app/materializeinc/issue/DEP-216)) — routing tree, receivers, grouping, inhibition, silences | OO-M2 | 🔨 (the chart renders Alertmanager's configuration from `alerting`: receivers pass through verbatim with a `class`, extra routes splice ahead of the matrix, and inhibition, time intervals, templates and `global` pass through. The chart ships notification templates of its own and makes them Alertmanager's defaults: a subject naming the alert, `cluster/namespace` and severity, a Slack body with the summary, description, per-alert lines and runbook, and links to the alert group and a pre-filled silence in Grafana, whose address the chart derives from `root_url`. Silences work through a Grafana Alertmanager datasource. Every alert carries `cluster`, stamped by both rulers from `clusterName`, and the default `group_by` includes it so two clusters never share a PagerDuty or Opsgenie incident. Render-time validators cover unroutable classes, undefined receivers and intervals, inline credentials and unmounted credential files, and `amtool check-config` and `amtool template render` run in CI. **Outstanding:** the rollout-signal inhibition, which needs a rule; `alerting.alertmanager.mode: external`) |
 | Severity-to-urgency matrix (`alerting.criticality`) and the receiver passthrough | OO-M2 | ✅ (built as `alerting.preset`, selecting an entry of `alerting.presets`: the entries are user-extensible, and "criticality" is what the three shipped ones express. A class the selected preset names with no receiver fails the render) |
 | Capability tags (`requires`) replacing `deploymentMode: cloud-only` | OO-M2 | ✅ (twenty capabilities, **mostly inferred** from the metrics a rule reads through an ordered table, with `requires` for what names cannot show. Eight are derived from what the chart deploys; twelve are listed in `rules.capabilities`. A rule installs only where all of its capabilities are present, and a metric the table does not claim fails the build — the design doc's applicability check, with something to check against) |
 | Runbooks under `operating/runbooks/`, linked from every shipped alert | OO-M2 | 🔨 (every rule carries `runbook_url`, pointing at its anchored entry on Common Alerts; the runbooks themselves are not written) |

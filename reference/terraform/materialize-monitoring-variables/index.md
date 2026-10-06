@@ -123,6 +123,10 @@ Channels in the docs for worked examples.
   `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
+- `default_templates` — make the chart's notification templates every receiver's default (the
+  chart's default is on): a readable subject and Slack body, and links into Grafana.
+- `grafana_url` — the address people open Grafana at, for those links. Null derives it from
+  Grafana's `root_url`, which is unset unless `additional_values` exposes Grafana.
 
 The Alertmanager-native parts are typed `any` and passed through as written, so every
 integration Alertmanager documents works without a module release.
@@ -133,15 +137,17 @@ integration Alertmanager documents works without a module release.
 `alerting_receiver_secrets`. The chart fails the render on an inline credential.
 </td>
         <td class="tf-var-schema"><pre><code>object({
-    preset           = optional(string)
-    presets          = optional(map(map(string)))
-    unknown_severity = optional(string)
-    receivers        = optional(any)
-    routes           = optional(object({ root = optional(any), extra = optional(any) }))
-    inhibit_rules    = optional(any)
-    time_intervals   = optional(any)
-    templates        = optional(map(string))
-    global           = optional(any)
+    preset            = optional(string)
+    presets           = optional(map(map(string)))
+    unknown_severity  = optional(string)
+    receivers         = optional(any)
+    routes            = optional(object({ root = optional(any), extra = optional(any) }))
+    inhibit_rules     = optional(any)
+    time_intervals    = optional(any)
+    templates         = optional(map(string))
+    default_templates = optional(bool)
+    grafana_url       = optional(string)
+    global            = optional(any)
   })</code></pre></td>
     </tr>
     <tr>
