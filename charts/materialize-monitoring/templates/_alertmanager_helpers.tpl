@@ -307,6 +307,74 @@ Usage:
 {{- end }}
 
 {{- /*
+Grafana's browser-facing URL, for the links in notifications, without a trailing
+slash. Empty when the chart cannot tell, or when Grafana has no Alertmanager
+datasource for the links to open.
+
+`alerting.grafanaURL` when set. Otherwise the URL Grafana already builds its own
+links from, which depends on who runs it: `grafana.ini.server.root_url` for the
+bundled Grafana, the same key under `connections.grafana.operator.spec.config`
+for one grafana-operator builds, and `connections.grafana.external.url` for one
+this chart does not deploy. A `root_url` still holding Grafana's `%(domain)s`
+placeholders cannot be resolved here, and counts as unset.
+
+Usage:
+  {{- $grafana := include "mzmon.alerting.grafanaURL" $ }}
+*/}}
+{{- define "mzmon.alerting.grafanaURL" }}
+  {{- $url := dig "grafanaURL" "" ( $.Values.alerting | default dict ) | toString }}
+  {{- if not $url }}
+    {{- $grafana := dig "grafana" dict ( $.Values.connections | default dict ) | default dict }}
+    {{- $mode := $grafana.mode | default "bundled" | toString }}
+    {{- if eq $mode "external" }}
+      {{- $url = dig "external" "url" "" $grafana | toString }}
+    {{- else if eq $mode "operator" }}
+      {{- $url = dig "operator" "spec" "config" "server" "root_url" "" $grafana | toString }}
+    {{- else }}
+      {{- $url = ( include "mzmon.grafana.iniSection" ( dict "root" $ "name" "server" ) | fromYaml ).root_url | default "" | toString }}
+    {{- end }}
+    {{- if contains "%(" $url }}
+      {{- $url = "" }}
+    {{- end }}
+  {{- end }}
+  {{- if include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "alertmanager" ) }}
+    {{- trimSuffix "/" $url }}
+  {{- end }}
+{{- end }}
+
+{{- /*
+The chart's notification templates, as the contents of `mzmon.gotmpl`.
+
+`files/alertmanager/mzmon.gotmpl` holds the `mzmon.*` definitions and is always
+shipped, so a deployment's own template can call them whatever
+`alerting.defaultTemplates` says. `files/alertmanager/defaults.gotmpl` redefines
+Alertmanager's built-in names in terms of them, and is appended only while
+`alerting.defaultTemplates` is on.
+
+Both are Alertmanager templates, not Helm ones, so they are read with
+`.Files.Get` and never rendered. What they need from the values is substituted
+for quoted `__mzmon_*__` tokens instead, each replaced by a Go string literal:
+`quote` is `%q`, which is Go's own quoting.
+
+Usage:
+  {{ include "mzmon.alertmanager.notificationTemplates" $ }}
+*/}}
+{{- define "mzmon.alertmanager.notificationTemplates" }}
+  {{- $alerting := $.Values.alerting | default dict }}
+  {{- $out := $.Files.Get "files/alertmanager/mzmon.gotmpl" | required "files/alertmanager/mzmon.gotmpl cannot be missing/empty" }}
+  {{- if $alerting.defaultTemplates }}
+    {{- $out = printf "%s\n%s" $out ( $.Files.Get "files/alertmanager/defaults.gotmpl" | required "files/alertmanager/defaults.gotmpl cannot be missing/empty" ) }}
+  {{- end }}
+  {{- $datasource := dig "datasources" "alertmanager" "name" "Alertmanager" ( $.Values.connections | default dict ) | toString }}
+  {{- $alertmanagerLinked := ternary "true" "" ( not ( empty ( dig "baseURL" "" ( index $.Values "alertmanager" | default dict ) ) ) ) }}
+  {{- $out = $out
+    | replace "\"__mzmon_grafana_url__\"" ( quote ( include "mzmon.alerting.grafanaURL" $ ) )
+    | replace "\"__mzmon_grafana_datasource__\"" ( quote $datasource )
+    | replace "\"__mzmon_alertmanager_url__\"" ( quote $alertmanagerLinked ) }}
+  {{- $out }}
+{{- end }}
+
+{{- /*
 The Alertmanager configuration, rendered from `alerting`.
 
 The routing tree, top to bottom:
@@ -366,10 +434,13 @@ Usage:
     {{- $receiverList = append $receiverList $body }}
   {{- end }}
 
+  {{- /* The chart's templates first, so that a file under `alerting.templates`
+         defining the same name replaces the chart's: Alertmanager parses the
+         list in order, and a later definition wins. */}}
   {{- $config := dict
     "route" $root
     "receivers" $receiverList
-    "templates" ( list "/etc/alertmanager/config/*.tmpl" )
+    "templates" ( list "/etc/alertmanager/config/mzmon.gotmpl" "/etc/alertmanager/config/*.tmpl" )
   }}
   {{- with $alerting.global }}
     {{- $_ := set $config "global" . }}
@@ -563,7 +634,22 @@ Usage:
       {{- end }}
       {{- $grafanaRoot := dig "grafana.ini" "server" "root_url" "" ( $.Values.grafana | default dict ) | toString }}
       {{- if and $grafanaRoot ( eq ( urlParse $grafanaRoot ).host $parsed.host ) }}
-        {{- $warnings = append $warnings ( printf "alertmanager.baseURL (%s) points at Grafana's host. Alertmanager builds Alertmanager-UI links from it (/#/alerts, /#/silences/new), which Grafana does not serve, so every link lands on Grafana's home page. Leave it empty unless Alertmanager itself is exposed, and build Grafana links in alerting.templates." $baseURL ) }}
+        {{- $warnings = append $warnings ( printf "alertmanager.baseURL (%s) points at Grafana's host. Alertmanager builds Alertmanager-UI links from it (/#/alerts, /#/silences/new), which Grafana does not serve, so every link lands on Grafana's home page. Leave it empty unless Alertmanager itself is exposed; the chart's notification templates link to Grafana from grafana.ini.server.root_url or alerting.grafanaURL." $baseURL ) }}
+      {{- end }}
+    {{- end }}
+
+    {{- /* Links in notifications. A link nobody can follow is the defect the
+           chart's templates exist to fix, so say when they will have none. */}}
+    {{- $grafanaURL := dig "grafanaURL" "" $alerting | toString }}
+    {{- if and $grafanaURL ( not ( regexMatch "^https?://[^/]" $grafanaURL ) ) }}
+      {{- $errors = append $errors ( printf "alerting.grafanaURL is %q. It is the address people open Grafana at, and every link in a notification starts with it, so it has to be an absolute http:// or https:// URL." $grafanaURL ) }}
+    {{- end }}
+    {{- if and $alerting.defaultTemplates $receivers }}
+      {{- $linkTo := include "mzmon.alerting.grafanaURL" $ }}
+      {{- if and ( not $linkTo ) ( not $baseURL ) }}
+        {{- $warnings = append $warnings "Notifications will carry no links into Grafana or Alertmanager: the chart cannot tell Grafana's browser-facing URL, and alertmanager.baseURL is empty. Set grafana.grafana.ini.server.root_url (or connections.grafana.external.url for a Grafana this chart does not deploy), or alerting.grafanaURL, to the address people open Grafana at. Grafana also needs the Alertmanager datasource, connections.datasources.alertmanager." }}
+      {{- else if and $linkTo ( regexMatch "^https?://[^/:]+\\.svc(\\.|:|/|$)" $linkTo ) }}
+        {{- $warnings = append $warnings ( printf "Notifications link to Grafana at %s, an in-cluster address nobody outside the cluster can open. Set alerting.grafanaURL to the address people open Grafana at." $linkTo ) }}
       {{- end }}
     {{- end }}
 

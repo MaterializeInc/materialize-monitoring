@@ -10,6 +10,11 @@
 # extracts `alertmanager.yml` and the notification templates from the
 # `alertmanager-config` Secret, and runs `amtool check-config` over them.
 #
+# `check-config` only parses templates. A template that parses and then fails
+# when executed fails every notification through it, at send time. So each
+# scenario also renders every name the chart's `mzmon.gotmpl` defines or
+# replaces, with `amtool template render`, over amtool's example notification.
+#
 # The default checker is the `amtool` inside the Alertmanager image the chart
 # pins, run through docker, so the checker and the Alertmanager that will load the
 # file agree on what is valid. The rendered files are mounted at
@@ -22,7 +27,8 @@
 #
 # Environment:
 #   AMTOOL        run this instead of docker; it is called as
-#                 `$AMTOOL check-config <file>`. Templates are then not resolved.
+#                 `$AMTOOL check-config <file>`, where templates are then not
+#                 resolved, and as `$AMTOOL template render`.
 #   AM_IMAGE      the image to take amtool from (default: alertmanager.image in values.yaml)
 #   DOCKER, HELM  binaries to use
 #
@@ -102,6 +108,39 @@ function _check() {
     fi
 }
 
+# Every name `mzmon.gotmpl` replaces, and the `mzmon.*` ones nothing calls by
+# default. Loaded in the order the configuration loads them, so a scenario's own
+# template that replaces one of these is what gets executed.
+RENDER_TEXT='{{ template "__subject" . }}
+{{ template "__alertmanagerURL" . }}
+{{ template "slack.default.title" . }}
+{{ template "slack.default.titlelink" . }}
+{{ template "slack.default.text" . }}
+{{ template "slack.default.fallback" . }}
+{{ template "slack.default.color" . }}
+{{ template "slack.default.footer" . }}
+{{ template "pagerduty.default.client" . }}
+{{ template "mzmon.url.silence" . }}'
+
+function _render() {
+    local name=$1
+    local out="${WORK_DIR}/${name}"
+    local dir=/etc/alertmanager/config
+    local -a amtool=("${DOCKER}" run --rm
+        --volume "${out}:${dir}:ro"
+        --entrypoint /bin/amtool
+        "${AM_IMAGE}")
+    if [ -n "${AMTOOL}" ]; then
+        dir=${out}
+        # shellcheck disable=SC2206 # AMTOOL may carry arguments, as in _check
+        amtool=(${AMTOOL})
+    fi
+    "${amtool[@]}" template render \
+        --template.glob="${dir}/mzmon.gotmpl" \
+        --template.glob="${dir}/*.tmpl" \
+        --template.text="${RENDER_TEXT}" >"${out}.rendered"
+}
+
 _info "checking rendered Alertmanager configuration with amtool from ${AMTOOL:-${AM_IMAGE}}"
 status=0
 scenarios=("defaults")
@@ -118,6 +157,11 @@ for name in "${scenarios[@]}"; do
     _info "==> ${name}"
     _check "${name}" || {
         _error "amtool rejected the configuration rendered for '${name}' (${PROG})"
+        status=1
+        continue
+    }
+    _render "${name}" || {
+        _error "the notification templates rendered for '${name}' fail when executed (${PROG})"
         status=1
     }
 done

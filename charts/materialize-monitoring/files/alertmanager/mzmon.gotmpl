@@ -1,0 +1,164 @@
+{{/*
+The chart's notification templates, as `mzmon.*` definitions any receiver can
+reference.
+
+The chart ships this file as `mzmon.gotmpl` in the `alertmanager-config` Secret
+and loads it ahead of every file under `alerting.templates`, so a definition of
+your own with the same name replaces the one here. The `.gotmpl` extension keeps
+it out of the `*.tmpl` glob that loads yours.
+
+Each quoted __mzmon_*__ string below is replaced, quotes and all, by a Go
+string literal the chart computes at install time, in
+`mzmon.alertmanager.notificationTemplates`:
+
+  __mzmon_grafana_url__          Grafana's browser-facing URL, or "" when the chart cannot tell
+  __mzmon_grafana_datasource__   the Alertmanager datasource's name in Grafana
+  __mzmon_alertmanager_url__     "true" when `alertmanager.baseURL` is set, otherwise ""
+
+A Go template cannot capture another template's output, so every definition that
+branches on one of these restates it rather than calling a helper.
+*/}}
+
+{{/* --- links ------------------------------------------------------------ */}}
+
+{{/* The labels of a KV as Grafana's matcher list, without the braces and
+     URL-encoded. Values are quoted, so a comma inside one survives, and a
+     quote or backslash inside one is escaped. */}}
+{{ define "mzmon.url.matchers" -}}
+{{ range $i, $p := .SortedPairs }}{{ if $i }}%2C{{ end }}{{ $p.Name | urlquery }}%3D%22{{ $p.Value | reReplaceAll `(["\\])` `\$1` | urlquery }}%22{{ end }}
+{{- end }}
+
+{{/* This notification's group: Grafana's alert-group view filtered to the
+     group labels and the receiver, so it shows the one group the notification
+     is about rather than a copy per receiver. Alertmanager's own alert list
+     when only Alertmanager is reachable, or nothing. A link nobody can follow
+     is worse than none. */}}
+{{ define "mzmon.url.group" -}}
+{{ $grafana := "__mzmon_grafana_url__" -}}
+{{ if $grafana -}}
+{{ $grafana }}/alerting/groups?alertmanager={{ "__mzmon_grafana_datasource__" | urlquery }}&receivers={{ .Receiver | urlquery }}&queryString=%7B{{ template "mzmon.url.matchers" .GroupLabels }}%7D
+{{- else if "__mzmon_alertmanager_url__" -}}
+{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}
+{{- end }}
+{{- end }}
+
+{{/* A new silence, pre-filled with every label the notification's alerts
+     share. That is the narrowest silence covering everything in the
+     notification, and the editor shows the matchers before anything is saved. */}}
+{{ define "mzmon.url.silence" -}}
+{{ $grafana := "__mzmon_grafana_url__" -}}
+{{ if $grafana -}}
+{{ $grafana }}/alerting/silence/new?alertmanager={{ "__mzmon_grafana_datasource__" | urlquery }}
+{{- range .CommonLabels.SortedPairs }}&matcher={{ .Name | urlquery }}%3D%22{{ .Value | reReplaceAll `(["\\])` `\$1` | urlquery }}%22{{ end }}
+{{- else if "__mzmon_alertmanager_url__" -}}
+{{ .ExternalURL }}/#/silences/new?filter=%7B{{ template "mzmon.url.matchers" .CommonLabels }}%7D
+{{- end }}
+{{- end }}
+
+{{/* --- subject ---------------------------------------------------------- */}}
+
+{{/* [FIRING:2] env-uptime-sla — prod/materialize-env (critical)
+
+     What fired, where, and how bad, in one line: the status and count as
+     Alertmanager writes them, the alert name, `cluster/namespace`, and the
+     severity. Falls back to the group labels when the alerts in the group do
+     not share a name. */}}
+{{ define "mzmon.subject" -}}
+[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}]
+{{- with .CommonLabels.alertname }} {{ . }}{{ else }} {{ .GroupLabels.SortedPairs.Values | join " " }}{{ end }}
+{{- with .CommonLabels.cluster }} — {{ . }}{{ with $.CommonLabels.namespace }}/{{ . }}{{ end }}
+{{- else }}{{ with .CommonLabels.namespace }} — {{ . }}{{ end }}{{ end }}
+{{- with .CommonLabels.severity }} ({{ . }}){{ end }}
+{{- end }}
+
+{{/* --- Slack ------------------------------------------------------------ */}}
+
+{{/* Slack's three control characters, escaped. Annotation text is otherwise
+     read as markup, and a `<= 0.1` in a description starts a link. */}}
+{{ define "mzmon.slack.escape" -}}
+{{ . | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
+{{- end }}
+
+{{/* Annotation prose, escaped, with hard-wrapped lines rejoined. Slack shows
+     every newline, and the bundled rules wrap their descriptions near 80
+     columns. A blank line still separates paragraphs. Applied twice because a
+     match consumes the character after the newline, so a one-character line
+     would otherwise keep its break. */}}
+{{ define "mzmon.slack.prose" -}}
+{{ . | trimSpace | reReplaceAll "([^\n])\n([^\n])" "$1 $2" | reReplaceAll "([^\n])\n([^\n])" "$1 $2" | reReplaceAll "&" "&amp;" | reReplaceAll "<" "&lt;" | reReplaceAll ">" "&gt;" }}
+{{- end }}
+
+{{/* A time, shown in each reader's own time zone, with UTC where Slack cannot. */}}
+{{ define "mzmon.slack.date" -}}
+<!date^{{ .Unix }}^{date_short_pretty} {time}|{{ .UTC.Format "2006-01-02 15:04 UTC" }}>
+{{- end }}
+
+{{/* The labels that tell one alert in the group from another, as code spans. */}}
+{{ define "mzmon.slack.labels" -}}
+{{ range $i, $p := .SortedPairs }}{{ if $i }} {{ end }}`{{ $p.Name }}={{ $p.Value }}`{{ end }}
+{{- end }}
+
+{{/* Runbook, the group in Grafana, and a pre-filled silence while it fires. */}}
+{{ define "mzmon.slack.links" -}}
+{{ $linked := or "__mzmon_grafana_url__" "__mzmon_alertmanager_url__" -}}
+{{ with .CommonAnnotations.runbook_url }}<{{ . }}|Runbook>{{ if $linked }} · {{ end }}{{ end -}}
+{{ if $linked -}}
+<{{ template "mzmon.url.group" . }}|{{ if "__mzmon_grafana_url__" }}Grafana{{ else }}Alertmanager{{ end }}>
+{{- if eq .Status "firing" }} · <{{ template "mzmon.url.silence" . }}|Silence>{{ end }}
+{{- end }}
+{{- end }}
+
+{{/* The message body.
+
+     *Summary, when the alerts share one*
+     The description, while firing.
+     One line per alert when there are several: what sets it apart, and since when.
+     Runbook · Grafana · Silence
+
+     Lists stop at ten alerts each; the Grafana link shows the rest. */}}
+{{ define "mzmon.slack.text" -}}
+{{ with .CommonAnnotations.summary }}*{{ template "mzmon.slack.escape" . }}*{{ "\n" }}{{ end -}}
+{{ if eq .Status "firing" }}{{ with .CommonAnnotations.description }}{{ template "mzmon.slack.prose" . }}{{ "\n" }}{{ end }}{{ end -}}
+{{ if eq (len .Alerts) 1 -}}
+{{ range .Alerts -}}
+{{ if eq .Status "firing" }}Firing since {{ template "mzmon.slack.date" .StartsAt }}
+{{- else }}Resolved {{ template "mzmon.slack.date" .EndsAt }}, after {{ humanizeDuration (.EndsAt.Sub .StartsAt) }}{{ end }}{{ "\n" }}
+{{- end }}
+{{- else -}}
+{{ range $i, $a := .Alerts.Firing }}{{ if lt $i 10 -}}
+• {{ template "mzmon.slack.labels" ($a.Labels.Remove $.CommonLabels.Names) }}
+{{- if not $.CommonAnnotations.summary }}{{ with $a.Annotations.summary }} {{ template "mzmon.slack.escape" . }}{{ end }}{{ end }} · since {{ template "mzmon.slack.date" $a.StartsAt }}{{ "\n" }}
+{{- end }}{{ end -}}
+{{ if gt (len .Alerts.Firing) 10 }}• … {{ len .Alerts.Firing }} firing in all{{ "\n" }}{{ end -}}
+{{ if .Alerts.Resolved -}}
+{{ if .Alerts.Firing }}*Resolved*{{ "\n" }}{{ end -}}
+{{ range $i, $a := .Alerts.Resolved }}{{ if lt $i 10 -}}
+• {{ template "mzmon.slack.labels" ($a.Labels.Remove $.CommonLabels.Names) }}
+{{- if not $.CommonAnnotations.summary }}{{ with $a.Annotations.summary }} {{ template "mzmon.slack.escape" . }}{{ end }}{{ end }} · resolved {{ template "mzmon.slack.date" $a.EndsAt }}{{ "\n" }}
+{{- end }}{{ end -}}
+{{ if gt (len .Alerts.Resolved) 10 }}• … {{ len .Alerts.Resolved }} resolved in all{{ "\n" }}{{ end -}}
+{{ end -}}
+{{ end -}}
+{{ template "mzmon.slack.links" . }}
+{{- end }}
+
+{{/* The notification-preview line: the subject, then the summary. */}}
+{{ define "mzmon.slack.fallback" -}}
+{{ template "mzmon.subject" . }}{{ with .CommonAnnotations.summary }}: {{ . }}{{ end }}
+{{- end }}
+
+{{/* Red for critical, amber for warning, blue for anything milder, green once
+     resolved. Red when the alerts do not share a severity. */}}
+{{ define "mzmon.slack.color" -}}
+{{ if eq .Status "resolved" }}good
+{{- else if eq .CommonLabels.severity "critical" }}danger
+{{- else if eq .CommonLabels.severity "warning" }}warning
+{{- else if .CommonLabels.severity }}#439FE0
+{{- else }}danger{{ end }}
+{{- end }}
+
+{{/* The rest of the labels the alerts share, small and grey. The subject
+     already carries the alert name, cluster, namespace and severity. */}}
+{{ define "mzmon.slack.footer" -}}
+{{ range $i, $p := (.CommonLabels.Remove (stringSlice "alertname" "cluster" "namespace" "severity")).SortedPairs }}{{ if $i }}  {{ end }}{{ $p.Name }}={{ $p.Value }}{{ end }}
+{{- end }}

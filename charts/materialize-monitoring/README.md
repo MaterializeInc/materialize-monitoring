@@ -4013,12 +4013,59 @@ routes:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alerting<wbr>.defaultTemplates</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Make the chart's notification templates every receiver's default.
+
+The chart ships its templates as `mzmon.gotmpl` whatever this says, as
+`mzmon.*` definitions a receiver can reference. On, they also replace
+Alertmanager's built-in defaults, so a receiver that sets no `title`, `text`
+or link of its own gets them:
+
+| Built-in | Becomes |
+| --- | --- |
+| `__subject`, the title or subject of nearly every integration | `[FIRING:2] env-uptime-sla — prod/materialize (critical)`: alert, `cluster/namespace`, severity |
+| `__alertmanagerURL`, every integration's link | The alert group in Grafana, or nothing when Grafana's URL is unknown; Alertmanager's own UI when `alertmanager.baseURL` is set instead |
+| `slack.default.text`, empty upstream | The summary, the description, one line per alert, and links to the runbook, Grafana and a pre-filled silence |
+| `slack.default.color` | By severity rather than red for everything |
+
+A template under `templates` that defines one of these names again still
+wins, because the chart's file is loaded first. Off restores Alertmanager's
+own defaults, whose links name the pod's address.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.grafanaURL</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Grafana's browser-facing URL, for the links in notifications. Empty derives it.
+
+Notifications link to the alert group and to a pre-filled silence in
+Grafana's alerting pages, which read the bundled Alertmanager through the
+`connections.datasources.alertmanager` datasource. Empty takes the URL
+Grafana builds its own links from:
+
+| `connections.grafana.mode` | Derived from |
+| --- | --- |
+| `bundled` | `grafana.grafana.ini.server.root_url` |
+| `operator` | `connections.grafana.operator.spec.config.server.root_url` |
+| `external` | `connections.grafana.external.url` |
+
+Set this when that address is not the one people reach Grafana at: an
+external Grafana addressed in-cluster, or a `root_url` written with
+Grafana's `%(domain)s` placeholders, which the chart cannot resolve. With no
+URL, notifications carry no Grafana links, and the render warns once a
+receiver exists.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alerting<wbr>.templates</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render.
+      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render. They load after the chart's `mzmon.gotmpl`, so a name defined in both takes the definition here. See `defaultTemplates`.
 </td>
     </tr>
     <tr>
@@ -8753,23 +8800,22 @@ relabeling drops the headless Service's targets.
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">Alertmanager's own external URL (`--web.external-url`). Leave it empty unless Alertmanager itself is exposed.
 
-The default notification templates build two kinds of link from it: the
-alert list (`<baseURL>/#/alerts`) and a pre-filled silence
-(`<baseURL>/#/silences/new`). Both are paths in Alertmanager's own UI.
+Alertmanager's built-in notification templates link to its alert list
+(`<baseURL>/#/alerts`) from it. The chart's templates
+(`alerting.defaultTemplates`) link to Grafana instead whenever Grafana's URL
+is known, and fall back to the alert list and a pre-filled silence
+(`<baseURL>/#/silences/new`) only when it is not and this is set.
 
 **Do not point it at Grafana.** Grafana serves neither path, so every link
-lands on Grafana's home page. Grafana's equivalents live under
-`<grafana>/alerting/` and name the Alertmanager datasource by its *name*
-(`connections.datasources.alertmanager.name`), for example
-`/alerting/silence/new?alertmanager=Alertmanager&matcher=alertname%3DFoo`.
-A notification template in `alerting.templates` is the place to build them;
-see Alert Channels.
+lands on Grafana's home page. Set `alerting.grafanaURL`, or Grafana's
+`root_url`, for links into Grafana.
 
-Unset, the links name the pod's own address, which is unreachable from
-outside the cluster but harmless. Set this when Alertmanager is exposed,
-behind authentication, to the address operators reach it at. A path is
-fine: `extraArgs.web.route-prefix` keeps the endpoints at `/`, so an
-ingress serving a sub-path strips the prefix before forwarding.
+Unset, Alertmanager's own links name the pod's address, which is
+unreachable from outside the cluster, and the chart's templates leave them
+out. Set this when Alertmanager is exposed, behind authentication, to the
+address operators reach it at. A path is fine:
+`extraArgs.web.route-prefix` keeps the endpoints at `/`, so an ingress
+serving a sub-path strips the prefix before forwarding.
 </td>
     </tr>
   </tbody>

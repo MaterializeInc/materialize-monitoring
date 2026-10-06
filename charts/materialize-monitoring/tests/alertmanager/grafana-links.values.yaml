@@ -1,0 +1,17 @@
+# Scenario for `bin/check-alertmanager-config.sh`: notifications linking into
+# Grafana, which is the branch of every link template the defaults never take.
+# The root_url carries a path and a trailing slash, as a Grafana served from a
+# sub-path does.
+grafana:
+  grafana.ini:
+    server:
+      root_url: https://ops.example.com/grafana/
+alerting:
+  receivers:
+    chat:
+      class: [high, normal, low]
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true

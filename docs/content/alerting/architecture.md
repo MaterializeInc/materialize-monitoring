@@ -252,10 +252,14 @@ The kubelet refreshes the mounted Secret, the config-reloader sidecar sees the c
 and the whole path takes seconds to about a minute.
 The sidecar is needed because the subchart rolls its pods on a checksum of the ConfigMap it no longer renders.
 
+The Secret also carries the chart's notification templates, `mzmon.gotmpl`, ahead of the files under `alerting.templates`.
+They replace Alertmanager's built-in subjects, Slack body and links, and the links point at Grafana's alerting pages.
+The chart writes Grafana's address into them at render time, from the same setting Grafana builds its own links from.
+[Alert Channels](../channels/#notification-templates) describes them.
+
 `alertmanager.baseURL` is left empty by default and is not pointed at Grafana: Alertmanager builds links into its own UI
 from it, and Grafana serves none of those paths.
 `extraArgs.web.route-prefix: /` keeps every endpoint at the root whatever `baseURL` is set to.
-[Alert Channels](../channels/#links) shows how to link notifications to Grafana instead.
 
 ### The routing tree
 
@@ -281,8 +285,9 @@ route names exactly one receiver.
 
 | Check | Where | Catches |
 |---|---|---|
-| Structural validators | Every `helm template` and `helm install` | An unroutable severity, an undefined receiver or time interval, an inline credential, a credential file no volume mounts, a receiver key that is not an integration, a template Alertmanager would not load |
+| Structural validators | Every `helm template` and `helm install` | An unroutable severity, an undefined receiver or time interval, an inline credential, a credential file no volume mounts, a receiver key that is not an integration, a template Alertmanager would not load, a Grafana URL that is not absolute |
 | `amtool check-config` | CI, over representative scenarios (`make alertmanager-config-check`) | The chart generating a tree Alertmanager rejects |
+| `amtool template render` | The same CI run, over the same scenarios | A notification template that parses but fails when a notification is sent |
 | Alertmanager itself | Each reload | Anything else in a receiver body, which the chart passes through without modelling |
 
 The chart does not model receiver types.

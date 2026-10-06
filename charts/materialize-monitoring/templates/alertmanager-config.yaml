@@ -43,6 +43,10 @@ stringData:
     {{- include "mzmon.alertmanager.amtoolConfig" $ | nindent 4 }}
   amtool-http.yml: |
     {{- include "mzmon.alertmanager.amtoolHTTPConfig" $ | nindent 4 }}
+  {{- /* Named outside the `*.tmpl` glob so the configuration can load it ahead
+         of the files under `alerting.templates`; see `mzmon.alertmanager.config`. */}}
+  mzmon.gotmpl: |
+    {{- include "mzmon.alertmanager.notificationTemplates" $ | nindent 4 }}
   {{- range $name := keys ( $.Values.alerting.templates | default dict ) | sortAlpha }}
   {{ $name }}: |
     {{- index $.Values.alerting.templates $name | nindent 4 }}
