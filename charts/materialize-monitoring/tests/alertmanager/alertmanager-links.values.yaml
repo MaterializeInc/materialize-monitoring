@@ -1,0 +1,13 @@
+# Scenario for `bin/check-alertmanager-config.sh`: notifications linking into
+# Alertmanager's own UI, the fallback when Alertmanager is exposed and the chart
+# cannot tell where Grafana is.
+alertmanager:
+  baseURL: https://alertmanager.example.com
+alerting:
+  receivers:
+    chat:
+      class: [high, normal, low]
+      config:
+        slack_configs:
+          - channel: "#materialize"
+            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url

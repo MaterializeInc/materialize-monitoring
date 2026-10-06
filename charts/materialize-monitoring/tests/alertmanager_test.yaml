@@ -330,6 +330,7 @@ tests:
               receiver: mzmon-null
               repeat_interval: 4h
             templates:
+            - /etc/alertmanager/config/mzmon.gotmpl
             - /etc/alertmanager/config/*.tmpl
 
   - it: follows split-namespace into Alertmanager's namespace
@@ -395,6 +396,7 @@ tests:
                 receiver: chat
               - receiver: chat
             templates:
+            - /etc/alertmanager/config/mzmon.gotmpl
             - /etc/alertmanager/config/*.tmpl
 
   # `suppressed` still fires and still shows; it just notifies nobody.
@@ -569,6 +571,133 @@ tests:
           path: stringData["mzmon.tmpl"]
           value: |
             {{ define "mzmon.title" }}{{ .CommonLabels.alertname }}{{ end }}
+
+  # --- notification templates -----------------------------------------------
+
+  # Alertmanager's own defaults leave Slack's body empty and link every
+  # notification to the pod's address. The chart's replace them, and link to
+  # Grafana wherever the chart can tell where Grafana is.
+  - it: ships its templates and makes them the built-in defaults
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ define "mzmon\.slack\.text" -\}\}'
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ define "__subject" \}\}\{\{ template "mzmon\.subject" \. \}\}\{\{ end \}\}'
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ define "__alertmanagerURL" \}\}\{\{ template "mzmon\.url\.group" \. \}\}\{\{ end \}\}'
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ define "slack\.default\.text" \}\}'
+      - notMatchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '"__mzmon_[a-z_]+__"'
+
+  # Nothing to link to: no root_url on the bundled Grafana, no baseURL.
+  - it: links nowhere when it cannot tell where Grafana is
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ \$grafana := "" -\}\}'
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{- else if "" -\}\}'
+
+  - it: links to Grafana at its root_url, without the trailing slash
+    set:
+      grafana:
+        grafana.ini:
+          server:
+            root_url: https://grafana.example.com/
+      connections.datasources.alertmanager.name: AM
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ \$grafana := "https://grafana\.example\.com" -\}\}'
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: 'alertmanager=\{\{ "AM" \| urlquery \}\}'
+
+  - it: links to an external Grafana at its URL
+    set:
+      grafana.enabled: false
+      connections.grafana.mode: external
+      connections.grafana.external.url: https://acme.grafana.net
+      connections.grafana.external.apiKey:
+        name: grafana-api-key
+        key: apiKey
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ \$grafana := "https://acme\.grafana\.net" -\}\}'
+
+  - it: prefers alerting.grafanaURL to anything it would derive
+    set:
+      alerting.grafanaURL: https://ops.example.com/grafana/
+      grafana:
+        grafana.ini:
+          server:
+            root_url: http://grafana.monitoring.svc
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ \$grafana := "https://ops\.example\.com/grafana" -\}\}'
+
+  # Grafana resolves `%(domain)s` itself; the chart cannot.
+  - it: ignores a root_url written with Grafana's placeholders
+    set:
+      grafana:
+        grafana.ini:
+          server:
+            root_url: "%(protocol)s://%(domain)s/grafana/"
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ \$grafana := "" -\}\}'
+
+  # Grafana's alerting pages read Alertmanager through the datasource; without
+  # it, every Grafana link opens an empty page.
+  - it: links nowhere in Grafana when Grafana has no Alertmanager datasource
+    set:
+      connections.datasources.alertmanager.enabled: false
+      grafana:
+        grafana.ini:
+          server:
+            root_url: https://grafana.example.com
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ \$grafana := "" -\}\}'
+
+  - it: falls back to Alertmanager's own UI when only Alertmanager is exposed
+    set:
+      alertmanager.baseURL: https://alertmanager.example.com
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{- else if "true" -\}\}'
+
+  - it: leaves Alertmanager's built-in defaults alone when defaultTemplates is off
+    set:
+      alerting.defaultTemplates: false
+    template: templates/alertmanager-config.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: '\{\{ define "mzmon\.slack\.text" -\}\}'
+      - notMatchRegex:
+          path: stringData["mzmon.gotmpl"]
+          pattern: 'define "(__subject|__alertmanagerURL|slack\.default\.[a-z]+|pagerduty\.default\.[a-z]+)"'
 
   # --- validators: the workload ---------------------------------------------
 
@@ -1064,3 +1193,58 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "points at Grafana's host"
+
+  - it: fails on a grafanaURL that is not an absolute URL
+    set:
+      alerting.grafanaURL: grafana.example.com
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'alerting.grafanaURL is "grafana.example.com"'
+
+  - it: warns when notifications will carry no links
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Notifications will carry no links into Grafana or Alertmanager"
+
+  - it: stays quiet about links once Grafana's URL is known
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+      grafana:
+        grafana.ini:
+          server:
+            root_url: https://grafana.example.com
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "Notifications (will carry no links|link to Grafana at)"
+
+  # An external Grafana addressed in-cluster is the common way to get this.
+  - it: warns when notifications link to an in-cluster Grafana address
+    set:
+      alerting.receivers.chat:
+        class: [high, normal, low]
+        config:
+          webhook_configs:
+            - url: http://chat.example.invalid/
+      grafana.enabled: false
+      connections.grafana.mode: external
+      connections.grafana.external.url: http://grafana.platform.svc.cluster.local:3000
+      connections.grafana.external.apiKey:
+        name: grafana-api-key
+        key: apiKey
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: "Notifications link to Grafana at http://grafana.platform.svc.cluster.local:3000, an in-cluster address"

@@ -66,14 +66,16 @@ locals {
   # adds needs no module release.
   alerting_values = merge(
     { for k, v in {
-      preset          = var.alerting.preset
-      presets         = var.alerting.presets
-      unknownSeverity = var.alerting.unknown_severity
-      receivers       = var.alerting.receivers
-      inhibitRules    = var.alerting.inhibit_rules
-      timeIntervals   = var.alerting.time_intervals
-      templates       = var.alerting.templates
-      global          = var.alerting.global
+      preset           = var.alerting.preset
+      presets          = var.alerting.presets
+      unknownSeverity  = var.alerting.unknown_severity
+      receivers        = var.alerting.receivers
+      inhibitRules     = var.alerting.inhibit_rules
+      timeIntervals    = var.alerting.time_intervals
+      templates        = var.alerting.templates
+      defaultTemplates = var.alerting.default_templates
+      grafanaURL       = var.alerting.grafana_url
+      global           = var.alerting.global
     } : k => v if v != null },
 
     { for k, v in {

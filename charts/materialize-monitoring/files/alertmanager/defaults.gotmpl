@@ -1,0 +1,25 @@
+{{/*
+Alertmanager's built-in template names, redefined to use the chart's.
+
+Appended to `mzmon.gotmpl` while `alerting.defaultTemplates` is on. Every
+integration's default fields are written in terms of these names, so a receiver
+that sets no `title`, `text` or link of its own gets the chart's without any
+configuration. A template under `alerting.templates` that defines one of them
+again still wins, because it is loaded afterwards.
+
+`__subject` is the title or subject of almost every integration: Slack, email,
+PagerDuty, Opsgenie, Microsoft Teams, Discord, Jira and the rest.
+`__alertmanagerURL` is every integration's link: Slack's title link,
+PagerDuty's client URL, Opsgenie's source, the email button.
+*/}}
+
+{{ define "__subject" }}{{ template "mzmon.subject" . }}{{ end }}
+{{ define "__alertmanagerURL" }}{{ template "mzmon.url.group" . }}{{ end }}
+
+{{ define "slack.default.text" }}{{ template "mzmon.slack.text" . }}{{ end }}
+{{ define "slack.default.fallback" }}{{ template "mzmon.slack.fallback" . }}{{ end }}
+{{ define "slack.default.color" }}{{ template "mzmon.slack.color" . }}{{ end }}
+{{ define "slack.default.footer" }}{{ template "mzmon.slack.footer" . }}{{ end }}
+
+{{/* PagerDuty labels its client link "View in <client>". */}}
+{{ define "pagerduty.default.client" }}{{ if "__mzmon_grafana_url__" }}Grafana{{ else }}{{ template "__alertmanager" . }}{{ end }}{{ end }}
