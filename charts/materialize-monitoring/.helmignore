@@ -15,3 +15,7 @@
 .idea/
 .vscode/
 OWNERS
+# helm-unittest suites, snapshots and scenario values. Helm never reads them,
+# and everything not ignored here is stored in every release's Secret, which
+# Kubernetes caps at 1 MiB; they were a quarter of it.
+tests/
