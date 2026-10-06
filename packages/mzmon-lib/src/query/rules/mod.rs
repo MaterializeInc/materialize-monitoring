@@ -25,4 +25,6 @@ pub mod render;
 
 pub use capability::Capability;
 pub use context::{Placeholder, alerting_context};
-pub use render::{RenderedRecord, RenderedRule, RuleEngine, RuleError, RuleSet, render_rules};
+pub use render::{
+    RecordRead, RenderedRecord, RenderedRule, RuleEngine, RuleError, RuleSet, render_rules,
+};

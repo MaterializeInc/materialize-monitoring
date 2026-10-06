@@ -65,6 +65,21 @@ impl ExtractedMetric {
     }
 }
 
+/// Every named vector selector in a PromQL expression, matchers included, in
+/// the order the expression names them. A range selector's inner selector is
+/// one of them. Where [`ExtractedMetric`] keeps only the label *names* a query
+/// matches on, this keeps the matchers, for a caller that needs to know which
+/// values a selector can match.
+pub(crate) fn named_selectors(promql: &str) -> Result<Vec<VectorSelector>> {
+    let ast = parse(promql).map_err(|message| Error::PromQlParse {
+        expr: promql.to_string(),
+        message,
+    })?;
+    let mut collector = Collector::default();
+    let Ok(_) = walk_expr(&mut collector, &ast);
+    Ok(collector.selectors)
+}
+
 impl Query {
     /// Render this query for `ctx` and extract every metric it references.
     pub fn extract_metrics(&self, ctx: &TemplateContext) -> Result<Vec<ExtractedMetric>> {
@@ -80,6 +95,7 @@ impl Query {
 #[derive(Default)]
 struct Collector {
     metrics: Vec<ExtractedMetric>,
+    selectors: Vec<VectorSelector>,
 }
 
 impl Collector {
@@ -92,6 +108,7 @@ impl Collector {
             name: name.clone(),
             labels: matcher_labels(&vs.matchers),
         });
+        self.selectors.push(vs.clone());
     }
 }
 

@@ -5,7 +5,7 @@ weight: 20260920
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-20
-lastmod: 2026-10-04
+lastmod: 2026-10-05
 # custom parameters
 params:
   author: Heather Lapointe
@@ -846,6 +846,21 @@ What remains of `persist-failures` keeps the counters that are genuinely persist
 Its description is corrected in the same pass.
 
 This is the piece of DEP-233 with the shortest path to value: it needs no adapter, no exporter and no new collection, only the evaluated-rule path that everything else here also waits on.
+
+**As built** ([DEP-292](https://linear.app/materializeinc/issue/DEP-292)):
+
+| Alert | Severity | Reads | In the default set |
+|---|---|---|---|
+| `consensus-unreachable` | critical, after 5m | `ext:consensus_up == 0`, from any adapter | Yes |
+| `consensus-failures` | warning, after 10m | Indeterminate consensus failures over 0.1/s (`mz_persist_consensus_failures`) | Yes |
+| `blob-failures` | warning, after 10m | Failed object-storage calls over 0.1/s, by operation | Yes |
+| `persist-failures` | notice, after 15m | Ten persist-internal counters | No, as before |
+
+Three things the split found.
+`mz_persist_external_failed_count` counts transaction conflicts, which Materialize expects and retries, so the consensus alert reads `mz_persist_consensus_failures`, which counts only the indeterminate failures.
+`mz_persist_cmd_failed_count` fails whenever a dependency does, so it left `persist-failures` rather than double-report.
+And two of the sixteen counters, `mz_persist_columnar_validation_count` and `mz_txn_placeholder_schema_apply`, have never been published by Materialize, so the old alert's set was effectively fourteen.
+The blob alert reads the raw counter until `ext:objstore_request_errors:rate5m` exists.
 
 ### How these reach a human
 

@@ -2,9 +2,10 @@
 #
 # What the chart needs to decide which rules install: each alert's engine (which
 # ruler evaluates it, and so which directory its file is in), its capabilities
-# (inferred from the metrics it reads, plus any it declares) and whether it is in
-# the default set; each recording rule's capabilities, keyed `<group>/<record>`;
-# and the vocabularies the chart validates values against.
+# (inferred from the metrics it reads, plus any it declares), the recorded series
+# it reads and which recording rules could produce each, and whether it is in the
+# default set; each recording rule's capabilities, keyed `<group>/<record>`; and
+# the vocabularies the chart validates values against.
 placeholders:
 - __mzmon_consensus_azure_postgres__
 - __mzmon_environment_namespaces__
@@ -779,6 +780,41 @@ rules:
     requires:
     - materialize
     enabledByDefault: false
+    minImportance: essential
+  consensus-unreachable:
+    file: prometheus/materialize-alerts.yaml
+    engine: promql
+    group: consensus
+    severity: critical
+    audience: platform
+    requires: []
+    enabledByDefault: true
+    minImportance: essential
+    reads:
+    - record: ext:consensus_up
+      from:
+      - ext_consensus_persist/ext:consensus_up
+      - ext_consensus_cloudsql/ext:consensus_up
+      - ext_consensus_azure_postgres/ext:consensus_up
+  consensus-failures:
+    file: prometheus/materialize-alerts.yaml
+    engine: promql
+    group: consensus
+    severity: warning
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
+    minImportance: essential
+  blob-failures:
+    file: prometheus/materialize-alerts.yaml
+    engine: promql
+    group: object_storage
+    severity: warning
+    audience: platform
+    requires:
+    - materialize
+    enabledByDefault: true
     minImportance: essential
   persist-failures:
     file: prometheus/materialize-alerts.yaml

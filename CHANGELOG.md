@@ -8,13 +8,49 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v0.33.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.13.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v0.32.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v0.32.0
 
-_Changes Pending_
+* Merge Receive's restart overlaps in the Thanos Compactor, and add a metrics architecture page
+    * [materialize-monitoring#482](https://github.com/MaterializeInc/materialize-monitoring/pull/482)
+    * The Thanos Compactor now runs with vertical compaction and deduplicates Receive replicas.
+        * **Changed:** `thanos.compactor.extraArgs` has a chart default: `--log.level=info`, `--log.format=logfmt`, `--consistency-delay=30m`, `--compact.enable-vertical-compaction` and `--deduplication.replica-label=receive_replica`. An override replaces the whole list and has to restate both flags. The other three match Thanos's own defaults.
+        * A Compactor halted with `overlaps found while gathering blocks` recovers on its next start with no manual repair. Expect the first run to work through the backlog before downsampling catches up.
+        * Compacted blocks lose the `receive_replica` external label, and the bucket keeps one copy of each series instead of one per Receive replica. This is irreversible for the blocks it touches. Queries are unchanged, because Thanos Query already deduplicates on `receive_replica`.
+        * Downsampled blocks written before the upgrade are marked `no-compact` and keep their per-replica copies until retention expires them.
+        * Upgrading with `helm upgrade --reuse-values` keeps the previous chart's defaults and does not apply this change. Use `--reset-then-reuse-values`.
+    * New docs page: Metrics > Architecture.
+* Let alerts read recorded series, and split persist-failures by dependency
+    * [materialize-monitoring#483](https://github.com/MaterializeInc/materialize-monitoring/pull/483)
+    * Alerts can read the normalized `ext:*` recorded series. Such an alert installs wherever any recording rule producing what it reads installs, and Common Alerts lists what each one reads.
+    * **`persist-failures` is split.** Three new alerts join the default set:
+        * `consensus-unreachable` (critical) fires when no call to the metadata database has succeeded for five minutes, or a cloud provider reports it down.
+        * `consensus-failures` (warning) fires on ten minutes of indeterminate metadata-database failures.
+        * `blob-failures` (warning) fires on ten minutes of failed object-storage calls, by operation.
+    * `persist-failures` now covers only persist's own failures: compaction, read leases, state updates, columnar validation and statistics. It no longer fires on a failing metadata database or object store, or on `mz_persist_cmd_failed_count`. It remains outside the default set.
+    * A metric destination filtering by `minMetricImportance` now receives `ext:consensus_up`, and no longer receives `mz_persist_blob_failures` or `mz_persist_cmd_failed_count`, which no bundled rule reads any more.
+* Record the normalized ext:consensus_* series, with a producer for the registry's rules: branch
+    * [materialize-monitoring#475](https://github.com/MaterializeInc/materialize-monitoring/pull/475)
+    * New recording rules record the metadata (consensus) database as normalized `ext:consensus_*` series, listed on the new Recorded Series reference page. They install wherever `rules.enabled` is true and their source is present; no selection is needed.
+        * `ext:consensus_up` and `ext:consensus_commit_latency_seconds:p99` come from Materialize's own calls, carry `flavor="persist"` and `namespace`, and need no configuration.
+        * `ext:consensus_up`, `ext:consensus_storage_used_ratio` and `ext:consensus_xid_used_ratio` from the CloudWatch, Cloud Monitoring and Azure Monitor pulls carry `flavor` (`rds`, `cloudsql`, `azure-postgres`) and `resource`, where the provider publishes each.
+    * New value `externalDependencies.consensus`, a list of `{flavor, resourceId}` naming which databases a provider pull watches are a metadata database. The provider-sourced `ext:consensus_*` series record only these, so a pull that also watches Grafana's database no longer needs to be told apart by hand. The render warns when a pull watches databases and none is named.
+    * `rules.capabilities` gains three derived capabilities, `cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the matching `pipeline.metrics.provider.*` pull is enabled.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.12.0..v0.13.0
+    * Release mzmon-lib (shared library) v0.12.0
+        * [materialize-monitoring#295](https://github.com/MaterializeInc/materialize-monitoring/pull/295)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.31.0
 

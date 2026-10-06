@@ -428,7 +428,114 @@ alerts:
           / sum:mz_adapter_commands{application_name:web_console, %%{excludeEnvironmentFilter}} by {application_name}.as_rate()
         ) * 100 > 2
 
-  # --- persist -------------------------------------------------------------
+  # --- the metadata database ----------------------------------------------
+  # The client's view, the provider's where one is pulled. `consensus-unreachable`
+  # reads the normalized `ext:consensus_up` (ext-consensus.yaml), so it installs
+  # wherever any adapter recording it does: everywhere Materialize is.
+  - alert: consensus-unreachable
+    group: consensus
+    stability: best-effort
+    enabledByDefault: true
+    for: 5m
+    labels:
+      severity: critical
+      component: consensus
+    description:
+      summary: |
+        Materialize cannot reach its metadata database, so nothing it stores can
+        change and every write is stalled.
+      unhealthy: |
+        With `flavor="persist"`, no call from the environment in `namespace` has
+        succeeded in at least five minutes. With a provider flavor (`rds`,
+        `cloudsql`, `azure-postgres`), the cloud provider reports the database
+        named by `resource` as down. Check that the database is running, that it
+        accepts connections from the cluster, and that it has free connection
+        slots; then the host, port, database and credentials in the metadata
+        backend URL. Materialize Consensus, _Overview_, shows the database's own
+        error text from the client side.
+      notes: |
+        `consensus-failures` is the partial form of the same fault: calls failing
+        while some still succeed.
+    query:
+      id: materialize.consensus.alerts.unreachable
+      stability: best-effort
+      description:
+        summary: |
+          The metadata database is unreachable: by environment namespace from
+          Materialize's side, or by resource from the cloud provider's.
+      promQL: |
+        min by (flavor, namespace, resource) (ext:consensus_up) == 0
+
+  - alert: consensus-failures
+    group: consensus
+    stability: best-effort
+    enabledByDefault: true
+    for: 10m
+    labels:
+      severity: warning
+      component: consensus
+    description:
+      summary: |
+        Calls to the metadata database are failing with indeterminate errors,
+        and Materialize is retrying its writes.
+      degraded: |
+        The database is accepting some calls and refusing or timing out others.
+        Freshness degrades everywhere while it lasts. The usual cause is the
+        database running out of connection slots, which an environmentd rollout
+        can cause by briefly running two generations: check its connection count
+        against `max_connections`. A slow or overloaded database, or a network
+        path dropping connections, presents the same way. The environment's
+        logs carry the database's own error text, on lines reading
+        `received an indeterminate error`.
+      notes: |
+        Counts indeterminate failures only. Transaction conflicts are
+        determinate, expected, and retried, and never count. Short bursts
+        accompany restarts and are normal; ten minutes of them is not.
+    query:
+      id: materialize.consensus.alerts.failures
+      stability: best-effort
+      description:
+        summary: Indeterminate metadata database failures per second, by environment namespace.
+      promQL: |
+        sum by (namespace) (rate(mz_persist_consensus_failures[5m])) > 0.1
+      datadogQuery: |
+        avg(last_10m):sum:mz_persist_consensus_failures{*} by {namespace}.as_rate() > 0.1
+
+  # --- object storage --------------------------------------------------------
+  - alert: blob-failures
+    group: object_storage
+    stability: best-effort
+    enabledByDefault: true
+    for: 10m
+    labels:
+      severity: warning
+      component: object-storage
+    description:
+      summary: |
+        Calls to the object store holding Materialize's data are failing, by
+        operation.
+      degraded: |
+        Persist retries a failed call, so data is not lost, but writes,
+        compaction and reads of the operation in `op` slow down or stall while
+        it lasts. Check the bucket exists and the environment's identity can
+        reach it, then throttling or errors on the provider's side. Materialize
+        Persist (Storage), _Overview_, shows failures by operation and the
+        store's own error text.
+    query:
+      id: materialize.persist.alerts.blob_failures
+      stability: best-effort
+      description:
+        summary: Failed object storage calls per second, by environment namespace and operation.
+      promQL: |
+        sum by (namespace, op) (rate(mz_persist_external_failed_count{op=~"blob_.*"}[5m])) > 0.1
+      datadogQuery: |
+        avg(last_10m):sum:mz_persist_external_failed_count{op:blob_*} by {namespace,op}.as_rate() > 0.1
+
+  # --- persist itself ----------------------------------------------------------
+  # Persist's own failure counters. The dependencies have alerts of their own
+  # above, so none of these is a failed call to the database or the object
+  # store, and `mz_persist_cmd_failed_count`, which fails whenever either does,
+  # is left out.
   - alert: persist-failures
     group: persist
     stability: best-effort
@@ -437,43 +544,39 @@ alerts:
       severity: notice
       component: persist
     description:
-      summary: Failures in Persist that should be rare are happening frequently.
+      summary: Failures inside Persist that should be rare are happening frequently.
       degraded: |
-        Persist retries most transient errors, so a sustained failure rate points
-        at object storage or metadata-database (consensus) trouble. The `metric`
-        label names the specific failure counter.
+        These count persist's own work going wrong: compaction failing or being
+        dropped, read leases timing out, state updates taking the slow path,
+        invalid columnar data, and mismatched statistics. The `metric` label
+        names the counter. Failed calls to the metadata database or the object
+        store are `consensus-failures` and `blob-failures`.
     query:
       id: materialize.persist.failures
       stability: best-effort
       description:
-        summary: Rate of any of several Persist failure counters exceeding its threshold, by metric.
+        summary: Rate of any of several persist-internal failure counters exceeding its threshold, by metric.
       promQL: |
-        sum by (namespace, metric) (rate(label_replace(mz_persist_blob_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (namespace, metric) (rate(label_replace(mz_persist_consensus_failures, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (namespace, metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
+        sum by (namespace, metric) (rate(label_replace(mz_persist_state_update_state_slow_path, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_lease_timeout_read, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
         or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_noop, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 3
         or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_failed, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_external_blob_delete_noop_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (namespace, metric) (rate(label_replace(mz_persist_external_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (namespace, metric) (rate(label_replace(mz_persist_cmd_failed_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_compaction_dropped, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_pushdown_parts_mismatched_stats_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (namespace, metric) (rate(label_replace(mz_persist_columnar_validation_count{result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-        or sum by (namespace, metric) (rate(label_replace(mz_txn_placeholder_schema_apply, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_columnar_op_count{op="validation", result="invalid"}, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_schema_cache_fetch_state_count, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
         or sum by (namespace, metric) (rate(label_replace(mz_persist_shard_unconsolidated_snapshot, "metric", "$1", "__name__", "(.*)")[1m:15s])) > 1
-      # PromQL folds sixteen counters into one alert via label_replace and
-      # `or`; Datadog needs one monitor per counter, so three representative
-      # ones are here.
+      # PromQL folds ten counters into one alert via label_replace and `or`;
+      # Datadog needs one monitor per counter, so three representative ones are
+      # here.
       datadogQuery:
         - |
-          avg(last_1m):sum:mz_persist_blob_failures{*} by {namespace}.as_rate() > 1
+          avg(last_1m):sum:mz_persist_compaction_failed{*} by {namespace}.as_rate() > 1
         - |
-          avg(last_1m):sum:mz_persist_consensus_failures{*} by {namespace}.as_rate() > 1
+          avg(last_1m):sum:mz_persist_lease_timeout_read{*} by {namespace}.as_rate() > 3
         - |
-          avg(last_1m):sum:mz_persist_cmd_failed_count{*} by {namespace}.as_rate() > 1
+          avg(last_1m):sum:mz_persist_state_update_state_slow_path{*} by {namespace}.as_rate() > 1
 
   # --- environmentd / clusterd lifecycle -----------------------------------
   # Exit code 166 is Materialize's clean-shutdown sentinel; other non-graceful

@@ -14,8 +14,109 @@
 # which would restate every description.
 rule_files:
   - materialize-alerts.yaml
+  # `consensus-unreachable` reads ext:consensus_up, so its tests feed the raw
+  # persist counters through the recording rule that produces it.
+  - ext-consensus.yaml
 evaluation_interval: 1m
 tests:
+  # --- consensus-unreachable: the normalized series, from any adapter --------
+  - name: consensus-unreachable fires once no metadata call has succeeded for five minutes
+    interval: 1m
+    input_series:
+      # Calls succeed until 20m, then stop: every one fails or hangs.
+      - series: 'mz_persist_external_succeeded_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0+4800x20 96000x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="consensus-unreachable"})
+        eval_time: 22m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="consensus-unreachable", alertstate="firing", flavor="persist", namespace="materialize-environment"})
+        eval_time: 32m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  # The provider adapter can raise it alone, and only for the declared database:
+  # the `all` scenario declares mz-metadata and not mz-grafana.
+  - name: consensus-unreachable fires when the provider reports the metadata database down
+    interval: 1m
+    input_series:
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id="test-project:mz-metadata"}'
+        values: "1x5 0x20"
+      - series: 'stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id="test-project:mz-grafana"}'
+        values: "0x25"
+    promql_expr_test:
+      - expr: count by (flavor, resource) (ALERTS{alertname="consensus-unreachable", alertstate="firing"})
+        eval_time: 15m
+        exp_samples:
+          - labels: '{flavor="cloudsql", resource="mz-metadata"}'
+            value: 1
+
+  # --- consensus-failures: indeterminate failures, sustained -----------------
+  - name: consensus-failures fires on ten minutes of indeterminate failures
+    interval: 1m
+    input_series:
+      # One failure a second from 10m to 25m.
+      - series: 'mz_persist_consensus_failures{namespace="materialize-environment", pod="mz-environmentd-0"}'
+        values: "0x10 0+60x15 900x20"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="consensus-failures", alertstate="firing"})
+        eval_time: 15m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="consensus-failures", alertstate="firing", namespace="materialize-environment"})
+        eval_time: 24m
+        exp_samples:
+          - labels: "{}"
+            value: 1
+
+  # A restart produces a burst that a five-minute rate carries for five minutes.
+  # On the reference installs these were the only failures in three weeks.
+  - name: consensus-failures stays quiet through a restart's burst
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_consensus_failures{namespace="materialize-environment", pod="mz-environmentd-0"}'
+        values: "0x10 3600x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="consensus-failures", alertstate="firing"})
+        eval_time: 30m
+        exp_samples: []
+
+  # --- blob-failures, and what persist-failures no longer covers -------------
+  - name: blob-failures fires per failing operation
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_failed_count{namespace="materialize-environment", op="blob_set", pod="mz-environmentd-0"}'
+        values: "0+60x30"
+      # Consensus calls share the family and are not object storage.
+      - series: 'mz_persist_external_failed_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0+600x30"
+    promql_expr_test:
+      - expr: count by (op) (ALERTS{alertname="blob-failures", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{op="blob_set"}'
+            value: 1
+
+  - name: persist-failures no longer fires on a dependency failing
+    interval: 1m
+    input_series:
+      - series: 'mz_persist_external_failed_count{namespace="materialize-environment", op="consensus_cas", pod="mz-environmentd-0"}'
+        values: "0+600x30"
+      - series: 'mz_persist_consensus_failures{namespace="materialize-environment", pod="mz-environmentd-0"}'
+        values: "0+600x30"
+      - series: 'mz_persist_blob_failures{namespace="materialize-environment", pod="mz-environmentd-0"}'
+        values: "0+600x30"
+      - series: 'mz_persist_cmd_failed_count{namespace="materialize-environment", cmd="compare_and_append", pod="mz-environmentd-0"}'
+        values: "0+600x30"
+      - series: 'mz_persist_compaction_failed{namespace="materialize-environment", pod="mz-clusterd-0"}'
+        values: "0+120x30"
+    promql_expr_test:
+      - expr: count by (metric) (ALERTS{alertname="persist-failures", alertstate="firing"})
+        eval_time: 25m
+        exp_samples:
+          - labels: '{metric="mz_persist_compaction_failed"}'
+            value: 1
+
   # --- envd-terminated: fires on a crash, and stops once it is over ---------
   #
   # `last_terminated_exitcode` persists for the life of the pod, so on its own
