@@ -208,13 +208,13 @@ alerts:
         # replica that restarted in the last 6h is left to the restart alerts
         # rather than reported as disconnected.
         #
-        # The rate reads the scraped samples themselves, not a `[5m:1m]`
-        # subquery over them. A subquery step re-reads the last sample for up
-        # to five minutes after it, so a replica whose scrapes stopped arriving
-        # (a gateway refusing them under memory pressure) looked flat, and a
-        # healthy replica fired. A replica with too few samples in the window
-        # now yields nothing, which is environmentd-not-scraped's and
-        # alloy-gateway-refusing-scrapes' to report rather than this rule's.
+        # The rate reads the scraped samples themselves rather than a subquery
+        # over them. A subquery step re-reads the last sample for up to five
+        # minutes after it, so a replica whose scrapes stop arriving (a gateway
+        # refusing them under memory pressure) would look flat. A replica with
+        # too few samples in the window yields nothing, which is
+        # environmentd-not-scraped's and alloy-gateway-refusing-scrapes' to
+        # report rather than this rule's.
         template: |
           max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
             rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", %%{excludeEnvironmentFilter}}[5m])

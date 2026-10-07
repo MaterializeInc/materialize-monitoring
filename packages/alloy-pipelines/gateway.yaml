@@ -1282,10 +1282,9 @@ blocks:
   # container's memory limit, and refusal starts at 85% (`limit - spike`), above
   # the 80% the chart gives `GOMEMLIMIT` (`AUTOMEMLIMIT`). The GC therefore works
   # to hold the heap under its limit before anything is refused, and the limiter
-  # acts only when the live heap has outgrown the pod. It used to refuse at
-  # about 60% (75 - 15), below `GOMEMLIMIT`: a pod whose live heap crossed that
-  # line refused every scrape indefinitely while the GC still had room, and a
-  # refused scrape is lost rather than retried.
+  # acts only when the live heap has outgrown the pod. A refused scrape is lost
+  # rather than retried, so refusing below `GOMEMLIMIT` would discard data the
+  # GC still had room to keep.
   - otelcol.processor.memory_limiter:
       label: outputMemoryLimiter
       check_interval: "5s"

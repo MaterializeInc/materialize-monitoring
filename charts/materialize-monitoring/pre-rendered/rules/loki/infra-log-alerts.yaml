@@ -21,7 +21,7 @@ groups:
       component: monitoring
       audience: platform
     annotations:
-      summary: An alloy-gateway pod is over its memory limiter's soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway's memory limit to stop it recurring.
+      summary: An alloy-gateway pod is over its memory limiter's soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway's memory limit, and any explicit `GOMEMLIMIT`, to stop it recurring.
       description: |-
         The gateways divide the scrape targets between them, and each pod
         passes what it scrapes through an OpenTelemetry memory limiter before
@@ -42,8 +42,10 @@ groups:
         after a forced collection sits at or above the soft limit, and its log
         says `Forced GC did not reclaim enough memory` on repeat. Restarting
         the pod clears the retained state and hands its targets to the other
-        gateways; the lasting fix is a larger memory limit for the gateway,
-        which `GOMEMLIMIT` and the limiter's thresholds follow.
+        gateways; the lasting fix is a larger memory limit for the gateway.
+        By default `GOMEMLIMIT` and the limiter's thresholds follow the limit.
+        An explicit `GOMEMLIMIT` in `alloy-gateway.alloy.extraEnv` does not,
+        and has to be raised with it.
 
         Matched in the logs rather than the metrics because the refusing pod
         usually scrapes its own `/metrics` too, and refuses that scrape like
