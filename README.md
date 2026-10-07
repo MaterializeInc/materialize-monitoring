@@ -13,11 +13,11 @@ The goal is a one-stop shop for teams who want one, without forcing this stack o
 
 **Pre-1.0 and under active development.**
 Interfaces are still moving: until 1.0 is stamped, breaking changes can ride a minor release — see
-[Choosing the next version](docs/content/reference/internal/releasing.md#choosing-the-next-version).
+[Choosing the next version](docs/content/reference/development/releasing.md#choosing-the-next-version).
 
 * [CHANGELOG.md](CHANGELOG.md) — the source of truth for what has shipped.
-* [Roadmap](docs/content/reference/internal/roadmap.md) — the source of truth for what is built, in flight, and planned next.
-* [Repository Layout](docs/content/reference/internal/repo-layout.md) — where things live in the repo.
+* [Roadmap](docs/content/reference/development/roadmap.md) — the source of truth for what is built, in flight, and planned next.
+* [Repository Layout](docs/content/reference/development/repo-layout.md) — where things live in the repo.
 
 ## Getting started
 
@@ -91,7 +91,7 @@ The same sources render the self-managed and GCP variants; a cloud (`v2_mz_`) re
 
 Troubleshooting, Logs & Events, Upgrades, Networking, the per-subsystem drilldowns, and native Datadog / Google Cloud
 Monitoring / Honeycomb dashboard sets are planned — see the
-[Dashboards workstream](docs/content/reference/internal/roadmap.md#dashboards) for status.
+[Dashboards workstream](docs/content/reference/development/roadmap.md#dashboards) for status.
 Until those land, non-Grafana backends are served by forwarding over OTLP rather than by native dashboards.
 
 ## Compatibility
@@ -106,7 +106,7 @@ matrix, including `materialize-terraform-self-managed` and GKE.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the quickstart, and
-[Internal Development](https://materializeinc.github.io/materialize-monitoring/reference/internal/contributing/) for the
+[Development](https://materializeinc.github.io/materialize-monitoring/reference/development/contributing/) for the
 full contributor guide.
 
 Bug reports and feature requests belong in [GitHub issues](https://github.com/MaterializeInc/materialize-monitoring/issues).

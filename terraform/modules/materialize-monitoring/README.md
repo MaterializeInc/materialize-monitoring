@@ -120,7 +120,7 @@ Under the chart's `split-namespace` profile Alertmanager runs in `alertmanager`,
 - **Two ports cannot require client certificates.** `internal_tls = "authenticate"` leaves Loki's HTTP port and Alertmanager's API port at verify-if-given, because the kubelet probes both and cannot present a certificate.
 - **No identity provider is configured for Grafana.** Reachable is not the same as protected; the admin password is the whole of the access control until one is set through `additional_values`.
 
-Each is tracked; see the [design doc](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260803-terraform-modules/).
+Each is tracked; see the [design doc](https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260803-terraform-modules/).
 
 ## Scheduling
 

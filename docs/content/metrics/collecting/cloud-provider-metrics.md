@@ -22,7 +22,7 @@ Persist, Loki and Thanos measure every request they make against the database an
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
 For the cluster's nodes it adds the provider's own view: host and instance health, node groups that cannot reach their desired size, compute quota,
 and on AKS the managed cluster autoscaler, which runs where nothing in the cluster can scrape it.
-The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
+The [external-dependency design](../../../reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and

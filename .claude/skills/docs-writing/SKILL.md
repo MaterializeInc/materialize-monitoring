@@ -121,4 +121,4 @@ A page is ready when:
 - [ ] Normative force is carried by RFC 2119 keywords, and the shortcode is invoked.
 - [ ] No `MUST` sits on a best-effort phrase.
 - [ ] `params.author` and `params.agent` are set, and unchanged unless this edit rewrote more than half the page.
-- [ ] Nothing on the page promises a surface the [policy of record](../../../docs/content/reference/internal/versioning.md) marks as no-promise.
+- [ ] Nothing on the page promises a surface the [policy of record](../../../docs/content/reference/development/versioning.md) marks as no-promise.

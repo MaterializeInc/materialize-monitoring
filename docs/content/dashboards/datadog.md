@@ -8,7 +8,7 @@ weight: 20
 > [!NOTE]
 >   **There is no Materialize dashboard set for Datadog yet.**
 >   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
->   See the [Dashboards workstream]({{< relref "../reference/internal/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
+>   See the [Dashboards workstream]({{< relref "../reference/development/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
 
 What exists today is the query material to build one yourself.
 
@@ -18,7 +18,7 @@ What exists today is the query material to build one yourself.
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
 >   Where Datadog's query language cannot express what the PromQL does, the translation is approximate rather than equivalent.
 
-The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations]({{< relref "../reference/internal/queries/datadog.md" >}}) (internal).
+The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations]({{< relref "../reference/development/queries/datadog.md" >}}).
 
 ## Getting the metrics there
 

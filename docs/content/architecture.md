@@ -95,7 +95,7 @@ It runs as a DaemonSet, is scraped by [`alloy-gateway`](#alloy-gateway-grafana-a
 
 Two things about it are worth knowing before you change anything:
 
-- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/internal/design-docs/20260803-terraform-modules/) for the full argument.
+- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/development/design-docs/20260803-terraform-modules/) for the full argument.
 - **Collectors are an allowlist, not the upstream defaults.** The chart passes `--collector.disable-defaults` and names each collector it wants, so a new default-on collector in a future node_exporter release cannot silently join the cardinality budget. The list, and the reasoning behind every inclusion and exclusion, is in the [values reference](../reference/helm/materialize-monitoring-values/) under Node Exporter.
 
 The pods run with `hostNetwork: true`, which the network collectors require — `netdev`, `netclass`, `netstat`, `sockstat` and `conntrack` all read namespaced files under `/proc/net`, and in a pod network namespace they would report the pod's traffic rather than the node's.

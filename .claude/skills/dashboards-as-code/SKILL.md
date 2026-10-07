@@ -8,7 +8,7 @@ description: |
 
 This skill is the entry point for the Materialize dashboards-as-code project.
 **Stable conventions live in the repo docsite** under
-[`docs/content/reference/internal/dashboard/`](../../../docs/content/reference/internal/dashboard/) — this file is
+[`docs/content/reference/development/dashboard/`](../../../docs/content/reference/development/dashboard/) — this file is
 intentionally slim and links into the docsite at heading-level granularity.
 The non-link content below is the **state snapshot**: what currently exists, what's in flight, and what's queued for
 cleanup.
@@ -26,45 +26,45 @@ The **docsite reference pages** target repo contributors (SRE, Field Engineering
 
 | Looking for… | Read |
 |---|---|
-| Grafana target versions, Dashboard v1/v2 schema state, SDK choices | [SDKs and Schemas](../../../docs/content/reference/internal/dashboard/sdks.md) |
-| Code structure, UID conventions, push process, `gcx dashboards update` vs ad-hoc v2 API | [Generating and Pushing Dashboards](../../../docs/content/reference/internal/dashboard/generating.md) |
-| Palettes, layouts, panel visualization, panel description voice, PromQL **and LogQL** conventions, time-range guards, Kubernetes-event shape, label families, metric quirks, recipes, shared-constants table | [Style Guidelines](../../../docs/content/reference/internal/dashboard/style-guidelines.md) |
-| How a panel gets its query and prose from the registry | [SDKs → Panels do not write PromQL](../../../docs/content/reference/internal/dashboard/sdks.md#panels-do-not-write-promql) |
-| The query registry itself: schema, engines, templating, consumers | [Queries](../../../docs/content/reference/internal/queries/overview.md) |
-| What each test suite covers, the frozen baseline, artifact freshness | [Testing](../../../docs/content/reference/internal/dashboard/testing.md) |
+| Grafana target versions, Dashboard v1/v2 schema state, SDK choices | [SDKs and Schemas](../../../docs/content/reference/development/dashboard/sdks.md) |
+| Code structure, UID conventions, push process, `gcx dashboards update` vs ad-hoc v2 API | [Generating and Pushing Dashboards](../../../docs/content/reference/development/dashboard/generating.md) |
+| Palettes, layouts, panel visualization, panel description voice, PromQL **and LogQL** conventions, time-range guards, Kubernetes-event shape, label families, metric quirks, recipes, shared-constants table | [Style Guidelines](../../../docs/content/reference/development/dashboard/style-guidelines.md) |
+| How a panel gets its query and prose from the registry | [SDKs → Panels do not write PromQL](../../../docs/content/reference/development/dashboard/sdks.md#panels-do-not-write-promql) |
+| The query registry itself: schema, engines, templating, consumers | [Queries](../../../docs/content/reference/development/queries/overview.md) |
+| What each test suite covers, the frozen baseline, artifact freshness | [Testing](../../../docs/content/reference/development/dashboard/testing.md) |
 
 Frequently needed deep links into the Style Guidelines:
 
-- [Tab-level theming](../../../docs/content/reference/internal/dashboard/style-guidelines.md#tab-level-theming)
-- [Multi-select variables in regex contexts](../../../docs/content/reference/internal/dashboard/style-guidelines.md#multi-select-variables-in-regex-contexts)
-- [Sparkline stats](../../../docs/content/reference/internal/dashboard/style-guidelines.md#sparkline-stats)
-- [Partitioned sparkline stats](../../../docs/content/reference/internal/dashboard/style-guidelines.md#partitioned-sparkline-stats)
-- [Writing panel descriptions](../../../docs/content/reference/internal/dashboard/style-guidelines.md#writing-panel-descriptions)
-- [Filtering by cluster / replica](../../../docs/content/reference/internal/dashboard/style-guidelines.md#filtering-by-cluster--replica)
-- [Materialize metric label families](../../../docs/content/reference/internal/dashboard/style-guidelines.md#materialize-metric-label-families)
-- [Logs dashboard conventions](../../../docs/content/reference/internal/dashboard/style-guidelines.md#logs-dashboard-conventions)
+- [Tab-level theming](../../../docs/content/reference/development/dashboard/style-guidelines.md#tab-level-theming)
+- [Multi-select variables in regex contexts](../../../docs/content/reference/development/dashboard/style-guidelines.md#multi-select-variables-in-regex-contexts)
+- [Sparkline stats](../../../docs/content/reference/development/dashboard/style-guidelines.md#sparkline-stats)
+- [Partitioned sparkline stats](../../../docs/content/reference/development/dashboard/style-guidelines.md#partitioned-sparkline-stats)
+- [Writing panel descriptions](../../../docs/content/reference/development/dashboard/style-guidelines.md#writing-panel-descriptions)
+- [Filtering by cluster / replica](../../../docs/content/reference/development/dashboard/style-guidelines.md#filtering-by-cluster--replica)
+- [Materialize metric label families](../../../docs/content/reference/development/dashboard/style-guidelines.md#materialize-metric-label-families)
+- [Logs dashboard conventions](../../../docs/content/reference/development/dashboard/style-guidelines.md#logs-dashboard-conventions)
   — Loki-discovered pickers, `all_value` rules, the non-empty-matcher anchor, and how exclusion switches are wired
-- [Time-range guards on expensive rows](../../../docs/content/reference/internal/dashboard/style-guidelines.md#time-range-guards-on-expensive-rows)
+- [Time-range guards on expensive rows](../../../docs/content/reference/development/dashboard/style-guidelines.md#time-range-guards-on-expensive-rows)
   — the paired show/hide rows that keep volume panels off a month-wide range
-- [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable)
+- [Rendering a row on a discovered variable](../../../docs/content/reference/development/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable)
   — how `infra-net` shows a cluster its own CNI, and why the negated fallback row is not optional
-- [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines)
+- [One picker across two engines](../../../docs/content/reference/development/dashboard/style-guidelines.md#one-picker-across-two-engines)
   — when a metrics filter and a log filter may be the same variable, and the two conditions that have to hold
-- [Kubernetes events in Loki](../../../docs/content/reference/internal/dashboard/style-guidelines.md#kubernetes-events-in-loki)
+- [Kubernetes events in Loki](../../../docs/content/reference/development/dashboard/style-guidelines.md#kubernetes-events-in-loki)
   — labels vs structured metadata, and why an event's namespace is the involved object's
-- [Deployment generations (blue/green)](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-generations-bluegreen)
+- [Deployment generations (blue/green)](../../../docs/content/reference/development/dashboard/style-guidelines.md#deployment-generations-bluegreen)
   — how a generation reaches a query at all, and why the event filter needs its `or` arm
-- [orchestratord reconciliation metrics](../../../docs/content/reference/internal/dashboard/style-guidelines.md#orchestratord-reconciliation-metrics)
+- [orchestratord reconciliation metrics](../../../docs/content/reference/development/dashboard/style-guidelines.md#orchestratord-reconciliation-metrics)
   — the outcome vocabulary, and why `abandoned` is not a failure signal
-- [Known metric quirks and gotchas](../../../docs/content/reference/internal/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
-- [PromQL recipes](../../../docs/content/reference/internal/dashboard/style-guidelines.md#promql-recipes)
-- [Shared constants and helpers](../../../docs/content/reference/internal/dashboard/style-guidelines.md#shared-constants-and-helpers)
+- [Known metric quirks and gotchas](../../../docs/content/reference/development/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
+- [PromQL recipes](../../../docs/content/reference/development/dashboard/style-guidelines.md#promql-recipes)
+- [Shared constants and helpers](../../../docs/content/reference/development/dashboard/style-guidelines.md#shared-constants-and-helpers)
 
 And into Generating:
 
-- [PUT body shape](../../../docs/content/reference/internal/dashboard/generating.md#put-body-shape) — required
+- [PUT body shape](../../../docs/content/reference/development/dashboard/generating.md#put-body-shape) — required
   Kubernetes-style envelope when pushing v2 dashboards via `grafana_api_request`
-- [Service account permissions](../../../docs/content/reference/internal/dashboard/generating.md#service-account-permissions) — decoding 403s
+- [Service account permissions](../../../docs/content/reference/development/dashboard/generating.md#service-account-permissions) — decoding 403s
 
 ## Schema reference files
 
@@ -88,7 +88,7 @@ The v2 and v2beta1 documents track Grafana `v13.0.2`; v1 tracks Grafana `v11.6.0
 Re-vendor with `bin/fetch-grafana-schemas.sh`; Renovate maintains the tag pinned in that script, and `PROVENANCE.md` records the current pin.
 
 Rust types are generated from these schemas into `packages/mzmon-lib/src/grafana/generated/` by `bin/gen-grafana-models.sh`.
-See [Rust models](../../../docs/content/reference/internal/dashboard/sdks.md#rust-models) for why the layout is one
+See [Rust models](../../../docs/content/reference/development/dashboard/sdks.md#rust-models) for why the layout is one
 module per document, and for the schema quirks that leak into any code built on them.
 
 ---
@@ -127,7 +127,7 @@ The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-clou
 `dashboards.selected`. Folders, datasources and the `Grafana` instance stayed in the umbrella chart, so a folder name
 resolves through an explicit `grafana.folderUids` map the dashboards chart cannot derive.
 Why, and what it costs: [the size ceiling on dashboard
-delivery](../../../docs/content/reference/internal/dashboard/generating.md#the-size-ceiling-on-dashboard-delivery).
+delivery](../../../docs/content/reference/development/dashboard/generating.md#the-size-ceiling-on-dashboard-delivery).
 
 The chart is **not** a component of its own — it belongs to the existing `dashboards` component, so
 `packages/dashboards/`, `packages/queries/` and the chart bump together.
@@ -141,7 +141,7 @@ in `env_upgrade/mod.rs` is `v26.41.0` and must stay in step with the Materialize
 `docs/content/reference/compatibility.md`. Narrow `dashboards.selected` to `["env-top"]` to hold it back.
 
 The live UID diverged from the codified one before `mz-mon-env-top` became authoritative — see
-[UID selection and behavior](../../../docs/content/reference/internal/dashboard/generating.md#uid-selection-and-behavior).
+[UID selection and behavior](../../../docs/content/reference/development/dashboard/generating.md#uid-selection-and-behavior).
 
 ## `env-top` tabs
 
@@ -346,7 +346,7 @@ usually what the reader came for. The journal is where the explanation is once a
 
 The identifier join this dashboard rests on — and the vetting status of the node query families — is a convention
 rather than state, so it lives in the
-[style guide](../../../docs/content/reference/internal/dashboard/style-guidelines.md#node-identifiers-across-three-families).
+[style guide](../../../docs/content/reference/development/dashboard/style-guidelines.md#node-identifiers-across-three-families).
 
 ## `infra-net` tabs
 
@@ -365,7 +365,7 @@ Three things about it are not re-derivable by reading the modules:
 
 - **The CNI and Security vendor rows render on a discovered variable.** The mechanism, and the rules for using it
   again, are in the style guide under
-  [Rendering a row on a discovered variable](../../../docs/content/reference/internal/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable).
+  [Rendering a row on a discovered variable](../../../docs/content/reference/development/dashboard/style-guidelines.md#rendering-a-row-on-a-discovered-variable).
 - **`$nodeList` holds node-exporter addresses, not node names**, which is what buys `node-health.yaml` and
   `node-debug.yaml` unchanged across the fleet. Nothing here may scope a `node` label with it; a test asserts that.
 - **Host-network pods are excluded from every cAdvisor rollup**, via `%%{excludeHostNetworkPods}`. Left in, a
@@ -395,7 +395,7 @@ Three things about it are not re-derivable by reading the modules:
   text — a test enforces the second.
 - **`$lokiComponent` scopes both engines**, matched against `container` on a metric and `component` on a log line. The
   rule for when that is allowed is in the style guide under
-  [One picker across two engines](../../../docs/content/reference/internal/dashboard/style-guidelines.md#one-picker-across-two-engines).
+  [One picker across two engines](../../../docs/content/reference/development/dashboard/style-guidelines.md#one-picker-across-two-engines).
 - **The upstream Loki mixin dashboards were evaluated and rejected**, so this does not need re-litigating: they read
   `cluster_job_route:*` recording rules that nothing in this stack evaluates (the Thanos Ruler runs, but no rule set
   records them, and Loki's ruler is LogQL), and they scope on a `cluster` variable where that label is Loki's own ring
@@ -578,13 +578,13 @@ and `materialize_cloud_organization_name`, with SQL-derived metrics converged be
 The roadmap records it as shipped; every rule that came out of it — the wallclock-lag sentinel behind Currently
 Hydrating, duplicate-job dedup on the shared `:6878` endpoint, the datasource `timeInterval` that empties `rate()`
 panels, and the prefix rules themselves — lives in the
-[style guide](../../../docs/content/reference/internal/dashboard/style-guidelines.md), which is where to look rather
+[style guide](../../../docs/content/reference/development/dashboard/style-guidelines.md), which is where to look rather
 than here.
 
 Local push: `gcx` context **`local-mzmon`** → `http://localhost:13000`.
 Render with `mz-monitoring-build gen-dashboards --format json`, then carry the live `resourceVersion` + folder
 annotation forward on the PUT — see
-[PUT body shape](../../../docs/content/reference/internal/dashboard/generating.md#put-body-shape).
+[PUT body shape](../../../docs/content/reference/development/dashboard/generating.md#put-body-shape).
 The Grafana MCP is wired to the same local instance for query verification.
 
 ## Reference environments
@@ -599,7 +599,7 @@ When testing against a *cloud* shared env, scope queries to one environment so y
 self-managed, and neither does the `v2_mz_*` metric family).
 Always verify which labels/metrics actually exist on the instance you're querying with `list_prometheus_label_names` /
 `list_prometheus_metric_names` before assuming — see
-[Deployment target: self-managed vs cloud](../../../docs/content/reference/internal/dashboard/style-guidelines.md#deployment-target-self-managed-vs-cloud)
+[Deployment target: self-managed vs cloud](../../../docs/content/reference/development/dashboard/style-guidelines.md#deployment-target-self-managed-vs-cloud)
 .
 
 ## Cleanup / refactor candidates
