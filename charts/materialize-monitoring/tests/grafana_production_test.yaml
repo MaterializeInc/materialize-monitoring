@@ -567,16 +567,35 @@ tests:
       - notMatchRegexRaw:
           pattern: "readOnlyRootFilesystem is not true"
 
-  - it: errors when a read-only Grafana has nothing mounted at /tmp
+  # The API server rejects the duplicate only at apply time; unit tests and
+  # `helm template` render it without complaint.
+  - it: mounts exactly one /tmp, the subchart's
+    template: ../charts/grafana/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+          any: true
+          count: 1
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /tmp
+          any: true
+          count: 1
+
+  - it: errors when extraEmptyDirMounts adds a second /tmp
     set:
-      grafana.extraEmptyDirMounts: null
+      grafana.extraEmptyDirMounts:
+        - name: tmp
+          mountPath: /tmp
     asserts:
       - failedTemplate:
-          errorPattern: "nothing is mounted at /tmp"
+          errorPattern: "already mounts an emptyDir named tmp at /tmp"
 
-  - it: accepts /tmp from extraVolumeMounts instead
+  - it: errors when extraVolumeMounts adds a second /tmp
     set:
-      grafana.extraEmptyDirMounts: null
       grafana.extraVolumes:
         - name: scratch
           emptyDir:
@@ -584,6 +603,27 @@ tests:
       grafana.extraVolumeMounts:
         - name: scratch
           mountPath: /tmp/
+    asserts:
+      - failedTemplate:
+          errorPattern: "already mounts an emptyDir named tmp at /tmp"
+
+  - it: errors when extraVolumes adds a second volume named tmp
+    set:
+      grafana.extraVolumes:
+        - name: tmp
+          emptyDir: {}
+      grafana.extraVolumeMounts:
+        - name: tmp
+          mountPath: /scratch
+    asserts:
+      - failedTemplate:
+          errorPattern: "already mounts an emptyDir named tmp at /tmp"
+
+  - it: accepts a mount beneath /tmp
+    set:
+      grafana.extraEmptyDirMounts:
+        - name: scratch
+          mountPath: /tmp/scratch
     template: templates/validate.yaml
     asserts:
       - notFailedTemplate: {}
@@ -630,8 +670,6 @@ tests:
     set:
       grafana.env.GF_AWS_PROFILES: default
       grafana.extraEmptyDirMounts:
-        - name: tmp
-          mountPath: /tmp
         - name: aws
           mountPath: /usr/share/grafana/.aws
     template: templates/validate.yaml
