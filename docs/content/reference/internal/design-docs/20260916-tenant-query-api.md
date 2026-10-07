@@ -5,7 +5,7 @@ weight: 20260916
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-16
-lastmod: 2026-09-16
+lastmod: 2026-10-04
 # custom parameters
 params:
   author: Heather Lapointe
@@ -62,10 +62,21 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 
 ## Technical BLUF
 
-- **For logs, tenancy exists and authentication does not. For metrics, neither exists.** Loki runs `auth_enabled: true` and takes the tenant from `X-Scope-OrgID`; Thanos Query has no tenancy at all and no notion of a caller. The two halves need different work, and a design that treats them as one surface will get the metrics half wrong.
+- **For logs, tenancy exists and authentication does not. For metrics, Thanos offers single-label enforcement and no authentication.**
+  Loki runs `auth_enabled: true` and takes the tenant from `X-Scope-OrgID`.
+  Thanos Query can inject one tenant label taken from a header, which is the `prom-label-proxy` construction
+  and cannot express the per-family classes below.
+  The two halves need different work, and a design that treats them as one surface will get the metrics half wrong.
 - **Identity is derived from a verified JWT, never asserted by the client.** This is the same construction the [BYOC ingress](../20260813-byoc-observability/#identity-is-assigned-by-the-load-balancer-never-asserted-by-the-client) uses for writes, with a token where that has a certificate: strip every tenant-shaped header the client sent, set them from the verified claim, and reject the request if the claim is absent.
 - **Verification is JWKS-based, so the proxy holds no per-tenant state.** Adding a tenant is issuing a token, not configuring the proxy — the property that makes the BYOC load balancer's verifier-CA model scale, restated for bearer tokens.
 - **Label injection is not a tenant boundary on its own.** A large share of the series in Thanos carry no environment label — node-exporter, kube-state-metrics, cAdvisor, and orchestratord, which reconciles every environment in the cluster. Injecting a matcher makes those queries empty; omitting it leaks across environments. The resolution is a generated per-family tenancy class, not a cleverer rewriter.
+- **The proxy is a Rust service built in this workspace, with `prom-label-proxy` as its oracle.**
+  For a selector over an `environment`-class family, its rewrite is identical to `prom-label-proxy`'s, and a differential test holds it there.
+  The tenancy classes are a superset that `prom-label-proxy` has no hook for.
+- **In Cloud, a Frontegg access token cannot be the read token.**
+  Frontegg sets `aud` to the workspace ID on every token it issues, so an audience check cannot tell a read token from any other session token.
+  Keeping the `aud` requirement means Cloud needs an exchange that mints an audience-scoped read token;
+  see [Frontegg tokens are not read tokens](#frontegg-tokens-are-not-read-tokens).
 - **The same mechanism resolves differently in self-managed and Cloud, and that is not a flaw to hide.** In self-managed the customer *is* the cluster operator, so cluster-scoped families are theirs to read. In Cloud they are not. One proxy, one token format, one policy input, two policy values.
 - **Mandating the interface is not mandating Thanos.** What becomes required is a PromQL endpoint and a LogQL endpoint carrying the documented label contract, reachable through the proxy. Thanos and Loki are the bundled, supported, default implementation of that requirement; a customer already running Mimir or Grafana Cloud points the proxy at theirs.
 - **This replaces the planned customer-scraped Prometheus endpoint.** A scrape endpoint delivers current samples to whoever can reach inward and keeps no history across the gap. A federated or remote-read endpoint on the proxy is strictly smaller than the query API and survives as an option for customers with a dedicated Prometheus.
@@ -94,8 +105,8 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | LogQL endpoint | ✅ Shipped, unauthenticated | `loki-query-frontend.<ns>.svc:3100`, `ClusterIP` |
 | Loki multi-tenancy | ✅ Shipped | `auth_enabled: true`; tenant from `X-Scope-OrgID`, written per `pipeline.logging.tenancy.tenantMap` |
 | Loki per-tenant limits | ✅ Shipped | `loki.limits_config`, sized for a medium install |
-| Thanos multi-tenancy | ❌ **Absent** | Query has no tenant concept; Receive's tenancy is a write-path feature and does not reach the read path |
-| Thanos read limits | ⚠️ Global only | `--store.limits.request-series` / `--store.limits.request-samples` on Store Gateway, not per caller |
+| Thanos read-path tenancy | ⚠️ Single label, unused | Query injects one tenant label from a header under `--query.enforce-tenancy` (Thanos v0.34 and later). This chart does not enable it. See [Logs already have tenancy](#logs-already-have-tenancy-metrics-have-one-label) for why it does not fit |
+| Thanos read limits | ⚠️ Global only | `--store.limits.request-series` / `--store.limits.request-samples` on Store Gateway, not per caller. Query Frontend carries per-tenant override code with no per-tenant source wired |
 | `thanos.queryFrontend` | ⚠️ Off by default | Available; the Grafana datasource points at `thanos-query` directly, so enabling it today caches nothing |
 | Environment label on metrics | ✅ Shipped | `materialize_cloud_organization_name`, the label every `env-*` dashboard scopes on |
 | Environment label on logs | ✅ Shipped | `organization_name`, relabelled by the agent from the pod label; structured metadata rather than a stream label |
@@ -161,7 +172,7 @@ flowchart TB
   console -->|"Bearer JWT"| proxy
   custgraf -->|"Bearer JWT"| proxy
   custprom -->|"Bearer JWT"| proxy
-  jwks -.->|"cached, refreshed on unknown kid"| proxy
+  jwks -.->|"cached; refreshed on a timer and on an unknown kid, with a cooldown"| proxy
   proxy --> tqf --> tq --> store
   proxy --> lqf --> store
   graf --> tq
@@ -223,7 +234,7 @@ The deployments differ in who can mint a token and agree on how one is checked.
 
 | | **Cloud** | **Self-managed** |
 |---|---|---|
-| Issuer | The console identity provider already authenticating the session | An in-cluster issuer: the operator or the monitoring release, holding a signing key and publishing a JWKS endpoint. A customer's own OIDC provider is the alternative |
+| Issuer | An exchange endpoint that accepts the console's Frontegg session and mints the read token. See [Frontegg tokens are not read tokens](#frontegg-tokens-are-not-read-tokens) | An in-cluster issuer: the operator or the monitoring release, holding a signing key and publishing a JWKS endpoint. A customer's own OIDC provider is the alternative |
 | How Console gets a token | Exchanges the browser session for a short-lived, audience-scoped observability token | Same exchange, against the in-cluster issuer |
 | How a customer's Grafana gets one | Issued in Console, or forwarded from the user's own OIDC session | Issued in Console, or minted from the customer's IdP with a mapped claim |
 | What the proxy is configured with | Issuer URL, audience, JWKS URL | Identical |
@@ -232,6 +243,39 @@ The proxy's verification is the same code in both: fetch the JWKS, check `alg` a
 **Asymmetric signatures only.** A shared secret would mean the proxy holds material that can mint tokens, which converts a read-path compromise into a fleet-wide forgery.
 
 Multiple issuers must be configurable, because a self-managed customer federating their own IdP and the shipped in-cluster issuer can both be live during a migration.
+
+### Verifying a token
+
+The proxy verifies with the `jsonwebtoken` crate on the `aws-lc-rs` backend, the same crate and backend Materialize and Materialize Cloud use.
+Several checks the contract requires are off by default in that crate, or absent from it.
+
+| Check | Requirement | Note |
+|---|---|---|
+| Algorithm | Taken from the issuer's configuration, never from the token header | The crate also refuses a key used outside its algorithm family, which blocks an HMAC-with-the-public-key forgery. The allowlist is still explicit |
+| Issuer selection | The unverified `iss` selects which issuer's keys to try | The signature check and the issuer check then bind the token to that issuer. Selection by `kid` alone fails when two issuers reuse a key ID |
+| `nbf` | Validated | Off by default in the crate |
+| Clock skew | Bounded, and configured | The crate's default leeway is 60 seconds |
+| Required claims | `exp`, `nbf`, `iss`, `aud`, `sub` through the crate's required-claim set | The crate's required-claim set understands only those five names |
+| `jti`, tenant, scope | Non-optional fields in the claims type, so an absent claim fails deserialization | The crate cannot require them |
+| Maximum lifetime | `exp - nbf` checked against the configured maximum | The crate has no such check |
+
+**The key set is a cache with a refresh policy.**
+
+| Event | Behaviour |
+|---|---|
+| Startup | Discovery resolves the key-set URL once. Discovery is not repeated per request |
+| Timer | The key set is refetched on an interval that honours `Cache-Control`, with a floor and a ceiling |
+| Unknown `kid` | One refetch, at most once per cooldown per issuer, with one fetch in flight. Other requests wait on it or are rejected |
+| Failed refetch | The previous keys stay in service. A failed fetch never empties the cache |
+
+The unknown-`kid` row is the one prior art gets wrong.
+Materialize's OIDC authenticator refetches discovery and the key set on every request that names an unknown `kid`, with no cooldown.
+Behind a SQL login that is harmless.
+On a public HTTP endpoint every request carrying a random `kid` costs two outbound calls to the identity provider.
+
+**A rejected token gets a 401 with `WWW-Authenticate: Bearer error="invalid_token"`, and the response does not say which check failed.**
+The proxy logs the reason with `sub` and `jti`, and never logs the token.
+It strips `Authorization` before forwarding, along with the tenant-shaped headers.
 
 ### The claim contract
 
@@ -248,6 +292,29 @@ Multiple issuers must be configurable, because a self-managed customer federatin
 **The tenant claim's name and shape is a decision, not a detail**, and it is the same decision the BYOC doc leaves open for the certificate subject.
 The two should agree: whatever identifies an environment on the write path should identify it on the read path, so that one identity vocabulary covers both directions.
 Left as an [open question](#open-questions) for the same reason it is open there — it depends on control-plane identity outside this repo.
+
+### Frontegg tokens are not read tokens
+
+Materialize Cloud authenticates users and service accounts with Frontegg.
+Frontegg sets `aud` on every token it issues to the ID of the issuing workspace.
+Cloud's own API extractor (internal) and Materialize's `mz-frontegg-auth` both skip the audience check for that reason.
+Neither extractor reads a `jti`, and Frontegg's grant is its `permissions` list rather than a signal-and-class scope.
+
+So a Frontegg access token fails the claim contract on `aud` and on the scope claim.
+Whether Frontegg tokens carry a usable `jti` is unconfirmed.
+Accepting one would make every Console session token a telemetry read credential,
+which the [audience check](#what-a-token-actually-means) exists to prevent.
+
+| Option | How | Cost |
+|---|---|---|
+| **Mint a read token in an exchange** | An endpoint authenticates the Frontegg session as Cloud's APIs already do, and returns a short-lived JWT with this proxy's `aud`, a scope, and a `jti`. It signs with an asymmetric key, such as one held in KMS, and publishes the public half as a JWKS | An issuer to build and operate. The proxy keeps one verification path across Cloud and self-managed |
+| **Accept Frontegg tokens directly** | Tenant from Frontegg's `tenant_id`, grant from `permissions` | No issuance work, and matches how Cloud's APIs authenticate today. Drops the audience check and the signal-and-class scope, so the claim contract changes |
+| **Exchange a Materialize app password**, Cloud only | A customer's Grafana sends an app password over Basic auth. The proxy exchanges it through `mz-frontegg-auth`, which keeps the session refreshed | Deleting the app password revokes access within one refresh, without a `jti` denylist. Adds a second authentication path to the proxy and puts Frontegg on the read path |
+
+**Recommendation: mint a read token in an exchange.**
+It is the only option that keeps the claim contract whole, and it is the issuer shape self-managed needs anyway.
+The app-password exchange is worth evaluating for [customer Grafana](#a-customers-grafana-as-a-datasource) in Cloud,
+where it would replace the datasource token and its denylist.
 
 ### What a token actually means
 
@@ -282,7 +349,7 @@ This is the same trade the BYOC doc makes for [certificate lifetime](../20260813
 
 ## Tenancy enforcement
 
-### Logs already have tenancy; metrics have none
+### Logs already have tenancy; metrics have one label
 
 The two backends are at different starting points, and conflating them is the main risk in this section.
 
@@ -292,9 +359,22 @@ That is a small, complete answer — **when the pipeline writes one tenant per e
 Today `tenantMap` defaults to `static`, so an entire self-managed install writes to one tenant, which is correct there (one install, one customer) and insufficient in Cloud.
 Cloud's collection must run `byEnvironment`, and the chart already warns that a non-static map spreads logs across tenants a single datasource cannot read — a warning that becomes the proxy's requirement rather than a caveat.
 
-**Thanos.** There is no tenancy to enforce.
-Receive's tenant handling is a write-path feature that partitions ingestion; Query fans out across everything the Store Gateway can see and has no caller concept.
-So the metrics half is built rather than configured, and it is built out of label enforcement.
+**Thanos.** Query has had read-path tenancy since v0.34, and it is one label wide.
+With `--query.enforce-tenancy`, Query reads the tenant from `--query.tenant-header`
+and injects `--query.tenant-label-name` into every selector and every `match[]`.
+The enforcer is `prom-label-proxy`'s, so this is the construction
+the [next section](#label-injection-is-not-a-tenant-boundary) shows is insufficient, moved inside the querier.
+
+| Property of Query's enforcement | Consequence here |
+|---|---|
+| Applies the label to every family | Empties every `cluster`-class query, and offers no per-family exemption |
+| A request with no tenant header is enforced as `default-tenant` | A missing header returns empty results rather than an error. The bundled Grafana sends no header, so enabling enforcement on the shared Query breaks it |
+| An empty custom header falls back to the `THANOS-TENANT` header | Both headers are tenant-shaped, and the proxy strips both |
+| `/api/v1/rules` is not covered ([thanos#8140](https://github.com/thanos-io/thanos/issues/8140)) | Rule definitions for every tenant are readable through Query |
+| Authenticates nothing | The tenant is whatever the header says |
+
+**Decision: Query-side enforcement stays off, and the metrics half is built in the proxy.**
+The Query flags remain a candidate second layer behind the proxy if `cluster`-class reads move to a Query instance of their own.
 
 ### Label injection is not a tenant boundary
 
@@ -341,6 +421,7 @@ The following are the cases that break a naive implementation, and each needs a 
 | `label_replace` / `label_join` | Can synthesize a value for the enforced label. Enforcement at the selector still holds, because the source series were already filtered — but a rewriter that enforces on the *output* labels is wrong |
 | `absent()` / `absent_over_time()` | Leaks existence rather than values. Narrow, real, and worth deciding explicitly rather than by omission |
 | Subqueries, `@` modifiers, `offset` | Nested selectors are still selectors; a rewriter that only walks the top level misses them |
+| Selectors that do not name exactly one family — `{job="x"}`, `{__name__=~"a_.*\|b_.*"}` | Classification is per family, and these name none or several. Decide explicitly; the fail-closed answer is `denied` unless every family the name matcher can reach is `environment`-class |
 | `/api/v1/series`, `/api/v1/labels`, `/api/v1/label/<name>/values` | Take `match[]` rather than `query`. Unenforced, they enumerate every environment's label values — a directory of the fleet |
 | `/api/v1/metadata`, `/api/v1/targets`, `/api/v1/status/*` | Carry no series and still disclose. Default to denial and allowlist what Console needs |
 | Recording rules whose output drops the enforced label | A pre-computed series with no environment label is in the `cluster` class by the rule above, which is the right answer and needs to be checked when a rule is added |
@@ -376,7 +457,8 @@ The two class sets are analogous rather than identical, and neither is new here.
 
 So a grant is a set of signal-and-class pairs, and the token's scope claim lists them.
 
-**The log half is nearly free and the metric half is not**, which is the reverse of the asymmetry in [tenancy enforcement](#logs-already-have-tenancy-metrics-have-none).
+**The log half is nearly free and the metric half is not**,
+which is the reverse of the asymmetry in [tenancy enforcement](#logs-already-have-tenancy-metrics-have-one-label).
 Log classes map to Loki tenants, so enforcing a log-class grant is deciding which `X-Scope-OrgID` values the proxy will set for a given token — a lookup, not a rewrite.
 Metric classes have no such backing, which is why they need the generated classifier.
 
@@ -469,20 +551,61 @@ This is the same defect as `GATEWAY_UNFILTERED_PROM_METRICS`, which the roadmap 
 Step 4 before step 5 is not stylistic.
 A rewriter that runs before headers are stripped can be made to produce a correct query against the wrong tenant.
 
-### Build or compose
+**The value that is authorized MUST be the value that is enforced.**
+A proxy that authorizes a client-supplied tenant and passes the request on for enforcement reads that tenant twice.
+Two reads can disagree.
+Go's `FormValue`, for example, prefers a POST body over the URL query string,
+so a check on the query string and an enforcement on the form can see different tenants.
+Step 3 takes the tenant from the verified claim, once, and hands that value to the rewriter.
+No client-supplied value reaches the rewriter at all.
 
-Two shapes, and the cheaper one is not obviously worse.
+### Build, with `prom-label-proxy` as the oracle
 
-**Compose.** An Envoy `jwt_authn` filter — mature, JWKS-aware, handles `kid` rotation and caching — injecting the verified claim as a header, in front of `prom-label-proxy` for metrics and the Loki query frontend for logs.
-Each component does what it was built for, and the JWT half is code nobody here has to write or audit.
-The limits are real: `prom-label-proxy` enforces a single label and knows nothing about per-family classes, per-tenant read limits live in neither component, and the LogQL half has no equivalent.
+**Decision: the proxy is one Rust service in this workspace, and `prom-label-proxy` is the behavioural reference for its metrics half.**
+It implements verification, classification, rewriting, and limits in one place.
 
-**Build.** One Rust service in this workspace, using an existing PromQL parser and LogQL parser, implementing verification, classification, rewriting, and limits in one place.
-It is the only shape that implements the whole policy, it matches the rest of the repo, and it is the shape where a subtle rewriting bug is ours.
+The composed alternative put an Envoy `jwt_authn` filter in front of `prom-label-proxy`.
+It is not built, because it cannot express the family classification.
+`prom-label-proxy`'s enforcer injects the matcher into every selector it walks and offers no per-selector hook.
+Its authentication hook, the `ExtractLabeler` interface, supplies label values and nothing else.
+A composed first cut would have shipped a different policy from the final one.
 
-**Recommendation: compose for a first cut behind a feature flag, build for what ships.**
-The composed shape is a fast way to prove the authentication story end to end and to get Console building against a real endpoint.
-It cannot express the family classification, which is the part of this design most likely to be wrong, so it should not be the thing that reaches a public endpoint.
+**Compatibility is defined per selector, and it is narrow.**
+
+| Selector over | Proxy behaviour | Relation to `prom-label-proxy` |
+|---|---|---|
+| An `environment`-class family | Matcher injected; a caller's matcher on the label is replaced | Identical rewrite |
+| A `cluster`-class family the grant admits | Left unmodified | Superset; no equivalent |
+| A `cluster`-class family the grant does not admit, or a `denied` family | Request rejected | Superset; no equivalent |
+
+The endpoint set and per-endpoint semantics follow `prom-label-proxy` as of v0.15.
+
+| Endpoint | Treatment |
+|---|---|
+| `/api/v1/query`, `/api/v1/query_range`, `/api/v1/query_exemplars` | Every selector in the expression is rewritten |
+| `/api/v1/series`, `/federate` | Every `match[]` is rewritten |
+| `/api/v1/labels`, `/api/v1/label/<name>/values` | Every `match[]` is rewritten, and a request with no `match[]` gets one carrying only the tenant matcher |
+| `/api/v1/rules`, `/api/v1/alerts` | Forwarded, and the response is filtered to entries carrying the tenant label |
+| Anything else | Not proxied |
+
+Errors use the Prometheus API's JSON error shape, which Grafana renders in place.
+
+**`prom-label-proxy` is the oracle in a differential test.**
+The registry corpus from [Testing](#testing) is run through both, restricted to `environment`-class expressions,
+and the parsed outputs MUST be identical.
+`prom-label-proxy`'s enforcer and route tests are ported as unit tests.
+An oracle also permits differential fuzzing over generated PromQL, which reaches expressions the registry does not contain.
+
+**The proxy forwards its own serialized expression, never the client's string.**
+The workspace parses PromQL with `promql-parser`, which `mzmon-lib` already depends on, and Thanos parses with Prometheus's parser.
+Forwarding the serialized AST means Thanos executes what the proxy enforced.
+A disagreement between the two parsers can then change what a query means, and cannot change what it may read.
+A construct `promql-parser` cannot parse is rejected.
+That is fail-closed, and it is a compatibility gap to track against the PromQL feature flags `prom-label-proxy` exposes.
+
+**The LogQL half has no reference implementation.**
+Loki's `X-Scope-OrgID` carries most of its enforcement, and the selector rewriting that remains follows [The LogQL traps](#the-logql-traps).
+It is tested against Loki directly rather than against an oracle.
 
 ### Read limits and the query frontend
 
@@ -492,6 +615,9 @@ Thanos's existing protections (`--store.limits.request-series`, `--store.limits.
 Three requirements follow.
 
 - **Per-tenant limits at the proxy**, because that is the only component that knows who is asking.
+  Thanos Query Frontend carries Cortex's per-tenant override code and wires no per-tenant source into it.
+  Wiring one upstream would let the frontend hold per-tenant range and parallelism limits, keyed on the tenant header the proxy sets.
+  That is a candidate upstream contribution, not a dependency of this design.
 - **`thanos.queryFrontend` becomes required for the read path**, for query splitting and result caching, and the proxy points at it. This settles the [open question the Terraform doc raises](../20260803-terraform-modules/#open-questions) about enabling the frontend without routing through it, in the narrow case of the proxy — the bundled Grafana's datasource is a separate decision.
 - **A maximum range and minimum step**, so that a year-wide query at a one-second step is refused rather than attempted.
 
@@ -518,6 +644,7 @@ Three ways a customer's Grafana authenticates, in the order they should be prefe
 | **Forward OAuth identity** | The customer's Grafana authenticates users against the same issuer and forwards the user's access token to the datasource | Any deployment where Grafana and Console share an identity provider | Per-user, short-lived, no stored secret — the best posture, and it constrains the customer's Grafana setup |
 | **Service token in a custom header** | A token issued in Console, pasted into `secureJsonData` as an `Authorization: Bearer` header | Everything else, including every Grafana that is not OIDC-backed | A medium-lived bearer credential living in Grafana's database. Needs issuance, listing, and revocation in Console |
 | **OAuth2 client credentials** | Where the Grafana version and datasource support it | Machine-to-machine without a stored long-lived token | Support varies by datasource and version; not a plan that works everywhere |
+| **Materialize app password over Basic auth** | The proxy exchanges the app password with Frontegg. See [Frontegg tokens are not read tokens](#frontegg-tokens-are-not-read-tokens) | Cloud only, where customers already hold app passwords for SQL | Revocation is deleting the app password. A second authentication path in the proxy, and Frontegg on the read path. Under evaluation rather than recommended |
 
 **Recommendation: ship the service token, document the forwarded identity as the preferred posture.**
 The service token is the only option that works against an arbitrary Grafana, which is what "a customer attaches their Grafana" actually means.
@@ -620,7 +747,7 @@ The shared part is the valuable part, and it is the part that costs nothing to s
 | | Self-managed | Cloud | BYOC control plane |
 |---|---|---|---|
 | Proxy | A `Deployment` in the monitoring chart, off by default | A fleet in front of the regional backends, behind the existing edge | The same component, pointed at our backends |
-| Issuer | In-cluster, published by the operator or the release; or the customer's own OIDC provider | The console identity provider | The console identity provider |
+| Issuer | In-cluster, published by the operator or the release; or the customer's own OIDC provider | A read-token exchange behind the console's Frontegg session | A read-token exchange behind the console's Frontegg session |
 | Loki tenancy | `static` is sufficient — one install, one customer | `byEnvironment` is **required** | Per the [BYOC open question](../20260813-byoc-observability/#open-questions) on customer-versus-environment tenancy |
 | `cluster`-class families | Readable — the customer operates the cluster | **Never** for a customer token | Never for a customer token |
 | Exposure | The chart's ingress, guarded like Grafana's | The existing edge | Internal, plus the customer-facing read described below |
@@ -667,9 +794,15 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - **Unknown family denial.** A family absent from the classification artifact is rejected, proving the default is closed.
 - **Deployment-kind divergence.** The same token and the same query against a self-managed-configured proxy returns the cluster-scoped data. One test, two configurations, because the difference is the design's most security-relevant setting.
 - **Enumeration endpoints.** `/api/v1/series`, `/api/v1/labels`, and their Loki analogues are enforced, asserted by a label-values call that would otherwise return another tenant's values.
-- **Token validation.** Expired, wrong audience, wrong issuer, unknown `kid`, symmetric algorithm, and `alg: none` are each rejected, individually.
+- **Token validation.** Expired, not yet valid, over the maximum lifetime, wrong audience, wrong issuer, unknown `kid`, symmetric algorithm,
+  `alg: none`, and a missing `jti`, tenant, or scope claim are each rejected, individually.
+- **Key-set refetch cooldown.** A burst of tokens with random `kid` values causes at most one key-set fetch per cooldown,
+  and a failing key-set endpoint leaves the cached keys in service.
 - **Revocation.** A token on the denylist is rejected within the configured refresh interval, and the test asserts the interval rather than assuming immediacy.
 - **Rewriter fidelity.** A corpus of every expression in the query registry is parsed, rewritten, and re-parsed, asserting the result is a valid query that differs from the input only in the enforced matcher. The registry is the corpus, which means the test grows with the dashboards.
+- **Oracle agreement.** The same corpus, restricted to `environment`-class expressions, is rewritten by `prom-label-proxy` and by the proxy,
+  and the parsed results are identical.
+  Generated PromQL extends the comparison past the expressions the registry contains.
 - **Limits.** A query exceeding the maximum range or minimum step is refused with a useful error rather than attempted.
 - **Base-path concatenation.** A real Grafana Loki datasource against the configured base path returns data, because the failure mode is a 404 that reads like a broken install.
 - **Grant separation.** A metrics-only token is refused on every LogQL endpoint and a logs-only token on every PromQL endpoint, asserted per endpoint rather than once — the enforcement is per handler, and a handler added later is the one that will miss it.
@@ -695,7 +828,8 @@ The kind tiers extend to cover this, and the important assertions are the negati
 
 - [ ] **What is the tenant claim, exactly** — a single opaque identifier, or an organization and environment pair? It should match whatever the [BYOC certificate identity](../20260813-byoc-observability/#open-questions) settles on, and both depend on control-plane identity outside this repo.
 - [ ] **Who issues tokens in self-managed?** The operator holding a signing key is the smallest answer and makes the operator a credential issuer, which it is not today. The customer's own OIDC provider avoids that and cannot be assumed present.
-- [ ] **Compose or build?** The recommendation above is compose first, build for what ships. Whether the composed shape is worth building at all depends on how quickly Console needs something to develop against.
+- [x] ~~**Compose or build?**~~ **Build.** One Rust service, with `prom-label-proxy` as its oracle; the composed shape is not built.
+  See [Build, with `prom-label-proxy` as the oracle](#build-with-prom-label-proxy-as-the-oracle).
 - [ ] **Is `cluster`-class data ever readable by a Cloud customer token?** Aggregate node pressure affecting their environment is genuinely useful to them and is derived from series describing other tenants' workloads. Pre-aggregated, environment-scoped recording rules are the safe version of yes.
 - [ ] **Does the proxy serve the bundled Grafana too**, rather than Grafana keeping direct datasources? One path is easier to reason about and adds a hop and a failure mode to the deployment that works today.
 - [ ] **Is tailing offered?** A long-lived connection and a short-lived token do not compose, and closing at expiry is a worse user experience than not offering it.
@@ -703,7 +837,11 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - [ ] **Does Console degrade or hide?** A deployment with no endpoint could hide the charts or show them disabled with an explanation. Hiding is cleaner and teaches nobody that the capability exists.
 - [ ] **Does the mandate apply retroactively?** Existing self-managed installs without the monitoring stack get a Console with no charts on upgrade. That is a migration with a communication plan, not a release note.
 - [ ] **What is the minimum sizing envelope**, and does it fit the smallest install we support? This needs measuring rather than asserting, and the answer decides whether the mandate is honest.
-- [ ] **Is the rewriter's correctness testable enough to trust?** The registry corpus is a strong test and it only covers expressions we wrote. A customer's Grafana sends arbitrary PromQL, which is the case the corpus does not reach.
+- [ ] **Is the rewriter's correctness testable enough to trust?** The registry corpus is a strong test and it only covers expressions we wrote.
+  A customer's Grafana sends arbitrary PromQL, which is the case the corpus does not reach.
+  Differential fuzzing against `prom-label-proxy` reaches it for `environment`-class selectors; the class decisions have no oracle.
+- [ ] **Which read token does Cloud accept?** The recommendation is a minted token from an exchange.
+  Where the exchange lives is control-plane work outside this repo, and whether app passwords also reach the proxy is open.
 - [ ] **Does a customer's read of the control-plane copy ship with the rest**, or wait? It is the strongest trust argument BYOC has and it depends on the control-plane deployment existing at all.
 - [ ] **What feeds the `audit` log class?** Materialize's audit events mirrored in, the proxy's read records, the control plane's issuance records, Kubernetes audit — the class was declared without an answer and the answer decides its retention and its limits.
 - [ ] **Does the audit mirror into Loki carry a completeness marker** — a sequence number or a periodic count from the system of record — so that a gap is detectable rather than invisible? Without one the copy cannot tell "nothing happened" from "the line was dropped", which is most of why it is not the system of record.
