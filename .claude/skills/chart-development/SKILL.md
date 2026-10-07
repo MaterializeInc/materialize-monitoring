@@ -268,8 +268,11 @@ Snapshot tests should be generally updated as part of feature changes, but
 do require careful reviews on the changesets to ensure that the changes are
 expected and correct.
 
-Helm unittests are safe to run locally, do not require a live Kubernetes cluster,
-and do run quite quickly, so they should be run frequently during development.
+Helm unittests are safe to run locally and do not require a live Kubernetes cluster,
+so they should be run frequently during development.
+`make helm-tests` runs every suite of every chart, one `helm unittest` process
+per suite file, as many at once as there are CPUs.
+One suite runs on its own with `helm unittest -f tests/<suite>_test.yaml charts/<chart>`.
 
 ### Installing Helm Unittest Plugin
 
@@ -290,6 +293,9 @@ Helm unittest does not support recursive directories by default, so prefer
 to place all unit tests in a single flat directory within charts/*/tests/
 (sibling to the templates/ directory) using the default `*_test.yaml` pattern.
 Prefer to use one unit test file per resource template.
+Every test renders the whole chart, so the largest suite sets how long
+`make helm-tests` takes.
+A suite that grows far past the others should be split.
 
 ### Path resolution gotchas
 

@@ -415,10 +415,17 @@ helm-unittest-install:
 		--version $(HELM_UNITTEST_VERSION)
 .PHONY: helm-unittest-install
 
+# Charts with helm-unittest suites.
+HELM_TEST_CHARTS = \
+	charts/materialize-monitoring \
+	charts/materialize-monitoring-crds \
+	charts/materialize-monitoring-dashboards
+
+# Runs every suite as its own `helm unittest` process, as many at once as there
+# are CPUs (HELM_TESTS_JOBS overrides). See bin/helm-tests.sh for why. To run one
+# suite: helm unittest -f tests/<suite>_test.yaml charts/<chart>
 helm-tests:
-	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring
-	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-crds
-	helm unittest $(HELM_UNITTEST_ARGS) charts/materialize-monitoring-dashboards
+	HELM_UNITTEST_ARGS="$(HELM_UNITTEST_ARGS)" ./bin/helm-tests.sh $(HELM_TEST_CHARTS)
 .PHONY: helm-tests
 
 helm-update-snapshots:
