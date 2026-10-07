@@ -1220,7 +1220,7 @@ from alerting (<code>rules.namespaces.exclude</code>).</p>
 <p>Alerts that depend on something a deployment may not contain are gated by
 capabilities, inferred from the metrics they read or declared with
 <code>requires</code>, rather than by who operates the deployment. See Authoring Alerts
-in the internal docs for how these render into rules.</p>
+in the development docs for how these render into rules.</p>
 
 <h4 id="env-uptime-sla">env-uptime-sla
   <a class="anchor" href="#env-uptime-sla">#</a>

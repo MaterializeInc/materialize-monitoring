@@ -206,7 +206,7 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
-It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/development/pipelines/logging/)).
 The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
 
 ### Configuration & change management

@@ -215,7 +215,7 @@ Dashboards are **pre-rendered** into that chart, not generated at template time.
 Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
 `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
-See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
+See [Dashboards as Code](../../../reference/development/dashboard/overview/) for the authoring workflow.
 
 Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
 
@@ -416,7 +416,7 @@ The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubel
 Metrics scraped faster than that get a coarser minimum step and still draw.
 `connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
 The render warns about an override shorter than the chart's value, since that brings the scattered points back.
-The [style guidelines](/materialize-monitoring/reference/internal/dashboard/style-guidelines/#rate-intervals) cover the same failure from the dashboard side.
+The [style guidelines](/materialize-monitoring/reference/development/dashboard/style-guidelines/#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 

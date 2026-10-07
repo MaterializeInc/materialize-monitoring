@@ -18,7 +18,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 > [!WARNING]
 >  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
+>  See the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
 
 ## Start here
 
@@ -43,7 +43,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 | **Dashboards** | [Available dashboards]({{< relref "dashboards/all.md" >}}) and [importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
 
 Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) tracks the work behind them.
+They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind them.
 
 ## Operating the stack
 
@@ -65,11 +65,11 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 
 ## For contributors
 
-* [Contributing]({{< relref "reference/internal/contributing.md" >}}) — the contributor guide, conventions, and the pre-commit wiring.
-* [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) — the current source of truth for what is built, in flight, and planned next.
-* [Repository Layout]({{< relref "reference/internal/repo-layout.md" >}}) — where things live in the repo.
-* [Versioning]({{< relref "reference/internal/versioning.md" >}}) and [Releasing]({{< relref "reference/internal/releasing.md" >}}) — the per-component version streams and the release automation.
-* [Design Docs]({{< relref "reference/internal/design-docs/overview.md" >}}) — the decisions behind the larger pieces.
+* [Contributing]({{< relref "reference/development/contributing.md" >}}) — the contributor guide, conventions, and the pre-commit wiring.
+* [Roadmap]({{< relref "reference/development/roadmap.md" >}}) — the current source of truth for what is built, in flight, and planned next.
+* [Repository Layout]({{< relref "reference/development/repo-layout.md" >}}) — where things live in the repo.
+* [Versioning]({{< relref "reference/development/versioning.md" >}}) and [Releasing]({{< relref "reference/development/releasing.md" >}}) — the per-component version streams and the release automation.
+* [Design Docs]({{< relref "reference/development/design-docs/overview.md" >}}) — the decisions behind the larger pieces.
 
 ## Getting help
 
@@ -89,7 +89,7 @@ It installs with the cluster by default.
 For a customer who already runs their own observability stack, it reduces to nothing but a documented metric contract.
 
 This page states the direction and the reasoning behind it.
-The [Roadmap](../reference/internal/roadmap/) is the source of truth for status, and it is more current than this page by construction.
+The [Roadmap](../reference/development/roadmap/) is the source of truth for status, and it is more current than this page by construction.
 
 <!--
 Agent note: this page is published. Keep forward-looking items framed as proposals under review.
@@ -159,7 +159,7 @@ That asymmetry is the argument for treating this as a collaborative repository r
 The people who meet a failure mode are usually not the people who write the dashboard for it.
 A panel, an alert, a query, or a runbook contributed by whoever hit the problem carries context that a metric list cannot supply afterwards.
 Contributions from field engineers, SREs, and customers are encouraged on the same footing as contributions from the maintaining team.
-The [contributor guide](../reference/internal/contributing/) covers the conventions.
+The [contributor guide](../reference/development/contributing/) covers the conventions.
 
 The single-registry design is what makes a small contribution worth making.
 A query added to the registry reaches the dashboard, the published documentation, and any alert referencing it.
@@ -205,7 +205,7 @@ The stack is what makes the answer demonstrable rather than a claim.
 
 The platform is built and in use.
 The following is the surface 1.0 ships, at altitude.
-The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/internal/roadmap/) lists what is still to do.
+The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/development/roadmap/) lists what is still to do.
 
 | Area | State |
 |---|---|
@@ -229,7 +229,7 @@ Hydration, freshness, sources, and sinks each need instrumentation that lives up
 ## Where it is going
 
 Each theme below is a question this stack cannot answer yet.
-The [Roadmap](../reference/internal/roadmap/) tracks the individual items behind each one, with their status and their designs.
+The [Roadmap](../reference/development/roadmap/) tracks the individual items behind each one, with their status and their designs.
 
 ### From displaying metrics to answering questions
 
@@ -312,7 +312,7 @@ A total that quietly excludes the object store, the metadata database, or the mo
 ### The read path, where this stops being optional
 
 Every workstream above is about collecting telemetry, and every consumer of it so far is a Grafana the project deploys.
-The [tenant-scoped query API](../reference/internal/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
+The [tenant-scoped query API](../reference/development/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
 The two readers are the Materialize console and a customer's own Grafana.
 
 This is the one place the composability posture is genuinely in tension with the product.
@@ -336,14 +336,14 @@ That sizing question is common to all three, and it should be settled once rathe
 
 Two workstreams share a channel and differ in what authorizes using it.
 
-**[Bring-your-own-cloud](../reference/internal/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
+**[Bring-your-own-cloud](../reference/development/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
 They run in the customer's own cloud account, and Materialize needs enough telemetry to operate them.
 A reduced copy of telemetry crosses into the control plane, and the customer's full-fidelity copy always stays with them.
 Metrics cross selected by importance tier, and logs cross as an allowlisted, redacted, level-filtered subset.
 A pair of gateways enforces that boundary rather than ad-hoc network configuration.
 Redaction attaches to the destination, so the reduced copy is a fork of the customer's stream rather than a downgrade of it.
 
-**[Call-home](../reference/internal/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
+**[Call-home](../reference/development/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
 A self-managed deployment is invisible between escalations.
 The channel is the same, and the feature is consent.
 A bring-your-own-cloud customer bought an operated service, so telemetry crossing the boundary is what they purchased.
@@ -411,12 +411,12 @@ It cannot instrument what does not emit, and the gap between those two facts is 
 
 | Question | Page |
 |---|---|
-| What is built, in flight, and planned next | [Roadmap](../reference/internal/roadmap/) |
+| What is built, in flight, and planned next | [Roadmap](../reference/development/roadmap/) |
 | How the pieces fit together | [Architecture](../architecture/) |
 | What the vocabulary on these pages means | [o11y Glossary](../o11y-glossary/) |
 | What a consumer can rely on | [Stability Guarantees and Deprecation Policy](../reference/stability/) |
 | How to install it | [Getting Started](../getting-started/overview/) |
-| Why a larger piece is shaped the way it is | [Design Docs](../reference/internal/design-docs/overview/) |
+| Why a larger piece is shaped the way it is | [Design Docs](../reference/development/design-docs/overview/) |
 
 
 --------------------------------------------------------------------------------
@@ -516,7 +516,7 @@ It runs as a DaemonSet, is scraped by [`alloy-gateway`](#alloy-gateway-grafana-a
 
 Two things about it are worth knowing before you change anything:
 
-- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/internal/design-docs/20260803-terraform-modules/) for the full argument.
+- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/development/design-docs/20260803-terraform-modules/) for the full argument.
 - **Collectors are an allowlist, not the upstream defaults.** The chart passes `--collector.disable-defaults` and names each collector it wants, so a new default-on collector in a future node_exporter release cannot silently join the cardinality budget. The list, and the reasoning behind every inclusion and exclusion, is in the [values reference](../reference/helm/materialize-monitoring-values/) under Node Exporter.
 
 The pods run with `hostNetwork: true`, which the network collectors require — `netdev`, `netclass`, `netstat`, `sockstat` and `conntrack` all read namespaced files under `/proc/net`, and in a pod network namespace they would report the pod's traffic rather than the node's.
@@ -2099,7 +2099,7 @@ The other pages in this section cover each stage in depth:
 | [Alerting > Configuring](../../alerting/configuring/) | The Thanos Ruler, and how `PrometheusRule` resources reach it |
 
 The production checklist for this backend is [Production Best Practices > Metrics (Thanos)](../../operating/production-best-practices/#metrics-thanos).
-The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## End-to-end dataflow
 
@@ -2212,7 +2212,7 @@ Each destination has its own importance-tier filter **upstream** of its writer.
 A remote-write destination's write-ahead log therefore holds only the series that destination accepts, and a stuck destination backs up its own WAL and no other.
 Each remote-write destination also stamps a `cluster` external label.
 
-*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## Thanos write path {#write-path}
 
@@ -2384,7 +2384,7 @@ A deployment that already runs its own Prometheus can skip the gateway entirely 
 - [Thanos Receive hashrings and replication](https://thanos.io/tip/proposals-done/201812-thanos-remote-receive.md/) (official).
 - [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
 - [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
-- [Metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal): the gateway's pipeline, component by component.
+- [Metrics pipeline reference](../../reference/development/pipelines/metrics/): the gateway's pipeline, component by component.
 - [o11y Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
 
 
@@ -3718,7 +3718,7 @@ Persist, Loki and Thanos measure every request they make against the database an
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
 For the cluster's nodes it adds the provider's own view: host and instance health, node groups that cannot reach their desired size, compute quota,
 and on AKS the managed cluster autoscaler, which runs where nothing in the cluster can scrape it.
-The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
+The [external-dependency design](../../../reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
@@ -4063,7 +4063,7 @@ The other pages in this section cover each stage in depth, including its day-2 a
 
 Two Alloy roles sit in front of Loki.
 The Alloy [agent](#alloy-agent) (a DaemonSet, one per node) tails container logs and the systemd journal and forwards them to the Alloy [gateway](#alloy-gateway).
-The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/internal/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
+The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/development/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
 
 Loki is a [log store modeled after Prometheus](../../o11y-glossary/#stack-components): it indexes only the **labels** on each [log stream](../../o11y-glossary/#logs-and-events), never the log contents.
 That is what keeps it cheap at high volume, and it is why the gateway works to keep label cardinality under control before logs ever reach Loki — high-cardinality attributes belong in the log body or in [structured metadata](#storage), not in stream labels.
@@ -4141,7 +4141,7 @@ It discovers the pods scheduled on its own node, tails their container log files
 It does only light work locally — attaching node and pod metadata, basic relabeling, and a per-node rate limit — then forwards everything to the gateway over the Loki push API.
 Because it is a DaemonSet, collection scales with the number of nodes, and no application needs a logging sidecar.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ### alloy-gateway
 
@@ -4152,7 +4152,7 @@ Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## The hash ring
 
@@ -4388,7 +4388,7 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki deployment modes](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) — monolithic vs. simple scalable vs. microservice.
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative gateway/agent pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
 - [o11y Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 
 
@@ -4421,7 +4421,7 @@ It then normalizes log levels, routes high-cardinality fields into [structured m
 
 > [!INFO]
 >   The gateway is the single place where label-family and [cardinality](../../o11y-glossary/#observability-foundations) decisions are made.
->   Keeping that logic in one component is what keeps the log store stable and cheap — see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) for the authoritative stage-by-stage definition.
+>   Keeping that logic in one component is what keeps the log store stable and cheap — see the [logging pipeline reference](../../reference/development/pipelines/logging/) for the authoritative stage-by-stage definition.
 
 ## Sending your own logs to the gateway
 
@@ -4453,12 +4453,12 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 > [!WARNING]
 >   What becomes a Loki **label** versus what stays in the body or [structured metadata](../architecture/#storage) is the single biggest cost-and-stability lever.
 >   Keep volatile attributes (request IDs, trace IDs) out of labels.
->   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal).
+>   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## See more
 
 - [Logging Architecture](../architecture/) — collection in the context of the full pipeline.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative agent/gateway pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative agent/gateway pipeline definition.
 - [Storing](../storing/) — where collected logs go next.
 - [Loki components](https://grafana.com/docs/loki/latest/get-started/components/) (official).
 
@@ -4854,7 +4854,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
+The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -4952,7 +4952,7 @@ Which NetworkPolicy objects exist comes from kube-state-metrics and is available
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
 Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards).
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
 
 {{< download-dashboards name="infra-net" >}}
 
@@ -5292,7 +5292,7 @@ Dashboards are **pre-rendered** into that chart, not generated at template time.
 Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
 `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
-See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
+See [Dashboards as Code](../../../reference/development/dashboard/overview/) for the authoring workflow.
 
 Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
 
@@ -5493,7 +5493,7 @@ The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubel
 Metrics scraped faster than that get a coarser minimum step and still draw.
 `connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
 The render warns about an override shorter than the chart's value, since that brings the scattered points back.
-The [style guidelines]({{< relref "../../reference/internal/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
+The [style guidelines]({{< relref "../../reference/development/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 
@@ -6238,7 +6238,7 @@ url: https://materializeinc.github.io/materialize-monitoring/dashboards/datadog/
 > [!NOTE]
 >   **There is no Materialize dashboard set for Datadog yet.**
 >   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
->   See the [Dashboards workstream]({{< relref "../reference/internal/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
+>   See the [Dashboards workstream]({{< relref "../reference/development/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
 
 What exists today is the query material to build one yourself.
 
@@ -6248,7 +6248,7 @@ What exists today is the query material to build one yourself.
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
 >   Where Datadog's query language cannot express what the PromQL does, the translation is approximate rather than equivalent.
 
-The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations]({{< relref "../reference/internal/queries/datadog.md" >}}) (internal).
+The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations]({{< relref "../reference/development/queries/datadog.md" >}}).
 
 ## Getting the metrics there
 
@@ -6674,7 +6674,7 @@ Which bundled rules install is configured under `rules`, and where an alert goes
 Until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
 This page describes the bundled rules, the two evaluators, and how they reach Alertmanager.
 [Alert Architecture](../architecture/) describes Alertmanager itself, and [Alert Channels](../channels/) describes routing and receivers.
-The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
+The remaining work is described in the [alerting design doc](../../reference/development/design-docs/20260917-alerting-self-managed/) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
 <!-- more -->
 {{< rfc-2119 >}}
@@ -8095,7 +8095,7 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
-It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/development/pipelines/logging/)).
 The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
 
 ### Configuration & change management
@@ -10371,7 +10371,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 
 Where the phases land is therefore your choice, not the chart's. A stack sitting at phase 1 or 2 is **encrypted and not authenticated**, and phase 2 is the state most likely to be mistaken for mTLS: every values file carries a `certFile`, the servers name a client CA, and a client presenting nothing is still served. Only phase 3 refuses it.
 
-The design for the first three is written up in the [TLS and authentication design doc](../../reference/internal/design-docs/20260816-tls-authentication/) (internal), including the two-phase rollout that gets there without an outage.
+The design for the first three is written up in the [TLS and authentication design doc](../../reference/development/design-docs/20260816-tls-authentication/), including the two-phase rollout that gets there without an outage.
 
 ## See also
 
@@ -10394,7 +10394,7 @@ url: https://materializeinc.github.io/materialize-monitoring/operating/tuning/in
 
 --------------------------------------------------------------------------------
 title: "Contributing"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/contributing/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/contributing/index.md
 --------------------------------------------------------------------------------
 
 # Contributing to materialize-monitoring
@@ -10600,7 +10600,7 @@ It also means editing one sentence never churns the lines around it.
 See [Repo Layout](../repo-layout/) for the full rule and its one exception.
 
 **Relative links need `../` for siblings.**
-Pretty URLs put every page at its own directory, so `reference/internal/releasing.md` is served as `reference/internal/releasing/`.
+Pretty URLs put every page at its own directory, so `reference/development/releasing.md` is served as `reference/development/releasing/`.
 A sibling link is therefore `[Versioning](../versioning/)` — a bare `versioning/` resolves to `releasing/versioning/` and 404s.
 Link to pages, not files: `../versioning/`, never `versioning.md`.
 
@@ -10667,7 +10667,7 @@ Open an issue on the [GitHub repository](https://github.com/MaterializeInc/mater
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/dashboard/overview/index.md
 --------------------------------------------------------------------------------
 
 # Dashboards as Code
@@ -10698,7 +10698,7 @@ reference.
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/overview/index.md
 --------------------------------------------------------------------------------
 
 # Design Docs
@@ -10723,7 +10723,7 @@ A new doc starts at Draft.
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/pipelines/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/pipelines/overview/index.md
 --------------------------------------------------------------------------------
 
 # Pipelines as Code
@@ -10743,7 +10743,7 @@ The `pipelines-as-code` Claude skill at `.claude/skills/pipelines-as-code/SKILL.
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/queries/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/queries/overview/index.md
 --------------------------------------------------------------------------------
 
 # Queries as Code
@@ -10865,7 +10865,7 @@ across engines, so extract from the PromQL side.
 
 --------------------------------------------------------------------------------
 title: "Authoring"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/pipelines/authoring/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/pipelines/authoring/index.md
 --------------------------------------------------------------------------------
 
 # Authoring Pipelines
@@ -11360,7 +11360,7 @@ Publishing to GHCR happens in CI, not from the Makefile.
 
 --------------------------------------------------------------------------------
 title: "Authoring Alerts"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/queries/alerts/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/queries/alerts/index.md
 --------------------------------------------------------------------------------
 
 # Authoring Alerts
@@ -13496,7 +13496,7 @@ the managed database and the buckets a deployment depends on, and write it
 beside every other metric. The result shares retention, PromQL and alerting
 with the rest of the stack, so a provider series is joinable with
 `mz_persist_*` in one expression. The [external-dependency
-design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+design](https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
 records why this is a pull rather than a Grafana datasource.
 
 | Provider | Services | Alloy component |
@@ -21105,7 +21105,7 @@ Upstream reference:
 
 --------------------------------------------------------------------------------
 title: "Metrics"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/pipelines/metrics/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/pipelines/metrics/index.md
 --------------------------------------------------------------------------------
 
 # Metrics Pipelines
@@ -21361,7 +21361,7 @@ These are reachable today via a `raw:` block and can be graduated to typed schem
 
 --------------------------------------------------------------------------------
 title: "Repo Layout"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/repo-layout/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/repo-layout/index.md
 --------------------------------------------------------------------------------
 
 This page is a convenience cache of where things live in the repo.
@@ -21384,7 +21384,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `CONTRIBUTING.md` / `README.md` / `LICENSE`
   * `renovate.json`: automated dependency bumps
   * `.terraform-docs.yml` / `.terraform-docs.docsite.yml`: Terraform doc generation — the first injects into module READMEs, the second writes the docsite variable reference
-  * `.pre-commit-config.yaml`: contributor-experience hooks (see [Internal Development](../contributing/))
+  * `.pre-commit-config.yaml`: contributor-experience hooks (see [Development](../contributing/))
   * `.gitattributes`: Git LFS for the subchart tarballs, plus `linguist-generated` on the docsite's duplicate artifacts (see [Two copies, one review](../dashboard/generating/#two-copies-one-review))
   * `bin/`: bash dev/CI entrypoints (flat; no subdirectories)
     * `check-lfs.sh`: verify/repair Git LFS state
@@ -21435,9 +21435,9 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
-      * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/internal/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
+      * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/development/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
       * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
-      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `internal/` (this section — `dashboard/`, `pipelines/`, `design-docs/`, plus `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
+      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`
@@ -21451,7 +21451,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 
 --------------------------------------------------------------------------------
 title: "SDKs and Schemas"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/sdks/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/dashboard/sdks/index.md
 --------------------------------------------------------------------------------
 
 # SDKs and Schemas
@@ -22994,7 +22994,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 
 --------------------------------------------------------------------------------
 title: "Authoring Recording Rules"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/queries/recording-rules/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/queries/recording-rules/index.md
 --------------------------------------------------------------------------------
 
 # Authoring Recording Rules
@@ -23154,7 +23154,7 @@ A recording rule that never produces a series passes every render test, and this
 
 --------------------------------------------------------------------------------
 title: "Datadog Translations"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/queries/datadog/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/queries/datadog/index.md
 --------------------------------------------------------------------------------
 
 # Datadog Translations
@@ -23331,7 +23331,7 @@ the first two things worth checking.
 
 --------------------------------------------------------------------------------
 title: "Logging"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/pipelines/logging/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/pipelines/logging/index.md
 --------------------------------------------------------------------------------
 
 # Logging Pipeline
@@ -23470,7 +23470,7 @@ Current status (see the [Roadmap](../../roadmap/)):
 
 --------------------------------------------------------------------------------
 title: "Skills"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/skills/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/skills/index.md
 --------------------------------------------------------------------------------
 
 # Skills
@@ -23561,7 +23561,7 @@ When a skill starts accumulating prose, that is the signal to move it into a doc
 
 --------------------------------------------------------------------------------
 title: "Style Guidelines"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/style-guidelines/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/dashboard/style-guidelines/index.md
 --------------------------------------------------------------------------------
 
 # Dashboard Style Guidelines
@@ -24550,7 +24550,7 @@ which says the same thing to someone who has never read a dataflow paper.
 
 The boundary is what renders. Registry `description:` blocks become panel
 descriptions, so they follow this rule; Rust doc comments, YAML comments, and
-everything under `reference/internal/` are read by contributors, where the precise
+everything under `reference/development/` are read by contributors, where the precise
 internal term is the right one and stays.
 
 ## Draw the total beside the worst case, not instead of it
@@ -25111,7 +25111,7 @@ still some known issues:
 
 --------------------------------------------------------------------------------
 title: "Generating and Pushing Dashboards"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/generating/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/dashboard/generating/index.md
 --------------------------------------------------------------------------------
 
 # Generating and Pushing Dashboards
@@ -25444,7 +25444,7 @@ being selected; see [Configuring Alerting]({{< relref "../alerting/configuring.m
 
 --------------------------------------------------------------------------------
 title: "Testing"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/dashboard/testing/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/dashboard/testing/index.md
 --------------------------------------------------------------------------------
 
 # Testing
@@ -25791,7 +25791,7 @@ An empty result where you expected dashboards usually means the `instanceSelecto
 
 --------------------------------------------------------------------------------
 title: "Helm"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/helm/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/helm/index.md
 --------------------------------------------------------------------------------
 
 TODO
@@ -25799,7 +25799,7 @@ TODO
 
 --------------------------------------------------------------------------------
 title: "Roadmap"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/roadmap/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/roadmap/index.md
 --------------------------------------------------------------------------------
 
 <!-- This roadmap is public. Do not include customer-specific or sensitive information -->
@@ -26315,7 +26315,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 
 --------------------------------------------------------------------------------
 title: "Releasing"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/releasing/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/releasing/index.md
 --------------------------------------------------------------------------------
 
 # Releasing
@@ -26605,7 +26605,7 @@ No separate section, no extra tooling — the prefix is the whole convention.
 
 --------------------------------------------------------------------------------
 title: "Versioning"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/versioning/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/versioning/index.md
 --------------------------------------------------------------------------------
 
 # Versioning in materialize-monitoring
@@ -26846,7 +26846,7 @@ url: https://materializeinc.github.io/materialize-monitoring/reference/changelog
 
 --------------------------------------------------------------------------------
 title: "First-Class Production Loki Infrastructure"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260627-loki-production-infrastructure/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260627-loki-production-infrastructure/index.md
 date: "2026-06-27"
 --------------------------------------------------------------------------------
 
@@ -27124,7 +27124,7 @@ We are a monitoring product, so Loki self-observability is on by default: Servic
 
 --------------------------------------------------------------------------------
 title: "Terraform Modules for materialize-monitoring"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260803-terraform-modules/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260803-terraform-modules/index.md
 date: "2026-08-03"
 --------------------------------------------------------------------------------
 
@@ -27870,8 +27870,8 @@ The Terraform story is stale in several places here and should be corrected as t
 - `getting-started/terraform.md` — ✅ done. Now the install guide, including a tfvars reference.
 - `getting-started/_index.md` — ✅ done.
 - `reference/compatibility.md` — ✅ done. Carries the Terraform-repo ↔ chart-version table.
-- `reference/internal/roadmap.md` — the M4 "Terraform wrapper module" row, the "Downstream pinning" bullet, and a `terraform` entry wherever components are enumerated. Also two Testing / CI rows: the "Synthetic-data end-to-end smoke test" row **is** the E2E suite described here, and the "kind / ArgoCD / FluxCD CI matrix" row needs its kind half split out and promoted well above "very low priority" (ArgoCD and Flux stay).
-- `reference/internal/repo-layout.md` — ✅ done. Refreshed against the tree and carries `terraform/` as a planned entry.
+- `reference/development/roadmap.md` — the M4 "Terraform wrapper module" row, the "Downstream pinning" bullet, and a `terraform` entry wherever components are enumerated. Also two Testing / CI rows: the "Synthetic-data end-to-end smoke test" row **is** the E2E suite described here, and the "kind / ArgoCD / FluxCD CI matrix" row needs its kind half split out and promoted well above "very low priority" (ArgoCD and Flux stay).
+- `reference/development/repo-layout.md` — ✅ done. Refreshed against the tree and carries `terraform/` as a planned entry.
 - `operating/production-best-practices.md` — the `[consumer]` items become concretely satisfied-by-Terraform on that path, which matters to a reader choosing an install method.
 
 ## Open questions
@@ -27909,7 +27909,7 @@ The Terraform story is stale in several places here and should be corrected as t
 
 --------------------------------------------------------------------------------
 title: "Observability for Bring-Your-Own-Cloud"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260813-byoc-observability/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260813-byoc-observability/index.md
 date: "2026-08-13"
 --------------------------------------------------------------------------------
 
@@ -28360,11 +28360,11 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 ## Documentation to update
 
 - A **customer-facing egress document**: what crosses, why, how it is reduced and redacted, how to read the generated schedule, and how to turn log egress off. This is the compliance-review artifact and the most important item in this list.
-- `reference/internal/roadmap.md` — ✅ done. The BYOC section carries the revised egress position and the DEP-219 row points here, per [A roadmap position this changes](#a-roadmap-position-this-changes).
+- `reference/development/roadmap.md` — ✅ done. The BYOC section carries the revised egress position and the DEP-219 row points here, per [A roadmap position this changes](#a-roadmap-position-this-changes).
 - `logs-and-events/storing.md` — a multi-destination section mirroring `metrics/storing.md`'s "Controlling what each destination stores", which is the model to copy.
 - `metrics/storing.md` — the control plane as a destination in the fan-out list.
 - `operating/production-best-practices.md` — the shared responsibility model gains a BYOC column, since the `[consumer]` items are ours in that deployment rather than the customer's.
-- `reference/internal/pipelines/logging.md` — per-destination processing, once the map lands.
+- `reference/development/pipelines/logging.md` — per-destination processing, once the map lands.
 
 ## Open questions
 
@@ -28387,7 +28387,7 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 
 --------------------------------------------------------------------------------
 title: "In-cluster TLS and Certificate Authentication"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260816-tls-authentication/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260816-tls-authentication/index.md
 date: "2026-08-16"
 --------------------------------------------------------------------------------
 
@@ -28925,7 +28925,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 
 --------------------------------------------------------------------------------
 title: "Stability Guarantees and Deprecation Policy"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260823-deprecation-policy/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260823-deprecation-policy/index.md
 date: "2026-08-23"
 --------------------------------------------------------------------------------
 
@@ -29290,7 +29290,7 @@ Ordered, because some of it gates the rest:
 
 The policy itself has landed; what remains is the cleanup it enables and the one decision with a closing window.
 
-**A note on the issue's paths.** DEP-127 names `docs/contrib/contract/versioning.md` and `docs/contrib/release.md`, and describes upgrading the former "from *stability guarantees TBD*". Neither path exists any more — the docs moved to `docs/content/reference/internal/` — and the current [Versioning](../../versioning/) page has no stability section at all, TBD or otherwise. The table above is the same three deliverables against the tree as it stands.
+**A note on the issue's paths.** DEP-127 names `docs/contrib/contract/versioning.md` and `docs/contrib/release.md`, and describes upgrading the former "from *stability guarantees TBD*". Neither path exists any more — the docs moved to `docs/content/reference/development/` — and the current [Versioning](../../versioning/) page has no stability section at all, TBD or otherwise. The table above is the same three deliverables against the tree as it stands.
 
 ## Documentation to update
 
@@ -29315,7 +29315,7 @@ The policy itself has landed; what remains is the cleanup it enables and the one
 
 --------------------------------------------------------------------------------
 title: "A Tenant-Scoped Query API for Console and Customer Grafana"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260916-tenant-query-api/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260916-tenant-query-api/index.md
 date: "2026-09-16"
 --------------------------------------------------------------------------------
 
@@ -30125,8 +30125,8 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - `logs-and-events/` — the equivalent for LogQL, including the structured-metadata-versus-stream-label limitation on the self-managed shape.
 - `dashboards/grafana/architecture.md` — the datasource section gains an external-Grafana half; today it documents the in-cluster datasources only.
 - `architecture.md` — the read path currently ends at Grafana.
-- `reference/stability.md` and `reference/internal/versioning.md` — whichever of the query-manifest options is chosen changes what is committed.
-- `reference/internal/roadmap.md` — ✅ done. A read-path section and a follow-up-documentation entry point here.
+- `reference/stability.md` and `reference/development/versioning.md` — whichever of the query-manifest options is chosen changes what is committed.
+- `reference/development/roadmap.md` — ✅ done. A read-path section and a follow-up-documentation entry point here.
 - `operating/production-best-practices.md` — publishing the endpoint is a shared-responsibility item with a checklist of its own.
 - `logs-and-events/storing.md` — the retention section mentions audit-relevant streams as a tiered-retention example; it should say what the `audit` class is and, until a producer exists, that nothing populates it.
 - A **compliance-facing audit page** stating which record is the system of record, what the Loki copy is for, and what WORM does and does not guarantee. The distinction is the whole answer to an auditor's question and it is currently in nobody's document.
@@ -30160,7 +30160,7 @@ The kind tiers extend to cover this, and the important assertions are the negati
 
 --------------------------------------------------------------------------------
 title: "Alerting in Self-Managed: Evaluation, Routing, and Customer Extension"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260917-alerting-self-managed/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260917-alerting-self-managed/index.md
 date: "2026-09-17"
 --------------------------------------------------------------------------------
 
@@ -31064,8 +31064,8 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
   for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
 - **`architecture.md`** — ✅ the Alertmanager entry describes the notifier and points at the alerting section.
-- **`reference/internal/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
-- **`reference/internal/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
+- **`reference/development/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
+- **`reference/development/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
 - **A migration note for Cloud** — Cloud adopts these rules when it adopts this stack's Alertmanager. The note that is owed is what changes for the definitions in the process, since per-region duplication, the `tier`/`team` label vocabulary, and the stack-type exclusions have no equivalent here.
 
 ## Open questions
@@ -31087,7 +31087,7 @@ Settled in review and recorded in the sections above rather than here: alert nam
 
 --------------------------------------------------------------------------------
 title: "Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260917-call-home-self-managed/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260917-call-home-self-managed/index.md
 date: "2026-09-17"
 --------------------------------------------------------------------------------
 
@@ -31629,7 +31629,7 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
 - `operating/production-best-practices.md` — the shared responsibility model gains a call-home row, and the checklist gains the decision.
 - `alerting/` — the alerts level is a consumer of the rule set, and the page should say that nothing evaluates rules until that ships.
 - `metrics/storing.md` and `logs-and-events/storing.md` — the control plane as a destination in the fan-out, mirroring the BYOC additions.
-- `reference/internal/roadmap.md` — a call-home section and a follow-up-documentation entry pointing here.
+- `reference/development/roadmap.md` — a call-home section and a follow-up-documentation entry pointing here.
 - [Securing](../../../../operating/securing/) — the credential choice and the forward-proxy shape, once settled.
 
 ## Open questions
@@ -31651,7 +31651,7 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
 
 --------------------------------------------------------------------------------
 title: "Monitoring Materialize's External Dependencies"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260920-external-dependency-monitoring/index.md
 date: "2026-09-20"
 --------------------------------------------------------------------------------
 
@@ -32658,15 +32658,15 @@ Tier 3 is where the provider pull can be proven against a real account, which is
 - `operating/troubleshooting-materialize.md` — the "is it Materialize or is it underneath" path currently has no entry point.
 - `operating/production-best-practices.md` — which vantage points to configure per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
 - `architecture.md` — the dependency surface is not described anywhere; the page starts at the chart.
-- `reference/internal/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
+- `reference/development/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
 - `reference/list-metrics.md` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
-- `reference/internal/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
-- `reference/internal/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
+- `reference/development/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
+- `reference/development/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
 - The **CockroachDB alert descriptions**, which should say which flavor they target. They currently read as general CockroachDB coverage.
 - The **`persist-failures` degraded text**, which names CockroachDB as the likely cause on deployments that run PostgreSQL.
 - `operating/runbooks/` — one per dependency alert, per the alerting design. The remediation text already in the existing CockroachDB alert descriptions is most of the first two.
 - **A Day 0 dependency-preflight page**, since the failure it describes happens before anyone has a dashboard to read.
-- `docs/content/reference/internal/dashboard/style-guidelines.md` — the discovered-variable section gains a second worked example if the flavor mechanism diverges from the CNI one.
+- `docs/content/reference/development/dashboard/style-guidelines.md` — the discovered-variable section gains a second worked example if the flavor mechanism diverges from the CNI one.
 
 ## Open questions
 
@@ -32701,7 +32701,7 @@ Four questions from the first draft are settled and are recorded here rather tha
 
 --------------------------------------------------------------------------------
 title: "Secret Filtering: A Last Line of Defense for Stored and Egressed Logs"
-url: https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260924-log-secret-filtering/index.md
+url: https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260924-log-secret-filtering/index.md
 date: "2026-09-24"
 --------------------------------------------------------------------------------
 
