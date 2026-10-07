@@ -30,7 +30,7 @@ and the Alerting section of getting-started/terraform.md in step with them.
 | Input | Chart values | Configures |
 |---|---|---|
 | `alert_rules` | `rules.*` | Which bundled rules install, and how they are tuned |
-| `alerting` | `alerting.*` | The routing preset, receivers, routes, inhibit rules, time intervals, templates and Alertmanager's `global` block |
+| `alerting` | `alerting.*` | The routing preset, receivers, routes, inhibit rules, time intervals, templates, notification links and Alertmanager's `global` block |
 | `alerting_receiver_secrets` | The `alertmanager-receivers` Secret | Receiver credentials |
 | `alertmanager_namespace` | None | The namespace that Secret is created in |
 
@@ -117,6 +117,8 @@ A matcher is an Alertmanager string, so the quotes inside it are escaped in HCL.
 | `inhibit_rules` | `alerting.inhibitRules` | Alertmanager `inhibit_rules`, verbatim |
 | `time_intervals` | `alerting.timeIntervals` | Alertmanager `time_intervals`, verbatim; see [Maintenance Windows](../maintenance/) |
 | `templates` | `alerting.templates` | Notification templates keyed by file name, each ending in `.tmpl` |
+| `default_templates` | `alerting.defaultTemplates` | Whether the chart's notification templates replace Alertmanager's built-ins. On by default |
+| `grafana_url` | `alerting.grafanaURL` | The address people open Grafana at, for the links in notifications. Unset derives it from Grafana's `root_url`, which the module leaves unset unless `additional_values` exposes Grafana; see [Links in notifications](../channels/#links) |
 | `global` | `alerting.global` | Alertmanager's `global` block, verbatim |
 
 ## Credentials

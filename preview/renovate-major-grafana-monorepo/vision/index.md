@@ -126,22 +126,24 @@ The stack is what makes the answer demonstrable rather than a claim.
 ## Where it stands today
 
 The platform is built and in use.
-The following is the current surface at altitude, and the [Roadmap](../reference/internal/roadmap/) carries the per-item detail.
+The following is the surface 1.0 ships, at altitude.
+The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/internal/roadmap/) lists what is still to do.
 
 | Area | State |
 |---|---|
-| **Collection** | Alloy agent and gateway, node-exporter, kube-state-metrics, kubelet cAdvisor, and self-disabling CNI monitors for the two CNIs that publish anything |
+| **Collection** | Alloy agent and gateway, node-exporter, kube-state-metrics, kubelet cAdvisor, self-disabling CNI monitors for the two CNIs that publish anything, and provider metrics pulled from CloudWatch, Cloud Monitoring and Azure Monitor |
 | **Storage** | Loki and Thanos bundled and sized by profile, with fan-out to OTLP, Datadog, Google Cloud Monitoring, and additional Prometheus remote-write destinations |
-| **Dashboards** | Six shipped: an environment overview, logs, and upgrades for a Materialize user, plus logs, nodes, and networking for whoever runs the cluster underneath |
-| **Packaging** | Chart and CRDs chart published to GHCR, a Terraform module on the same version stream, per-component SemVer, a generated changelog, and a written deprecation policy |
+| **Dashboards** | Thirteen shipped. Five are for a Materialize user: an environment overview, logs, upgrades, and the object store and metadata database Materialize depends on. Eight are for whoever runs the cluster underneath: logs, nodes, networking, autoscaling, Karpenter, the cloud provider, and Loki and Alloy watching themselves |
+| **Alerting** | Thanos and Loki rulers notifying a highly available Alertmanager, thirty-four alerts in the default set, severity-to-receiver presets, and a Terraform surface |
+| **Packaging** | Chart, CRDs chart and dashboards chart published to GHCR, a Terraform module on the same version stream, per-component SemVer, a generated changelog, and a written deprecation policy |
 | **Security** | NetworkPolicy on every workload by default, opt-in in-cluster mTLS with a four-stage rollout, and chart and image scanning in CI |
 | **Qualification** | Terraform render checks, two `kind` end-to-end tiers, and a Rust assertion suite verified against real EKS and GKE clusters |
 
 Two gaps matter more than the rest, and both shape the next phase.
 
-**Nothing is paged.**
-The alert definitions exist and render into the documentation, and no install evaluates them.
-Alertmanager is deployed and receives nothing.
+**Alerting is in place and thin.**
+A default rule set is evaluated and routed on every install.
+Most of the ported rule set still awaits triage, and no shipped alert has a runbook behind it yet.
 
 **The four questions a Materialize user asks first are still unanswered.**
 Hydration, freshness, sources, and sinks each need instrumentation that lives upstream in the Materialize repository rather than here.
@@ -298,14 +300,10 @@ The goal is one path per metric, named consistently, with no SQL on the scrape p
 
 ### 1.0, and what the number promises
 
-The project is pre-1.0, and breaking changes can ride a minor release.
-The deprecation policy is written and landed, and stamping the number is not.
-
-At 1.0 the minor-release allowance ends.
-The label and metric contract, the profile semantics, the alert names, and the chart value paths all acquire a deprecation cycle.
-The window for getting that discipline in place closes on its own.
+`materialize-monitoring` stamped 1.0 on 2026-10-06, and breaking changes no longer ride a minor release.
+The label and metric contract, the profile semantics, the alert names, and the chart value paths all carry a deprecation cycle.
+The number was stamped before broad adoption on purpose.
 Once enough customers have dashboards built on these labels, the contract is frozen in practice whether or not it is frozen on paper.
-The discipline should therefore land before broad adoption rather than after.
 
 Surfaces are graded by how much control the project has over them and by how a break presents.
 Alerts fail silently and get the most care.

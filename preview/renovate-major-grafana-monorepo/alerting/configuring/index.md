@@ -29,7 +29,8 @@ document are to be interpreted as described in
 
 The chart ships alerting rules for Materialize and for the platform under it.
 The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
-The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
+The log-derived rules, which detect panics and correctness violations in Materialize's log lines and a gateway refusing its own scrapes,
+are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
 [Common Alerts](../../reference/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
@@ -41,9 +42,10 @@ A rule installs when all of the following hold:
 | The rule is in the default set, or selected | `rules.selected` takes alert names, rule-group names, or `*` |
 | The rule is not disabled | `rules.disabled` takes alert names |
 | A log-derived rule also needs the release's Loki ruler, the alloy-gateway, and a rule store the ruler API can write to | `loki.ruler.enabled`, `alloy-gateway.enabled`, `loki.loki.storage` |
+| A rule reading a recorded series also needs one of the recording rules that produce it to install | see [Recorded series](#recorded-series) |
 
 A **capability** is something a deployment contains that a rule needs in order to mean anything, such as a Cilium CNI or a CockroachDB metadata database.
-The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy.
+The chart derives the capabilities for what it deploys itself: Materialize's own metrics, kube-state-metrics, cAdvisor, node-exporter, Loki and Alloy, and each cloud provider pull the gateway runs.
 Everything else is listed explicitly; the full list and what each means are in the chart's `values.yaml` under `rules.capabilities`.
 A selected rule whose capabilities are missing is still not installed, and the render says so.
 
@@ -77,6 +79,40 @@ An override names an alert, and the render fails on an alert that does not exist
 The Terraform module takes all of `rules.*` as its `alert_rules` input; see [Configuring Alerting through Terraform](../terraform/#tuning-the-bundled-rules).
 
 `materialize.deploymentMode: cloud` switches the SQL-backed metric names the rules read to Materialize Cloud's `v2_mz_` prefix.
+
+## Recorded series
+
+The chart also ships recording rules, which the Thanos ruler evaluates into series of their own.
+The first are the `ext:consensus_*` series, which describe the metadata database the same way on every database flavor.
+[Recorded Series](../../reference/recorded-series/) lists every one.
+
+A recording rule installs wherever its capabilities are present, whenever `rules.enabled` is true.
+It is not in the default set and is never selected, so `rules.selected`, `rules.disabled` and `rules.overrides` do not apply to it.
+
+Materialize's own view of its metadata database needs nothing configured.
+The cloud provider's view needs two things: the provider pull, `pipeline.metrics.provider.*`, watching the database, and `externalDependencies.consensus` naming it as a metadata database.
+
+```yaml
+externalDependencies:
+  consensus:
+    - flavor: rds
+      resourceId: mzmon-prod-db
+```
+
+The second is needed because a pull also watches databases that are not a metadata database, Grafana's among them, and the provider cannot tell them apart.
+A database the pull watches and `externalDependencies.consensus` does not name is never recorded as a metadata database.
+The render warns when a pull watches databases and none of them is named, and when a named database is not watched.
+
+| `flavor` | `resourceId` |
+|---|---|
+| `rds` | The DB instance identifier, as listed in `pipeline.metrics.provider.cloudwatch.rds.instances` |
+| `cloudsql` | The instance name, as listed in `pipeline.metrics.provider.gcp.cloudSql.instances` |
+| `azure-postgres` | The flexible server name, as listed in `pipeline.metrics.provider.azure.postgres.servers` |
+
+An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
+
+A recorded series that no bundled alert reads has no metric tier.
+A metric destination filtering by `minMetricImportance` therefore drops it, and the render warns when that destination is the bundled Thanos.
 
 ## Two evaluators, one notifier
 
@@ -209,6 +245,7 @@ Deployments that need complete log alerting SHOULD use `static` or `byEnvironmen
 | `rules.logTenants` | the static tenant | Loki tenants the gateway writes the log-derived rules into |
 | `rules.namespaces.*` | derived | Where Materialize runs, and which namespaces never alert |
 | `rules.infraWorkloads.*` | Common EKS and GKE add-ons | Which infrastructure workloads are core, important, non-essential, or on every node |
+| `externalDependencies.consensus` | `[]` | Which databases a provider pull watches are a metadata database, for the `ext:consensus_*` series |
 | `alerting.*` | No receivers | Where alerts go. See [Alert Channels](../channels/) |
 
 Either ruler MAY be pointed at an Alertmanager the deployment already runs, by overriding its URL.
