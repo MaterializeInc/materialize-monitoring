@@ -273,8 +273,9 @@ kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --si
 ```
 
 Delete it to recover now; the other gateways take over its targets.
-To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` at about 80% of the new limit,
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources`,
 as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+`GOMEMLIMIT` and the memory limiter follow the new limit, unless `extraEnv` sets an explicit `GOMEMLIMIT`.
 
 ## Configuration that appears to do nothing
 
