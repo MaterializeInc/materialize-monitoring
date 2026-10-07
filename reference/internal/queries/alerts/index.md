@@ -49,6 +49,7 @@ An alert belongs in the file for the people who act on it.
 | `materialize-log-alerts.yaml` | `platform` | The Materialize deployment, detected in its log lines: panics and correctness violations |
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
+| `infra-log-alerts.yaml` | `platform` | The monitoring stack, detected in its own log lines where its metrics travel the path that is failing |
 
 Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
 `gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.

@@ -6683,7 +6683,8 @@ The remaining work is described in the [alerting design doc](../../reference/int
 
 The chart ships alerting rules for Materialize and for the platform under it.
 The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
-The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
+The log-derived rules, which detect panics and correctness violations in Materialize's log lines and a gateway refusing its own scrapes,
+are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
 [Common Alerts](../../reference/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:
@@ -9292,6 +9293,39 @@ Then re-fetch cluster credentials, because a kubeconfig entry with an exec plugi
 
 The tell is breadth: an expired session breaks *everything at once*, including things you did not touch. A real misconfiguration is almost always narrower. When a failure looks impossibly broad, check the clock before you check your work.
 
+## Data that goes missing
+
+### Healthy targets go dark: `data refused due to high memory usage`
+
+A share of the metrics stops arriving, `up` included, for targets that are running fine.
+Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `logging-collection-down`, the Thanos `*IsDown` rules.
+A gateway pod logs this on every scrape it makes:
+
+```text
+msg="Scrape commit failed" ... err="1 error occurred:\n\t* data refused due to high memory usage\n\n"
+```
+
+**Cause.** The gateways divide the scrape targets between them, and each pod passes what it scrapes through a memory limiter before writing it out.
+A pod whose heap stays above the limiter's soft limit refuses every scrape it commits, and a refused scrape is lost rather than retried.
+The pod stays `Ready` and keeps its targets.
+It usually holds its own `/metrics` target as well, so its memory-limiter counters vanish with everything else,
+and the _Memory Limiter Refusals_ panel shows nothing for it.
+Its log also repeats `Forced GC did not reclaim enough memory`:
+refusing does not shrink what the pod already holds, and a pod in this state can stay there for days.
+It is likeliest after the gateways reshard their targets, in a rollout or when the autoscaler removes a replica,
+because each pod then carries a larger share of the series.
+The `alloy-gateway-refusing-scrapes` alert fires on it.
+
+**Fix.** Find the pod that is refusing:
+
+```bash
+kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --since=10m --tail=-1 --prefix | grep "data refused due to high memory usage" | awk '{print $1}' | sort | uniq -c
+```
+
+Delete it to recover now; the other gateways take over its targets.
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` at about 80% of the new limit,
+as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+
 ## Configuration that appears to do nothing
 
 ### An Alloy pipeline or metric-filter change has no effect
@@ -11351,6 +11385,7 @@ An alert belongs in the file for the people who act on it.
 | `materialize-log-alerts.yaml` | `platform` | The Materialize deployment, detected in its log lines: panics and correctness violations |
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
+| `infra-log-alerts.yaml` | `platform` | The monitoring stack, detected in its own log lines where its metrics travel the path that is failing |
 
 Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
 `gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
@@ -25757,7 +25792,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
-| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-four alerts are in the default set, three of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
+| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
 | Security | A NetworkPolicy on every component, opt-in mTLS through cert-manager in three phases, and Trivy scanning of the rendered chart and the published images |
 | Qualification | Tier-0 Terraform render checks, kind tiers 1 and 2, and a Rust E2E suite run on kind and on real cloud installs |
 | Release | Per-component SemVer streams, automated release PRs, a changelog carrying each PR's release notes, a deprecation policy, and a committed-surface check |
@@ -26032,12 +26067,13 @@ The evaluation and notification path shipped with 1.0, and what remains is bread
 Freshness and source rules exist but stay opt-in.
 Calibrated against a production fleet, an absolute threshold fires mostly on clusters that are behind by design.
 Only a declared tier can tell those apart.
-Sink health and correctness logs beyond the three log-derived defaults have no rule yet.
+Sink health and correctness logs beyond the three Materialize log-derived defaults have no rule yet.
 
 ### Collection
 
 | Item | Status |
 |---|---|
+| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | ⬜ |
 | [DEP-380] CNI monitors for Calico and Azure Network Policy Manager | ⬜ |
 | [DEP-126] Trace correlation as structured metadata in the log pipeline, without trace storage | ⬜ |
 | [CLO-76] Optional continuous profiling, off by default | ⬜ |
@@ -26211,6 +26247,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-384]: https://linear.app/materializeinc/issue/DEP-384
+[DEP-385]: https://linear.app/materializeinc/issue/DEP-385
 
 
 --------------------------------------------------------------------------------

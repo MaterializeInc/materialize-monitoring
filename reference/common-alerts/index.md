@@ -1169,6 +1169,45 @@ Labels:
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 
+## infra-log-alerts
+
+<p>Log-derived alerting rules for the monitoring stack.</p>
+<p>Each alert matches a line a collector logs when it is failing in a way its own
+metrics cannot show, because the metrics travel the path that is failing. They
+are LogQL, evaluated by the Loki ruler against the logs the pipeline collects,
+and route through the same Alertmanager as the metric alerts.</p>
+<p><strong>A match is on the log line&rsquo;s text</strong>, and that text is not a contract. An
+upstream release can reword a message, and a reworded message makes the rule
+silent rather than broken. Each alert names the source of the line it matches,
+so a contributor can check it still exists.</p>
+<p>The label contract these read is documented under
+<a href="../../../logs-and-events/querying/">Logs and Events</a>: <code>namespace</code>, <code>app</code>,
+<code>container</code> and <code>level</code> are stream labels, and <code>pod</code> is structured metadata,
+which a rule may still group by.</p>
+
+<h4 id="alloy-gateway-refusing-scrapes">alloy-gateway-refusing-scrapes
+  <a class="anchor" href="#alloy-gateway-refusing-scrapes">#</a>
+</h4>
+An alloy-gateway pod is over its memory limiter&rsquo;s soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway&rsquo;s memory and <code>GOMEMLIMIT</code> to stop it recurring.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> monitoring</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+</p>
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    {app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">alloy-gateway</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">alloy</span>&#34;, level<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ERROR</span>&#34;}
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010">|=</span> &#34;<span style="color:#e6db74">data refused due to high memory usage</span>&#34;
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">5m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+
 ## materialize-alerts
 
 <p>Alerting rules for Materialize.</p>
@@ -1294,7 +1333,7 @@ Labels:
 </p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">s.*[1345]</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">s.*[1345]</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">5</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>

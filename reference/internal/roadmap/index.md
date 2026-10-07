@@ -57,7 +57,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
-| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-four alerts are in the default set, three of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
+| Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
 | Security | A NetworkPolicy on every component, opt-in mTLS through cert-manager in three phases, and Trivy scanning of the rendered chart and the published images |
 | Qualification | Tier-0 Terraform render checks, kind tiers 1 and 2, and a Rust E2E suite run on kind and on real cloud installs |
 | Release | Per-component SemVer streams, automated release PRs, a changelog carrying each PR's release notes, a deprecation policy, and a committed-surface check |
@@ -332,12 +332,13 @@ The evaluation and notification path shipped with 1.0, and what remains is bread
 Freshness and source rules exist but stay opt-in.
 Calibrated against a production fleet, an absolute threshold fires mostly on clusters that are behind by design.
 Only a declared tier can tell those apart.
-Sink health and correctness logs beyond the three log-derived defaults have no rule yet.
+Sink health and correctness logs beyond the three Materialize log-derived defaults have no rule yet.
 
 ### Collection
 
 | Item | Status |
 |---|---|
+| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | ⬜ |
 | [DEP-380] CNI monitors for Calico and Azure Network Policy Manager | ⬜ |
 | [DEP-126] Trace correlation as structured metadata in the log pipeline, without trace storage | ⬜ |
 | [CLO-76] Optional continuous profiling, off by default | ⬜ |
@@ -511,4 +512,5 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
 [DEP-384]: https://linear.app/materializeinc/issue/DEP-384
+[DEP-385]: https://linear.app/materializeinc/issue/DEP-385
 
