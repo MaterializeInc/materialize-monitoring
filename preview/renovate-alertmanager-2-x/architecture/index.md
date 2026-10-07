@@ -124,6 +124,8 @@ Loki writes all durable data to object storage (S3-compatible, GCS, or Azure Blo
 
 Thanos is included in `materialize-monitoring` as its default metrics storage and querying backend.
 
+For the full flow, with diagrams of collection, the write path, the block lifecycle, the read path and rule evaluation, see [Metrics > Metrics Architecture](../metrics/architecture/).
+
 Refer to [Thanos Design](https://thanos.io/tip/thanos/design.md/) for more details on the architecture of Thanos.
 
 The Thanos Receiver path includes:
@@ -141,7 +143,7 @@ The Thanos Query path includes:
 Additional components include:
 * A `thanos-compactor` singleton deployment that operates against the storage layer to compact, manage retention, and downsample metrics.
 * A `thanos-ruler` deployment that runs the `Ruler` component for alerting and recording rules.
-  * The `Ruler` subcomponent evaluates alerting and recording rules against incoming metrics.
+  * The `Ruler` subcomponent evaluates alerting and recording rules by querying `thanos-query`, and remote-writes the results to `alloy-gateway`.
 
 ## `grafana`: Grafana
 

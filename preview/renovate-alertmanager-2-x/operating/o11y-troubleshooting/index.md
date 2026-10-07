@@ -196,6 +196,36 @@ kubectl -n monitoring scale statefulset thanos-compactor --replicas=1
 >
 >  While the Compactor is down, **retention is not enforced** and the bucket grows. That is tolerable for minutes and worth watching over days — it is why compaction falling behind deserves an alert rather than a periodic look.
 
+### `ThanosCompactHalted`: `overlaps found while gathering blocks` {#thanos-compact-halted}
+
+The Compactor pod is `Running` and healthy, but `thanos_compact_halted` is `1` and its log holds one error from shortly after startup:
+
+```text
+level=error msg="critical error detected; halting" err="compaction: group 0@...:
+pre compaction overlap check: overlaps found while gathering blocks.
+[mint: ..., maxt: ..., range: 8s, blocks: 2]: <ulid: ...>, <ulid: ...>"
+```
+
+**Cause.** Two blocks from the same Receive replica overlap by a few seconds.
+Receive writes such a pair across every restart, because it accepts replicated and retried samples older than the block it flushed on shutdown.
+Without vertical compaction the Compactor treats any overlap as corruption and stops.
+Nothing after the halt runs: no compaction, no downsampling, and no retention.
+
+**Fix.** Run the Compactor with `--compact.enable-vertical-compaction` and `--deduplication.replica-label=receive_replica`.
+Both are in the chart default `thanos.compactor.extraArgs`, so a halt means an `extraArgs` override dropped them or the release predates them.
+The Compactor merges the overlapping blocks on its next start, and the blocks need no manual repair.
+The first run after a long halt works through the whole backlog before downsampling catches up.
+
+Confirm the halt, and then the recovery, from the Compactor's own metrics.
+`thanos_compact_halted` returns to `0` on the first start with the flags, and `thanos_compact_todo_compactions` falls as the backlog drains:
+
+```bash
+kubectl -n monitoring port-forward pod/thanos-compactor-0 10902:10902 &
+curl -s localhost:10902/metrics | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
+```
+
+A port-forward works with any Thanos image, including the shell-less ones the Chainguard and Docker Hardened Images profiles select.
+
 ### Everything suddenly fails, and it worked an hour ago
 
 Terraform cannot reach the cluster, `kubectl` returns an auth error, or a plan that succeeded this morning now fails on the provider rather than on anything you changed.
@@ -212,6 +242,39 @@ aws sso login                                                # AWS (or your usua
 Then re-fetch cluster credentials, because a kubeconfig entry with an exec plugin will keep failing until the underlying session is refreshed.
 
 The tell is breadth: an expired session breaks *everything at once*, including things you did not touch. A real misconfiguration is almost always narrower. When a failure looks impossibly broad, check the clock before you check your work.
+
+## Data that goes missing
+
+### Healthy targets go dark: `data refused due to high memory usage`
+
+A share of the metrics stops arriving, `up` included, for targets that are running fine.
+Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `logging-collection-down`, the Thanos `*IsDown` rules.
+A gateway pod logs this on every scrape it makes:
+
+```text
+msg="Scrape commit failed" ... err="1 error occurred:\n\t* data refused due to high memory usage\n\n"
+```
+
+**Cause.** The gateways divide the scrape targets between them, and each pod passes what it scrapes through a memory limiter before writing it out.
+A pod whose heap stays above the limiter's soft limit refuses every scrape it commits, and a refused scrape is lost rather than retried.
+The pod stays `Ready` and keeps its targets.
+It usually holds its own `/metrics` target as well, so its memory-limiter counters vanish with everything else,
+and the _Memory Limiter Refusals_ panel shows nothing for it.
+Its log also repeats `Forced GC did not reclaim enough memory`:
+refusing does not shrink what the pod already holds, and a pod in this state can stay there for days.
+It is likeliest after the gateways reshard their targets, in a rollout or when the autoscaler removes a replica,
+because each pod then carries a larger share of the series.
+The `alloy-gateway-refusing-scrapes` alert fires on it.
+
+**Fix.** Find the pod that is refusing:
+
+```bash
+kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --since=10m --tail=-1 --prefix | grep "data refused due to high memory usage" | awk '{print $1}' | sort | uniq -c
+```
+
+Delete it to recover now; the other gateways take over its targets.
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` at about 80% of the new limit,
+as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
 
 ## Configuration that appears to do nothing
 
