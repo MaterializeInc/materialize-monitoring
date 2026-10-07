@@ -13,7 +13,7 @@ Which bundled rules install is configured under `rules`, and where an alert goes
 Until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
 This page describes the bundled rules, the two evaluators, and how they reach Alertmanager.
 [Alert Architecture](../architecture/) describes Alertmanager itself, and [Alert Channels](../channels/) describes routing and receivers.
-The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
+The remaining work is described in the [alerting design doc](../../reference/development/design-docs/20260917-alerting-self-managed/) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
 <!-- more -->
 

@@ -21,7 +21,7 @@ The other pages in this section cover each stage in depth:
 | [Alerting > Configuring](../../alerting/configuring/) | The Thanos Ruler, and how `PrometheusRule` resources reach it |
 
 The production checklist for this backend is [Production Best Practices > Metrics (Thanos)](../../operating/production-best-practices/#metrics-thanos).
-The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## End-to-end dataflow
 
@@ -134,7 +134,7 @@ Each destination has its own importance-tier filter **upstream** of its writer.
 A remote-write destination's write-ahead log therefore holds only the series that destination accepts, and a stuck destination backs up its own WAL and no other.
 Each remote-write destination also stamps a `cluster` external label.
 
-*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## Thanos write path {#write-path}
 
@@ -306,6 +306,6 @@ A deployment that already runs its own Prometheus can skip the gateway entirely 
 - [Thanos Receive hashrings and replication](https://thanos.io/tip/proposals-done/201812-thanos-remote-receive.md/) (official).
 - [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
 - [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
-- [Metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal): the gateway's pipeline, component by component.
+- [Metrics pipeline reference](../../reference/development/pipelines/metrics/): the gateway's pipeline, component by component.
 - [o11y Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
 

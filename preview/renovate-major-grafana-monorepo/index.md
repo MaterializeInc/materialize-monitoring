@@ -13,7 +13,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 > [!WARNING]
 >  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/roadmap/) for what is built and what is coming, and the [Changelog](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/changelog/) for what has shipped.
+>  See the [Roadmap](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/roadmap/) for what is built and what is coming, and the [Changelog](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/changelog/) for what has shipped.
 
 ## Start here
 
@@ -38,7 +38,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 | **Dashboards** | [Available dashboards](/materialize-monitoring/preview/renovate-major-grafana-monorepo/dashboards/all/) and [importing the Grafana set](/materialize-monitoring/preview/renovate-major-grafana-monorepo/dashboards/grafana/importing/), the [Grafana Operator](/materialize-monitoring/preview/renovate-major-grafana-monorepo/dashboards/grafana/grafana-operator/) path that keeps it in sync, [how Grafana is wired](/materialize-monitoring/preview/renovate-major-grafana-monorepo/dashboards/grafana/architecture/), [authentication](/materialize-monitoring/preview/renovate-major-grafana-monorepo/dashboards/grafana/auth/), and [Datadog](/materialize-monitoring/preview/renovate-major-grafana-monorepo/dashboards/datadog/) |
 
 Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/roadmap/) tracks the work behind them.
+They appear in the sidebar because the sections exist; the [Roadmap](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/roadmap/) tracks the work behind them.
 
 ## Operating the stack
 
@@ -60,11 +60,11 @@ They appear in the sidebar because the sections exist; the [Roadmap](/materializ
 
 ## For contributors
 
-* [Contributing](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/contributing/) — the contributor guide, conventions, and the pre-commit wiring.
-* [Roadmap](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/roadmap/) — the current source of truth for what is built, in flight, and planned next.
-* [Repository Layout](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/repo-layout/) — where things live in the repo.
-* [Versioning](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/versioning/) and [Releasing](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/releasing/) — the per-component version streams and the release automation.
-* [Design Docs](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/internal/design-docs/overview/) — the decisions behind the larger pieces.
+* [Contributing](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/contributing/) — the contributor guide, conventions, and the pre-commit wiring.
+* [Roadmap](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/roadmap/) — the current source of truth for what is built, in flight, and planned next.
+* [Repository Layout](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/repo-layout/) — where things live in the repo.
+* [Versioning](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/versioning/) and [Releasing](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/releasing/) — the per-component version streams and the release automation.
+* [Design Docs](/materialize-monitoring/preview/renovate-major-grafana-monorepo/reference/development/design-docs/overview/) — the decisions behind the larger pieces.
 
 ## Getting help
 

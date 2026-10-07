@@ -206,7 +206,7 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
-It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/development/pipelines/logging/)).
 The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
 
 ### Configuration & change management
@@ -1050,8 +1050,8 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [ ] `[operator]` **A hardened Grafana cannot install plugins at start.** These images ship no shell and no package manager — which is the point — so `grafana.plugins` silently gets you a Grafana without those plugins rather than an error. Bake them into a derived image instead.
 - [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
 - [x] `[chart]` **Read-only root filesystem**, with an `emptyDir` at `/tmp` for the Unix sockets Grafana's backend plugins listen on.
-  A validator errors when nothing is mounted there, since every datasource then fails while the pod stays Ready.
-  A values file that sets `grafana.extraEmptyDirMounts` replaces the chart's list, so it has to keep the `/tmp` entry.
+  The Grafana subchart mounts that `emptyDir` itself.
+  A validator errors when `grafana.extraEmptyDirMounts`, `grafana.extraVolumeMounts` or `grafana.extraVolumes` adds a second one, since the API server rejects the Deployment.
 - [x] `[chart]` **Bundled datasource plugins stay at the image's versions** (`grafana.ini.plugins.preinstall_auto_update: false`).
   Grafana otherwise updates the Prometheus and Loki plugins it bundles to the newest release on grafana.com at every start, so a pinned image would not pin them.
   On a read-only root the update also fails halfway and leaves the datasource unloaded, and a validator errors when it is turned back on.
