@@ -1169,6 +1169,45 @@ Labels:
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span></code></pre></div>
 
+## infra-log-alerts
+
+<p>Log-derived alerting rules for the monitoring stack.</p>
+<p>Each alert matches a line a collector logs when it is failing in a way its own
+metrics cannot show, because the metrics travel the path that is failing. They
+are LogQL, evaluated by the Loki ruler against the logs the pipeline collects,
+and route through the same Alertmanager as the metric alerts.</p>
+<p><strong>A match is on the log line&rsquo;s text</strong>, and that text is not a contract. An
+upstream release can reword a message, and a reworded message makes the rule
+silent rather than broken. Each alert names the source of the line it matches,
+so a contributor can check it still exists.</p>
+<p>The label contract these read is documented under
+<a href="../../../logs-and-events/querying/">Logs and Events</a>: <code>namespace</code>, <code>app</code>,
+<code>container</code> and <code>level</code> are stream labels, and <code>pod</code> is structured metadata,
+which a rule may still group by.</p>
+
+<h4 id="alloy-gateway-refusing-scrapes">alloy-gateway-refusing-scrapes
+  <a class="anchor" href="#alloy-gateway-refusing-scrapes">#</a>
+</h4>
+An alloy-gateway pod is over its memory limiter&rsquo;s soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway&rsquo;s memory limit, and any explicit <code>GOMEMLIMIT</code>, to stop it recurring.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> monitoring</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+</p>
+<p><strong>Evaluated by:</strong> the Loki ruler, as LogQL.</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">count_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    {app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">alloy-gateway</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">alloy</span>&#34;, level<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ERROR</span>&#34;}
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010">|=</span> &#34;<span style="color:#e6db74">data refused due to high memory usage</span>&#34;
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">5m</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+
 ## materialize-alerts
 
 <p>Alerting rules for Materialize.</p>
@@ -1181,7 +1220,7 @@ from alerting (<code>rules.namespaces.exclude</code>).</p>
 <p>Alerts that depend on something a deployment may not contain are gated by
 capabilities, inferred from the metrics they read or declared with
 <code>requires</code>, rather than by who operates the deployment. See Authoring Alerts
-in the internal docs for how these render into rules.</p>
+in the development docs for how these render into rules.</p>
 
 <h4 id="env-uptime-sla">env-uptime-sla
   <a class="anchor" href="#env-uptime-sla">#</a>
@@ -1294,7 +1333,7 @@ Labels:
 </p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">s.*[1345]</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">1m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_cluster_server_last_command_received{server_name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compute</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*0</span>&#34;, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">!~</span>&#34;<span style="color:#e6db74">s.*[1345]</span>&#34;, <span style="color:#960050;background-color:#1e0010">${excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> kube_pod_start_time <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">5</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">60</span>
@@ -1425,10 +1464,61 @@ Labels:
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">2</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span></code></pre></div>
+<h4 id="consensus-unreachable">consensus-unreachable
+  <a class="anchor" href="#consensus-unreachable">#</a>
+</h4>
+Materialize cannot reach its metadata database, so nothing it stores can
+change and every write is stalled.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> consensus</li>
+        <li><strong>severity:</strong> critical</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Reads:</strong> <a href="/materialize-monitoring/preview/renovate-loki-18-x/reference/recorded-series/#ext-consensus_up"><code>ext:consensus_up</code></a>, recorded by any of <code>ext_consensus_persist</code>, <code>ext_consensus_cloudsql</code>, <code>ext_consensus_azure_postgres</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>flavor, namespace, resource<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ext<span style="color:#960050;background-color:#1e0010">:</span>consensus_up<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+<h4 id="consensus-failures">consensus-failures
+  <a class="anchor" href="#consensus-failures">#</a>
+</h4>
+Calls to the metadata database are failing with indeterminate errors,
+and Materialize is retrying its writes.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> consensus</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_persist_consensus_failures[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.1</span>
+</span></span></code></pre></div>
+<h4 id="blob-failures">blob-failures
+  <a class="anchor" href="#blob-failures">#</a>
+</h4>
+Calls to the object store holding Materialize&rsquo;s data are failing, by
+operation.
+Labels:
+<ul>
+        <li><strong>audience:</strong> platform</li>
+        <li><strong>component:</strong> object-storage</li>
+        <li><strong>severity:</strong> warning</li>
+</ul>
+<p><strong>Installed:</strong> by default, wherever it applies.
+<strong>Requires:</strong> <code>materialize</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, op<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>mz_persist_external_failed_count{op<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">blob_.*</span>&#34;}[<span style="color:#e6db74">5m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0.1</span>
+</span></span></code></pre></div>
 <h4 id="persist-failures">persist-failures
   <a class="anchor" href="#persist-failures">#</a>
 </h4>
-Failures in Persist that should be rare are happening frequently.
+Failures inside Persist that should be rare are happening frequently.
 Labels:
 <ul>
         <li><strong>audience:</strong> platform</li>
@@ -1439,19 +1529,13 @@ Labels:
 <strong>Requires:</strong> <code>materialize</code>.
 </p>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_blob_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_consensus_failures, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_state_update_state_slow_path, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_state_update_state_slow_path, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_lease_timeout_read, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">3</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_noop, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">3</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_failed, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_external_blob_delete_noop_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_external_failed_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_cmd_failed_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_compaction_dropped, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_pushdown_parts_mismatched_stats_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_columnar_validation_count{result<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">invalid</span>&#34;}, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
-</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_txn_placeholder_schema_apply, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_columnar_op_count{op<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">validation</span>&#34;, result<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">invalid</span>&#34;}, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_schema_cache_fetch_state_count, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, metric<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span><span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>mz_persist_shard_unconsolidated_snapshot, &#34;<span style="color:#e6db74">metric</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">__name__</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;<span style="color:#f92672">)</span>[<span style="color:#e6db74">1m</span><span style="color:#960050;background-color:#1e0010">:</span><span style="color:#e6db74">15s</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1</span>

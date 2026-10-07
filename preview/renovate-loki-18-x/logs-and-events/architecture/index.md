@@ -16,7 +16,7 @@ The other pages in this section cover each stage in depth, including its day-2 a
 
 Two Alloy roles sit in front of Loki.
 The Alloy [agent](#alloy-agent) (a DaemonSet, one per node) tails container logs and the systemd journal and forwards them to the Alloy [gateway](#alloy-gateway).
-The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/internal/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
+The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/development/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
 
 Loki is a [log store modeled after Prometheus](../../o11y-glossary/#stack-components): it indexes only the **labels** on each [log stream](../../o11y-glossary/#logs-and-events), never the log contents.
 That is what keeps it cheap at high volume, and it is why the gateway works to keep label cardinality under control before logs ever reach Loki — high-cardinality attributes belong in the log body or in [structured metadata](#storage), not in stream labels.
@@ -94,7 +94,7 @@ It discovers the pods scheduled on its own node, tails their container log files
 It does only light work locally — attaching node and pod metadata, basic relabeling, and a per-node rate limit — then forwards everything to the gateway over the Loki push API.
 Because it is a DaemonSet, collection scales with the number of nodes, and no application needs a logging sidecar.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ### alloy-gateway
 
@@ -105,7 +105,7 @@ Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## The hash ring
 
@@ -341,6 +341,6 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki deployment modes](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) — monolithic vs. simple scalable vs. microservice.
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative gateway/agent pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
 - [o11y Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 
