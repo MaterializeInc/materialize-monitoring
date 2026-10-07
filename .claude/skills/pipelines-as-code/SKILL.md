@@ -128,7 +128,12 @@ The conversion was verified by rendering before and after: `agent.alloy`, `gatew
 - **TLS: the in-cluster CA verifies the kubelet certificate on GKE** (measured), so `ca_file` + the SA token is enough and `insecure_skip_verify` stays false. Other distributions may need it true, and the failure is silent — hence `GATEWAY_KUBELET_TLS_INSECURE`.
 - **`clustering { enabled = true }` on the scrape is required**, not an optimization: the gateway runs many replicas and each would otherwise scrape every node (~6.7k series/node).
 - **RBAC needs nothing added** — the alloy subchart's default `clusterRules` already grant `nodes`, `nodes/metrics`, `nodes/proxy`.
-- **`GOMEMLIMIT` is set on both roles** (~80% of the memory limit). Go's GC has no knowledge of a cgroup limit, so it grows the heap toward a ceiling the kernel enforces by killing the process; telling the runtime about it converts an OOM-kill into GC pressure. Keep it in step with the limit whenever either moves.
+- **`GOMEMLIMIT` is set on both roles** (~80% of the memory limit).
+  Go's GC has no knowledge of a cgroup limit, so it grows the heap toward a ceiling the kernel enforces by killing the process;
+  telling the runtime about it converts an OOM-kill into GC pressure.
+  The agent sets it explicitly, so keep it in step with the limit whenever either moves.
+  The gateway derives it with `AUTOMEMLIMIT=0.8`, and its memory limiter refuses only above that, at 85% of the limit;
+  keep the limiter's thresholds above the ratio.
 
 
 **Top-level loki.* components**: `loki.echo`, `loki.process`, `loki.relabel`, `loki.source.journal`, `loki.source.file` (incl. the `file_match` sub-block), `loki.source.api` (+`http` server), `loki.source.kubernetes` (+`clustering`), `loki.source.kubernetes_events`, `loki.write` (+`endpoint`).

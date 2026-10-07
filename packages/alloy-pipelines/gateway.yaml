@@ -1275,13 +1275,22 @@ blocks:
               app: app
               container: container
 
-  # Outbound resource management: cap memory (refuse at 75% to backpressure the
-  # receivers) then batch before handing off to the egress seam.
+  # Outbound resource management: cap memory, then batch before handing off to
+  # the egress seam.
+  #
+  # The limiter is the last resort, behind the Go GC. Its percentages are of the
+  # container's memory limit, and refusal starts at 85% (`limit - spike`), above
+  # the 80% the chart gives `GOMEMLIMIT` (`AUTOMEMLIMIT`). The GC therefore works
+  # to hold the heap under its limit before anything is refused, and the limiter
+  # acts only when the live heap has outgrown the pod. It used to refuse at
+  # about 60% (75 - 15), below `GOMEMLIMIT`: a pod whose live heap crossed that
+  # line refused every scrape indefinitely while the GC still had room, and a
+  # refused scrape is lost rather than retried.
   - otelcol.processor.memory_limiter:
       label: outputMemoryLimiter
       check_interval: "5s"
-      limit_percentage: 75
-      spike_limit_percentage: 15
+      limit_percentage: 90
+      spike_limit_percentage: 5
       blocks:
         - output:
             metrics:

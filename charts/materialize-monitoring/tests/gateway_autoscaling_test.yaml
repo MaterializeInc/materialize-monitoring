@@ -3,12 +3,16 @@
 # Tests for the Alloy gateway's horizontal autoscaling.
 #
 # The gateway scales on CPU alone, deliberately. Memory was removed as a metric
-# rather than retuned, because scaling out does not relieve it: the gateway's
-# footprint is dominated by fixed per-process cost, so each replica added to
-# shed memory brings a whole new baseline with it. Measured on a 7-node cluster,
-# 3 replicas to 6 moved per-pod memory 370Mi -> 341Mi while total consumption
-# went 1.1Gi -> 2.0Gi. The HPA's action did not move the HPA's metric, and with
-# idle at ~62% of a 60% target it flapped against maxReplicas indefinitely.
+# rather than retuned, because memory utilization does not say whether a gateway
+# is short of memory: the runtime lets the heap grow toward GOMEMLIMIT either
+# way. Measured on a 7-node cluster, 3 replicas to 6 moved per-pod memory
+# 370Mi -> 341Mi while total consumption went 1.1Gi -> 2.0Gi. The HPA's action
+# did not move the HPA's metric, and with idle at ~62% of a 60% target it
+# flapped against maxReplicas indefinitely.
+#
+# Scaling down is slow on purpose. Every scale event reshards the scrape
+# targets, and a pod keeps the series of the targets it gave up until its
+# write-ahead log checkpoints, so a gateway that flaps pays for both shares.
 #
 # These tests exist because the failure is invisible in a diff. Re-adding a
 # memory target renders valid YAML, produces a healthy-looking HPA, and only
@@ -67,27 +71,53 @@ tests:
           value: cpu
 
   # GOMEMLIMIT is the ceiling the Go GC works against, so it decides where the
-  # gateway idles. Above the container limit it is inert — the kubelet OOM-kills
-  # the pod before the runtime ever collects hard — and far below it wastes the
-  # request. Neither shows up as a render failure.
-  - it: should keep GOMEMLIMIT below the container memory limit
+  # gateway idles. It is derived from the container limit (AUTOMEMLIMIT) rather
+  # than written down, so raising `resources` moves it too. An explicit
+  # GOMEMLIMIT would take precedence and pin the old ceiling under a new limit,
+  # which shows up as GC pressure rather than as a render failure.
+  - it: should derive GOMEMLIMIT from the container memory limit
     template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
       - equal:
           path: spec.template.spec.containers[0].resources.limits.memory
-          value: 768Mi
+          value: 2Gi
       - contains:
           path: spec.template.spec.containers[0].env
           content:
+            name: AUTOMEMLIMIT
+            value: "0.8"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
             name: GOMEMLIMIT
-            value: 600MiB
+          any: true
 
   # Memory scaling is off, so the request is the only thing standing between the
-  # gateway and an OOM kill. At minReplicas each pod carries the whole scrape
-  # fan-out rather than a shard, which is the case this has to cover.
+  # gateway and an OOM kill. At minReplicas each pod carries its share of every
+  # series in the cluster, which is the case this has to cover.
   - it: should request the same memory it limits
     template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
     asserts:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
-          value: 768Mi
+          value: 2Gi
+
+  - it: should scale down only after an hour, one pod at a time
+    template: ../charts/alloy-gateway/templates/hpa.yaml
+    asserts:
+      - equal:
+          path: spec.behavior.scaleDown.stabilizationWindowSeconds
+          value: 3600
+      - equal:
+          path: spec.behavior.scaleDown.policies
+          value:
+            - type: Pods
+              value: 1
+              periodSeconds: 600
+
+  - it: should still scale up quickly
+    template: ../charts/alloy-gateway/templates/hpa.yaml
+    asserts:
+      - equal:
+          path: spec.behavior.scaleUp.stabilizationWindowSeconds
+          value: 30

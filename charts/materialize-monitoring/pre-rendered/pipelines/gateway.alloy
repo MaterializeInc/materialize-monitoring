@@ -1835,8 +1835,8 @@ loki.process "inputProcessor" {
 
 otelcol.processor.memory_limiter "outputMemoryLimiter" {
 	check_interval         = "5s"
-	limit_percentage       = 75
-	spike_limit_percentage = 15
+	limit_percentage       = 90
+	spike_limit_percentage = 5
 
 	output {
 		metrics = [
