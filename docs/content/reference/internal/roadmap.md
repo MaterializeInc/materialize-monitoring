@@ -109,7 +109,7 @@ Tracked in [Metrics for Cloud][clom] (**CLOM**): what Materialize emits, what it
 Designed in [A Tenant-Scoped Query API](../design-docs/20260916-tenant-query-api/) and tracked as [DEP-269].
 Every consumer of this stack so far is a Grafana the chart deploys, reading backends over a `ClusterIP` Service.
 The read path serves the Materialize console and a customer's own Grafana through a tenant-scoped proxy instead.
-A revision deciding to build the proxy in Rust is in review as [#473].
+The proxy is a Rust service in this workspace, tested against `prom-label-proxy` as an oracle.
 
 | Item | Status |
 |---|---|
@@ -369,7 +369,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | Design | Status | Remaining work |
 |---|---|---|
 | [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byoc-observability/) | Ready | [BYOC](#byoc) |
-| [A Tenant-Scoped Query API](../design-docs/20260916-tenant-query-api/) | Ready, with a revision in review as [#473] | [Tenant-scoped read path](#tenant-scoped-read-path) |
+| [A Tenant-Scoped Query API](../design-docs/20260916-tenant-query-api/) | Ready | [Tenant-scoped read path](#tenant-scoped-read-path) |
 | [Alerting in Self-Managed](../design-docs/20260917-alerting-self-managed/) | Ready | [Alerting](#alerting) |
 | [Call-Home](../design-docs/20260917-call-home-self-managed/) | Ready | [Call-home from self-managed](#call-home-from-self-managed) |
 | [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/) | Ready | [External dependencies](#external-dependencies) |
@@ -386,7 +386,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 
 [#365]: https://github.com/MaterializeInc/materialize-monitoring/pull/365
 [#445]: https://github.com/MaterializeInc/materialize-monitoring/pull/445
-[#473]: https://github.com/MaterializeInc/materialize-monitoring/pull/473
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76
