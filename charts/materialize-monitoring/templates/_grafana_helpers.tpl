@@ -768,30 +768,43 @@ Usage:
   A read-only root filesystem is safe only with the writable paths and the
   plugin setting `grafana.containerSecurityContext` in values.yaml describes.
   Each gap below breaks Grafana outright rather than degrading it, so they are
-  errors, not warnings. Two of them leave the pod Ready with every panel empty.
+  errors, not warnings. The plugin setting leaves the pod Ready with every
+  panel empty.
 
   The preinstall setting is read from the environment first, because Grafana
   does: a `GF_` variable overrides `grafana.ini`.
   */}}
   {{- $csc := include "mzmon.grafana.section" ( dict "root" $ "name" "containerSecurityContext" ) | fromYaml }}
   {{- $env := include "mzmon.grafana.section" ( dict "root" $ "name" "env" ) | fromYaml }}
-  {{- if $csc.readOnlyRootFilesystem }}
-    {{- $mounted := list }}
-    {{- range $m := concat ( $values.extraEmptyDirMounts | default list ) ( $values.extraVolumeMounts | default list ) }}
-      {{- if kindIs "map" $m }}
-        {{- $mounted = append $mounted ( trimSuffix "/" ( toString $m.mountPath ) ) }}
-      {{- end }}
+  {{- $mounted := list }}
+  {{- range $m := concat ( $values.extraEmptyDirMounts | default list ) ( $values.extraVolumeMounts | default list ) }}
+    {{- if kindIs "map" $m }}
+      {{- $mounted = append $mounted ( trimSuffix "/" ( toString $m.mountPath ) ) }}
     {{- end }}
-    {{- if not ( has "/tmp" $mounted ) }}
-      {{- $errors = append $errors "grafana.containerSecurityContext.readOnlyRootFilesystem is true but nothing is mounted at /tmp. Grafana starts each backend plugin, Prometheus and Loki included, on a Unix socket under /tmp, so every one fails to start and every panel reports \"Unable to find datasource plugin\" while the pod stays Ready. A values file that sets grafana.extraEmptyDirMounts replaces the chart's list; keep its /tmp entry." }}
+  {{- end }}
+  {{- $volumes := list }}
+  {{- range $v := concat ( $values.extraEmptyDirMounts | default list ) ( $values.extraVolumes | default list ) }}
+    {{- if kindIs "map" $v }}
+      {{- $volumes = append $volumes ( toString $v.name ) }}
     {{- end }}
+  {{- end }}
 
+  {{- /*
+  The subchart mounts an `emptyDir` named `tmp` at /tmp on its own, so a second
+  one is a duplicate the API server rejects at apply time, after the render has
+  succeeded.
+  */}}
+  {{- if or ( has "/tmp" $mounted ) ( has "tmp" $volumes ) }}
+    {{- $errors = append $errors "grafana.extraEmptyDirMounts, grafana.extraVolumeMounts or grafana.extraVolumes adds a mount at /tmp or a volume named tmp. The Grafana subchart already mounts an emptyDir named tmp at /tmp, and the API server rejects a Deployment that has two. Remove the entry." }}
+  {{- end }}
+
+  {{- if $csc.readOnlyRootFilesystem }}
     {{- /*
     The image's entrypoint writes these profiles into the image itself, under
     `set -e`, so the container exits before Grafana starts.
     */}}
     {{- if and ( hasKey $env "GF_AWS_PROFILES" ) ( not ( has "/usr/share/grafana/.aws" $mounted ) ) }}
-      {{- $errors = append $errors "grafana.env.GF_AWS_PROFILES is set on a read-only root filesystem. The Grafana image's entrypoint writes those profiles to /usr/share/grafana/.aws/credentials before starting Grafana and exits when it cannot, so the pod crash-loops. Mount an emptyDir there through grafana.extraEmptyDirMounts, keeping the /tmp entry, or authenticate CloudWatch with the pod's own identity instead." }}
+      {{- $errors = append $errors "grafana.env.GF_AWS_PROFILES is set on a read-only root filesystem. The Grafana image's entrypoint writes those profiles to /usr/share/grafana/.aws/credentials before starting Grafana and exits when it cannot, so the pod crash-loops. Mount an emptyDir there through grafana.extraEmptyDirMounts, or authenticate CloudWatch with the pod's own identity instead." }}
     {{- end }}
 
     {{- $plugins := include "mzmon.grafana.iniSection" ( dict "root" $ "name" "plugins" ) | fromYaml }}
