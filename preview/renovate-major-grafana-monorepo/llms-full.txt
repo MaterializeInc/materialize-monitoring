@@ -2174,7 +2174,7 @@ flowchart TB
   subgraph proc["Shared processing"]
     transform["inputMetricProcessor"]
     deny["inputMetricDeny<br/>denyMetrics"]
-    limit["memory_limiter<br/>refuses at 75%"]
+    limit["memory_limiter<br/>refuses at 85%"]
     batch["batch"]
     transform --> deny --> limit --> batch
   end
@@ -8132,8 +8132,24 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` Confirm `loki.write` durability settings (WAL + ret/backoff) survive gateway restarts to your RPO; the write endpoint is set with `GATEWAY_LOKI_DEST` and the ingress port with `ALLOY_LOKI_PORT`.
 - [ ] `[consumer]` If sending OTLP, target `:4317` (gRPC) or `:4318` (HTTP); if chaining gateways, point the upstream writer at the downstream `:3100`. See [Collecting](../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
 - [ ] `[operator]` `loki.write` auth to a secured/remote destination (`basic_auth`/headers) is **not yet wired** — provide it before shipping to a destination that requires it.
-- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%). Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back: the gateway's footprint is dominated by fixed per-process cost rather than per-replica load, so scaling out does not relieve memory. Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi — each replica added to shed memory brings a whole new baseline with it. With idle at ~62% of the request against a 60% target, the HPA also could not stabilize: the action did not move the metric, so it flapped against `maxReplicas` indefinitely. No target value fixes that.
-- [ ] `[operator]` **Relieve gateway memory vertically**, not horizontally: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` in step at ~80% of the limit. The gateway carries the kubelet cAdvisor scrape, so its heap grows with node count, and at `minReplicas` each pod carries the whole fan-out rather than a shard of it. `GOMEMLIMIT` above the container limit is inert — the kubelet OOM-kills the pod before the runtime ever collects hard.
+- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%).
+  Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back:
+  memory utilization does not say whether a gateway is short of memory, because the Go runtime lets the heap grow toward `GOMEMLIMIT` either way.
+  Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi.
+  With idle at ~62% of the request against a 60% target, the HPA also could not stabilize:
+  the action did not move the metric, so it flapped against `maxReplicas` indefinitely.
+  No target value fixes that.
+- [x] `[chart]` **Scale-down is slow**: only after an hour of low CPU, and one pod per ten minutes.
+  Every scale event reshards the scrape targets, and a pod keeps the series of the targets it gave up until its write-ahead log checkpoints,
+  so a gateway that flaps holds both shares at once.
+  Scale-up stays fast.
+- [ ] `[operator]` **Size gateway memory vertically**, from the series it holds: raise `alloy-gateway.alloy.resources`,
+  and `GOMEMLIMIT` (80% of the limit, through `AUTOMEMLIMIT`) and the memory limiter follow.
+  A pod's live heap is about 200MiB plus about 2.6KiB per series, and at `minReplicas` each pod holds its share of every series in the cluster.
+  Keep that under about half of `GOMEMLIMIT`;
+  past it the GC runs constantly, and the CPU it spends makes the autoscaler scale out for no other reason.
+  The 2Gi default fits a medium install of about a quarter of a million series.
+  An explicit `GOMEMLIMIT` in `extraEnv` overrides the derived one and is not kept in step.
 
 ### Agent placement & durability
 
@@ -9323,8 +9339,9 @@ kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --si
 ```
 
 Delete it to recover now; the other gateways take over its targets.
-To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` at about 80% of the new limit,
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources`,
 as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+`GOMEMLIMIT` and the memory limiter follow the new limit, unless `extraEnv` sets an explicit `GOMEMLIMIT`.
 
 ## Configuration that appears to do nothing
 
@@ -10497,7 +10514,7 @@ cargo test --workspace                                   # all tests
 cargo clippy --workspace --all-targets -- -D warnings    # lint
 
 # Helm
-helm unittest charts/materialize-monitoring              # template unit tests
+make helm-tests                                          # template unit tests, every chart
 ```
 
 ## Iterating against a live cluster
@@ -10622,7 +10639,7 @@ LFS is used for packaged Helm subcharts (`charts/*/charts/*.tgz`); the pattern i
 3. Run the relevant tests:
    - Python: `uv run pytest`
    - Rust: `cargo test --workspace`
-   - Helm: `helm unittest charts/materialize-monitoring`
+   - Helm: `make helm-tests`
    - Terraform: `make terraform-check`
    - E2E, when touching the chart or the module in a way a render cannot cover: `make e2e-cluster && make e2e-tier1 && make e2e-verify-tier1`
 4. Open a PR against `main`. Keep PRs focused — one concern per PR reviews faster than a sweep.
@@ -11609,7 +11626,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
@@ -16303,12 +16320,12 @@ arguments against it.
       <td class="helm-value-default"><pre>
 [
   {
-    "name": "GOMEMLIMIT",
-    "value": "600MiB"
+    "name": "AUTOMEMLIMIT",
+    "value": "0.8"
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.  It is the ceiling the GC works against, so it also sets where the gateway idles. Leaving it near the old limit while raising `resources` would waste the new headroom; leaving it *above* the limit forfeits the whole point, since the runtime would only start collecting hard after the kubelet has already OOM-killed the pod.
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `AUTOMEMLIMIT` sets `GOMEMLIMIT` to 80% of the container's memory limit when Alloy starts, for the same reason as the agent's `GOMEMLIMIT`. Deriving it means raising `resources` is the whole change: the GC ceiling follows, and so do the memory limiter's thresholds, which are percentages of the same limit.  The ratio has to stay below the limiter's 85%. The GC should be holding the heap down well before the limiter starts refusing scrapes, and a refused scrape is lost. An explicit `GOMEMLIMIT` here takes precedence and is not kept in step with `resources`. Replacing this list without either leaves Alloy's own default of 90%, which sits above the limiter.
 </td>
     </tr>
     <tr>
@@ -16449,15 +16466,36 @@ the `tls.*File` carriers are preferred over the inline PEMs.
 {
   "limits": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   },
   "requests": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.
+      <td class="helm-value-desc">Resources for the alloy gateway containers.
+
+Memory is the gateway's binding constraint. Its live heap is about 200MiB
+of fixed cost plus about 2.6KiB for every series the pod holds. Each series
+is held three times: by the scrape cache, the OTLP-to-Prometheus bridge
+and the remote-write queue. The gateways split the scrape targets, so at
+`minReplicas` each pod holds its share of every series in the cluster. It
+also holds, until its write-ahead log next checkpoints, the series of
+targets a recent resharding moved away from it.
+
+Keep that live heap under about half of `GOMEMLIMIT`. Past that the GC
+runs constantly: measured with a 600MiB `GOMEMLIMIT`, a pod with 300MiB
+live collected about 3 times a minute on 0.07 cores, and one with 450MiB
+live collected 30 or more times a minute on 0.3 cores. That CPU is what the
+autoscaler scales on, so a gateway short of memory also scales out and
+back for no other reason.
+
+The default fits a medium install. It was measured on 9 nodes and ten
+Materialize replicas, a quarter of a million series in all. At 2 replicas a
+pod there holds 120k to 160k series, about 500 to 600MiB live, against a
+1.6GiB `GOMEMLIMIT`. Raise this as series grow. `GOMEMLIMIT` and the
+memory limiter's thresholds follow it (see `extraEnv`).
 </td>
     </tr>
     <tr>
@@ -16480,7 +16518,33 @@ the `tls.*File` carriers are preferred over the inline PEMs.
       <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>0</code></td>
-      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.
+      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory utilization does not say whether a gateway is short of memory. The Go runtime lets the heap grow toward `GOMEMLIMIT` before it collects hard, so a healthy pod's working set reads high too, and on a small cluster most of it is fixed per-process cost that a new replica only duplicates. On a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Size gateway memory vertically instead (`resources`, above). A pod that is short of it shows on CPU first, because collecting more often is what it spends the CPU on.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.scaleDown</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "policies": [
+    {
+      "periodSeconds": 600,
+      "type": "Pods",
+      "value": 1
+    }
+  ],
+  "selectPolicy": "Max",
+  "stabilizationWindowSeconds": 3600
+}</pre>
+</td>
+      <td class="helm-value-desc">Scale down slowly: only after an hour of low CPU, and one pod at a time.
+
+Every scale event reshards the scrape targets. A scale-down hands each
+remaining pod a larger share, and every pod keeps the series of the
+targets it gave up until its write-ahead log next checkpoints, hours
+later. A gateway that scales down and back up within the hour pays for
+both shares at once. The scale-up path stays fast, because it relieves
+load rather than concentrating it.
 </td>
     </tr>
     <tr>
@@ -21077,7 +21141,7 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
                      otelcol.processor.filter "inputMetricDeny"   (denyMetrics, per Prometheus series)
                                                │
                                                ▼
-                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 75%, backpressure receivers)
+                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 85%, above GOMEMLIMIT)
                                                │
                                                ▼
                      otelcol.processor.batch "outputBatch"
@@ -26073,7 +26137,7 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 
 | Item | Status |
 |---|---|
-| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | ⬜ |
+| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | 🔨 |
 | [DEP-380] CNI monitors for Calico and Azure Network Policy Manager | ⬜ |
 | [DEP-126] Trace correlation as structured metadata in the log pipeline, without trace storage | ⬜ |
 | [CLO-76] Optional continuous profiling, off by default | ⬜ |

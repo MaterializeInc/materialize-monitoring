@@ -338,7 +338,7 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 
 | Item | Status |
 |---|---|
-| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | ⬜ |
+| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | 🔨 |
 | [DEP-380] CNI monitors for Calico and Azure Network Policy Manager | ⬜ |
 | [DEP-126] Trace correlation as structured metadata in the log pipeline, without trace storage | ⬜ |
 | [CLO-76] Optional continuous profiling, off by default | ⬜ |

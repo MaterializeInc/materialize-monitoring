@@ -120,7 +120,7 @@ cargo test --workspace                                   # all tests
 cargo clippy --workspace --all-targets -- -D warnings    # lint
 
 # Helm
-helm unittest charts/materialize-monitoring              # template unit tests
+make helm-tests                                          # template unit tests, every chart
 ```
 
 ## Iterating against a live cluster
@@ -245,7 +245,7 @@ LFS is used for packaged Helm subcharts (`charts/*/charts/*.tgz`); the pattern i
 3. Run the relevant tests:
    - Python: `uv run pytest`
    - Rust: `cargo test --workspace`
-   - Helm: `helm unittest charts/materialize-monitoring`
+   - Helm: `make helm-tests`
    - Terraform: `make terraform-check`
    - E2E, when touching the chart or the module in a way a render cannot cover: `make e2e-cluster && make e2e-tier1 && make e2e-verify-tier1`
 4. Open a PR against `main`. Keep PRs focused — one concern per PR reviews faster than a sweep.

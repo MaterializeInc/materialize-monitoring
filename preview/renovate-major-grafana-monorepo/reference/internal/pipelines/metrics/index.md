@@ -36,7 +36,7 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
                      otelcol.processor.filter "inputMetricDeny"   (denyMetrics, per Prometheus series)
                                                │
                                                ▼
-                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 75%, backpressure receivers)
+                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 85%, above GOMEMLIMIT)
                                                │
                                                ▼
                      otelcol.processor.batch "outputBatch"
