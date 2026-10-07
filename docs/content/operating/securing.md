@@ -407,7 +407,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 
 Where the phases land is therefore your choice, not the chart's. A stack sitting at phase 1 or 2 is **encrypted and not authenticated**, and phase 2 is the state most likely to be mistaken for mTLS: every values file carries a `certFile`, the servers name a client CA, and a client presenting nothing is still served. Only phase 3 refuses it.
 
-The design for the first three is written up in the [TLS and authentication design doc](../../reference/internal/design-docs/20260816-tls-authentication/) (internal), including the two-phase rollout that gets there without an outage.
+The design for the first three is written up in the [TLS and authentication design doc](../../reference/development/design-docs/20260816-tls-authentication/), including the two-phase rollout that gets there without an outage.
 
 ## See also
 

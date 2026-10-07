@@ -13,9 +13,9 @@
 #
 # Schemas grow with usage; they are not meant to mirror alloy upstream
 # exhaustively. The full policy lives in:
-#   docs/content/reference/internal/pipelines/authoring.md
+#   docs/content/reference/development/pipelines/authoring.md
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/discovery.schema.yaml"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/discovery.schema.yaml"
 title: "Alloy discovery components"
 description: |
   Schemas for the discovery.* alloy components used by materialize-monitoring pipelines.

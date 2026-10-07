@@ -20,13 +20,13 @@ about the layer above it and the tests around both.
 
 ## Read first
 
-- [Terraform Modules design doc](../../../docs/content/reference/internal/design-docs/20260803-terraform-modules.md)
+- [Terraform Modules design doc](../../../docs/content/reference/development/design-docs/20260803-terraform-modules.md)
   — why the module is here, the values-composition order, and the test tiers.
 - [`terraform/modules/materialize-monitoring/README.md`](../../../terraform/modules/materialize-monitoring/README.md)
   — the subchart fan-outs and why the Alloy pod-template hash exists.
 - [`test/e2e/README.md`](../../../test/e2e/README.md) — what each tier covers and
   the traps in extending them.
-- [Contributing](../../../docs/content/reference/internal/contributing.md) —
+- [Contributing](../../../docs/content/reference/development/contributing.md) —
   prerequisites, `make` targets, and the pre-commit/pre-push split.
 
 ## The rule that generates most of the others
@@ -181,7 +181,7 @@ directory's `Chart.yaml`, so the pair cannot drift.
 
 A third shortcut — installing one component at a time with a scratch release —
 and the reasoning behind all of them are in
-[Iterating against a live cluster](../../../docs/content/reference/internal/contributing.md#iterating-against-a-live-cluster).
+[Iterating against a live cluster](../../../docs/content/reference/development/contributing.md#iterating-against-a-live-cluster).
 
 Revert both before committing. A relative `source` that reaches main is a broken
 module for every consumer.
@@ -207,4 +207,4 @@ pinning `?ref=materialize-monitoring/vX.Y.Z` cannot use a module feature until a
 release contains it; check the tag before assuming a variable is reachable.
 
 Bump level is chosen by editing the CHANGELOG placeholder heading. See
-[Choosing the next version](../../../docs/content/reference/internal/releasing.md#choosing-the-next-version).
+[Choosing the next version](../../../docs/content/reference/development/releasing.md#choosing-the-next-version).

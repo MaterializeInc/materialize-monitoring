@@ -27,7 +27,7 @@ name: design-doc-notify
 #
 # A notification is sent when all of these hold:
 #   * A ready-to-review PR is (re-)opened, or a draft is marked ready.
-#   * That PR *adds* a Markdown page under docs/content/reference/internal/design-docs/.
+#   * That PR *adds* a Markdown page under docs/content/reference/development/design-docs/.
 #
 # pull_request_target rather than pull_request: the Slack credential is only
 # readable from a workflow running against the base repository. Nothing from
@@ -42,7 +42,7 @@ on:
   pull_request_target:
     types: [opened, reopened, ready_for_review]
     paths:
-      - docs/content/reference/internal/design-docs/*.md
+      - docs/content/reference/development/design-docs/*.md
 
 # dorny/paths-filter lists a PR's changed files via the API.
 permissions:
@@ -66,7 +66,7 @@ jobs:
         with:
           filters: |
             new-design:
-              - added: "docs/content/reference/internal/design-docs/*.md"
+              - added: "docs/content/reference/development/design-docs/*.md"
 
       # Slack renders these blocks as `mrkdwn`, and a pull request title is
       # text an outside contributor chooses. Left raw, a title containing `>`

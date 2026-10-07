@@ -22,8 +22,8 @@ It is one lens over a review, not the whole of one.
 ## The committed customer-facing surface
 
 Renaming or removing one of these owes a deprecation cycle — announce, keep both working **30 days**, then remove.
-The policy of record is the **Stability guarantees** section of `docs/content/reference/internal/versioning.md`.
-The reviewer's checklist is **The committed-surface check** in `docs/content/reference/internal/releasing.md`.
+The policy of record is the **Stability guarantees** section of `docs/content/reference/development/versioning.md`.
+The reviewer's checklist is **The committed-surface check** in `docs/content/reference/development/releasing.md`.
 
 | Where | Pattern | Why it matters |
 |---|---|---|
@@ -44,7 +44,7 @@ The cycle is keyed to identifiers, not to conduct — committing to every observ
 It is still worth a comment: a customer's routing and runbooks are keyed on the name, so a changed meaning behind an unchanged name is the kind of thing a release note should carry even though policy does not compel one.
 Raise it as a release-note question, not as a policy breach.
 
-The bounded exception is the **content of a `canonical` query**, which is committed — see [Stability guarantees](../../../docs/content/reference/internal/versioning.md#stability-guarantees).
+The bounded exception is the **content of a `canonical` query**, which is committed — see [Stability guarantees](../../../docs/content/reference/development/versioning.md#stability-guarantees).
 Its id is not: re-filing the same expression under a new id owes nothing.
 
 ## What is not a breakage
@@ -104,12 +104,12 @@ Naming the non-breaks is what makes the breaks trustworthy.
 ## Suggest the alternative, not just the cycle
 
 A flagged break is usually avoidable, so lead with the design that dodges it.
-The reasoning behind each is in **Designing to avoid the cycle** in `docs/content/reference/internal/versioning.md`.
+The reasoning behind each is in **Designing to avoid the cycle** in `docs/content/reference/development/versioning.md`.
 
 - **Reading a raw `mz_*` metric?**
   Suggest minting a recording rule and pointing the artifact at that instead.
   We guarantee the `record:` name and may change the expression under it freely, so a future upstream rename becomes an expression edit with no customer-visible change.
-  The `ext:*` layer set the naming convention (`<level>:<metric>[:<operation>]`); see `docs/content/reference/internal/queries/recording-rules.md`.
+  The `ext:*` layer set the naming convention (`<level>:<metric>[:<operation>]`); see `docs/content/reference/development/queries/recording-rules.md`.
 - **Renaming for clarity?**
   Suggest adding the new name and leaving the old one working.
   Additions are free; the cycle only starts when the old identifier has to *go*, which is often not actually required.

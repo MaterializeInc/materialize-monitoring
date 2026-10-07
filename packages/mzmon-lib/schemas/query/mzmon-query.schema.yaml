@@ -15,7 +15,7 @@
 # - it should be possible to extract metrics from a query.
 # - all knownParameters must be implemented by template engine.
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/query/mzmon-query.schema.yaml"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/query/mzmon-query.schema.yaml"
 title: "Monitoring query schema"
 description: "An opinionated schema of monitoring queries used in materialize-monitoring"
 type: object
@@ -245,7 +245,7 @@ $defs:
       Query IDs are not a customer-facing surface at any level, `canonical` included:
       their consumers are dashboards in this repo, and an id may be renamed freely.
       The promise is on what the query computes, not on where it is filed. The full
-      committed surface is in reference/internal/versioning.md ("Stability guarantees").
+      committed surface is in reference/development/versioning.md ("Stability guarantees").
 
       Playground and Experimental queries may be used in upcoming dashboards and
       may graduate in the future.

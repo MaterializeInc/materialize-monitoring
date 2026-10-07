@@ -4,10 +4,10 @@ Guidance for Claude and other AI agents working in this repository.
 
 ## Sources of truth
 
-The [roadmap](docs/content/reference/internal/roadmap.md) is the current source of truth for what is built, what is in flight, and what is planned next.
+The [roadmap](docs/content/reference/development/roadmap.md) is the current source of truth for what is built, what is in flight, and what is planned next.
 Read it before reasoning about direction or priorities.
 
-The [repository layout](docs/content/reference/internal/repo-layout.md) is a cache of where things live in the repo.
+The [repository layout](docs/content/reference/development/repo-layout.md) is a cache of where things live in the repo.
 
 ## Stale content is common
 
@@ -28,7 +28,7 @@ Read it before writing or editing prose anywhere in this repository, including s
 ## Docsite section indexes
 
 `_index.md` files under `docs/content/` carry frontmatter only — never prose.
-A section's landing content goes in a regular page inside that section at `weight: 1` so it sorts first: `logs-and-events/architecture.md`, `reference/internal/contributing.md`, `overview.md` where nothing more specific fits.
+A section's landing content goes in a regular page inside that section at `weight: 1` so it sorts first: `logs-and-events/architecture.md`, `reference/development/contributing.md`, `overview.md` where nothing more specific fits.
 This way a reader never has to guess whether a directory in the sidebar is also a page.
 The site home, `docs/content/_index.md`, is the one exception.
 

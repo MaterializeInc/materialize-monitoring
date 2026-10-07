@@ -15,7 +15,7 @@ It installs with the cluster by default.
 For a customer who already runs their own observability stack, it reduces to nothing but a documented metric contract.
 
 This page states the direction and the reasoning behind it.
-The [Roadmap](../reference/internal/roadmap/) is the source of truth for status, and it is more current than this page by construction.
+The [Roadmap](../reference/development/roadmap/) is the source of truth for status, and it is more current than this page by construction.
 
 <!--
 Agent note: this page is published. Keep forward-looking items framed as proposals under review.
@@ -85,7 +85,7 @@ That asymmetry is the argument for treating this as a collaborative repository r
 The people who meet a failure mode are usually not the people who write the dashboard for it.
 A panel, an alert, a query, or a runbook contributed by whoever hit the problem carries context that a metric list cannot supply afterwards.
 Contributions from field engineers, SREs, and customers are encouraged on the same footing as contributions from the maintaining team.
-The [contributor guide](../reference/internal/contributing/) covers the conventions.
+The [contributor guide](../reference/development/contributing/) covers the conventions.
 
 The single-registry design is what makes a small contribution worth making.
 A query added to the registry reaches the dashboard, the published documentation, and any alert referencing it.
@@ -131,7 +131,7 @@ The stack is what makes the answer demonstrable rather than a claim.
 
 The platform is built and in use.
 The following is the surface 1.0 ships, at altitude.
-The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/internal/roadmap/) lists what is still to do.
+The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/development/roadmap/) lists what is still to do.
 
 | Area | State |
 |---|---|
@@ -155,7 +155,7 @@ Hydration, freshness, sources, and sinks each need instrumentation that lives up
 ## Where it is going
 
 Each theme below is a question this stack cannot answer yet.
-The [Roadmap](../reference/internal/roadmap/) tracks the individual items behind each one, with their status and their designs.
+The [Roadmap](../reference/development/roadmap/) tracks the individual items behind each one, with their status and their designs.
 
 ### From displaying metrics to answering questions
 
@@ -238,7 +238,7 @@ A total that quietly excludes the object store, the metadata database, or the mo
 ### The read path, where this stops being optional
 
 Every workstream above is about collecting telemetry, and every consumer of it so far is a Grafana the project deploys.
-The [tenant-scoped query API](../reference/internal/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
+The [tenant-scoped query API](../reference/development/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
 The two readers are the Materialize console and a customer's own Grafana.
 
 This is the one place the composability posture is genuinely in tension with the product.
@@ -262,14 +262,14 @@ That sizing question is common to all three, and it should be settled once rathe
 
 Two workstreams share a channel and differ in what authorizes using it.
 
-**[Bring-your-own-cloud](../reference/internal/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
+**[Bring-your-own-cloud](../reference/development/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
 They run in the customer's own cloud account, and Materialize needs enough telemetry to operate them.
 A reduced copy of telemetry crosses into the control plane, and the customer's full-fidelity copy always stays with them.
 Metrics cross selected by importance tier, and logs cross as an allowlisted, redacted, level-filtered subset.
 A pair of gateways enforces that boundary rather than ad-hoc network configuration.
 Redaction attaches to the destination, so the reduced copy is a fork of the customer's stream rather than a downgrade of it.
 
-**[Call-home](../reference/internal/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
+**[Call-home](../reference/development/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
 A self-managed deployment is invisible between escalations.
 The channel is the same, and the feature is consent.
 A bring-your-own-cloud customer bought an operated service, so telemetry crossing the boundary is what they purchased.
@@ -337,9 +337,9 @@ It cannot instrument what does not emit, and the gap between those two facts is 
 
 | Question | Page |
 |---|---|
-| What is built, in flight, and planned next | [Roadmap](../reference/internal/roadmap/) |
+| What is built, in flight, and planned next | [Roadmap](../reference/development/roadmap/) |
 | How the pieces fit together | [Architecture](../architecture/) |
 | What the vocabulary on these pages means | [o11y Glossary](../o11y-glossary/) |
 | What a consumer can rely on | [Stability Guarantees and Deprecation Policy](../reference/stability/) |
 | How to install it | [Getting Started](../getting-started/overview/) |
-| Why a larger piece is shaped the way it is | [Design Docs](../reference/internal/design-docs/overview/) |
+| Why a larger piece is shaped the way it is | [Design Docs](../reference/development/design-docs/overview/) |

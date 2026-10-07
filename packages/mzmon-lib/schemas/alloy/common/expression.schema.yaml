@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
 # JSONSchema for expression fragments of alloy pipeline definitions
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/expression.schema.yaml"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/common/expression.schema.yaml"
 title: "Alloy expression fragment schema"
 description: |
   A schema for expression fragments in Alloy pipeline definitions.

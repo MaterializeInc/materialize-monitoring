@@ -20,7 +20,7 @@ An unknown context is an immediate error rather than a fallback, and the Terrafo
 
 Override `KIND_CONTEXT` to point at a different cluster, or `KUBE_CONTEXT` when running the scripts directly.
 
-Tier definitions live in the [Terraform modules design doc](../../docs/content/reference/internal/design-docs/20260803-terraform-modules.md#tiers).
+Tier definitions live in the [Terraform modules design doc](../../docs/content/reference/development/design-docs/20260803-terraform-modules.md#tiers).
 The short version: tier 0 is `make terraform-check` (no cluster), tier 1 is the chart's own hermetic shape, tier 2 is the chart against real object storage, tier 3 is real clouds and lives downstream.
 
 ## The assertion suite

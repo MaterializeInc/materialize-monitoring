@@ -12,7 +12,7 @@ Leave `* None` when nothing needs saying; the section is then dropped entirely.
 
 Renaming or removing an alert name, a recording-rule name, a Terraform variable or output, or a dashboard identity?
 That owes a deprecation cycle: prefix the bullet `**Deprecated:**` or `**Removed:**` and name the replacement.
-See reference/internal/releasing.md, "The committed-surface check".
+See reference/development/releasing.md, "The committed-surface check".
 -->
 
 * None

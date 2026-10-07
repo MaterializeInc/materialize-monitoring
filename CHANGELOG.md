@@ -4,8 +4,8 @@
 Artifacts are mapped out in packages/components.yaml.
 Unreleased sections are placeholders ("_Changes Pending_") until a
 version-update/<component> PR populates and releases them; that PR also bumps
-the component's version_paths. See reference/internal/versioning.md and
-reference/internal/releasing.md.
+the component's version_paths. See reference/development/versioning.md and
+reference/development/releasing.md.
 -->
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.2.0 (Unreleased)
