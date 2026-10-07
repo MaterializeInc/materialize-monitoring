@@ -243,8 +243,24 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` Confirm `loki.write` durability settings (WAL + ret/backoff) survive gateway restarts to your RPO; the write endpoint is set with `GATEWAY_LOKI_DEST` and the ingress port with `ALLOY_LOKI_PORT`.
 - [ ] `[consumer]` If sending OTLP, target `:4317` (gRPC) or `:4318` (HTTP); if chaining gateways, point the upstream writer at the downstream `:3100`. See [Collecting](../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
 - [ ] `[operator]` `loki.write` auth to a secured/remote destination (`basic_auth`/headers) is **not yet wired** — provide it before shipping to a destination that requires it.
-- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%). Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back: the gateway's footprint is dominated by fixed per-process cost rather than per-replica load, so scaling out does not relieve memory. Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi — each replica added to shed memory brings a whole new baseline with it. With idle at ~62% of the request against a 60% target, the HPA also could not stabilize: the action did not move the metric, so it flapped against `maxReplicas` indefinitely. No target value fixes that.
-- [ ] `[operator]` **Relieve gateway memory vertically**, not horizontally: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` in step at ~80% of the limit. The gateway carries the kubelet cAdvisor scrape, so its heap grows with node count, and at `minReplicas` each pod carries the whole fan-out rather than a shard of it. `GOMEMLIMIT` above the container limit is inert — the kubelet OOM-kills the pod before the runtime ever collects hard.
+- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%).
+  Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back:
+  memory utilization does not say whether a gateway is short of memory, because the Go runtime lets the heap grow toward `GOMEMLIMIT` either way.
+  Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi.
+  With idle at ~62% of the request against a 60% target, the HPA also could not stabilize:
+  the action did not move the metric, so it flapped against `maxReplicas` indefinitely.
+  No target value fixes that.
+- [x] `[chart]` **Scale-down is slow**: only after an hour of low CPU, and one pod per ten minutes.
+  Every scale event reshards the scrape targets, and a pod keeps the series of the targets it gave up until its write-ahead log checkpoints,
+  so a gateway that flaps holds both shares at once.
+  Scale-up stays fast.
+- [ ] `[operator]` **Size gateway memory vertically**, from the series it holds: raise `alloy-gateway.alloy.resources`,
+  and `GOMEMLIMIT` (80% of the limit, through `AUTOMEMLIMIT`) and the memory limiter follow.
+  A pod's live heap is about 200MiB plus about 2.6KiB per series, and at `minReplicas` each pod holds its share of every series in the cluster.
+  Keep that under about half of `GOMEMLIMIT`;
+  past it the GC runs constantly, and the CPU it spends makes the autoscaler scale out for no other reason.
+  The 2Gi default fits a medium install of about a quarter of a million series.
+  An explicit `GOMEMLIMIT` in `extraEnv` overrides the derived one and is not kept in step.
 
 ### Agent placement & durability
 
@@ -544,7 +560,7 @@ Enabling the NetworkPolicy denies egress by default except what it explicitly al
 
 ## Metrics (Thanos)
 
-For the architecture these items configure, see [Metrics](../../metrics/).
+For the architecture these items configure, see [Metrics Architecture](../../metrics/architecture/).
 
 Thanos is **on par with Loki** in this chart now: sizing profiles ship, every component carries resource requests, and PodDisruptionBudgets, autoscaling, and zone-aware topology spread are all in place.
 What remains unchecked below is mostly `[operator]` and `[consumer]` work — decisions and cloud resources the chart cannot make for you.
@@ -759,7 +775,7 @@ An EBS volume cannot be attached from another zone, so a pod whose zone is gone 
 On the write path that converts a recoverable event into an outage that waits on the cloud provider: with RF 3 write quorum is 2, so two Receive pods stuck `Pending` on dead volumes block writes outright, where two `emptyDir` pods would have been rescheduled and rejoined the hashring.
 
 This is the same call the chart already makes for [Loki's ingesters](#4-ingester-durability--rollouts), for the same reason.
-Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `replica` external label, which the Compactor deduplicates.
+Blocks ship to object storage every 2h, so the window that exists only on local disk is at most 2h — and every replica uploads its own copy under a distinct `receive_replica` external label, which the Compactor deduplicates into one copy (see [Retention & compaction](#thanos-retention-compaction)).
 A pod that returns with an empty volume has lost its copy of that window; the query path still answers from the surviving replicas.
 
 > [!WARNING]
@@ -822,7 +838,7 @@ All of these are `extraArgs`. `[operator]` sets per profile.
 
 > [!WARNING]
 >   **`extraArgs` is a list, and Helm overwrites lists rather than merging them.**
->   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m`, `query.extraArgs` carries `--log.level=info`.
+>   Several components ship non-empty defaults — `receive.extraArgs` carries `--receive.replication-factor=3`, `compactor.extraArgs` carries `--consistency-delay=30m` and the [vertical compaction and deduplication flags](#thanos-retention-compaction), `query.extraArgs` carries `--log.level=info`.
 >   Setting `extraArgs` to add a limit **silently drops whatever was already there**, and on Receive that means falling back to Thanos's default replication factor of 1 — the exact failure the quorum table above exists to prevent.
 >   Restate the base arguments in full every time. The shipped profiles do.
 
@@ -899,11 +915,15 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 - [x] `[chart]` **Horizontal autoscaling on Query** (2–5 replicas, 80% CPU), and on Query Frontend once it is enabled — both are stateless, with no ring membership or local state. Store Gateway autoscaling is deliberately **off**: it is a PVC-backed StatefulSet that syncs the bucket index on startup, so scale-up serves nothing until it is warm, and scale-down orphans PVCs.
 - [ ] `[operator]` Keep `replicaCount` equal to `autoscaling.minReplicas`. The subchart templates a static `replicas` even alongside an HPA, so every upgrade or GitOps reconcile writes it back — matching the floor makes that reset a no-op instead of a scale blip. A validator warns when the two disagree.
 
-#### 4. Retention & compaction
+#### 4. Retention & compaction {#thanos-retention-compaction}
 
 - [x] `[chart]` Compactor enabled with downsampling retention: raw 30d, 5m 90d, 1h 365d — the medium row of [Retention and downsampling](#retention-and-downsampling).
 - [ ] `[operator]` Set those to your storage budget. Retention is enforced by the Compactor — with it disabled nothing expires and bucket cost grows without bound.
 - [ ] `[operator]` Keep raw retention above the downsampling thresholds (40h for the 5m tier, 10d for the 1h tier). Below them the tier is never produced and long-range queries silently fall back to raw blocks. See [Retention and downsampling](#retention-and-downsampling).
+- [x] `[chart]` **Vertical compaction on** (`--compact.enable-vertical-compaction`). Receive writes slightly overlapping blocks across every restart, and without vertical compaction the first overlap halts the Compactor. A halted Compactor enforces no retention and produces no downsamples. `ThanosCompactHalted` is the signal.
+- [x] `[chart]` **Replicas deduplicated in the bucket** (`--deduplication.replica-label=receive_replica`). The RF copies of each block compact into one, so the bucket holds one copy of each series. Thanos Query still deduplicates Receive's recent window on the same label.
+- [ ] `[operator]` An `extraArgs` override on the Compactor replaces the whole list. Restate both flags, as with Receive's replication factor. The list's other entries, `--log.level=info`, `--log.format=logfmt` and `--consistency-delay=30m`, match Thanos's own defaults, so dropping them changes nothing.
+- [ ] `[operator]` Deduplication is irreversible, and on an existing bucket it changes the external labels of compacted blocks. Downsampled blocks written before the change cannot be vertically compacted. Thanos marks them `no-compact`, and they keep their per-replica copies until retention expires them.
 - [x] `[chart]` Receive TSDB **local retention 6h** (overriding the subchart's 24h) with WAL compression. Blocks still ship to object storage every 2h — retention is a recent-query cache, not a durability window, and the Store Gateway serves everything older. 6h is what makes the `emptyDir` budget fit a modest node: 24h at the medium envelope is ~7.3Gi per pod, against ~18.8Gi allocatable on a typical GKE node shared with Loki.
 - [ ] `[operator]` Raising local retention raises the ephemeral request with it, roughly linearly. Check [the allocatable warning](#thanos-ephemeral-budget) first — this is the setting most likely to make Receive unschedulable.
 
@@ -931,7 +951,7 @@ Raw metrics are worth their cost while Thanos is still an early improvement over
 
 ### See also
 
-- [Metrics](../../metrics/) — the metrics architecture these items configure.
+- [Metrics Architecture](../../metrics/architecture/) — the metrics architecture these items configure.
 - [Storing](../../metrics/storing/) — object storage and retention in depth.
 - [Thanos Receive documentation](https://thanos.io/tip/components/receive.md/) (official) — hashring, replication, and quorum semantics.
 - [Thanos Compactor documentation](https://thanos.io/tip/components/compact.md/) (official) — compaction levels, downsampling thresholds, and why the singleton constraint exists.

@@ -9,6 +9,7 @@ An alert is written once, in the query registry, and becomes a rule through `mz-
 An alert whose query is PromQL is installed as a `PrometheusRule` wherever it applies, and the Thanos ruler evaluates it.
 An alert whose query is LogQL is installed as a `PrometheusRule` labelled `mzmon.materialize.cloud/flavor: logql`, which the alloy-gateway writes into the Loki ruler, and the Loki ruler evaluates it.
 This page is the conventions a contributor follows when adding or changing an alert, and what the tooling checks on their behalf.
+Recording rules render through the same context and are [Authoring Recording Rules](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/recording-rules/).
 Where the alert goes once it fires is [Alert Channels](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/alerting/channels/); why the stack is shaped this way is the [alerting design doc](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/design-docs/20260917-alerting-self-managed/).
 
 
@@ -48,6 +49,7 @@ An alert belongs in the file for the people who act on it.
 | `materialize-log-alerts.yaml` | `platform` | The Materialize deployment, detected in its log lines: panics and correctness violations |
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
+| `infra-log-alerts.yaml` | `platform` | The monitoring stack, detected in its own log lines where its metrics travel the path that is failing |
 
 Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
 `gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
@@ -84,6 +86,7 @@ Those parameters render to a `__mzmon_*__` token that the chart replaces at inst
 | `infraNonessentialWorkloadList` | `__mzmon_nonessential_workloads__` | `rules.infraWorkloads.nonessential` |
 | `infraDaemonsetWorkloadList` | `__mzmon_daemonset_workloads__` | `rules.infraWorkloads.daemonset` |
 | `mzEnvironmentFilter` | `materialize_cloud_organization_name=~".+"` | nothing; a rule covers every environment |
+| `consensusRdsResources`, `consensusCloudsqlResources`, `consensusAzurePostgresResources` | `__mzmon_consensus_rds__` and so on, bare values | `externalDependencies.consensus`, per flavor; see [Install-time facts](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/recording-rules/#install-time-facts) |
 
 An empty namespace list or workload tier renders as `a^`, a regex that matches nothing, rather than as an empty string.
 
@@ -119,13 +122,19 @@ An alert whose only metric is `up` MUST declare what it is about, since `up` exi
 An alert that depends on a label only some deployments add, such as a node label, SHOULD declare the capability that adds it.
 The effective set, inferred and declared, is recorded per rule in `_index.yaml`, which is how a reviewer sees it.
 
+**A recorded series is not a capability.**
+An alert reading one, such as `ext:consensus_up`, installs wherever any one of the recording rules that could produce it installs, and `_index.yaml` records those under the alert's `reads`.
+[Reading a recorded series](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/recording-rules/#reading-a-recorded-series) has the rules.
+
 | Kind | Capabilities | Present when |
 |---|---|---|
 | Derived | `materialize`, `materialize-sql`, `materialize-operator`, `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` | This chart runs the component and collects its metrics |
+| Derived | `cloudwatch`, `cloud-monitoring`, `azure-monitor` | The gateway runs that provider pull, `pipeline.metrics.provider.{cloudwatch,gcp,azure}` |
 | Explicit | `synthetic-uptime`, `external-uptime`, `feature-flags`, `frontegg-auth`, `memory-limiter`, `crdb-dedicated`, `cilium`, `coredns`, `cert-manager`, `kubelet-metrics`, `swap-nodes`, `egress-gateway` | An operator lists it in `rules.capabilities` |
 
 Adding a capability means adding it to the `Capability` enum, to the `capability` enum in `mzmon-query.schema.yaml`, and, for a derived one, to `mzmon.rules.derivedCapabilities` in the chart.
-Tests fail when the three disagree.
+A test fails when the first two disagree.
+Nothing checks the chart's list against them, so a derived capability's derivation is added there by hand.
 A capability SHOULD NOT be added for a single rule; a tag that applies to one rule is a label pretending to be a category.
 
 ## The default set
@@ -160,6 +169,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 | A LogQL expression has a stream selector and a range | Without a range it is a log query, which parses and which the ruler refuses |
 | No `%%{…}`, Grafana variable or unknown `__mzmon_*__` token remains | A ruler resolves none of them, and the selector matches nothing |
 | Every metric has a known source | A rule reading a metric nothing produces never fires |
+| A recorded series it reads has a recording rule that can produce what it selects | A selector every recording rule's labels contradict never matches anything |
 | `deploymentMode` is not a label | Applicability is `requires`, not a label nothing reads |
 
 ## The contract for a shipped alert

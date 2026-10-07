@@ -70,6 +70,10 @@ When a dependency bumps, the dependent bumps too and records an `Included <dep> 
 The range spans the dependency's latest released version to the version this release includes; a brand-new dependency with no prior release shows a single version.
 "Included" rather than "Updated" because the new version need not be released yet.
 This keeps each component's release notes self-contained and cumulative: the detail travels with the rollup, rather than a bare "updated to vX.Y.Z" with no context.
+The nested PRs sit in a collapsed `<details>` inside the entry,
+because a rarely released dependent accumulates every PR its dependencies merged in the meantime.
+An entry with nothing nested, which a bump by cascade alone produces, stays a plain bullet.
+A dependency that is reached only through another one is rolled up inside that one's entry.
 A PR already shown as a first-class change in a section is not repeated under that section's dependencies, and each dependency is rolled up once per section.
 When a PR touches two sibling dependencies, the one declared first in `dependencies` claims it; order the main content components ahead of shared/common ones so changes surface in the more specific stream.
 A single PR can still appear in several components' sections; that duplication is intentional, so each component's release reads completely on its own.
@@ -82,6 +86,8 @@ See [Release notes from PR descriptions](../releasing/#release-notes-from-pr-des
 Versions are read from `CHANGELOG.md` for each component.
 Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](../releasing/)).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
+Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
+so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
 The next version defaults to a minor bump; **a patch or a major is expressed by editing the placeholder heading**, which the tooling reads and never overrides.
 See [Choosing the next version](../releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose, and [Stability guarantees](#stability-guarantees) for what a version bump is allowed to change.
 
@@ -165,10 +171,11 @@ The cycle is the fallback, not the goal.
 Most breaking changes are avoidable at design time, and these are the levers worth reaching for first.
 
 **Publish a recording rule, not a raw metric.**
-The strongest lever we have, and unused — the registry defines zero recording rules today.
+The strongest lever we have.
 A `record:` name is ours, and the schema already says the expression behind it may change freely.
-So an artifact that reads `mzobject:compute_peek_latency_seconds:p99` instead of a raw `mz_*` metric turns an upstream rename into an expression edit with no customer-visible change at all.
+So an artifact that reads `ext:consensus_commit_latency_seconds:p99` instead of a raw `mz_persist_*` histogram turns an upstream rename into an expression edit with no customer-visible change at all.
 That converts a [coordinated-surface](#stability-guarantees) risk, which we do not control, into an owned one we fully control.
+The normalized `ext:*` layer is the first use, and [Authoring Recording Rules](../queries/recording-rules/) is the naming convention it set.
 
 **Add; do not rename.**
 Additions are free in any release.

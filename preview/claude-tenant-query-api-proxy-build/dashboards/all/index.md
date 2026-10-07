@@ -16,7 +16,8 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/compatibility/#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
-The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/common-queries/) is the query material to build one yourself.
+Grafana 10 and 11 (schema v1) renders are not planned.
+The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -345,7 +346,7 @@ Which NetworkPolicy objects exist comes from kube-state-metrics and is available
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
 Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/roadmap/#collection-gaps-these-depend-on).
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/roadmap/#dashboards).
 
 <table class="download-dashboards">
   <thead>
@@ -589,7 +590,7 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/dashboards/grafana/infra-alloy.json?xxhash=6f085c5fcb62bb8e" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/dashboards/grafana/infra-alloy.json?xxhash=8cb9672b042d3952" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
       </td>
       <td>

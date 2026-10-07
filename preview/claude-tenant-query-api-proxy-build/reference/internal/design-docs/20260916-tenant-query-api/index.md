@@ -157,7 +157,7 @@ This stack already collects the answers, at higher fidelity and for thirty days 
 The gap is not collection.
 The gap is that no authenticated, tenant-scoped way to read it exists, so a first-party product surface cannot depend on it.
 
-Note that the roadmap's [`console` row](../../roadmap/#materialize-components-beyond-the-environment) is a different subject with the same word in it.
+Note that the roadmap's [`console` row](../../roadmap/#materialize-side-emission) is a different subject with the same word in it.
 That row tracks Console as a *monitored component* — it exposes no metrics that reach Thanos.
 This doc is about Console as a *consumer*.
 Neither blocks the other.
@@ -229,7 +229,8 @@ Four consequences follow, and all four are costs rather than details.
 
 **The metric and label contract becomes load-bearing in a way it is not today.**
 The [deprecation policy](../20260823-deprecation-policy/#coordinated-surface-materialize-metrics-and-labels) already grades Materialize metrics and labels as a coordinated surface.
-Console reading them makes a rename a product outage rather than a dashboard bug, which argues for the [1.0 stamp](../../roadmap/#versioning-changelog-and-releases) landing before Console cuts over rather than after.
+Console reading them makes a rename a product outage rather than a dashboard bug.
+The [1.0 stamp](../../roadmap/#what-10-ships) has landed, so Console cuts over after it rather than before.
 
 **Sizing acquires a floor.**
 A requirement that does not fit in the smallest supported Materialize install is not a requirement, it is a recommendation with consequences.
@@ -290,7 +291,7 @@ Behind a SQL login that is harmless.
 On a public HTTP endpoint every request carrying a random `kid` costs two outbound calls to the identity provider.
 
 **A rejected token gets a 401 with `WWW-Authenticate: Bearer error="invalid_token"`, and the response does not say which check failed.**
-The proxy logs the reason with `sub` and `jti`, and never logs the token.
+The proxy logs the rejection reason and never logs the token. It includes `sub` and `jti` only when they were obtained from a signature-verified token.
 It strips `Authorization` before forwarding, along with the tenant-shaped headers.
 
 ### The claim contract
@@ -601,7 +602,7 @@ The endpoint set and per-endpoint semantics follow `prom-label-proxy` as of v0.1
 | `/api/v1/query`, `/api/v1/query_range`, `/api/v1/query_exemplars` | Every selector in the expression is rewritten |
 | `/api/v1/series`, `/federate` | Every `match[]` is rewritten |
 | `/api/v1/labels`, `/api/v1/label/<name>/values` | Every `match[]` is rewritten, and a request with no `match[]` gets one carrying only the tenant matcher |
-| `/api/v1/rules`, `/api/v1/alerts` | Forwarded, and the response is filtered to entries carrying the tenant label |
+| `/api/v1/rules`, `/api/v1/alerts` | Forwarded; as an explicit exception to request-path step 9, the response is filtered to entries whose tenant label equals the verified tenant before it is streamed |
 | Anything else | Not proxied |
 
 Errors use the Prometheus API's JSON error shape, which Grafana renders in place.

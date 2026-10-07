@@ -17,6 +17,8 @@ are end-user voice; see [Dashboard Style Guidelines](/materialize-monitoring/pre
 
 - **[Authoring Alerts](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/alerts/)** — how an `alerts:` entry becomes an installed Prometheus rule: the
   alerting context, capabilities, the default set, and what `gen-rules` rejects.
+- **[Authoring Recording Rules](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/recording-rules/)** — how a `rules:` entry becomes a recorded series:
+  the naming convention, the normalized `ext:*` contract, and the install-time facts its adapters need.
 - **[Datadog Translations](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/datadog/)** — the PromQL→Datadog mapping, the OTLP naming assumptions it
   rests on, and the gaps where Datadog's language cannot express what the PromQL does.
 
@@ -99,10 +101,10 @@ Adding or changing a query has effects beyond the query itself:
   The converse also holds, because tiers select by metric *name*. A query naming a generic family such as
   `go_goroutines` admits every target's copy of it, not only the copy the query was written for, which is why
   `infra-alloy.yaml` holds its Go runtime families at `extended`.
-- **Alerting rules** (`mz-monitoring-build gen-rules`) render every `alerts:` entry into
-  `charts/materialize-monitoring/pre-rendered/rules/prometheus/`, which the chart installs as `PrometheusRule` resources.
-  An alert's query renders through its own context and is held to stricter checks than a panel's; see
-  [Authoring Alerts](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/alerts/).
+- **Alerting and recording rules** (`mz-monitoring-build gen-rules`) render every `alerts:` and `rules:` entry into
+  `charts/materialize-monitoring/pre-rendered/rules/`, which the chart installs as `PrometheusRule` resources.
+  A rule's query renders through its own context and is held to stricter checks than a panel's; see
+  [Authoring Alerts](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/alerts/) and [Authoring Recording Rules](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/internal/queries/recording-rules/).
 - **The docs** read `packages/queries/` directly: Hugo mounts it at `assets/queries/`, and the `list-queries` shortcode
   renders [Common Queries](/materialize-monitoring/preview/claude-tenant-query-api-proxy-build/reference/common-queries/) from it.
   There is no generated intermediate to refresh.
