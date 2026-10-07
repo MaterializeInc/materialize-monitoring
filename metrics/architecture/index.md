@@ -96,7 +96,7 @@ flowchart TB
   subgraph proc["Shared processing"]
     transform["inputMetricProcessor"]
     deny["inputMetricDeny<br/>denyMetrics"]
-    limit["memory_limiter<br/>refuses at 75%"]
+    limit["memory_limiter<br/>refuses at 85%"]
     batch["batch"]
     transform --> deny --> limit --> batch
   end
