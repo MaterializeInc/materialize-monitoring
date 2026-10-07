@@ -8,9 +8,26 @@ the component's version_paths. See reference/internal/versioning.md and
 reference/internal/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.1.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.2.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.1.0
+
+* Size the gateway for the series it holds, and keep its memory limiter behind the GC
+    * [materialize-monitoring#496](https://github.com/MaterializeInc/materialize-monitoring/pull/496)
+    * The alloy-gateway's default memory is now 2Gi, request and limit, up from 768Mi. The old size was set when the gateway carried logs only. A gateway holds about 200MiB plus 2.6KiB per series it scrapes, and below this it ran its garbage collector constantly. Installs that set `alloy-gateway.alloy.resources` keep their own values; check them against the sizing note in `values.yaml`.
+    * The gateway's `GOMEMLIMIT` is now 80% of its memory limit, set with `AUTOMEMLIMIT: "0.8"` in `alloy-gateway.alloy.extraEnv`, instead of a fixed `600MiB`. An explicit `GOMEMLIMIT` there still takes precedence and does not follow the limit. A list that sets neither falls back to Alloy's own 90%.
+    * The gateway's memory limiter now refuses data only above 85% of its memory limit, instead of about 60%. The garbage collector now acts before scrapes are refused.
+    * The gateway's autoscaler now scales down only after an hour of low CPU, one pod per ten minutes.
+* Alert on a gateway refusing its scrapes, and stop reading the gaps as a stall
+    * [materialize-monitoring#493](https://github.com/MaterializeInc/materialize-monitoring/pull/493)
+    * New default alert `alloy-gateway-refusing-scrapes` (warning). It fires when an alloy-gateway pod's memory limiter has been discarding its scrapes for 15 minutes. While it fires, every target that pod scrapes is missing from the metrics store. It is a LogQL rule, so it needs the bundled Loki ruler.
+    * `clusterd-not-receiving-commands` no longer fires on a healthy replica whose scrapes are missing. It now needs at least two scraped samples in its window.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.0.0
 
