@@ -243,6 +243,39 @@ Then re-fetch cluster credentials, because a kubeconfig entry with an exec plugi
 
 The tell is breadth: an expired session breaks *everything at once*, including things you did not touch. A real misconfiguration is almost always narrower. When a failure looks impossibly broad, check the clock before you check your work.
 
+## Data that goes missing
+
+### Healthy targets go dark: `data refused due to high memory usage`
+
+A share of the metrics stops arriving, `up` included, for targets that are running fine.
+Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `logging-collection-down`, the Thanos `*IsDown` rules.
+A gateway pod logs this on every scrape it makes:
+
+```text
+msg="Scrape commit failed" ... err="1 error occurred:\n\t* data refused due to high memory usage\n\n"
+```
+
+**Cause.** The gateways divide the scrape targets between them, and each pod passes what it scrapes through a memory limiter before writing it out.
+A pod whose heap stays above the limiter's soft limit refuses every scrape it commits, and a refused scrape is lost rather than retried.
+The pod stays `Ready` and keeps its targets.
+It usually holds its own `/metrics` target as well, so its memory-limiter counters vanish with everything else,
+and the _Memory Limiter Refusals_ panel shows nothing for it.
+Its log also repeats `Forced GC did not reclaim enough memory`:
+refusing does not shrink what the pod already holds, and a pod in this state can stay there for days.
+It is likeliest after the gateways reshard their targets, in a rollout or when the autoscaler removes a replica,
+because each pod then carries a larger share of the series.
+The `alloy-gateway-refusing-scrapes` alert fires on it.
+
+**Fix.** Find the pod that is refusing:
+
+```bash
+kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --since=10m --tail=-1 --prefix | grep "data refused due to high memory usage" | awk '{print $1}' | sort | uniq -c
+```
+
+Delete it to recover now; the other gateways take over its targets.
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` at about 80% of the new limit,
+as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+
 ## Configuration that appears to do nothing
 
 ### An Alloy pipeline or metric-filter change has no effect

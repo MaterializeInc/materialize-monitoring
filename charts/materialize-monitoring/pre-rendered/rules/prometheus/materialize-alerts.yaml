@@ -225,7 +225,7 @@ groups:
       (
       (
       max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
-        rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", namespace!~"__mzmon_excluded_namespaces__"}[5m:1m])
+        rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", namespace!~"__mzmon_excluded_namespaces__"}[5m])
       ) == 0
       and on (namespace, pod) (
         time() - kube_pod_start_time > 5 * 60
@@ -252,7 +252,7 @@ groups:
       or on (namespace)
       (
       max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
-        rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", namespace!~"__mzmon_excluded_namespaces__"}[5m:1m])
+        rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", namespace!~"__mzmon_excluded_namespaces__"}[5m])
       ) == 0
       and on (namespace, pod) (
         time() - kube_pod_start_time > 5 * 60
@@ -345,6 +345,12 @@ groups:
         PodMonitor no longer selects it, or the gateway has stopped scraping.
         Check that the environmentd pod exists and that the gateway's
         Materialize scrape targets are healthy.
+
+        It also fires on a healthy environment when a gateway pod is
+        refusing what it scrapes under memory pressure: the pod still scrapes
+        environmentd, and discards the result, `up` included. When
+        `alloy-gateway-refusing-scrapes` is firing beside this, environmentd
+        is very likely fine, and that alert is the one to act on.
 
         Fires only when no environmentd is scraped anywhere. With several
         environments, one of them vanishing is not covered.

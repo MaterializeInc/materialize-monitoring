@@ -207,9 +207,17 @@ alerts:
         # system clusters other than the catalog server are excluded; and a
         # replica that restarted in the last 6h is left to the restart alerts
         # rather than reported as disconnected.
+        #
+        # The rate reads the scraped samples themselves, not a `[5m:1m]`
+        # subquery over them. A subquery step re-reads the last sample for up
+        # to five minutes after it, so a replica whose scrapes stopped arriving
+        # (a gateway refusing them under memory pressure) looked flat, and a
+        # healthy replica fired. A replica with too few samples in the window
+        # now yields nothing, which is environmentd-not-scraped's and
+        # alloy-gateway-refusing-scrapes' to report rather than this rule's.
         template: |
           max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
-            rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", %%{excludeEnvironmentFilter}}[5m:1m])
+            rate(mz_cluster_server_last_command_received{server_name="compute", pod=~".*0", cluster_environmentd_materialize_cloud_cluster_id!~"s.*[1345]", %%{excludeEnvironmentFilter}}[5m])
           ) == 0
           and on (namespace, pod) (
             time() - kube_pod_start_time > 5 * 60
@@ -310,6 +318,12 @@ alerts:
         PodMonitor no longer selects it, or the gateway has stopped scraping.
         Check that the environmentd pod exists and that the gateway's
         Materialize scrape targets are healthy.
+
+        It also fires on a healthy environment when a gateway pod is
+        refusing what it scrapes under memory pressure: the pod still scrapes
+        environmentd, and discards the result, `up` included. When
+        `alloy-gateway-refusing-scrapes` is firing beside this, environmentd
+        is very likely fine, and that alert is the one to act on.
       notes: |
         Fires only when no environmentd is scraped anywhere. With several
         environments, one of them vanishing is not covered.

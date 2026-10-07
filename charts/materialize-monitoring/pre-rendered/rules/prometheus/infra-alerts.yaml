@@ -514,6 +514,13 @@ groups:
       audience: platform
     annotations:
       summary: Loki has received no logs for 15m — log collection is down.
+      description: |-
+        Read from the distributor's metrics, and their absence counts as no
+        logs. A distributor whose metrics stop arriving fires this while logs
+        still flow: the gateway pod that scrapes it may be refusing its
+        scrapes, in which case `alloy-gateway-refusing-scrapes` fires too.
+        Before treating log collection as down, check that recent lines show
+        on the Logs & Events dashboard.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#logging-collection-down
 - name: deployment
   rules:

@@ -658,6 +658,14 @@ rules:
     - egress-gateway
     enabledByDefault: false
     minImportance: essential
+  alloy-gateway-refusing-scrapes:
+    file: loki/infra-log-alerts.yaml
+    engine: logql
+    group: metric_collection
+    severity: warning
+    audience: platform
+    requires: []
+    enabledByDefault: true
   env-uptime-sla:
     file: prometheus/materialize-alerts.yaml
     engine: promql

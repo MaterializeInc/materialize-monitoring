@@ -41,22 +41,27 @@ templates:
 tests:
   # --- what installs --------------------------------------------------------
 
-  - it: installs the default-set log rules as one PrometheusRule labelled logql
+  # One PrometheusRule per registry file, as the PromQL rules are.
+  - it: installs the default-set log rules as one PrometheusRule per file, labelled logql
     template: templates/alerts/lokirules.yaml
     asserts:
       - hasDocuments:
-          count: 1
+          count: 2
       - isKind:
           of: PrometheusRule
-      - equal:
-          path: metadata.name
-          value: mzmon-materialize-log-alerts
       - equal:
           path: metadata.namespace
           value: test-monitoring
       - equal:
           path: metadata.labels["mzmon.materialize.cloud/flavor"]
           value: logql
+
+  - it: installs the Materialize log rules in the default set
+    template: templates/alerts/lokirules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-log-alerts
+    asserts:
       - exists:
           path: spec.groups[*].rules[?(@.alert == "materialize-panic")]
       - exists:
@@ -65,6 +70,15 @@ tests:
           path: spec.groups[*].rules[?(@.alert == "persist-filter-pushdown-violation")]
       - notExists:
           path: spec.groups[*].rules[?(@.alert == "trace-logging-enabled")]
+
+  - it: installs the monitoring stack's log rules in the default set
+    template: templates/alerts/lokirules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-infra-log-alerts
+    asserts:
+      - exists:
+          path: spec.groups[*].rules[?(@.alert == "alloy-gateway-refusing-scrapes")]
 
   - it: labels the PromQL rules promql
     template: templates/alerts/prometheusrules.yaml
@@ -75,6 +89,9 @@ tests:
 
   - it: fills the namespace placeholders from values
     template: templates/alerts/lokirules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-log-alerts
     set:
       rules.namespaces.environment: [mz-env-a, mz-env-b]
       rules.namespaces.operator: [mz-operator]
@@ -89,6 +106,9 @@ tests:
 
   - it: installs an opt-in log rule once it is selected
     template: templates/alerts/lokirules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-log-alerts
     set:
       rules.selected: [trace-logging-enabled]
     asserts:
@@ -97,6 +117,9 @@ tests:
 
   - it: leaves a disabled log rule out
     template: templates/alerts/lokirules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-log-alerts
     set:
       rules.disabled: [materialize-panic]
     asserts:
@@ -107,6 +130,9 @@ tests:
 
   - it: applies an override to a log rule as it does to a PromQL one
     template: templates/alerts/lokirules.yaml
+    documentSelector:
+      path: metadata.name
+      value: mzmon-materialize-log-alerts
     set:
       rules.overrides:
         materialize-panic:
@@ -292,7 +318,7 @@ tests:
     set:
       thanos.ruler.autoImportPrometheusRules.labelSelector:
         mzmon.materialize.cloud/flavor!: null
-      rules.disabled: [materialize-panic, data-correctness-error, persist-filter-pushdown-violation]
+      rules.disabled: [materialize-panic, data-correctness-error, persist-filter-pushdown-violation, alloy-gateway-refusing-scrapes]
     asserts:
       - notFailedTemplate: {}
 
