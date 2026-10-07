@@ -1188,7 +1188,7 @@ which a rule may still group by.</p>
 <h4 id="alloy-gateway-refusing-scrapes">alloy-gateway-refusing-scrapes
   <a class="anchor" href="#alloy-gateway-refusing-scrapes">#</a>
 </h4>
-An alloy-gateway pod is over its memory limiter&rsquo;s soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway&rsquo;s memory limit to stop it recurring.
+An alloy-gateway pod is over its memory limiter&rsquo;s soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway&rsquo;s memory limit, and any explicit <code>GOMEMLIMIT</code>, to stop it recurring.
 Labels:
 <ul>
         <li><strong>audience:</strong> platform</li>

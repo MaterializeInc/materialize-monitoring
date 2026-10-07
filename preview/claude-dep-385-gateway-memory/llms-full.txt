@@ -16494,9 +16494,8 @@ back for no other reason.
 The default fits a medium install. It was measured on 9 nodes and ten
 Materialize replicas, a quarter of a million series in all. At 2 replicas a
 pod there holds 120k to 160k series, about 500 to 600MiB live, against a
-1.6GiB `GOMEMLIMIT`. The earlier 768Mi dated from when the gateway carried
-logs only. Raise this as series grow. `GOMEMLIMIT` and the memory
-limiter's thresholds follow it (see `extraEnv`).
+1.6GiB `GOMEMLIMIT`. Raise this as series grow. `GOMEMLIMIT` and the
+memory limiter's thresholds follow it (see `extraEnv`).
 </td>
     </tr>
     <tr>
