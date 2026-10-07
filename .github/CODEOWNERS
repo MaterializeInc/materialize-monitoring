@@ -5,7 +5,7 @@
 /CHANGELOG.md       @alphadelta14
 
 # Committed customer-facing surface: a rename or removal here owes a deprecation
-# cycle. See reference/internal/releasing.md ("The committed-surface check").
+# cycle. See reference/development/releasing.md ("The committed-surface check").
 # Adding an identifier needs nothing; these entries exist so renames get a look.
 /packages/queries/                                  @alphadelta14
 /terraform/modules/materialize-monitoring/variables.tf   @alphadelta14

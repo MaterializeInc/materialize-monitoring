@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
 # JSONSchema for top-level configuration of alloy pipeline definitions
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/top.schema.yaml"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/top.schema.yaml"
 title: "Alloy top-level configuration schema"
 description: |
   A schema for top-level configuration in Alloy pipeline definitions.

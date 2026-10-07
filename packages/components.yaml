@@ -99,7 +99,7 @@ components:
     # with it so the section in flight is not duplicated. Older headings keep
     # the old title as the historical record.
     #
-    # See `reference/internal/releasing.md` for the procedure.
+    # See `reference/development/releasing.md` for the procedure.
     title: "Dashboards (Helm chart)"
     # The chart's version is the component's. `packages/dashboards` is a
     # workspace crate inheriting `version.workspace`, so it contributes no

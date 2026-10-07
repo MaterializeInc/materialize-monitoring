@@ -19,19 +19,19 @@ nothing to report, so almost every mistake here is silent.
 
 ## Read first
 
-- [Authoring Alerts](../../../docs/content/reference/internal/queries/alerts.md)
+- [Authoring Alerts](../../../docs/content/reference/development/queries/alerts.md)
   — how an entry becomes an installed rule, the alerting context and its
   placeholders, capabilities, the default set, what `gen-rules` rejects, and
   the contract every shipped alert keeps. Read the contract before writing PromQL.
-- [Authoring Recording Rules](../../../docs/content/reference/internal/queries/recording-rules.md)
+- [Authoring Recording Rules](../../../docs/content/reference/development/queries/recording-rules.md)
   — the `<level>:<metric>[:<operation>]` naming convention, the `ext:*`
   contract (a `flavor` per adapter, absence over a guessed value), and the
   install-time facts the provider adapters need.
 - [Configuring Alerting](../../../docs/content/alerting/configuring.md) — the
   operator's side: which rules install and the `rules.*` values.
-- [The alerting design doc](../../../docs/content/reference/internal/design-docs/20260917-alerting-self-managed.md)
+- [The alerting design doc](../../../docs/content/reference/development/design-docs/20260917-alerting-self-managed.md)
   — why the stack is two rulers and one Alertmanager, and what is still owed.
-- [Queries as Code](../../../docs/content/reference/internal/queries/overview.md)
+- [Queries as Code](../../../docs/content/reference/development/queries/overview.md)
   — the registry itself. Panel work is `dashboards-as-code`, not this skill.
 
 ## The loop

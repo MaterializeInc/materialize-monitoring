@@ -19,9 +19,9 @@
 #
 # Schemas grow with usage; they are not meant to mirror alloy upstream
 # exhaustively. The full policy lives in:
-#   docs/content/reference/internal/pipelines/authoring.md
+#   docs/content/reference/development/pipelines/authoring.md
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/prometheus.schema.yaml"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/prometheus.schema.yaml"
 title: "Alloy Prometheus components"
 description: |
   Schemas for the prometheus.* alloy components used by materialize-monitoring pipelines.

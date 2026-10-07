@@ -18,7 +18,7 @@ description: |
   Alerts that depend on something a deployment may not contain are gated by
   capabilities, inferred from the metrics they read or declared with
   `requires`, rather than by who operates the deployment. See Authoring Alerts
-  in the internal docs for how these render into rules.
+  in the development docs for how these render into rules.
 
 metricImportanceHint: essential
 

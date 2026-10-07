@@ -16,7 +16,7 @@ optional bundled backends (Loki / Thanos / Grafana / Alertmanager),
 and the dashboards / alerts / rules that consume the Materialize
 metrics surface.
 
-![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0](https://img.shields.io/badge/AppVersion-0.0.0-informational?style=flat-square)
+![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0](https://img.shields.io/badge/AppVersion-0.0.0-informational?style=flat-square)
 
 ## TL;DR
 
@@ -1919,7 +1919,7 @@ the managed database and the buckets a deployment depends on, and write it
 beside every other metric. The result shares retention, PromQL and alerting
 with the rest of the stack, so a provider series is joinable with
 `mz_persist_*` in one expression. The [external-dependency
-design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+design](https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
 records why this is a pull rather than a Grafana datasource.
 
 | Provider | Services | Alloy component |

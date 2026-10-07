@@ -6,7 +6,7 @@
 */}}
 {{- $ignoreParams := .Get "ignoreParams" | default "" -}}
 {{- $ignoreParamsList := split $ignoreParams "," -}}
-{{- $ignoreParamsList = append $ignoreParamsList ( slice "title" "weight" "draft" "iscjklanguage" "date" ) -}}
+{{- $ignoreParamsList = append $ignoreParamsList ( slice "title" "weight" "draft" "iscjklanguage" "date" "aliases" ) -}}
 {{- $params := .Page.Params }}
 {{- if .Page.IsHome }}
   {{- $params = .Site.Params }}

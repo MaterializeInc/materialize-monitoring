@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
 # JSONSchema for alloy pipeline definitions.
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/mzmon-alloy.schema.yaml"
+$id: "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/mzmon-alloy.schema.yaml"
 title: "Alloy pipeline schema"
 description: "An opinionated schema of alloy pipeline definitions used in materialize-monitoring"
 type: object

@@ -34,14 +34,14 @@ const SCHEMA_OTELCOL: &str = include_str!("../../schemas/alloy/otelcol.schema.ya
 
 // The `$id` URLs the schemas reference one another by. These must match the
 // `$id` fields in the schema files (and the relative `$ref`s resolve to them).
-const ID_TOP: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/top.schema.yaml";
-const ID_RAW: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/raw.schema.yaml";
-const ID_ATTRIBUTE: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/attribute.schema.yaml";
-const ID_EXPRESSION: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/common/expression.schema.yaml";
-const ID_LOKI: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/loki.schema.yaml";
-const ID_DISCOVERY: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/discovery.schema.yaml";
-const ID_PROMETHEUS: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/prometheus.schema.yaml";
-const ID_OTELCOL: &str = "https://materializeinc.github.io/materialize-monitoring/reference/internal/schemas/alloy/otelcol.schema.yaml";
+const ID_TOP: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/top.schema.yaml";
+const ID_RAW: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/common/raw.schema.yaml";
+const ID_ATTRIBUTE: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/common/attribute.schema.yaml";
+const ID_EXPRESSION: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/common/expression.schema.yaml";
+const ID_LOKI: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/loki.schema.yaml";
+const ID_DISCOVERY: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/discovery.schema.yaml";
+const ID_PROMETHEUS: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/prometheus.schema.yaml";
+const ID_OTELCOL: &str = "https://materializeinc.github.io/materialize-monitoring/reference/development/schemas/alloy/otelcol.schema.yaml";
 
 /// Parse an embedded schema (authored as YAML) into a JSON value.
 fn parse_schema(src: &str) -> Value {
@@ -129,7 +129,7 @@ pub fn validate(instance: &Value) -> Result<()> {
 /// changes in a future jsonschema release, we just stop emitting the hint
 /// (no functional impact).
 ///
-/// See: docs/content/reference/internal/pipelines/authoring.md
+/// See: docs/content/reference/development/pipelines/authoring.md
 fn schema_hint(_path: &str, message: &str) -> Option<&'static str> {
     let msg = message.to_ascii_lowercase();
 
@@ -143,7 +143,7 @@ fn schema_hint(_path: &str, message: &str) -> Option<&'static str> {
             "this key isn't typed in the schema. \
              Either use a `raw:` block for one-off usage, \
              or extend the relevant schema $def to add it. \
-             See: docs/content/reference/internal/pipelines/authoring.md",
+             See: docs/content/reference/development/pipelines/authoring.md",
         );
     }
 
@@ -159,7 +159,7 @@ fn schema_hint(_path: &str, message: &str) -> Option<&'static str> {
             "this block doesn't match any typed schema. \
              Likely either an unknown component or an attribute outside the documented set. \
              Use a `raw:` block for one-off cases, or extend the relevant schema $def. \
-             See: docs/content/reference/internal/pipelines/authoring.md",
+             See: docs/content/reference/development/pipelines/authoring.md",
         );
     }
 

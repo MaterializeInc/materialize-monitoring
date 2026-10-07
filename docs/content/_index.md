@@ -17,7 +17,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 
 > [!WARNING]
 >  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
+>  See the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
 
 ## Start here
 
@@ -42,7 +42,7 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 | **Dashboards** | [Available dashboards]({{< relref "dashboards/all.md" >}}) and [importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
 
 Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) tracks the work behind them.
+They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind them.
 
 ## Operating the stack
 
@@ -64,11 +64,11 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 
 ## For contributors
 
-* [Contributing]({{< relref "reference/internal/contributing.md" >}}) — the contributor guide, conventions, and the pre-commit wiring.
-* [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) — the current source of truth for what is built, in flight, and planned next.
-* [Repository Layout]({{< relref "reference/internal/repo-layout.md" >}}) — where things live in the repo.
-* [Versioning]({{< relref "reference/internal/versioning.md" >}}) and [Releasing]({{< relref "reference/internal/releasing.md" >}}) — the per-component version streams and the release automation.
-* [Design Docs]({{< relref "reference/internal/design-docs/overview.md" >}}) — the decisions behind the larger pieces.
+* [Contributing]({{< relref "reference/development/contributing.md" >}}) — the contributor guide, conventions, and the pre-commit wiring.
+* [Roadmap]({{< relref "reference/development/roadmap.md" >}}) — the current source of truth for what is built, in flight, and planned next.
+* [Repository Layout]({{< relref "reference/development/repo-layout.md" >}}) — where things live in the repo.
+* [Versioning]({{< relref "reference/development/versioning.md" >}}) and [Releasing]({{< relref "reference/development/releasing.md" >}}) — the per-component version streams and the release automation.
+* [Design Docs]({{< relref "reference/development/design-docs/overview.md" >}}) — the decisions behind the larger pieces.
 
 ## Getting help
 
