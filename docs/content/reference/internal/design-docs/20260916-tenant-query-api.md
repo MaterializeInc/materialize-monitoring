@@ -141,7 +141,7 @@ This stack already collects the answers, at higher fidelity and for thirty days 
 The gap is not collection.
 The gap is that no authenticated, tenant-scoped way to read it exists, so a first-party product surface cannot depend on it.
 
-Note that the roadmap's [`console` row](../../roadmap/#materialize-components-beyond-the-environment) is a different subject with the same word in it.
+Note that the roadmap's [`console` row](../../roadmap/#materialize-side-emission) is a different subject with the same word in it.
 That row tracks Console as a *monitored component* — it exposes no metrics that reach Thanos.
 This doc is about Console as a *consumer*.
 Neither blocks the other.
@@ -213,7 +213,8 @@ Four consequences follow, and all four are costs rather than details.
 
 **The metric and label contract becomes load-bearing in a way it is not today.**
 The [deprecation policy](../20260823-deprecation-policy/#coordinated-surface-materialize-metrics-and-labels) already grades Materialize metrics and labels as a coordinated surface.
-Console reading them makes a rename a product outage rather than a dashboard bug, which argues for the [1.0 stamp](../../roadmap/#versioning-changelog-and-releases) landing before Console cuts over rather than after.
+Console reading them makes a rename a product outage rather than a dashboard bug.
+The [1.0 stamp](../../roadmap/#what-10-ships) has landed, so Console cuts over after it rather than before.
 
 **Sizing acquires a floor.**
 A requirement that does not fit in the smallest supported Materialize install is not a requirement, it is a recommendation with consequences.
