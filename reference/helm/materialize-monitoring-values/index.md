@@ -40,7 +40,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
@@ -7960,37 +7960,31 @@ check warns when it is missing.
 }</pre>
 </td>
       <td class="helm-value-desc">Container security context for Grafana.
-Only the delta over the subchart's own, which already drops every
-capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+The subchart's own already drops every capability, forbids privilege
+escalation, sets `RuntimeDefault` seccomp and makes the root filesystem
+read-only. The chart restates the read-only root because the validators
+and the production checklist depend on it.
 
-A read-only root filesystem needs two things from the rest of this block,
-and Grafana breaks quietly without either:
+A read-only root filesystem needs two things, and Grafana breaks quietly
+without either:
 
 | Needs | Supplied by | Without it |
 |---|---|---|
-| A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+| A writable `/tmp` | The subchart, which mounts an `emptyDir` named `tmp` there | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
 | `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
 
 Everything else Grafana writes lands on the `storage` and `search` volumes
 the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
 The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
-profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
-Validators fail the render on each of these gaps, and warn when this is
-turned off.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">grafana<wbr>.extraEmptyDirMounts</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  {
-    "mountPath": "/tmp",
-    "name": "tmp"
-  }
-]</pre>
-</td>
-      <td class="helm-value-desc">Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.
+profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own
+through `grafana.extraEmptyDirMounts`.
+
+A second mount at `/tmp`, or a second volume named `tmp`, makes the API
+server reject the Deployment. Neither `grafana.extraEmptyDirMounts` nor
+`grafana.extraVolumeMounts` may add one.
+
+Validators fail the render on the plugin setting, a missing `.aws` mount
+and a duplicate `/tmp`, and warn when this is turned off.
 </td>
     </tr>
     <tr>
