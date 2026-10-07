@@ -26,7 +26,8 @@ The remaining work is described in the [alerting design doc](../../reference/int
 
 The chart ships alerting rules for Materialize and for the platform under it.
 The metric rules are installed as `PrometheusRule` resources, which the Thanos ruler evaluates.
-The log-derived rules, which detect panics and correctness violations in Materialize's log lines, are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
+The log-derived rules, which detect panics and correctness violations in Materialize's log lines and a gateway refusing its own scrapes,
+are `PrometheusRule` resources too, and the alloy-gateway writes them into the Loki ruler.
 [Common Alerts](../../reference/common-alerts/) lists every one, with what it detects.
 
 A rule installs when all of the following hold:

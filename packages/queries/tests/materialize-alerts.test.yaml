@@ -293,6 +293,27 @@ tests:
           - labels: '{cluster_environmentd_materialize_cloud_cluster_id="u1"}'
             value: 1
 
+  # A gateway refusing its scrapes under memory pressure lets one through now
+  # and then. A subquery re-read the last of them as a flat line and fired on a
+  # replica that was receiving commands throughout.
+  - name: clusterd-not-receiving-commands stays quiet when the replica's scrapes arrive with gaps
+    interval: 1m
+    input_series:
+      # Commands keep arriving, but one scrape in ten reaches the store.
+      - series: 'mz_cluster_server_last_command_received{server_name="compute", namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u1", cluster_environmentd_materialize_cloud_replica_id="u1", materialize_cloud_organization_name="main"}'
+        values: "1000 _x9 1600 _x9 2200 _x9 2800"
+      - series: 'kube_pod_start_time{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0"}'
+        values: "0x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd"}'
+        values: "0x30"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="clusterd-not-receiving-commands"})
+        eval_time: 16m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="clusterd-not-receiving-commands"})
+        eval_time: 26m
+        exp_samples: []
+
   # --- environment-pod-pending-critical --------------------------------------
   - name: environment-pod-pending-critical fires only for environment namespaces
     interval: 1m

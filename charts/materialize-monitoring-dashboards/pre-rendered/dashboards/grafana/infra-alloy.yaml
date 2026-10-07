@@ -8263,11 +8263,13 @@ spec:
 
           **Nominal:** A flat zero per gateway.
 
-          **Unhealthy:** Any. The gateway is over the memory threshold its limiter guards, and it is refusing data rather than risk being killed. The refused points are lost unless their sender retries.
+          **Unhealthy:** Any. The gateway is over the memory threshold its limiter guards, and it is refusing data rather than risk being killed. The refused points are lost unless their sender retries, and scraped points have no sender to retry them.
 
           The limiter publishes a refusal series only once it has refused something. The zero line comes from the points it accepted instead.
 
           A flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.
+
+          **A gateway that is refusing usually disappears from this panel rather than rising on it.** Its own `/metrics` is one of the targets the gateways share out, and when the refusing pod holds that target it refuses its own counters with everything else. A gateway pod that is running but missing here is the case to suspect; the `alloy-gateway-refusing-scrapes` alert reads the pod's logs instead, which do not pass through the limiter.
         id: 1074
         links: []
         title: Memory Limiter Refusals

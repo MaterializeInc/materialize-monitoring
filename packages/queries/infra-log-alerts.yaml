@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Log-derived alerting rules for the monitoring stack: what whoever runs the
+# stack acts on, detected in its own log lines where its metrics cannot be
+# trusted to report it. The Loki ruler evaluates these; the metric alerts beside
+# them in infra-alerts.yaml go to the Thanos ruler.
+
+description: |
+  Log-derived alerting rules for the monitoring stack.
+
+  Each alert matches a line a collector logs when it is failing in a way its own
+  metrics cannot show, because the metrics travel the path that is failing. They
+  are LogQL, evaluated by the Loki ruler against the logs the pipeline collects,
+  and route through the same Alertmanager as the metric alerts.
+
+  **A match is on the log line's text**, and that text is not a contract. An
+  upstream release can reword a message, and a reworded message makes the rule
+  silent rather than broken. Each alert names the source of the line it matches,
+  so a contributor can check it still exists.
+
+  The label contract these read is documented under
+  [Logs and Events](../../../logs-and-events/querying/): `namespace`, `app`,
+  `container` and `level` are stream labels, and `pod` is structured metadata,
+  which a rule may still group by.
+
+# Required of every registry file. LogQL names no metrics, so nothing here is
+# tiered by it.
+metricImportanceHint: essential
+
+alertLabels:
+  audience: platform
+
+alerts:
+  # --- metric collection -----------------------------------------------------
+  - alert: alloy-gateway-refusing-scrapes
+    group: metric_collection
+    stability: best-effort
+    enabledByDefault: true
+    for: 15m
+    labels:
+      severity: warning
+      component: monitoring
+    description:
+      summary: "An alloy-gateway pod is over its memory limiter's soft limit and is discarding everything it scrapes, so its share of scrape targets is missing from the metrics store. Restart the pod to recover; raise the gateway's memory and `GOMEMLIMIT` to stop it recurring."
+      unhealthy: |
+        The gateways divide the scrape targets between them, and each pod
+        passes what it scrapes through an OpenTelemetry memory limiter before
+        writing it out. Above the limiter's soft limit, every scrape that pod
+        makes is refused at commit and discarded. A scrape is not retried, so
+        the samples are lost, and nothing upstream backs off, so refusing does
+        not relieve the pressure either.
+
+        The pod stays `Ready` and keeps its targets. Every one of them goes
+        dark at once, including the `up` series that would say so, and the
+        alerts that read absence fire on whichever targets the pod happens to
+        own: `environmentd-not-scraped`, `logging-collection-down`, the Thanos
+        subchart's `*IsDown` rules, and rate-of-change alerts reading the
+        stale last sample. Those name a component that is usually fine; this
+        names the cause.
+
+        A pod in this state rarely leaves it on its own. Its retained heap
+        after a forced collection sits at or above the soft limit, and its log
+        says `Forced GC did not reclaim enough memory` on repeat. Restarting
+        the pod clears the retained state and hands its targets to the other
+        gateways; the lasting fix is a larger memory limit for the gateway,
+        with `GOMEMLIMIT` kept at about 80% of it.
+      notes: |
+        Matched in the logs rather than the metrics because the refusing pod
+        usually scrapes its own `/metrics` too, and refuses that scrape like
+        the rest. Its memory-limiter counters and its `up` series vanish with
+        everything else, so a metric rule on them stays quiet for exactly the
+        pod it exists to catch. Logs reach Loki by a separate path that the
+        limiter does not guard, so the line still arrives.
+
+        The text is `ErrDataRefused` from the OpenTelemetry Collector's
+        `internal/memorylimiter/memorylimiter.go`, logged by the Prometheus
+        scrape loop as `Scrape commit failed`. Refused OTLP pushes are not
+        logged here, because the sender is told and retries; _Push Requests
+        Refused_ on the Alloy dashboard covers them.
+
+        Brief refusals happen while the gateways reshard their targets during a
+        rollout or a scale event, and lasted up to 9 minutes on the installs
+        this was calibrated against; `for: 15m` leaves them out. Stays firing
+        for 5m after the last refused scrape.
+    query:
+      id: infra.logs.alerts.alloy_gateway_scrapes_refused
+      stability: best-effort
+      description:
+        summary: Scrape commits each alloy-gateway pod's memory limiter refused over the last 5m.
+      logQL: |
+        sum by (namespace, pod) (
+          count_over_time(
+            {app="alloy-gateway", container="alloy", level="ERROR"}
+              |= "data refused due to high memory usage"
+            [5m]
+          )
+        ) > 0
