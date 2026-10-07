@@ -153,7 +153,7 @@ dependencies:
       - kube-state-metrics
   - name: prometheus-node-exporter
     alias: node-exporter
-    version: "4.56.1"
+    version: "4.59.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: node-exporter.enabled
     tags:
