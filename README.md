@@ -11,13 +11,15 @@ The goal is a one-stop shop for teams who want one, without forcing this stack o
 
 ## Status
 
-**Pre-1.0 and under active development.**
-Interfaces are still moving: until 1.0 is stamped, breaking changes can ride a minor release — see
-[Choosing the next version](docs/content/reference/development/releasing.md#choosing-the-next-version).
+`materialize-monitoring` stamped v1.0.0 on 2026-10-06.
+From that release, a breaking change to the committed surface goes through a deprecation cycle and lands only in a major release.
+For what you can rely on, see [Stability guarantees and deprecation policy](docs/content/reference/stability.md).
 
-* [CHANGELOG.md](CHANGELOG.md) — the source of truth for what has shipped.
-* [Roadmap](docs/content/reference/development/roadmap.md) — the source of truth for what is built, in flight, and planned next.
-* [Repository Layout](docs/content/reference/development/repo-layout.md) — where things live in the repo.
+The following pages track the project:
+
+* [CHANGELOG.md](CHANGELOG.md): the source of truth for what has shipped.
+* [Roadmap](docs/content/reference/development/roadmap.md): the source of truth for what is built, in flight, and planned next.
+* [Repository layout](docs/content/reference/development/repo-layout.md): where things live in the repo.
 
 ## Getting started
 

@@ -304,8 +304,8 @@ The goal is one path per metric, named consistently, with no SQL on the scrape p
 
 ### 1.0, and what the number promises
 
-`materialize-monitoring` stamped 1.0 on 2026-10-06, and breaking changes no longer ride a minor release.
-The label and metric contract, the profile semantics, the alert names, and the chart value paths all carry a deprecation cycle.
+`materialize-monitoring` stamped 1.0 on 2026-10-06, and from that release a breaking change rides only a major.
+The label and metric contract, the profile semantics, and the alert names carry a deprecation cycle; chart value paths don't.
 The number was stamped before broad adoption on purpose.
 Once enough customers have dashboards built on these labels, the contract is frozen in practice whether or not it is frozen on paper.
 
