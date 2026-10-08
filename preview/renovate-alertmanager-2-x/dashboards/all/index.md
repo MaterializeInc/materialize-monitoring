@@ -17,7 +17,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/compatibility/#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/common-queries/) is the query material to build one yourself.
+The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -346,7 +346,7 @@ Which NetworkPolicy objects exist comes from kube-state-metrics and is available
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
 Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/roadmap/#dashboards).
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/#dashboards).
 
 <table class="download-dashboards">
   <thead>

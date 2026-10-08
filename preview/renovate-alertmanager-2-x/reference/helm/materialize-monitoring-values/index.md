@@ -40,7 +40,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.1.0 |
@@ -1910,7 +1910,7 @@ the managed database and the buckets a deployment depends on, and write it
 beside every other metric. The result shares retention, PromQL and alerting
 with the rest of the stack, so a provider series is joinable with
 `mz_persist_*` in one expression. The [external-dependency
-design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+design](https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
 records why this is a pull rather than a Grafana datasource.
 
 | Provider | Services | Alloy component |
@@ -4734,12 +4734,12 @@ arguments against it.
       <td class="helm-value-default"><pre>
 [
   {
-    "name": "GOMEMLIMIT",
-    "value": "600MiB"
+    "name": "AUTOMEMLIMIT",
+    "value": "0.8"
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.  It is the ceiling the GC works against, so it also sets where the gateway idles. Leaving it near the old limit while raising `resources` would waste the new headroom; leaving it *above* the limit forfeits the whole point, since the runtime would only start collecting hard after the kubelet has already OOM-killed the pod.
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `AUTOMEMLIMIT` sets `GOMEMLIMIT` to 80% of the container's memory limit when Alloy starts, for the same reason as the agent's `GOMEMLIMIT`. Deriving it means raising `resources` is the whole change: the GC ceiling follows, and so do the memory limiter's thresholds, which are percentages of the same limit.  The ratio has to stay below the limiter's 85%. The GC should be holding the heap down well before the limiter starts refusing scrapes, and a refused scrape is lost. An explicit `GOMEMLIMIT` here takes precedence and is not kept in step with `resources`. Replacing this list without either leaves Alloy's own default of 90%, which sits above the limiter.
 </td>
     </tr>
     <tr>
@@ -4880,15 +4880,36 @@ the `tls.*File` carriers are preferred over the inline PEMs.
 {
   "limits": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   },
   "requests": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.
+      <td class="helm-value-desc">Resources for the alloy gateway containers.
+
+Memory is the gateway's binding constraint. Its live heap is about 200MiB
+of fixed cost plus about 2.6KiB for every series the pod holds. Each series
+is held three times: by the scrape cache, the OTLP-to-Prometheus bridge
+and the remote-write queue. The gateways split the scrape targets, so at
+`minReplicas` each pod holds its share of every series in the cluster. It
+also holds, until its write-ahead log next checkpoints, the series of
+targets a recent resharding moved away from it.
+
+Keep that live heap under about half of `GOMEMLIMIT`. Past that the GC
+runs constantly: measured with a 600MiB `GOMEMLIMIT`, a pod with 300MiB
+live collected about 3 times a minute on 0.07 cores, and one with 450MiB
+live collected 30 or more times a minute on 0.3 cores. That CPU is what the
+autoscaler scales on, so a gateway short of memory also scales out and
+back for no other reason.
+
+The default fits a medium install. It was measured on 9 nodes and ten
+Materialize replicas, a quarter of a million series in all. At 2 replicas a
+pod there holds 120k to 160k series, about 500 to 600MiB live, against a
+1.6GiB `GOMEMLIMIT`. Raise this as series grow. `GOMEMLIMIT` and the
+memory limiter's thresholds follow it (see `extraEnv`).
 </td>
     </tr>
     <tr>
@@ -4911,7 +4932,33 @@ the `tls.*File` carriers are preferred over the inline PEMs.
       <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>0</code></td>
-      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.
+      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory utilization does not say whether a gateway is short of memory. The Go runtime lets the heap grow toward `GOMEMLIMIT` before it collects hard, so a healthy pod's working set reads high too, and on a small cluster most of it is fixed per-process cost that a new replica only duplicates. On a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Size gateway memory vertically instead (`resources`, above). A pod that is short of it shows on CPU first, because collecting more often is what it spends the CPU on.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.scaleDown</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "policies": [
+    {
+      "periodSeconds": 600,
+      "type": "Pods",
+      "value": 1
+    }
+  ],
+  "selectPolicy": "Max",
+  "stabilizationWindowSeconds": 3600
+}</pre>
+</td>
+      <td class="helm-value-desc">Scale down slowly: only after an hour of low CPU, and one pod at a time.
+
+Every scale event reshards the scrape targets. A scale-down hands each
+remaining pod a larger share, and every pod keeps the series of the
+targets it gave up until its write-ahead log next checkpoints, hours
+later. A gateway that scales down and back up within the hour pays for
+both shares at once. The scale-up path stays fast, because it relieves
+load rather than concentrating it.
 </td>
     </tr>
     <tr>
@@ -7913,37 +7960,31 @@ check warns when it is missing.
 }</pre>
 </td>
       <td class="helm-value-desc">Container security context for Grafana.
-Only the delta over the subchart's own, which already drops every
-capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+The subchart's own already drops every capability, forbids privilege
+escalation, sets `RuntimeDefault` seccomp and makes the root filesystem
+read-only. The chart restates the read-only root because the validators
+and the production checklist depend on it.
 
-A read-only root filesystem needs two things from the rest of this block,
-and Grafana breaks quietly without either:
+A read-only root filesystem needs two things, and Grafana breaks quietly
+without either:
 
 | Needs | Supplied by | Without it |
 |---|---|---|
-| A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+| A writable `/tmp` | The subchart, which mounts an `emptyDir` named `tmp` there | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
 | `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
 
 Everything else Grafana writes lands on the `storage` and `search` volumes
 the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
 The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
-profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
-Validators fail the render on each of these gaps, and warn when this is
-turned off.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">grafana<wbr>.extraEmptyDirMounts</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  {
-    "mountPath": "/tmp",
-    "name": "tmp"
-  }
-]</pre>
-</td>
-      <td class="helm-value-desc">Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.
+profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own
+through `grafana.extraEmptyDirMounts`.
+
+A second mount at `/tmp`, or a second volume named `tmp`, makes the API
+server reject the Deployment. Neither `grafana.extraEmptyDirMounts` nor
+`grafana.extraVolumeMounts` may add one.
+
+Validators fail the render on the plugin setting, a missing `.aws` mount
+and a duplicate `/tmp`, and warn when this is turned off.
 </td>
     </tr>
     <tr>

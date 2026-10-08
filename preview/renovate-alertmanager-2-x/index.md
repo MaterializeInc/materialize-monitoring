@@ -3,17 +3,21 @@
 
 # materialize-monitoring Documentation
 
-`materialize-monitoring` is first-class observability for Materialize deployments — metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
-It is a one-stop shop for teams who want one, and every piece of it can be turned off for teams who already run their own.
+`materialize-monitoring` is first-class observability for Materialize deployments:
+metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
+It's a one-stop shop if you want one, and you can turn off any piece of it if you already run your own.
 
-If you install Materialize with the Terraform modules, the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward — set `enable_observability = false` to opt out.
+If you install Materialize with the Terraform modules,
+the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward.
+To opt out, set `enable_observability = false`.
 
 Nothing here is required to run Materialize.
-If you are looking for the main Materialize documentation, see [materialize.com/docs](https://materialize.com/docs/).
+For Materialize itself, see the [Materialize documentation](https://materialize.com/docs/).
 
-> [!WARNING]
->  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/roadmap/) for what is built and what is coming, and the [Changelog](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/changelog/) for what has shipped.
+From v1.0.0, a breaking change to the committed surface goes through a deprecation cycle and lands only in a major release.
+For what you can rely on, see the [stability guarantees](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/stability/).
+For what's planned, see the [Roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/),
+and for what has shipped, see the [Changelog](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/changelog/).
 
 ## Start here
 
@@ -35,10 +39,11 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 |---|---|
 | **Metrics** | [Collecting](/materialize-monitoring/preview/renovate-alertmanager-2-x/metrics/collecting/overview/) — the four ways metrics get in — plus [scraping](/materialize-monitoring/preview/renovate-alertmanager-2-x/metrics/scraping/), [storing](/materialize-monitoring/preview/renovate-alertmanager-2-x/metrics/storing/) in Thanos, and [querying](/materialize-monitoring/preview/renovate-alertmanager-2-x/metrics/querying/) them back out |
 | **Logs & Events** | The [Alloy agent/gateway split](/materialize-monitoring/preview/renovate-alertmanager-2-x/logs-and-events/architecture/), [collecting](/materialize-monitoring/preview/renovate-alertmanager-2-x/logs-and-events/collecting/), [storing](/materialize-monitoring/preview/renovate-alertmanager-2-x/logs-and-events/storing/) in Loki, [querying](/materialize-monitoring/preview/renovate-alertmanager-2-x/logs-and-events/querying/), and [rules](/materialize-monitoring/preview/renovate-alertmanager-2-x/logs-and-events/rules/) |
+| **Alerting** | The [alert architecture](/materialize-monitoring/preview/renovate-alertmanager-2-x/alerting/architecture/) from ruler to receiver, [configuring](/materialize-monitoring/preview/renovate-alertmanager-2-x/alerting/configuring/) the rule evaluators, [alert channels](/materialize-monitoring/preview/renovate-alertmanager-2-x/alerting/channels/), [maintenance windows](/materialize-monitoring/preview/renovate-alertmanager-2-x/alerting/maintenance/), and [configuring alerting through Terraform](/materialize-monitoring/preview/renovate-alertmanager-2-x/alerting/terraform/) |
 | **Dashboards** | [Available dashboards](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/all/) and [importing the Grafana set](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/importing/), the [Grafana Operator](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/grafana-operator/) path that keeps it in sync, [how Grafana is wired](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/architecture/), [authentication](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/grafana/auth/), and [Datadog](/materialize-monitoring/preview/renovate-alertmanager-2-x/dashboards/datadog/) |
 
-Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/roadmap/) tracks the work behind them.
+Metrics → Rules is a stub, so this page doesn't link to it.
+It appears in the sidebar because the section exists, and the [Roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/) tracks the work behind it.
 
 ## Operating the stack
 
@@ -60,11 +65,11 @@ They appear in the sidebar because the sections exist; the [Roadmap](/materializ
 
 ## For contributors
 
-* [Contributing](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/contributing/) — the contributor guide, conventions, and the pre-commit wiring.
-* [Roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/roadmap/) — the current source of truth for what is built, in flight, and planned next.
-* [Repository Layout](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/repo-layout/) — where things live in the repo.
-* [Versioning](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/versioning/) and [Releasing](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/releasing/) — the per-component version streams and the release automation.
-* [Design Docs](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/overview/) — the decisions behind the larger pieces.
+* [Contributing](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/contributing/) — the contributor guide, conventions, and the pre-commit wiring.
+* [Roadmap](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/) — the current source of truth for what is built, in flight, and planned next.
+* [Repository Layout](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/repo-layout/) — where things live in the repo.
+* [Versioning](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/versioning/) and [Releasing](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/releasing/) — the per-component version streams and the release automation.
+* [Design Docs](/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/overview/) — the decisions behind the larger pieces.
 
 ## Getting help
 

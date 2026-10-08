@@ -206,7 +206,7 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
-It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/development/pipelines/logging/)).
 The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
 
 ### Configuration & change management
@@ -243,8 +243,24 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` Confirm `loki.write` durability settings (WAL + ret/backoff) survive gateway restarts to your RPO; the write endpoint is set with `GATEWAY_LOKI_DEST` and the ingress port with `ALLOY_LOKI_PORT`.
 - [ ] `[consumer]` If sending OTLP, target `:4317` (gRPC) or `:4318` (HTTP); if chaining gateways, point the upstream writer at the downstream `:3100`. See [Collecting](../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
 - [ ] `[operator]` `loki.write` auth to a secured/remote destination (`basic_auth`/headers) is **not yet wired** — provide it before shipping to a destination that requires it.
-- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%). Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back: the gateway's footprint is dominated by fixed per-process cost rather than per-replica load, so scaling out does not relieve memory. Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi — each replica added to shed memory brings a whole new baseline with it. With idle at ~62% of the request against a 60% target, the HPA also could not stabilize: the action did not move the metric, so it flapped against `maxReplicas` indefinitely. No target value fixes that.
-- [ ] `[operator]` **Relieve gateway memory vertically**, not horizontally: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` in step at ~80% of the limit. The gateway carries the kubelet cAdvisor scrape, so its heap grows with node count, and at `minReplicas` each pod carries the whole fan-out rather than a shard of it. `GOMEMLIMIT` above the container limit is inert — the kubelet OOM-kills the pod before the runtime ever collects hard.
+- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%).
+  Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back:
+  memory utilization does not say whether a gateway is short of memory, because the Go runtime lets the heap grow toward `GOMEMLIMIT` either way.
+  Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi.
+  With idle at ~62% of the request against a 60% target, the HPA also could not stabilize:
+  the action did not move the metric, so it flapped against `maxReplicas` indefinitely.
+  No target value fixes that.
+- [x] `[chart]` **Scale-down is slow**: only after an hour of low CPU, and one pod per ten minutes.
+  Every scale event reshards the scrape targets, and a pod keeps the series of the targets it gave up until its write-ahead log checkpoints,
+  so a gateway that flaps holds both shares at once.
+  Scale-up stays fast.
+- [ ] `[operator]` **Size gateway memory vertically**, from the series it holds: raise `alloy-gateway.alloy.resources`,
+  and `GOMEMLIMIT` (80% of the limit, through `AUTOMEMLIMIT`) and the memory limiter follow.
+  A pod's live heap is about 200MiB plus about 2.6KiB per series, and at `minReplicas` each pod holds its share of every series in the cluster.
+  Keep that under about half of `GOMEMLIMIT`;
+  past it the GC runs constantly, and the CPU it spends makes the autoscaler scale out for no other reason.
+  The 2Gi default fits a medium install of about a quarter of a million series.
+  An explicit `GOMEMLIMIT` in `extraEnv` overrides the derived one and is not kept in step.
 
 ### Agent placement & durability
 
@@ -1034,8 +1050,8 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [ ] `[operator]` **A hardened Grafana cannot install plugins at start.** These images ship no shell and no package manager — which is the point — so `grafana.plugins` silently gets you a Grafana without those plugins rather than an error. Bake them into a derived image instead.
 - [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
 - [x] `[chart]` **Read-only root filesystem**, with an `emptyDir` at `/tmp` for the Unix sockets Grafana's backend plugins listen on.
-  A validator errors when nothing is mounted there, since every datasource then fails while the pod stays Ready.
-  A values file that sets `grafana.extraEmptyDirMounts` replaces the chart's list, so it has to keep the `/tmp` entry.
+  The Grafana subchart mounts that `emptyDir` itself.
+  A validator errors when `grafana.extraEmptyDirMounts`, `grafana.extraVolumeMounts` or `grafana.extraVolumes` adds a second one, since the API server rejects the Deployment.
 - [x] `[chart]` **Bundled datasource plugins stay at the image's versions** (`grafana.ini.plugins.preinstall_auto_update: false`).
   Grafana otherwise updates the Prometheus and Loki plugins it bundles to the newest release on grafana.com at every start, so a pinned image would not pin them.
   On a read-only root the update also fails halfway and leaves the datasource unloaded, and a validator errors when it is turned back on.

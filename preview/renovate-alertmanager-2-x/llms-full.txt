@@ -8,17 +8,21 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-al
 --------------------------------------------------------------------------------
 # materialize-monitoring Documentation
 
-`materialize-monitoring` is first-class observability for Materialize deployments — metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
-It is a one-stop shop for teams who want one, and every piece of it can be turned off for teams who already run their own.
+`materialize-monitoring` is first-class observability for Materialize deployments:
+metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
+It's a one-stop shop if you want one, and you can turn off any piece of it if you already run your own.
 
-If you install Materialize with the Terraform modules, the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward — set `enable_observability = false` to opt out.
+If you install Materialize with the Terraform modules,
+the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward.
+To opt out, set `enable_observability = false`.
 
 Nothing here is required to run Materialize.
-If you are looking for the main Materialize documentation, see [materialize.com/docs](https://materialize.com/docs/).
+For Materialize itself, see the [Materialize documentation](https://materialize.com/docs/).
 
-> [!WARNING]
->  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
+From v1.0.0, a breaking change to the committed surface goes through a deprecation cycle and lands only in a major release.
+For what you can rely on, see the [stability guarantees]({{< relref "reference/stability.md" >}}).
+For what's planned, see the [Roadmap]({{< relref "reference/development/roadmap.md" >}}),
+and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md" >}}).
 
 ## Start here
 
@@ -40,10 +44,11 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 |---|---|
 | **Metrics** | [Collecting]({{< relref "metrics/collecting/overview.md" >}}) — the four ways metrics get in — plus [scraping]({{< relref "metrics/scraping.md" >}}), [storing]({{< relref "metrics/storing.md" >}}) in Thanos, and [querying]({{< relref "metrics/querying.md" >}}) them back out |
 | **Logs & Events** | The [Alloy agent/gateway split]({{< relref "logs-and-events/architecture.md" >}}), [collecting]({{< relref "logs-and-events/collecting.md" >}}), [storing]({{< relref "logs-and-events/storing.md" >}}) in Loki, [querying]({{< relref "logs-and-events/querying.md" >}}), and [rules]({{< relref "logs-and-events/rules.md" >}}) |
+| **Alerting** | The [alert architecture]({{< relref "alerting/architecture.md" >}}) from ruler to receiver, [configuring]({{< relref "alerting/configuring.md" >}}) the rule evaluators, [alert channels]({{< relref "alerting/channels.md" >}}), [maintenance windows]({{< relref "alerting/maintenance.md" >}}), and [configuring alerting through Terraform]({{< relref "alerting/terraform.md" >}}) |
 | **Dashboards** | [Available dashboards]({{< relref "dashboards/all.md" >}}) and [importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
 
-Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) tracks the work behind them.
+Metrics → Rules is a stub, so this page doesn't link to it.
+It appears in the sidebar because the section exists, and the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind it.
 
 ## Operating the stack
 
@@ -65,11 +70,11 @@ They appear in the sidebar because the sections exist; the [Roadmap]({{< relref 
 
 ## For contributors
 
-* [Contributing]({{< relref "reference/internal/contributing.md" >}}) — the contributor guide, conventions, and the pre-commit wiring.
-* [Roadmap]({{< relref "reference/internal/roadmap.md" >}}) — the current source of truth for what is built, in flight, and planned next.
-* [Repository Layout]({{< relref "reference/internal/repo-layout.md" >}}) — where things live in the repo.
-* [Versioning]({{< relref "reference/internal/versioning.md" >}}) and [Releasing]({{< relref "reference/internal/releasing.md" >}}) — the per-component version streams and the release automation.
-* [Design Docs]({{< relref "reference/internal/design-docs/overview.md" >}}) — the decisions behind the larger pieces.
+* [Contributing]({{< relref "reference/development/contributing.md" >}}) — the contributor guide, conventions, and the pre-commit wiring.
+* [Roadmap]({{< relref "reference/development/roadmap.md" >}}) — the current source of truth for what is built, in flight, and planned next.
+* [Repository Layout]({{< relref "reference/development/repo-layout.md" >}}) — where things live in the repo.
+* [Versioning]({{< relref "reference/development/versioning.md" >}}) and [Releasing]({{< relref "reference/development/releasing.md" >}}) — the per-component version streams and the release automation.
+* [Design Docs]({{< relref "reference/development/design-docs/overview.md" >}}) — the decisions behind the larger pieces.
 
 ## Getting help
 
@@ -89,7 +94,7 @@ It installs with the cluster by default.
 For a customer who already runs their own observability stack, it reduces to nothing but a documented metric contract.
 
 This page states the direction and the reasoning behind it.
-The [Roadmap](../reference/internal/roadmap/) is the source of truth for status, and it is more current than this page by construction.
+The [Roadmap](../reference/development/roadmap/) is the source of truth for status, and it is more current than this page by construction.
 
 <!--
 Agent note: this page is published. Keep forward-looking items framed as proposals under review.
@@ -159,7 +164,7 @@ That asymmetry is the argument for treating this as a collaborative repository r
 The people who meet a failure mode are usually not the people who write the dashboard for it.
 A panel, an alert, a query, or a runbook contributed by whoever hit the problem carries context that a metric list cannot supply afterwards.
 Contributions from field engineers, SREs, and customers are encouraged on the same footing as contributions from the maintaining team.
-The [contributor guide](../reference/internal/contributing/) covers the conventions.
+The [contributor guide](../reference/development/contributing/) covers the conventions.
 
 The single-registry design is what makes a small contribution worth making.
 A query added to the registry reaches the dashboard, the published documentation, and any alert referencing it.
@@ -205,7 +210,7 @@ The stack is what makes the answer demonstrable rather than a claim.
 
 The platform is built and in use.
 The following is the surface 1.0 ships, at altitude.
-The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/internal/roadmap/) lists what is still to do.
+The [Changelog](../reference/changelog/) itemizes it, and the [Roadmap](../reference/development/roadmap/) lists what is still to do.
 
 | Area | State |
 |---|---|
@@ -229,7 +234,7 @@ Hydration, freshness, sources, and sinks each need instrumentation that lives up
 ## Where it is going
 
 Each theme below is a question this stack cannot answer yet.
-The [Roadmap](../reference/internal/roadmap/) tracks the individual items behind each one, with their status and their designs.
+The [Roadmap](../reference/development/roadmap/) tracks the individual items behind each one, with their status and their designs.
 
 ### From displaying metrics to answering questions
 
@@ -312,7 +317,7 @@ A total that quietly excludes the object store, the metadata database, or the mo
 ### The read path, where this stops being optional
 
 Every workstream above is about collecting telemetry, and every consumer of it so far is a Grafana the project deploys.
-The [tenant-scoped query API](../reference/internal/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
+The [tenant-scoped query API](../reference/development/design-docs/20260916-tenant-query-api/) is about reading it from somewhere else.
 The two readers are the Materialize console and a customer's own Grafana.
 
 This is the one place the composability posture is genuinely in tension with the product.
@@ -336,14 +341,14 @@ That sizing question is common to all three, and it should be settled once rathe
 
 Two workstreams share a channel and differ in what authorizes using it.
 
-**[Bring-your-own-cloud](../reference/internal/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
+**[Bring-your-own-cloud](../reference/development/design-docs/20260813-byoc-observability/)** covers environments Materialize operates.
 They run in the customer's own cloud account, and Materialize needs enough telemetry to operate them.
 A reduced copy of telemetry crosses into the control plane, and the customer's full-fidelity copy always stays with them.
 Metrics cross selected by importance tier, and logs cross as an allowlisted, redacted, level-filtered subset.
 A pair of gateways enforces that boundary rather than ad-hoc network configuration.
 Redaction attaches to the destination, so the reduced copy is a fork of the customer's stream rather than a downgrade of it.
 
-**[Call-home](../reference/internal/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
+**[Call-home](../reference/development/design-docs/20260917-call-home-self-managed/)** covers installs Materialize does not operate.
 A self-managed deployment is invisible between escalations.
 The channel is the same, and the feature is consent.
 A bring-your-own-cloud customer bought an operated service, so telemetry crossing the boundary is what they purchased.
@@ -378,8 +383,8 @@ The goal is one path per metric, named consistently, with no SQL on the scrape p
 
 ### 1.0, and what the number promises
 
-`materialize-monitoring` stamped 1.0 on 2026-10-06, and breaking changes no longer ride a minor release.
-The label and metric contract, the profile semantics, the alert names, and the chart value paths all carry a deprecation cycle.
+`materialize-monitoring` stamped 1.0 on 2026-10-06, and from that release a breaking change rides only a major.
+The label and metric contract, the profile semantics, and the alert names carry a deprecation cycle; chart value paths don't.
 The number was stamped before broad adoption on purpose.
 Once enough customers have dashboards built on these labels, the contract is frozen in practice whether or not it is frozen on paper.
 
@@ -411,12 +416,12 @@ It cannot instrument what does not emit, and the gap between those two facts is 
 
 | Question | Page |
 |---|---|
-| What is built, in flight, and planned next | [Roadmap](../reference/internal/roadmap/) |
+| What is built, in flight, and planned next | [Roadmap](../reference/development/roadmap/) |
 | How the pieces fit together | [Architecture](../architecture/) |
 | What the vocabulary on these pages means | [o11y Glossary](../o11y-glossary/) |
 | What a consumer can rely on | [Stability Guarantees and Deprecation Policy](../reference/stability/) |
 | How to install it | [Getting Started](../getting-started/overview/) |
-| Why a larger piece is shaped the way it is | [Design Docs](../reference/internal/design-docs/overview/) |
+| Why a larger piece is shaped the way it is | [Design Docs](../reference/development/design-docs/overview/) |
 
 
 --------------------------------------------------------------------------------
@@ -516,7 +521,7 @@ It runs as a DaemonSet, is scraped by [`alloy-gateway`](#alloy-gateway-grafana-a
 
 Two things about it are worth knowing before you change anything:
 
-- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/internal/design-docs/20260803-terraform-modules/) for the full argument.
+- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/development/design-docs/20260803-terraform-modules/) for the full argument.
 - **Collectors are an allowlist, not the upstream defaults.** The chart passes `--collector.disable-defaults` and names each collector it wants, so a new default-on collector in a future node_exporter release cannot silently join the cardinality budget. The list, and the reasoning behind every inclusion and exclusion, is in the [values reference](../reference/helm/materialize-monitoring-values/) under Node Exporter.
 
 The pods run with `hostNetwork: true`, which the network collectors require — `netdev`, `netclass`, `netstat`, `sockstat` and `conntrack` all read namespaced files under `/proc/net`, and in a pod network namespace they would report the pod's traffic rather than the node's.
@@ -2099,7 +2104,7 @@ The other pages in this section cover each stage in depth:
 | [Alerting > Configuring](../../alerting/configuring/) | The Thanos Ruler, and how `PrometheusRule` resources reach it |
 
 The production checklist for this backend is [Production Best Practices > Metrics (Thanos)](../../operating/production-best-practices/#metrics-thanos).
-The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+The gateway's component-level pipeline is in the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## End-to-end dataflow
 
@@ -2174,7 +2179,7 @@ flowchart TB
   subgraph proc["Shared processing"]
     transform["inputMetricProcessor"]
     deny["inputMetricDeny<br/>denyMetrics"]
-    limit["memory_limiter<br/>refuses at 75%"]
+    limit["memory_limiter<br/>refuses at 85%"]
     batch["batch"]
     transform --> deny --> limit --> batch
   end
@@ -2212,7 +2217,7 @@ Each destination has its own importance-tier filter **upstream** of its writer.
 A remote-write destination's write-ahead log therefore holds only the series that destination accepts, and a stuck destination backs up its own WAL and no other.
 Each remote-write destination also stamps a `cluster` external label.
 
-*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal).
+*See more:* [Storing > The remote-write destinations](../storing/#the-remote-write-destinations), [Controlling what each destination stores](../storing/#controlling-what-each-destination-stores), and the [metrics pipeline reference](../../reference/development/pipelines/metrics/).
 
 ## Thanos write path {#write-path}
 
@@ -2384,7 +2389,7 @@ A deployment that already runs its own Prometheus can skip the gateway entirely 
 - [Thanos Receive hashrings and replication](https://thanos.io/tip/proposals-done/201812-thanos-remote-receive.md/) (official).
 - [Thanos Compactor](https://thanos.io/tip/components/compact.md/) (official): compaction levels, vertical compaction and downsampling.
 - [Alloy clustering](https://grafana.com/docs/alloy/latest/get-started/clustering/) (official).
-- [Metrics pipeline reference](../../reference/internal/pipelines/metrics/) (internal): the gateway's pipeline, component by component.
+- [Metrics pipeline reference](../../reference/development/pipelines/metrics/): the gateway's pipeline, component by component.
 - [o11y Glossary](../../o11y-glossary/): definitions for the vocabulary used on this page.
 
 
@@ -3718,7 +3723,7 @@ Persist, Loki and Thanos measure every request they make against the database an
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
 For the cluster's nodes it adds the provider's own view: host and instance health, node groups that cannot reach their desired size, compute quota,
 and on AKS the managed cluster autoscaler, which runs where nothing in the cluster can scrape it.
-The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
+The [external-dependency design](../../../reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
@@ -4063,7 +4068,7 @@ The other pages in this section cover each stage in depth, including its day-2 a
 
 Two Alloy roles sit in front of Loki.
 The Alloy [agent](#alloy-agent) (a DaemonSet, one per node) tails container logs and the systemd journal and forwards them to the Alloy [gateway](#alloy-gateway).
-The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/internal/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
+The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/development/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
 
 Loki is a [log store modeled after Prometheus](../../o11y-glossary/#stack-components): it indexes only the **labels** on each [log stream](../../o11y-glossary/#logs-and-events), never the log contents.
 That is what keeps it cheap at high volume, and it is why the gateway works to keep label cardinality under control before logs ever reach Loki — high-cardinality attributes belong in the log body or in [structured metadata](#storage), not in stream labels.
@@ -4141,7 +4146,7 @@ It discovers the pods scheduled on its own node, tails their container log files
 It does only light work locally — attaching node and pod metadata, basic relabeling, and a per-node rate limit — then forwards everything to the gateway over the Loki push API.
 Because it is a DaemonSet, collection scales with the number of nodes, and no application needs a logging sidecar.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ### alloy-gateway
 
@@ -4152,7 +4157,7 @@ Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## The hash ring
 
@@ -4388,7 +4393,7 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki deployment modes](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) — monolithic vs. simple scalable vs. microservice.
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative gateway/agent pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
 - [o11y Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 
 
@@ -4421,7 +4426,7 @@ It then normalizes log levels, routes high-cardinality fields into [structured m
 
 > [!INFO]
 >   The gateway is the single place where label-family and [cardinality](../../o11y-glossary/#observability-foundations) decisions are made.
->   Keeping that logic in one component is what keeps the log store stable and cheap — see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) for the authoritative stage-by-stage definition.
+>   Keeping that logic in one component is what keeps the log store stable and cheap — see the [logging pipeline reference](../../reference/development/pipelines/logging/) for the authoritative stage-by-stage definition.
 
 ## Sending your own logs to the gateway
 
@@ -4453,12 +4458,12 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 > [!WARNING]
 >   What becomes a Loki **label** versus what stays in the body or [structured metadata](../architecture/#storage) is the single biggest cost-and-stability lever.
 >   Keep volatile attributes (request IDs, trace IDs) out of labels.
->   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal).
+>   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## See more
 
 - [Logging Architecture](../architecture/) — collection in the context of the full pipeline.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative agent/gateway pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative agent/gateway pipeline definition.
 - [Storing](../storing/) — where collected logs go next.
 - [Loki components](https://grafana.com/docs/loki/latest/get-started/components/) (official).
 
@@ -4854,7 +4859,7 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility]({{< relref "../reference/compatibility.md" >}}#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
 Grafana 10 and 11 (schema v1) renders are not planned.
-The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
+The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards); until they land, [Common Queries]({{< relref "../reference/common-queries.md" >}}) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -4952,7 +4957,7 @@ Which NetworkPolicy objects exist comes from kube-state-metrics and is available
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
 Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/internal/roadmap.md" >}}#dashboards).
+The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
 
 {{< download-dashboards name="infra-net" >}}
 
@@ -5292,7 +5297,7 @@ Dashboards are **pre-rendered** into that chart, not generated at template time.
 Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
 `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
-See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
+See [Dashboards as Code](../../../reference/development/dashboard/overview/) for the authoring workflow.
 
 Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
 
@@ -5493,7 +5498,7 @@ The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubel
 Metrics scraped faster than that get a coarser minimum step and still draw.
 `connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
 The render warns about an override shorter than the chart's value, since that brings the scattered points back.
-The [style guidelines]({{< relref "../../reference/internal/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
+The [style guidelines]({{< relref "../../reference/development/dashboard/style-guidelines.md" >}}#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 
@@ -6238,7 +6243,7 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-al
 > [!NOTE]
 >   **There is no Materialize dashboard set for Datadog yet.**
 >   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
->   See the [Dashboards workstream]({{< relref "../reference/internal/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
+>   See the [Dashboards workstream]({{< relref "../reference/development/roadmap.md" >}}#dashboards) for where it sits against the rest of the work.
 
 What exists today is the query material to build one yourself.
 
@@ -6248,7 +6253,7 @@ What exists today is the query material to build one yourself.
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
 >   Where Datadog's query language cannot express what the PromQL does, the translation is approximate rather than equivalent.
 
-The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations]({{< relref "../reference/internal/queries/datadog.md" >}}) (internal).
+The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations]({{< relref "../reference/development/queries/datadog.md" >}}).
 
 ## Getting the metrics there
 
@@ -6674,7 +6679,7 @@ Which bundled rules install is configured under `rules`, and where an alert goes
 Until a receiver is configured every alert reaches `mzmon-null`, which notifies nobody.
 This page describes the bundled rules, the two evaluators, and how they reach Alertmanager.
 [Alert Architecture](../architecture/) describes Alertmanager itself, and [Alert Channels](../channels/) describes routing and receivers.
-The remaining work is described in the [alerting design doc](../../reference/internal/design-docs/20260917-alerting-self-managed/) (internal) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
+The remaining work is described in the [alerting design doc](../../reference/development/design-docs/20260917-alerting-self-managed/) and tracked under [DEP-216](https://linear.app/materializeinc/issue/DEP-216).
 
 <!-- more -->
 {{< rfc-2119 >}}
@@ -8095,7 +8100,7 @@ It runs at `pre-delete`, so an image it cannot pull does not fail an install you
 ## Collection (Alloy)
 
 The Alloy tier collects and processes telemetry before it reaches a backend.
-It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal)).
+It runs in two roles — the [`alloy-agent`](../../logs-and-events/architecture/#alloy-agent) DaemonSet (one per node) and the [`alloy-gateway`](../../logs-and-events/architecture/#alloy-gateway) Deployment — configured as code (see the [logging pipeline reference](../../reference/development/pipelines/logging/)).
 The gateway is where the dominant cost/stability lever lives, so most of the care goes there.
 
 ### Configuration & change management
@@ -8132,8 +8137,24 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 - [ ] `[operator]` Confirm `loki.write` durability settings (WAL + ret/backoff) survive gateway restarts to your RPO; the write endpoint is set with `GATEWAY_LOKI_DEST` and the ingress port with `ALLOY_LOKI_PORT`.
 - [ ] `[consumer]` If sending OTLP, target `:4317` (gRPC) or `:4318` (HTTP); if chaining gateways, point the upstream writer at the downstream `:3100`. See [Collecting](../../logs-and-events/collecting/#sending-your-own-logs-to-the-gateway).
 - [ ] `[operator]` `loki.write` auth to a secured/remote destination (`basic_auth`/headers) is **not yet wired** — provide it before shipping to a destination that requires it.
-- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%). Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back: the gateway's footprint is dominated by fixed per-process cost rather than per-replica load, so scaling out does not relieve memory. Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi — each replica added to shed memory brings a whole new baseline with it. With idle at ~62% of the request against a 60% target, the HPA also could not stabilize: the action did not move the metric, so it flapped against `maxReplicas` indefinitely. No target value fixes that.
-- [ ] `[operator]` **Relieve gateway memory vertically**, not horizontally: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` in step at ~80% of the limit. The gateway carries the kubelet cAdvisor scrape, so its heap grows with node count, and at `minReplicas` each pod carries the whole fan-out rather than a shard of it. `GOMEMLIMIT` above the container limit is inert — the kubelet OOM-kills the pod before the runtime ever collects hard.
+- [x] `[chart]` **Horizontal autoscaling on CPU only** (2–8 replicas, 50%).
+  Memory is deliberately not an HPA metric here, and this is worth understanding before you add it back:
+  memory utilization does not say whether a gateway is short of memory, because the Go runtime lets the heap grow toward `GOMEMLIMIT` either way.
+  Measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory 370Mi → 341Mi while **total** consumption went 1.1Gi → 2.0Gi.
+  With idle at ~62% of the request against a 60% target, the HPA also could not stabilize:
+  the action did not move the metric, so it flapped against `maxReplicas` indefinitely.
+  No target value fixes that.
+- [x] `[chart]` **Scale-down is slow**: only after an hour of low CPU, and one pod per ten minutes.
+  Every scale event reshards the scrape targets, and a pod keeps the series of the targets it gave up until its write-ahead log checkpoints,
+  so a gateway that flaps holds both shares at once.
+  Scale-up stays fast.
+- [ ] `[operator]` **Size gateway memory vertically**, from the series it holds: raise `alloy-gateway.alloy.resources`,
+  and `GOMEMLIMIT` (80% of the limit, through `AUTOMEMLIMIT`) and the memory limiter follow.
+  A pod's live heap is about 200MiB plus about 2.6KiB per series, and at `minReplicas` each pod holds its share of every series in the cluster.
+  Keep that under about half of `GOMEMLIMIT`;
+  past it the GC runs constantly, and the CPU it spends makes the autoscaler scale out for no other reason.
+  The 2Gi default fits a medium install of about a quarter of a million series.
+  An explicit `GOMEMLIMIT` in `extraEnv` overrides the derived one and is not kept in step.
 
 ### Agent placement & durability
 
@@ -8923,8 +8944,8 @@ See [Authentication](../../dashboards/grafana/auth/) for the wiring.
 - [ ] `[operator]` **A hardened Grafana cannot install plugins at start.** These images ship no shell and no package manager — which is the point — so `grafana.plugins` silently gets you a Grafana without those plugins rather than an error. Bake them into a derived image instead.
 - [ ] `[operator]` **Pin plugin versions** (`name@version`) or bake them in. `grafana.plugins` downloads from grafana.com at every pod start, which is both a startup dependency on a third-party service and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
 - [x] `[chart]` **Read-only root filesystem**, with an `emptyDir` at `/tmp` for the Unix sockets Grafana's backend plugins listen on.
-  A validator errors when nothing is mounted there, since every datasource then fails while the pod stays Ready.
-  A values file that sets `grafana.extraEmptyDirMounts` replaces the chart's list, so it has to keep the `/tmp` entry.
+  The Grafana subchart mounts that `emptyDir` itself.
+  A validator errors when `grafana.extraEmptyDirMounts`, `grafana.extraVolumeMounts` or `grafana.extraVolumes` adds a second one, since the API server rejects the Deployment.
 - [x] `[chart]` **Bundled datasource plugins stay at the image's versions** (`grafana.ini.plugins.preinstall_auto_update: false`).
   Grafana otherwise updates the Prometheus and Loki plugins it bundles to the newest release on grafana.com at every start, so a pinned image would not pin them.
   On a read-only root the update also fails halfway and leaves the datasource unloaded, and a validator errors when it is turned back on.
@@ -9323,8 +9344,9 @@ kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --si
 ```
 
 Delete it to recover now; the other gateways take over its targets.
-To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources` and keep `GOMEMLIMIT` at about 80% of the new limit,
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources`,
 as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+`GOMEMLIMIT` and the memory limiter follow the new limit, unless `extraEnv` sets an explicit `GOMEMLIMIT`.
 
 ## Configuration that appears to do nothing
 
@@ -10114,9 +10136,9 @@ Two consequences follow from those deviations, and the second is the one that su
   The chart sets one for grafana-operator, Thanos, metrics-server, node-exporter and the Alloy pre-validate job, and sets seccomp on the Alloy containers directly.
   Thanos takes it per component, because Compactor, Store Gateway, Receive and Ruler each ship a context of their own that `thanos.global.podSecurityContext` never overrides.
 - [x] `[chart]` **Grafana runs on a read-only root filesystem.**
-  It needs a writable `/tmp`, which the chart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
+  It needs a writable `/tmp`, which the Grafana subchart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
   Without either, the pod stays Ready while its datasources fail.
-  A validator errors on both.
+  A validator errors when the plugin setting is turned back on, and when a values file adds a second `/tmp` mount.
   See `grafana.containerSecurityContext` in the [values reference](../../reference/helm/materialize-monitoring-values/).
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
@@ -10354,7 +10376,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 
 Where the phases land is therefore your choice, not the chart's. A stack sitting at phase 1 or 2 is **encrypted and not authenticated**, and phase 2 is the state most likely to be mistaken for mTLS: every values file carries a `certFile`, the servers name a client CA, and a client presenting nothing is still served. Only phase 3 refuses it.
 
-The design for the first three is written up in the [TLS and authentication design doc](../../reference/internal/design-docs/20260816-tls-authentication/) (internal), including the two-phase rollout that gets there without an outage.
+The design for the first three is written up in the [TLS and authentication design doc](../../reference/development/design-docs/20260816-tls-authentication/), including the two-phase rollout that gets there without an outage.
 
 ## See also
 
@@ -10377,7 +10399,7 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-al
 
 --------------------------------------------------------------------------------
 title: "Contributing"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/contributing/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/contributing/index.md
 --------------------------------------------------------------------------------
 
 # Contributing to materialize-monitoring
@@ -10497,7 +10519,7 @@ cargo test --workspace                                   # all tests
 cargo clippy --workspace --all-targets -- -D warnings    # lint
 
 # Helm
-helm unittest charts/materialize-monitoring              # template unit tests
+make helm-tests                                          # template unit tests, every chart
 ```
 
 ## Iterating against a live cluster
@@ -10583,7 +10605,7 @@ It also means editing one sentence never churns the lines around it.
 See [Repo Layout](../repo-layout/) for the full rule and its one exception.
 
 **Relative links need `../` for siblings.**
-Pretty URLs put every page at its own directory, so `reference/internal/releasing.md` is served as `reference/internal/releasing/`.
+Pretty URLs put every page at its own directory, so `reference/development/releasing.md` is served as `reference/development/releasing/`.
 A sibling link is therefore `[Versioning](../versioning/)` — a bare `versioning/` resolves to `releasing/versioning/` and 404s.
 Link to pages, not files: `../versioning/`, never `versioning.md`.
 
@@ -10622,7 +10644,7 @@ LFS is used for packaged Helm subcharts (`charts/*/charts/*.tgz`); the pattern i
 3. Run the relevant tests:
    - Python: `uv run pytest`
    - Rust: `cargo test --workspace`
-   - Helm: `helm unittest charts/materialize-monitoring`
+   - Helm: `make helm-tests`
    - Terraform: `make terraform-check`
    - E2E, when touching the chart or the module in a way a render cannot cover: `make e2e-cluster && make e2e-tier1 && make e2e-verify-tier1`
 4. Open a PR against `main`. Keep PRs focused — one concern per PR reviews faster than a sweep.
@@ -10650,7 +10672,7 @@ Open an issue on the [GitHub repository](https://github.com/MaterializeInc/mater
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/dashboard/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/dashboard/overview/index.md
 --------------------------------------------------------------------------------
 
 # Dashboards as Code
@@ -10681,7 +10703,7 @@ reference.
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/overview/index.md
 --------------------------------------------------------------------------------
 
 # Design Docs
@@ -10706,7 +10728,7 @@ A new doc starts at Draft.
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/pipelines/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/pipelines/overview/index.md
 --------------------------------------------------------------------------------
 
 # Pipelines as Code
@@ -10726,7 +10748,7 @@ The `pipelines-as-code` Claude skill at `.claude/skills/pipelines-as-code/SKILL.
 
 --------------------------------------------------------------------------------
 title: "Overview"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/queries/overview/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/queries/overview/index.md
 --------------------------------------------------------------------------------
 
 # Queries as Code
@@ -10848,7 +10870,7 @@ across engines, so extract from the PromQL side.
 
 --------------------------------------------------------------------------------
 title: "Authoring"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/pipelines/authoring/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/pipelines/authoring/index.md
 --------------------------------------------------------------------------------
 
 # Authoring Pipelines
@@ -11343,7 +11365,7 @@ Publishing to GHCR happens in CI, not from the Makefile.
 
 --------------------------------------------------------------------------------
 title: "Authoring Alerts"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/queries/alerts/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/queries/alerts/index.md
 --------------------------------------------------------------------------------
 
 # Authoring Alerts
@@ -11480,7 +11502,7 @@ Everything else installs only when named in `rules.selected`.
 
 An alert MUST NOT enter the default set until its expression has been evaluated against a live self-managed install and does not fire falsely there.
 It SHOULD also have a unit test (see below), and it SHOULD have evidence that the condition matters, such as incident history or a Cloud counterpart that pages.
-Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and, after 1.0, a deprecation cycle.
+Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and a deprecation cycle.
 
 An alert whose normal duration depends on the workload SHOULD carry that duration in `for`, and its notes SHOULD say so.
 `rules.overrides` changes a rule's `for` and labels per deployment, and never its expression.
@@ -11609,7 +11631,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.2 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 2.1.0 |
@@ -13479,7 +13501,7 @@ the managed database and the buckets a deployment depends on, and write it
 beside every other metric. The result shares retention, PromQL and alerting
 with the rest of the stack, so a provider series is joinable with
 `mz_persist_*` in one expression. The [external-dependency
-design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+design](https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
 records why this is a pull rather than a Grafana datasource.
 
 | Provider | Services | Alloy component |
@@ -16303,12 +16325,12 @@ arguments against it.
       <td class="helm-value-default"><pre>
 [
   {
-    "name": "GOMEMLIMIT",
-    "value": "600MiB"
+    "name": "AUTOMEMLIMIT",
+    "value": "0.8"
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.  It is the ceiling the GC works against, so it also sets where the gateway idles. Leaving it near the old limit while raising `resources` would waste the new headroom; leaving it *above* the limit forfeits the whole point, since the runtime would only start collecting hard after the kubelet has already OOM-killed the pod.
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `AUTOMEMLIMIT` sets `GOMEMLIMIT` to 80% of the container's memory limit when Alloy starts, for the same reason as the agent's `GOMEMLIMIT`. Deriving it means raising `resources` is the whole change: the GC ceiling follows, and so do the memory limiter's thresholds, which are percentages of the same limit.  The ratio has to stay below the limiter's 85%. The GC should be holding the heap down well before the limiter starts refusing scrapes, and a refused scrape is lost. An explicit `GOMEMLIMIT` here takes precedence and is not kept in step with `resources`. Replacing this list without either leaves Alloy's own default of 90%, which sits above the limiter.
 </td>
     </tr>
     <tr>
@@ -16449,15 +16471,36 @@ the `tls.*File` carriers are preferred over the inline PEMs.
 {
   "limits": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   },
   "requests": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.
+      <td class="helm-value-desc">Resources for the alloy gateway containers.
+
+Memory is the gateway's binding constraint. Its live heap is about 200MiB
+of fixed cost plus about 2.6KiB for every series the pod holds. Each series
+is held three times: by the scrape cache, the OTLP-to-Prometheus bridge
+and the remote-write queue. The gateways split the scrape targets, so at
+`minReplicas` each pod holds its share of every series in the cluster. It
+also holds, until its write-ahead log next checkpoints, the series of
+targets a recent resharding moved away from it.
+
+Keep that live heap under about half of `GOMEMLIMIT`. Past that the GC
+runs constantly: measured with a 600MiB `GOMEMLIMIT`, a pod with 300MiB
+live collected about 3 times a minute on 0.07 cores, and one with 450MiB
+live collected 30 or more times a minute on 0.3 cores. That CPU is what the
+autoscaler scales on, so a gateway short of memory also scales out and
+back for no other reason.
+
+The default fits a medium install. It was measured on 9 nodes and ten
+Materialize replicas, a quarter of a million series in all. At 2 replicas a
+pod there holds 120k to 160k series, about 500 to 600MiB live, against a
+1.6GiB `GOMEMLIMIT`. Raise this as series grow. `GOMEMLIMIT` and the
+memory limiter's thresholds follow it (see `extraEnv`).
 </td>
     </tr>
     <tr>
@@ -16480,7 +16523,33 @@ the `tls.*File` carriers are preferred over the inline PEMs.
       <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>0</code></td>
-      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.
+      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory utilization does not say whether a gateway is short of memory. The Go runtime lets the heap grow toward `GOMEMLIMIT` before it collects hard, so a healthy pod's working set reads high too, and on a small cluster most of it is fixed per-process cost that a new replica only duplicates. On a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Size gateway memory vertically instead (`resources`, above). A pod that is short of it shows on CPU first, because collecting more often is what it spends the CPU on.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.scaleDown</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "policies": [
+    {
+      "periodSeconds": 600,
+      "type": "Pods",
+      "value": 1
+    }
+  ],
+  "selectPolicy": "Max",
+  "stabilizationWindowSeconds": 3600
+}</pre>
+</td>
+      <td class="helm-value-desc">Scale down slowly: only after an hour of low CPU, and one pod at a time.
+
+Every scale event reshards the scrape targets. A scale-down hands each
+remaining pod a larger share, and every pod keeps the series of the
+targets it gave up until its write-ahead log next checkpoints, hours
+later. A gateway that scales down and back up within the hour pays for
+both shares at once. The scale-up path stays fast, because it relieves
+load rather than concentrating it.
 </td>
     </tr>
     <tr>
@@ -19482,37 +19551,31 @@ check warns when it is missing.
 }</pre>
 </td>
       <td class="helm-value-desc">Container security context for Grafana.
-Only the delta over the subchart's own, which already drops every
-capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+The subchart's own already drops every capability, forbids privilege
+escalation, sets `RuntimeDefault` seccomp and makes the root filesystem
+read-only. The chart restates the read-only root because the validators
+and the production checklist depend on it.
 
-A read-only root filesystem needs two things from the rest of this block,
-and Grafana breaks quietly without either:
+A read-only root filesystem needs two things, and Grafana breaks quietly
+without either:
 
 | Needs | Supplied by | Without it |
 |---|---|---|
-| A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+| A writable `/tmp` | The subchart, which mounts an `emptyDir` named `tmp` there | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
 | `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
 
 Everything else Grafana writes lands on the `storage` and `search` volumes
 the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
 The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
-profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
-Validators fail the render on each of these gaps, and warn when this is
-turned off.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">grafana<wbr>.extraEmptyDirMounts</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  {
-    "mountPath": "/tmp",
-    "name": "tmp"
-  }
-]</pre>
-</td>
-      <td class="helm-value-desc">Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.
+profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own
+through `grafana.extraEmptyDirMounts`.
+
+A second mount at `/tmp`, or a second volume named `tmp`, makes the API
+server reject the Deployment. Neither `grafana.extraEmptyDirMounts` nor
+`grafana.extraVolumeMounts` may add one.
+
+Validators fail the render on the plugin setting, a missing `.aws` mount
+and a duplicate `/tmp`, and warn when this is turned off.
 </td>
     </tr>
     <tr>
@@ -21041,7 +21104,7 @@ Upstream reference:
 
 --------------------------------------------------------------------------------
 title: "Metrics"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/pipelines/metrics/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/pipelines/metrics/index.md
 --------------------------------------------------------------------------------
 
 # Metrics Pipelines
@@ -21077,7 +21140,7 @@ otelcol.receiver.otlp                          (OTLP metrics) ──────
                      otelcol.processor.filter "inputMetricDeny"   (denyMetrics, per Prometheus series)
                                                │
                                                ▼
-                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 75%, backpressure receivers)
+                     otelcol.processor.memory_limiter "outputMemoryLimiter"  (refuse at 85%, above GOMEMLIMIT)
                                                │
                                                ▼
                      otelcol.processor.batch "outputBatch"
@@ -21297,7 +21360,7 @@ These are reachable today via a `raw:` block and can be graduated to typed schem
 
 --------------------------------------------------------------------------------
 title: "Repo Layout"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/repo-layout/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/repo-layout/index.md
 --------------------------------------------------------------------------------
 
 This page is a convenience cache of where things live in the repo.
@@ -21320,7 +21383,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `CONTRIBUTING.md` / `README.md` / `LICENSE`
   * `renovate.json`: automated dependency bumps
   * `.terraform-docs.yml` / `.terraform-docs.docsite.yml`: Terraform doc generation — the first injects into module READMEs, the second writes the docsite variable reference
-  * `.pre-commit-config.yaml`: contributor-experience hooks (see [Internal Development](../contributing/))
+  * `.pre-commit-config.yaml`: contributor-experience hooks (see [Development](../contributing/))
   * `.gitattributes`: Git LFS for the subchart tarballs, plus `linguist-generated` on the docsite's duplicate artifacts (see [Two copies, one review](../dashboard/generating/#two-copies-one-review))
   * `bin/`: bash dev/CI entrypoints (flat; no subdirectories)
     * `check-lfs.sh`: verify/repair Git LFS state
@@ -21371,9 +21434,9 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `docs/`: Hugo docsite (the source of this page)
     * `hugo.toml`: site config; `go.mod` / `go.sum` pin the theme
     * `content/`: authored Markdown
-      * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/internal/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
+      * `_index.md` files carry **frontmatter only** — no prose. A section's landing content lives in a regular page inside it at `weight: 1` (e.g. `logs-and-events/architecture.md`, `reference/development/contributing.md`), so every directory in the sidebar is a container and every clickable title is a real page. The site home `content/_index.md` is the one exception
       * top-level sections: `getting-started/`, `metrics/` (incl. `collecting/`), `logs-and-events/`, `dashboards/` (incl. `grafana/`), `alerting/`, `operating/`, plus `architecture.md` and `o11y-glossary.md`
-      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `internal/` (this section — `dashboard/`, `pipelines/`, `design-docs/`, plus `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
+      * `reference/`: `helm/`, `terraform/` (generated variable reference), `list-metrics.md`, `common-queries.md`, `common-alerts.md`, `compatibility.md`, `crds.md`, `stability.md`, `images/`, `changelog.md`, and `development/` (this section — `dashboard/`, `queries/`, `pipelines/`, `design-docs/`, plus `contributing.md`, `repo-layout.md`, `roadmap.md`, `releasing.md`, `versioning.md`, `skills.md`, `helm.md`)
     * `layouts/`, `static/`, `assets/`, `data/`, `i18n/`, `archetypes/`, `themes/`: Hugo machinery
     * `public/`, `resources/`: generated output (not checked in)
   * `legacy/`: preserved field-engineering assets — `sql_exporter/`, `prometheus/`, `grafana/`, `datadog/`, `tests/`, `docker-compose.yml`, `scrape_config.yaml`
@@ -21387,7 +21450,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
 
 --------------------------------------------------------------------------------
 title: "SDKs and Schemas"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/dashboard/sdks/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/dashboard/sdks/index.md
 --------------------------------------------------------------------------------
 
 # SDKs and Schemas
@@ -22930,7 +22993,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 
 --------------------------------------------------------------------------------
 title: "Authoring Recording Rules"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/queries/recording-rules/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/queries/recording-rules/index.md
 --------------------------------------------------------------------------------
 
 # Authoring Recording Rules
@@ -23090,7 +23153,7 @@ A recording rule that never produces a series passes every render test, and this
 
 --------------------------------------------------------------------------------
 title: "Datadog Translations"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/queries/datadog/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/queries/datadog/index.md
 --------------------------------------------------------------------------------
 
 # Datadog Translations
@@ -23267,7 +23330,7 @@ the first two things worth checking.
 
 --------------------------------------------------------------------------------
 title: "Logging"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/pipelines/logging/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/pipelines/logging/index.md
 --------------------------------------------------------------------------------
 
 # Logging Pipeline
@@ -23406,7 +23469,7 @@ Current status (see the [Roadmap](../../roadmap/)):
 
 --------------------------------------------------------------------------------
 title: "Skills"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/skills/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/skills/index.md
 --------------------------------------------------------------------------------
 
 # Skills
@@ -23427,7 +23490,7 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
 | [`alerting`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/alerting/SKILL.md) | adding, changing or vetting an alerting rule — an `alerts:` entry in `packages/queries`, its capabilities and default-set membership, the chart's `rules.*` values, and the promtool unit tests |
-| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the house voice, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
+| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the Google developer documentation style guide it follows, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
 | [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
 
 ## Skills in code review
@@ -23497,7 +23560,7 @@ When a skill starts accumulating prose, that is the signal to move it into a doc
 
 --------------------------------------------------------------------------------
 title: "Style Guidelines"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/dashboard/style-guidelines/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/dashboard/style-guidelines/index.md
 --------------------------------------------------------------------------------
 
 # Dashboard Style Guidelines
@@ -24486,7 +24549,7 @@ which says the same thing to someone who has never read a dataflow paper.
 
 The boundary is what renders. Registry `description:` blocks become panel
 descriptions, so they follow this rule; Rust doc comments, YAML comments, and
-everything under `reference/internal/` are read by contributors, where the precise
+everything under `reference/development/` are read by contributors, where the precise
 internal term is the right one and stays.
 
 ## Draw the total beside the worst case, not instead of it
@@ -25047,7 +25110,7 @@ still some known issues:
 
 --------------------------------------------------------------------------------
 title: "Generating and Pushing Dashboards"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/dashboard/generating/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/dashboard/generating/index.md
 --------------------------------------------------------------------------------
 
 # Generating and Pushing Dashboards
@@ -25113,8 +25176,8 @@ Even though we have different Grafana targets, we should **not encode the Grafan
 may be upgraded across versions).
 
 UIDs must follow the
-[strict UID format introduced in Grafana 11.2](https://grafana.com/whats-new/2025-05-05-enforcing-stricter-data-source-uid-format/)
-: Latin alphanumeric with dashes and underscores, 40 characters max.
+[strict UID format introduced in Grafana 11.2](https://grafana.com/whats-new/2025-05-05-enforcing-stricter-data-source-uid-format/):
+Latin alphanumeric with dashes and underscores, 40 characters max.
 We use the `mz-mon-` prefix for all UIDs.
 
 **Dashboard v2 caveat:** in v2 the UID is *not* part of the dashboard spec — it lives in the surrounding
@@ -25267,28 +25330,28 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-al
 
 # Stability Guarantees and Deprecation Policy
 
-This page describes what functionality provided by `materialize-monitoring`
-a user can reasonably rely on.
+This page describes which parts of `materialize-monitoring` you can rely on, and how the project retires an interface before it changes.
 
 <!-- more -->
 {{< rfc-2119 >}}
 
-## Semantic Artifact Versioning
+## Semantic artifact versioning
 
-This repository is broken up into multiple different release artifacts all
-with their own discrete [SemVer](https://semver.org/) versions.
-Generally:
-* Breaking changes are tracked by major version bumps
-* New functionality / non-breaking changes are tracked by minor version bumps
-* Backwards-compatible bug fixes / inconsequential changes are tracked by patch version bumps
+This repository publishes several release artifacts, and each one carries its own [SemVer](https://semver.org/) version.
+An artifact bumps its version for the following kinds of change:
+
+Major
+: A breaking change to a [public interface](#public-interfaces), after its [deprecation](#deprecations) cycle.
+
+Minor
+: New functionality, or another non-breaking change.
+
+Patch
+: A backward-compatible bug fix, or an inconsequential change.
 
 <!-- TODO: create a reference/components.md page to link to -->
-Most consumers will be concerned specifically with the `materialize-monitoring` Helm chart and Terraform modules.
-
-> [!WARNING]
-> Before the Helm/TF 1.0 release, minor versions carry both breaking and non-breaking features.
-> `materialize-monitoring` SHOULD try to adhere to notices of breaking changes and
-> deprecations, but can only provide best-effort guarantees before 1.0.
+Most consumers depend on the `materialize-monitoring` Helm chart and Terraform module, which share one version.
+The guarantees on this page apply from v1.0.0 of the chart and module.
 
 ## Public Interfaces
 
@@ -25315,17 +25378,14 @@ This list describes some of the interfaces (non-comprehensive) a consumer may bu
 
 ## Deprecations
 
-`materialize-monitoring` MUST provide notice for deprecations of a public interface.
-This notice MUST appear in the release notes in [Changelog](../changelog/) using a `**Deprecated**:` notation.
+`materialize-monitoring` MUST give notice before it removes a public interface, and retires one in the following order:
 
-Our policy is as follows (post 1.0):
-1. Deprecated interfaces MUST be clearly documented in the release notes using a `**Deprecated**:` notation.
-2. At least one major version and at least 30 days MUST pass before a deprecated interface is removed.
-3. A removed interface MUST use the `**Removed**:` notation in our release notes after being successfully deprecated.
+1. It MUST announce the deprecation in the [changelog](../changelog/), in a `**Deprecated:**` bullet that names the replacement.
+2. It MUST keep the deprecated interface working for at least 30 days, and MUST NOT remove it before the next major version.
+3. It MUST record the removal in the changelog, in a `**Removed:**` bullet.
 
 > [!WARNING]
-> Interfaces which are known to not have any consumers MAY be treated as unstable
-> retroactively and removed without a full deprecation cycle.
+> An interface known to have no consumers MAY be treated as unstable retroactively, and removed without a full deprecation cycle.
 
 ## Unstable Interfaces
 
@@ -25380,7 +25440,7 @@ being selected; see [Configuring Alerting]({{< relref "../alerting/configuring.m
 
 --------------------------------------------------------------------------------
 title: "Testing"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/dashboard/testing/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/dashboard/testing/index.md
 --------------------------------------------------------------------------------
 
 # Testing
@@ -25727,7 +25787,7 @@ An empty result where you expected dashboards usually means the `instanceSelecto
 
 --------------------------------------------------------------------------------
 title: "Helm"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/helm/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/helm/index.md
 --------------------------------------------------------------------------------
 
 TODO
@@ -25735,7 +25795,7 @@ TODO
 
 --------------------------------------------------------------------------------
 title: "Roadmap"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/roadmap/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/roadmap/index.md
 --------------------------------------------------------------------------------
 
 <!-- This roadmap is public. Do not include customer-specific or sensitive information -->
@@ -25840,7 +25900,7 @@ Tracked in [Metrics for Cloud][clom] (**CLOM**): what Materialize emits, what it
 Designed in [A Tenant-Scoped Query API](../design-docs/20260916-tenant-query-api/) and tracked as [DEP-269].
 Every consumer of this stack so far is a Grafana the chart deploys, reading backends over a `ClusterIP` Service.
 The read path serves the Materialize console and a customer's own Grafana through a tenant-scoped proxy instead.
-A revision deciding to build the proxy in Rust is in review as [#473].
+The proxy is a Rust service in this workspace, tested against `prom-label-proxy` as an oracle.
 
 | Item | Status |
 |---|---|
@@ -26073,7 +26133,7 @@ Sink health and correctness logs beyond the three Materialize log-derived defaul
 
 | Item | Status |
 |---|---|
-| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | ⬜ |
+| [DEP-385] A gateway over its memory limiter's soft limit refuses its scrapes for hours: sizing, limiter placement, resharding | 🔨 |
 | [DEP-380] CNI monitors for Calico and Azure Network Policy Manager | ⬜ |
 | [DEP-126] Trace correlation as structured metadata in the log pipeline, without trace storage | ⬜ |
 | [CLO-76] Optional continuous profiling, off by default | ⬜ |
@@ -26100,7 +26160,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | Design | Status | Remaining work |
 |---|---|---|
 | [Observability for Bring-Your-Own-Cloud](../design-docs/20260813-byoc-observability/) | Ready | [BYOC](#byoc) |
-| [A Tenant-Scoped Query API](../design-docs/20260916-tenant-query-api/) | Ready, with a revision in review as [#473] | [Tenant-scoped read path](#tenant-scoped-read-path) |
+| [A Tenant-Scoped Query API](../design-docs/20260916-tenant-query-api/) | Ready | [Tenant-scoped read path](#tenant-scoped-read-path) |
 | [Alerting in Self-Managed](../design-docs/20260917-alerting-self-managed/) | Ready | [Alerting](#alerting) |
 | [Call-Home](../design-docs/20260917-call-home-self-managed/) | Ready | [Call-home from self-managed](#call-home-from-self-managed) |
 | [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/) | Ready | [External dependencies](#external-dependencies) |
@@ -26117,7 +26177,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 
 [#365]: https://github.com/MaterializeInc/materialize-monitoring/pull/365
 [#445]: https://github.com/MaterializeInc/materialize-monitoring/pull/445
-[#473]: https://github.com/MaterializeInc/materialize-monitoring/pull/473
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76
@@ -26252,7 +26311,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 
 --------------------------------------------------------------------------------
 title: "Releasing"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/releasing/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/releasing/index.md
 --------------------------------------------------------------------------------
 
 # Releasing
@@ -26280,25 +26339,31 @@ A released section can therefore sit above other components' unreleased placehol
 ## Choosing the next version {#choosing-the-next-version}
 
 **The placeholder heading is the decision.**
-The tooling reads the version out of it and never overrides it — `release` writes a fresh placeholder at `bump_minor()` of what it just released, and that is only a default for the *next* cycle.
-Anything other than a minor is driven by editing that heading before the release goes out.
+The tooling reads the version from it and never overrides it.
+After a release, `release` writes a fresh placeholder at `bump_minor()` of the version it released, which is only a default for the next cycle.
+For anything other than a minor, edit that heading before the release goes out:
 
 ```markdown
-## <title> v0.11.1 (Unreleased)   ← edited down from the v0.12.0 the tooling wrote
+## COMPONENT_TITLE v1.1.1 (Unreleased)   ← edited down from the v1.2.0 the tooling wrote
 ```
 
-Current policy, pre-1.0:
+Choose the bump by the largest change the release carries:
 
-- **Patch** — small, low-risk changes. Preferred, and kept genuinely small now that releases are published more often.
-- **Minor** — a batch of features, or anything a consumer has to react to (a new required value, a changed default, a new Terraform variable).
-- **Major** — not stamped yet. Until it is, a breaking change goes in a minor with the break called out in the entry.
+- **Patch:** a small, low-risk change.
+  Prefer a patch, and keep it small, because releases go out often.
+- **Minor:** a batch of features, or any other change that leaves the [committed surface](../versioning/#stability-guarantees) working.
+  A changed default, a `values.yaml` path change, and a `**Deprecated:**` announcement all ride a minor.
+- **Major:** a breaking change to the committed surface, including the removal at the end of a deprecation cycle.
 
 > [!WARNING]
->   That heading is the *only* place the intended bump is recorded, and it lives uncommitted in your working tree until you push it.
->   A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default — and the next release goes out as a minor with no diff to show why.
->   Commit the edit as its own change when you make it.
+> That heading is the *only* place the intended bump is recorded, and it stays uncommitted in your working tree until you push it.
+> A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default.
+> The next release then goes out as a minor, with no diff to show why.
+> Commit the edit as its own change when you make it.
 
-Two other things are expressed by editing this heading rather than by a flag: seeding a newly merged or renamed component stream at a starting version, and re-baselining after a component `title` change (see [Versioning](../versioning/)).
+Editing this heading, rather than passing a flag, also seeds a newly merged or renamed component stream at a starting version,
+and re-baselines after a component `title` change.
+For more information, see [Versioning](../versioning/).
 
 ## State machine
 
@@ -26501,11 +26566,13 @@ These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-m
 The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.
 Adding an identifier needs nothing — the check is only about **renames and removals**, which show up as a delete-plus-add in one of the generated or committed files above.
 
-**What to check.** For each removed or renamed identifier, one of:
+**What to check.** For each removed or renamed identifier, check that one of the following is true:
 
-- It was announced at least **30 days** ago. Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
-- It is being announced *now*, in which case the PR keeps the old name working and adds the `**Deprecated:**` bullet — removal is a later PR.
-- It is exempt, and the PR body says why. The honest exemptions are that nothing ever consumed it, or that it is in the [pre-1.0 batch](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget). Say which.
+- It was announced at least **30 days** ago, and the release is a major.
+  Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
+- It's being announced *now*, so the PR keeps the old name working and adds the `**Deprecated:**` bullet.
+  The removal is a later PR, in a major release.
+- It's exempt because nothing ever consumed it, and the PR body says so.
 
 **How a deprecation is recorded.** In the **PR description**, never by hand-editing `CHANGELOG.md` — that file is generated, and `propose-bumps` overwrites it on the next merge to the default branch (the one exception being the unreleased placeholder heading, which is edited to [choose the next version](#choosing-the-next-version)).
 
@@ -26542,7 +26609,7 @@ No separate section, no extra tooling — the prefix is the whole convention.
 
 --------------------------------------------------------------------------------
 title: "Versioning"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/versioning/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/versioning/index.md
 --------------------------------------------------------------------------------
 
 # Versioning in materialize-monitoring
@@ -26625,13 +26692,18 @@ See [Release notes from PR descriptions](../releasing/#release-notes-from-pr-des
 
 ## How versions are synced
 
-Versions are read from `CHANGELOG.md` for each component.
-Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](../releasing/)).
+The tooling reads each component's version from `CHANGELOG.md`.
+An unreleased section is a `_Changes Pending_` placeholder.
+A version-update PR populates the placeholder, promotes it to a released section,
+and rewrites that component's `version_paths` to the released version.
+For more information, see [Releasing](../releasing/).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
 Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
 so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
-The next version defaults to a minor bump; **a patch or a major is expressed by editing the placeholder heading**, which the tooling reads and never overrides.
-See [Choosing the next version](../releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose, and [Stability guarantees](#stability-guarantees) for what a version bump is allowed to change.
+The next version defaults to a minor bump.
+**To release a patch or a major, edit the placeholder heading**, which the tooling reads and never overrides.
+For which bump a change needs and why that edit is easy to lose, see [Choosing the next version](../releasing/#choosing-the-next-version).
+For what a version bump is allowed to change, see [Stability guarantees](#stability-guarantees).
 
 ## Tooling
 
@@ -26655,8 +26727,8 @@ See [Releasing](../releasing/) for the full state machine and the workflows that
 The published version of this is [Stability Guarantees and Deprecation Policy](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
 This section is the policy of record, and is kept in step with the published page.
 
-The design doc predates both and argued for a stricter pre-1.0 position than the one below.
-It is a dated artifact and is not being retro-edited; where the two differ, this section governs.
+The design doc predates both, and argued for a stricter pre-1.0 position than this section takes.
+It's a dated record, so it stays as written; where the two differ, this section governs.
 
 **Surfaces are graded by how much control we have over them.**
 
@@ -26682,9 +26754,9 @@ That keeps the obligation deliberate rather than ambient: 76 of the 374 declarat
 3. **Remove** — a later major, with a `**Removed:**` bullet.
    `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
-**The cycle binds from 1.0.**
-Before then, minors carry breaking and non-breaking changes alike, and the obligation is best-effort: announce what we can, and say so in the changelog.
-The steps above describe what we are working toward, not a promise a pre-1.0 release keeps.
+**The cycle binds from v1.0.0.**
+A break to the committed surface lands only in a major, and only after its cycle.
+A release before v1.0.0 could carry a breaking change in a minor.
 
 Additions are free, in any release.
 
@@ -26693,15 +26765,19 @@ The cycle is keyed to identifiers, not to conduct.
 Committing to every observable behavior of this stack would be unbounded, and an obligation nobody can enumerate is one nobody can keep.
 The bounded exception is the content of `canonical` queries above, which is committed precisely because it is enumerated.
 
+**A changed default is a behavior change, so it can ride a minor.**
+It still has to leave the committed surface working.
+Describe it in the PR's release notes, because a consumer might need to react to it.
+
 **Ceremony is graded by failure mode, not by surface size.**
 A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
 A renamed or removed alert leaves *silence*, and silence during an incident is indistinguishable from health.
 So alerts get the strictest treatment — cooldown, dual-publish, explicit notes, a named owner on removal — and metrics get the lightest.
 This deliberately inverts the "the label/metric contract is the public API" framing: on a failure-mode reading, metrics are among the most forgiving things we publish.
 
-**Chart values are handled by contact, not by cycle.**
-Their consumer is our own Terraform module, which pins a chart version, so a rename is absorbed by bumping the module.
-The exception is direct `helm install` users, and that list is short enough to notify individually.
+**A chart value path change isn't a breaking change.**
+The consumer of `values.yaml` is our own Terraform module, which pins a chart version, so bumping the module absorbs a rename.
+Direct `helm install` users are the exception, and that list is short enough to notify individually.
 
 **Enforcement builds nothing.**
 Every committed identifier already appears in a generated, committed artifact — `terraform-docs` output for module variables, `pre-rendered/` for dashboards and tiers, `packages/queries/` for alerts — so a rename already shows as a diff in the PR.
@@ -26733,22 +26809,17 @@ The cheapest non-breaking change is one to a surface that was never published.
 `%%{mzSqlPrefix}` is the working example: one query definition renders against either the `mz_` or `v2_mz_` namespace, so the difference never reaches a name we publish.
 Where a value differs by deployment, or looks likely to move, parameterize rather than bake it in.
 
-**Ship new behavior opt-in.**
-Adding a value whose default preserves current behavior is not breaking; changing a default is.
-Introduce it default-off, then flip the default in a later major.
-
 **Name for the condition, not the grade.**
-29 of the 89 alerts end in `-critical`, `-high`, or `-elevated`, and six families differ only by that suffix — so re-grading any of them forces a rename.
-Severity belongs in the `severity` label, and the name should describe what is wrong.
-This does not remove the exposure, since severity values are themselves committed, but it shrinks it: a label change misroutes an alert that still fires under a name people can still find, where a rename breaks both at once.
-Alerts are unshipped, so this is free to fix now and a cycle per alert later.
+Many alerts end in `-critical`, `-high`, or `-elevated`, and several families differ only by that suffix, so re-grading one of them forces a rename.
+Put the severity in the `severity` label, and name the alert for what is wrong.
+Severity values are committed too, so this shrinks the exposure rather than removing it.
+A label change misroutes an alert that still fires under a name people can find; a rename breaks both at once.
+Every shipped alert name is committed, so renaming one costs a full cycle: name a new alert for its condition from the start.
 
 **When a rename is genuinely required, accept both.**
-Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
-No module variable does this yet, so it is a pattern to establish rather than one to copy.
-
-**Pre-1.0.** Breaking changes ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205), and the cycle is best-effort rather than binding.
-Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
+Keep the old identifier working rather than merely present.
+For a Terraform variable, that means you retain it and let the new one win, rather than delete it and document the replacement.
+No module variable follows this pattern, so there's no example in the module to copy.
 
 ## Design principles
 
@@ -26783,7 +26854,7 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-al
 
 --------------------------------------------------------------------------------
 title: "First-Class Production Loki Infrastructure"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260627-loki-production-infrastructure/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260627-loki-production-infrastructure/index.md
 date: "2026-06-27"
 --------------------------------------------------------------------------------
 
@@ -27061,7 +27132,7 @@ We are a monitoring product, so Loki self-observability is on by default: Servic
 
 --------------------------------------------------------------------------------
 title: "Terraform Modules for materialize-monitoring"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260803-terraform-modules/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260803-terraform-modules/index.md
 date: "2026-08-03"
 --------------------------------------------------------------------------------
 
@@ -27807,8 +27878,8 @@ The Terraform story is stale in several places here and should be corrected as t
 - `getting-started/terraform.md` — ✅ done. Now the install guide, including a tfvars reference.
 - `getting-started/_index.md` — ✅ done.
 - `reference/compatibility.md` — ✅ done. Carries the Terraform-repo ↔ chart-version table.
-- `reference/internal/roadmap.md` — the M4 "Terraform wrapper module" row, the "Downstream pinning" bullet, and a `terraform` entry wherever components are enumerated. Also two Testing / CI rows: the "Synthetic-data end-to-end smoke test" row **is** the E2E suite described here, and the "kind / ArgoCD / FluxCD CI matrix" row needs its kind half split out and promoted well above "very low priority" (ArgoCD and Flux stay).
-- `reference/internal/repo-layout.md` — ✅ done. Refreshed against the tree and carries `terraform/` as a planned entry.
+- `reference/development/roadmap.md` — the M4 "Terraform wrapper module" row, the "Downstream pinning" bullet, and a `terraform` entry wherever components are enumerated. Also two Testing / CI rows: the "Synthetic-data end-to-end smoke test" row **is** the E2E suite described here, and the "kind / ArgoCD / FluxCD CI matrix" row needs its kind half split out and promoted well above "very low priority" (ArgoCD and Flux stay).
+- `reference/development/repo-layout.md` — ✅ done. Refreshed against the tree and carries `terraform/` as a planned entry.
 - `operating/production-best-practices.md` — the `[consumer]` items become concretely satisfied-by-Terraform on that path, which matters to a reader choosing an install method.
 
 ## Open questions
@@ -27846,7 +27917,7 @@ The Terraform story is stale in several places here and should be corrected as t
 
 --------------------------------------------------------------------------------
 title: "Observability for Bring-Your-Own-Cloud"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260813-byoc-observability/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260813-byoc-observability/index.md
 date: "2026-08-13"
 --------------------------------------------------------------------------------
 
@@ -28297,11 +28368,11 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 ## Documentation to update
 
 - A **customer-facing egress document**: what crosses, why, how it is reduced and redacted, how to read the generated schedule, and how to turn log egress off. This is the compliance-review artifact and the most important item in this list.
-- `reference/internal/roadmap.md` — ✅ done. The BYOC section carries the revised egress position and the DEP-219 row points here, per [A roadmap position this changes](#a-roadmap-position-this-changes).
+- `reference/development/roadmap.md` — ✅ done. The BYOC section carries the revised egress position and the DEP-219 row points here, per [A roadmap position this changes](#a-roadmap-position-this-changes).
 - `logs-and-events/storing.md` — a multi-destination section mirroring `metrics/storing.md`'s "Controlling what each destination stores", which is the model to copy.
 - `metrics/storing.md` — the control plane as a destination in the fan-out list.
 - `operating/production-best-practices.md` — the shared responsibility model gains a BYOC column, since the `[consumer]` items are ours in that deployment rather than the customer's.
-- `reference/internal/pipelines/logging.md` — per-destination processing, once the map lands.
+- `reference/development/pipelines/logging.md` — per-destination processing, once the map lands.
 
 ## Open questions
 
@@ -28324,7 +28395,7 @@ The kind tiers extend to cover this, and two of the assertions are genuinely new
 
 --------------------------------------------------------------------------------
 title: "In-cluster TLS and Certificate Authentication"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260816-tls-authentication/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260816-tls-authentication/index.md
 date: "2026-08-16"
 --------------------------------------------------------------------------------
 
@@ -28862,7 +28933,7 @@ The [Rust E2E suite](../../roadmap/#testing--ci--devex) already assigns NetworkP
 
 --------------------------------------------------------------------------------
 title: "Stability Guarantees and Deprecation Policy"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260823-deprecation-policy/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260823-deprecation-policy/index.md
 date: "2026-08-23"
 --------------------------------------------------------------------------------
 
@@ -29227,7 +29298,7 @@ Ordered, because some of it gates the rest:
 
 The policy itself has landed; what remains is the cleanup it enables and the one decision with a closing window.
 
-**A note on the issue's paths.** DEP-127 names `docs/contrib/contract/versioning.md` and `docs/contrib/release.md`, and describes upgrading the former "from *stability guarantees TBD*". Neither path exists any more — the docs moved to `docs/content/reference/internal/` — and the current [Versioning](../../versioning/) page has no stability section at all, TBD or otherwise. The table above is the same three deliverables against the tree as it stands.
+**A note on the issue's paths.** DEP-127 names `docs/contrib/contract/versioning.md` and `docs/contrib/release.md`, and describes upgrading the former "from *stability guarantees TBD*". Neither path exists any more — the docs moved to `docs/content/reference/development/` — and the current [Versioning](../../versioning/) page has no stability section at all, TBD or otherwise. The table above is the same three deliverables against the tree as it stands.
 
 ## Documentation to update
 
@@ -29252,7 +29323,7 @@ The policy itself has landed; what remains is the cleanup it enables and the one
 
 --------------------------------------------------------------------------------
 title: "A Tenant-Scoped Query API for Console and Customer Grafana"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260916-tenant-query-api/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260916-tenant-query-api/index.md
 date: "2026-09-16"
 --------------------------------------------------------------------------------
 
@@ -29305,10 +29376,21 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 
 ## Technical BLUF
 
-- **For logs, tenancy exists and authentication does not. For metrics, neither exists.** Loki runs `auth_enabled: true` and takes the tenant from `X-Scope-OrgID`; Thanos Query has no tenancy at all and no notion of a caller. The two halves need different work, and a design that treats them as one surface will get the metrics half wrong.
+- **For logs, tenancy exists and authentication does not. For metrics, Thanos offers single-label enforcement and no authentication.**
+  Loki runs `auth_enabled: true` and takes the tenant from `X-Scope-OrgID`.
+  Thanos Query can inject one tenant label taken from a header, which is the `prom-label-proxy` construction
+  and cannot express the per-family classes below.
+  The two halves need different work, and a design that treats them as one surface will get the metrics half wrong.
 - **Identity is derived from a verified JWT, never asserted by the client.** This is the same construction the [BYOC ingress](../20260813-byoc-observability/#identity-is-assigned-by-the-load-balancer-never-asserted-by-the-client) uses for writes, with a token where that has a certificate: strip every tenant-shaped header the client sent, set them from the verified claim, and reject the request if the claim is absent.
 - **Verification is JWKS-based, so the proxy holds no per-tenant state.** Adding a tenant is issuing a token, not configuring the proxy — the property that makes the BYOC load balancer's verifier-CA model scale, restated for bearer tokens.
 - **Label injection is not a tenant boundary on its own.** A large share of the series in Thanos carry no environment label — node-exporter, kube-state-metrics, cAdvisor, and orchestratord, which reconciles every environment in the cluster. Injecting a matcher makes those queries empty; omitting it leaks across environments. The resolution is a generated per-family tenancy class, not a cleverer rewriter.
+- **The proxy is a Rust service built in this workspace, with `prom-label-proxy` as its oracle.**
+  For a selector over an `environment`-class family, its rewrite is identical to `prom-label-proxy`'s, and a differential test holds it there.
+  The tenancy classes are a superset that `prom-label-proxy` has no hook for.
+- **In Cloud, a Frontegg access token cannot be the read token.**
+  Frontegg sets `aud` to the workspace ID on every token it issues, so an audience check cannot tell a read token from any other session token.
+  Keeping the `aud` requirement means Cloud needs an exchange that mints an audience-scoped read token;
+  see [Frontegg tokens are not read tokens](#frontegg-tokens-are-not-read-tokens).
 - **The same mechanism resolves differently in self-managed and Cloud, and that is not a flaw to hide.** In self-managed the customer *is* the cluster operator, so cluster-scoped families are theirs to read. In Cloud they are not. One proxy, one token format, one policy input, two policy values.
 - **Mandating the interface is not mandating Thanos.** What becomes required is a PromQL endpoint and a LogQL endpoint carrying the documented label contract, reachable through the proxy. Thanos and Loki are the bundled, supported, default implementation of that requirement; a customer already running Mimir or Grafana Cloud points the proxy at theirs.
 - **This replaces the planned customer-scraped Prometheus endpoint.** A scrape endpoint delivers current samples to whoever can reach inward and keeps no history across the gap. A federated or remote-read endpoint on the proxy is strictly smaller than the query API and survives as an option for customers with a dedicated Prometheus.
@@ -29337,8 +29419,8 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 | LogQL endpoint | ✅ Shipped, unauthenticated | `loki-query-frontend.<ns>.svc:3100`, `ClusterIP` |
 | Loki multi-tenancy | ✅ Shipped | `auth_enabled: true`; tenant from `X-Scope-OrgID`, written per `pipeline.logging.tenancy.tenantMap` |
 | Loki per-tenant limits | ✅ Shipped | `loki.limits_config`, sized for a medium install |
-| Thanos multi-tenancy | ❌ **Absent** | Query has no tenant concept; Receive's tenancy is a write-path feature and does not reach the read path |
-| Thanos read limits | ⚠️ Global only | `--store.limits.request-series` / `--store.limits.request-samples` on Store Gateway, not per caller |
+| Thanos read-path tenancy | ⚠️ Single label, unused | Query injects one tenant label from a header under `--query.enforce-tenancy` (Thanos v0.34 and later). This chart does not enable it. See [Logs already have tenancy](#logs-already-have-tenancy-metrics-have-one-label) for why it does not fit |
+| Thanos read limits | ⚠️ Global only | `--store.limits.request-series` / `--store.limits.request-samples` on Store Gateway, not per caller. Query Frontend carries per-tenant override code with no per-tenant source wired |
 | `thanos.queryFrontend` | ⚠️ Off by default | Available; the Grafana datasource points at `thanos-query` directly, so enabling it today caches nothing |
 | Environment label on metrics | ✅ Shipped | `materialize_cloud_organization_name`, the label every `env-*` dashboard scopes on |
 | Environment label on logs | ✅ Shipped | `organization_name`, relabelled by the agent from the pod label; structured metadata rather than a stream label |
@@ -29373,7 +29455,7 @@ This stack already collects the answers, at higher fidelity and for thirty days 
 The gap is not collection.
 The gap is that no authenticated, tenant-scoped way to read it exists, so a first-party product surface cannot depend on it.
 
-Note that the roadmap's [`console` row](../../roadmap/#materialize-components-beyond-the-environment) is a different subject with the same word in it.
+Note that the roadmap's [`console` row](../../roadmap/#materialize-side-emission) is a different subject with the same word in it.
 That row tracks Console as a *monitored component* — it exposes no metrics that reach Thanos.
 This doc is about Console as a *consumer*.
 Neither blocks the other.
@@ -29404,7 +29486,7 @@ flowchart TB
   console -->|"Bearer JWT"| proxy
   custgraf -->|"Bearer JWT"| proxy
   custprom -->|"Bearer JWT"| proxy
-  jwks -.->|"cached, refreshed on unknown kid"| proxy
+  jwks -.->|"cached; refreshed on a timer and on an unknown kid, with a cooldown"| proxy
   proxy --> tqf --> tq --> store
   proxy --> lqf --> store
   graf --> tq
@@ -29445,7 +29527,8 @@ Four consequences follow, and all four are costs rather than details.
 
 **The metric and label contract becomes load-bearing in a way it is not today.**
 The [deprecation policy](../20260823-deprecation-policy/#coordinated-surface-materialize-metrics-and-labels) already grades Materialize metrics and labels as a coordinated surface.
-Console reading them makes a rename a product outage rather than a dashboard bug, which argues for the [1.0 stamp](../../roadmap/#versioning-changelog-and-releases) landing before Console cuts over rather than after.
+Console reading them makes a rename a product outage rather than a dashboard bug.
+The [1.0 stamp](../../roadmap/#what-10-ships) has landed, so Console cuts over after it rather than before.
 
 **Sizing acquires a floor.**
 A requirement that does not fit in the smallest supported Materialize install is not a requirement, it is a recommendation with consequences.
@@ -29466,7 +29549,7 @@ The deployments differ in who can mint a token and agree on how one is checked.
 
 | | **Cloud** | **Self-managed** |
 |---|---|---|
-| Issuer | The console identity provider already authenticating the session | An in-cluster issuer: the operator or the monitoring release, holding a signing key and publishing a JWKS endpoint. A customer's own OIDC provider is the alternative |
+| Issuer | An exchange endpoint that accepts the console's Frontegg session and mints the read token. See [Frontegg tokens are not read tokens](#frontegg-tokens-are-not-read-tokens) | An in-cluster issuer: the operator or the monitoring release, holding a signing key and publishing a JWKS endpoint. A customer's own OIDC provider is the alternative |
 | How Console gets a token | Exchanges the browser session for a short-lived, audience-scoped observability token | Same exchange, against the in-cluster issuer |
 | How a customer's Grafana gets one | Issued in Console, or forwarded from the user's own OIDC session | Issued in Console, or minted from the customer's IdP with a mapped claim |
 | What the proxy is configured with | Issuer URL, audience, JWKS URL | Identical |
@@ -29475,6 +29558,39 @@ The proxy's verification is the same code in both: fetch the JWKS, check `alg` a
 **Asymmetric signatures only.** A shared secret would mean the proxy holds material that can mint tokens, which converts a read-path compromise into a fleet-wide forgery.
 
 Multiple issuers must be configurable, because a self-managed customer federating their own IdP and the shipped in-cluster issuer can both be live during a migration.
+
+### Verifying a token
+
+The proxy verifies with the `jsonwebtoken` crate on the `aws-lc-rs` backend, the same crate and backend Materialize and Materialize Cloud use.
+Several checks the contract requires are off by default in that crate, or absent from it.
+
+| Check | Requirement | Note |
+|---|---|---|
+| Algorithm | Taken from the issuer's configuration, never from the token header | The crate also refuses a key used outside its algorithm family, which blocks an HMAC-with-the-public-key forgery. The allowlist is still explicit |
+| Issuer selection | The unverified `iss` selects which issuer's keys to try | The signature check and the issuer check then bind the token to that issuer. Selection by `kid` alone fails when two issuers reuse a key ID |
+| `nbf` | Validated | Off by default in the crate |
+| Clock skew | Bounded, and configured | The crate's default leeway is 60 seconds |
+| Required claims | `exp`, `nbf`, `iss`, `aud`, `sub` through the crate's required-claim set | The crate's required-claim set understands only those five names |
+| `jti`, tenant, scope | Non-optional fields in the claims type, so an absent claim fails deserialization | The crate cannot require them |
+| Maximum lifetime | `exp - nbf` checked against the configured maximum | The crate has no such check |
+
+**The key set is a cache with a refresh policy.**
+
+| Event | Behaviour |
+|---|---|
+| Startup | Discovery resolves the key-set URL once. Discovery is not repeated per request |
+| Timer | The key set is refetched on an interval that honours `Cache-Control`, with a floor and a ceiling |
+| Unknown `kid` | One refetch, at most once per cooldown per issuer, with one fetch in flight. Other requests wait on it or are rejected |
+| Failed refetch | The previous keys stay in service. A failed fetch never empties the cache |
+
+The unknown-`kid` row is the one prior art gets wrong.
+Materialize's OIDC authenticator refetches discovery and the key set on every request that names an unknown `kid`, with no cooldown.
+Behind a SQL login that is harmless.
+On a public HTTP endpoint every request carrying a random `kid` costs two outbound calls to the identity provider.
+
+**A rejected token gets a 401 with `WWW-Authenticate: Bearer error="invalid_token"`, and the response does not say which check failed.**
+The proxy logs the rejection reason and never logs the token. It includes `sub` and `jti` only when they were obtained from a signature-verified token.
+It strips `Authorization` before forwarding, along with the tenant-shaped headers.
 
 ### The claim contract
 
@@ -29491,6 +29607,29 @@ Multiple issuers must be configurable, because a self-managed customer federatin
 **The tenant claim's name and shape is a decision, not a detail**, and it is the same decision the BYOC doc leaves open for the certificate subject.
 The two should agree: whatever identifies an environment on the write path should identify it on the read path, so that one identity vocabulary covers both directions.
 Left as an [open question](#open-questions) for the same reason it is open there — it depends on control-plane identity outside this repo.
+
+### Frontegg tokens are not read tokens
+
+Materialize Cloud authenticates users and service accounts with Frontegg.
+Frontegg sets `aud` on every token it issues to the ID of the issuing workspace.
+Cloud's own API extractor (internal) and Materialize's `mz-frontegg-auth` both skip the audience check for that reason.
+Neither extractor reads a `jti`, and Frontegg's grant is its `permissions` list rather than a signal-and-class scope.
+
+So a Frontegg access token fails the claim contract on `aud` and on the scope claim.
+Whether Frontegg tokens carry a usable `jti` is unconfirmed.
+Accepting one would make every Console session token a telemetry read credential,
+which the [audience check](#what-a-token-actually-means) exists to prevent.
+
+| Option | How | Cost |
+|---|---|---|
+| **Mint a read token in an exchange** | An endpoint authenticates the Frontegg session as Cloud's APIs already do, and returns a short-lived JWT with this proxy's `aud`, a scope, and a `jti`. It signs with an asymmetric key, such as one held in KMS, and publishes the public half as a JWKS | An issuer to build and operate. The proxy keeps one verification path across Cloud and self-managed |
+| **Accept Frontegg tokens directly** | Tenant from Frontegg's `tenant_id`, grant from `permissions` | No issuance work, and matches how Cloud's APIs authenticate today. Drops the audience check and the signal-and-class scope, so the claim contract changes |
+| **Exchange a Materialize app password**, Cloud only | A customer's Grafana sends an app password over Basic auth. The proxy exchanges it through `mz-frontegg-auth`, which keeps the session refreshed | Deleting the app password revokes access within one refresh, without a `jti` denylist. Adds a second authentication path to the proxy and puts Frontegg on the read path |
+
+**Recommendation: mint a read token in an exchange.**
+It is the only option that keeps the claim contract whole, and it is the issuer shape self-managed needs anyway.
+The app-password exchange is worth evaluating for [customer Grafana](#a-customers-grafana-as-a-datasource) in Cloud,
+where it would replace the datasource token and its denylist.
 
 ### What a token actually means
 
@@ -29525,7 +29664,7 @@ This is the same trade the BYOC doc makes for [certificate lifetime](../20260813
 
 ## Tenancy enforcement
 
-### Logs already have tenancy; metrics have none
+### Logs already have tenancy; metrics have one label
 
 The two backends are at different starting points, and conflating them is the main risk in this section.
 
@@ -29535,9 +29674,22 @@ That is a small, complete answer — **when the pipeline writes one tenant per e
 Today `tenantMap` defaults to `static`, so an entire self-managed install writes to one tenant, which is correct there (one install, one customer) and insufficient in Cloud.
 Cloud's collection must run `byEnvironment`, and the chart already warns that a non-static map spreads logs across tenants a single datasource cannot read — a warning that becomes the proxy's requirement rather than a caveat.
 
-**Thanos.** There is no tenancy to enforce.
-Receive's tenant handling is a write-path feature that partitions ingestion; Query fans out across everything the Store Gateway can see and has no caller concept.
-So the metrics half is built rather than configured, and it is built out of label enforcement.
+**Thanos.** Query has had read-path tenancy since v0.34, and it is one label wide.
+With `--query.enforce-tenancy`, Query reads the tenant from `--query.tenant-header`
+and injects `--query.tenant-label-name` into every selector and every `match[]`.
+The enforcer is `prom-label-proxy`'s, so this is the construction
+the [next section](#label-injection-is-not-a-tenant-boundary) shows is insufficient, moved inside the querier.
+
+| Property of Query's enforcement | Consequence here |
+|---|---|
+| Applies the label to every family | Empties every `cluster`-class query, and offers no per-family exemption |
+| A request with no tenant header is enforced as `default-tenant` | A missing header returns empty results rather than an error. The bundled Grafana sends no header, so enabling enforcement on the shared Query breaks it |
+| An empty custom header falls back to the `THANOS-TENANT` header | Both headers are tenant-shaped, and the proxy strips both |
+| `/api/v1/rules` is not covered ([thanos#8140](https://github.com/thanos-io/thanos/issues/8140)) | Rule definitions for every tenant are readable through Query |
+| Authenticates nothing | The tenant is whatever the header says |
+
+**Decision: Query-side enforcement stays off, and the metrics half is built in the proxy.**
+The Query flags remain a candidate second layer behind the proxy if `cluster`-class reads move to a Query instance of their own.
 
 ### Label injection is not a tenant boundary
 
@@ -29584,6 +29736,7 @@ The following are the cases that break a naive implementation, and each needs a 
 | `label_replace` / `label_join` | Can synthesize a value for the enforced label. Enforcement at the selector still holds, because the source series were already filtered — but a rewriter that enforces on the *output* labels is wrong |
 | `absent()` / `absent_over_time()` | Leaks existence rather than values. Narrow, real, and worth deciding explicitly rather than by omission |
 | Subqueries, `@` modifiers, `offset` | Nested selectors are still selectors; a rewriter that only walks the top level misses them |
+| Selectors that do not name exactly one family — `{job="x"}`, `{__name__=~"a_.*\|b_.*"}` | Classification is per family, and these name none or several. Decide explicitly; the fail-closed answer is `denied` unless every family the name matcher can reach is `environment`-class |
 | `/api/v1/series`, `/api/v1/labels`, `/api/v1/label/<name>/values` | Take `match[]` rather than `query`. Unenforced, they enumerate every environment's label values — a directory of the fleet |
 | `/api/v1/metadata`, `/api/v1/targets`, `/api/v1/status/*` | Carry no series and still disclose. Default to denial and allowlist what Console needs |
 | Recording rules whose output drops the enforced label | A pre-computed series with no environment label is in the `cluster` class by the rule above, which is the right answer and needs to be checked when a rule is added |
@@ -29619,7 +29772,8 @@ The two class sets are analogous rather than identical, and neither is new here.
 
 So a grant is a set of signal-and-class pairs, and the token's scope claim lists them.
 
-**The log half is nearly free and the metric half is not**, which is the reverse of the asymmetry in [tenancy enforcement](#logs-already-have-tenancy-metrics-have-none).
+**The log half is nearly free and the metric half is not**,
+which is the reverse of the asymmetry in [tenancy enforcement](#logs-already-have-tenancy-metrics-have-one-label).
 Log classes map to Loki tenants, so enforcing a log-class grant is deciding which `X-Scope-OrgID` values the proxy will set for a given token — a lookup, not a rewrite.
 Metric classes have no such backing, which is why they need the generated classifier.
 
@@ -29712,20 +29866,61 @@ This is the same defect as `GATEWAY_UNFILTERED_PROM_METRICS`, which the roadmap 
 Step 4 before step 5 is not stylistic.
 A rewriter that runs before headers are stripped can be made to produce a correct query against the wrong tenant.
 
-### Build or compose
+**The value that is authorized MUST be the value that is enforced.**
+A proxy that authorizes a client-supplied tenant and passes the request on for enforcement reads that tenant twice.
+Two reads can disagree.
+Go's `FormValue`, for example, prefers a POST body over the URL query string,
+so a check on the query string and an enforcement on the form can see different tenants.
+Step 3 takes the tenant from the verified claim, once, and hands that value to the rewriter.
+No client-supplied value reaches the rewriter at all.
 
-Two shapes, and the cheaper one is not obviously worse.
+### Build, with `prom-label-proxy` as the oracle
 
-**Compose.** An Envoy `jwt_authn` filter — mature, JWKS-aware, handles `kid` rotation and caching — injecting the verified claim as a header, in front of `prom-label-proxy` for metrics and the Loki query frontend for logs.
-Each component does what it was built for, and the JWT half is code nobody here has to write or audit.
-The limits are real: `prom-label-proxy` enforces a single label and knows nothing about per-family classes, per-tenant read limits live in neither component, and the LogQL half has no equivalent.
+**Decision: the proxy is one Rust service in this workspace, and `prom-label-proxy` is the behavioural reference for its metrics half.**
+It implements verification, classification, rewriting, and limits in one place.
 
-**Build.** One Rust service in this workspace, using an existing PromQL parser and LogQL parser, implementing verification, classification, rewriting, and limits in one place.
-It is the only shape that implements the whole policy, it matches the rest of the repo, and it is the shape where a subtle rewriting bug is ours.
+The composed alternative put an Envoy `jwt_authn` filter in front of `prom-label-proxy`.
+It is not built, because it cannot express the family classification.
+`prom-label-proxy`'s enforcer injects the matcher into every selector it walks and offers no per-selector hook.
+Its authentication hook, the `ExtractLabeler` interface, supplies label values and nothing else.
+A composed first cut would have shipped a different policy from the final one.
 
-**Recommendation: compose for a first cut behind a feature flag, build for what ships.**
-The composed shape is a fast way to prove the authentication story end to end and to get Console building against a real endpoint.
-It cannot express the family classification, which is the part of this design most likely to be wrong, so it should not be the thing that reaches a public endpoint.
+**Compatibility is defined per selector, and it is narrow.**
+
+| Selector over | Proxy behaviour | Relation to `prom-label-proxy` |
+|---|---|---|
+| An `environment`-class family | Matcher injected; a caller's matcher on the label is replaced | Identical rewrite |
+| A `cluster`-class family the grant admits | Left unmodified | Superset; no equivalent |
+| A `cluster`-class family the grant does not admit, or a `denied` family | Request rejected | Superset; no equivalent |
+
+The endpoint set and per-endpoint semantics follow `prom-label-proxy` as of v0.15.
+
+| Endpoint | Treatment |
+|---|---|
+| `/api/v1/query`, `/api/v1/query_range`, `/api/v1/query_exemplars` | Every selector in the expression is rewritten |
+| `/api/v1/series`, `/federate` | Every `match[]` is rewritten |
+| `/api/v1/labels`, `/api/v1/label/<name>/values` | Every `match[]` is rewritten, and a request with no `match[]` gets one carrying only the tenant matcher |
+| `/api/v1/rules`, `/api/v1/alerts` | Forwarded; as an explicit exception to request-path step 9, the response is filtered to entries whose tenant label equals the verified tenant before it is streamed |
+| Anything else | Not proxied |
+
+Errors use the Prometheus API's JSON error shape, which Grafana renders in place.
+
+**`prom-label-proxy` is the oracle in a differential test.**
+The registry corpus from [Testing](#testing) is run through both, restricted to `environment`-class expressions,
+and the parsed outputs MUST be identical.
+`prom-label-proxy`'s enforcer and route tests are ported as unit tests.
+An oracle also permits differential fuzzing over generated PromQL, which reaches expressions the registry does not contain.
+
+**The proxy forwards its own serialized expression, never the client's string.**
+The workspace parses PromQL with `promql-parser`, which `mzmon-lib` already depends on, and Thanos parses with Prometheus's parser.
+Forwarding the serialized AST means Thanos executes what the proxy enforced.
+A disagreement between the two parsers can then change what a query means, and cannot change what it may read.
+A construct `promql-parser` cannot parse is rejected.
+That is fail-closed, and it is a compatibility gap to track against the PromQL feature flags `prom-label-proxy` exposes.
+
+**The LogQL half has no reference implementation.**
+Loki's `X-Scope-OrgID` carries most of its enforcement, and the selector rewriting that remains follows [The LogQL traps](#the-logql-traps).
+It is tested against Loki directly rather than against an oracle.
 
 ### Read limits and the query frontend
 
@@ -29735,6 +29930,9 @@ Thanos's existing protections (`--store.limits.request-series`, `--store.limits.
 Three requirements follow.
 
 - **Per-tenant limits at the proxy**, because that is the only component that knows who is asking.
+  Thanos Query Frontend carries Cortex's per-tenant override code and wires no per-tenant source into it.
+  Wiring one upstream would let the frontend hold per-tenant range and parallelism limits, keyed on the tenant header the proxy sets.
+  That is a candidate upstream contribution, not a dependency of this design.
 - **`thanos.queryFrontend` becomes required for the read path**, for query splitting and result caching, and the proxy points at it. This settles the [open question the Terraform doc raises](../20260803-terraform-modules/#open-questions) about enabling the frontend without routing through it, in the narrow case of the proxy — the bundled Grafana's datasource is a separate decision.
 - **A maximum range and minimum step**, so that a year-wide query at a one-second step is refused rather than attempted.
 
@@ -29761,6 +29959,7 @@ Three ways a customer's Grafana authenticates, in the order they should be prefe
 | **Forward OAuth identity** | The customer's Grafana authenticates users against the same issuer and forwards the user's access token to the datasource | Any deployment where Grafana and Console share an identity provider | Per-user, short-lived, no stored secret — the best posture, and it constrains the customer's Grafana setup |
 | **Service token in a custom header** | A token issued in Console, pasted into `secureJsonData` as an `Authorization: Bearer` header | Everything else, including every Grafana that is not OIDC-backed | A medium-lived bearer credential living in Grafana's database. Needs issuance, listing, and revocation in Console |
 | **OAuth2 client credentials** | Where the Grafana version and datasource support it | Machine-to-machine without a stored long-lived token | Support varies by datasource and version; not a plan that works everywhere |
+| **Materialize app password over Basic auth** | The proxy exchanges the app password with Frontegg. See [Frontegg tokens are not read tokens](#frontegg-tokens-are-not-read-tokens) | Cloud only, where customers already hold app passwords for SQL | Revocation is deleting the app password. A second authentication path in the proxy, and Frontegg on the read path. Under evaluation rather than recommended |
 
 **Recommendation: ship the service token, document the forwarded identity as the preferred posture.**
 The service token is the only option that works against an arbitrary Grafana, which is what "a customer attaches their Grafana" actually means.
@@ -29863,7 +30062,7 @@ The shared part is the valuable part, and it is the part that costs nothing to s
 | | Self-managed | Cloud | BYOC control plane |
 |---|---|---|---|
 | Proxy | A `Deployment` in the monitoring chart, off by default | A fleet in front of the regional backends, behind the existing edge | The same component, pointed at our backends |
-| Issuer | In-cluster, published by the operator or the release; or the customer's own OIDC provider | The console identity provider | The console identity provider |
+| Issuer | In-cluster, published by the operator or the release; or the customer's own OIDC provider | A read-token exchange behind the console's Frontegg session | A read-token exchange behind the console's Frontegg session |
 | Loki tenancy | `static` is sufficient — one install, one customer | `byEnvironment` is **required** | Per the [BYOC open question](../20260813-byoc-observability/#open-questions) on customer-versus-environment tenancy |
 | `cluster`-class families | Readable — the customer operates the cluster | **Never** for a customer token | Never for a customer token |
 | Exposure | The chart's ingress, guarded like Grafana's | The existing edge | Internal, plus the customer-facing read described below |
@@ -29910,9 +30109,15 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - **Unknown family denial.** A family absent from the classification artifact is rejected, proving the default is closed.
 - **Deployment-kind divergence.** The same token and the same query against a self-managed-configured proxy returns the cluster-scoped data. One test, two configurations, because the difference is the design's most security-relevant setting.
 - **Enumeration endpoints.** `/api/v1/series`, `/api/v1/labels`, and their Loki analogues are enforced, asserted by a label-values call that would otherwise return another tenant's values.
-- **Token validation.** Expired, wrong audience, wrong issuer, unknown `kid`, symmetric algorithm, and `alg: none` are each rejected, individually.
+- **Token validation.** Expired, not yet valid, over the maximum lifetime, wrong audience, wrong issuer, unknown `kid`, symmetric algorithm,
+  `alg: none`, and a missing `jti`, tenant, or scope claim are each rejected, individually.
+- **Key-set refetch cooldown.** A burst of tokens with random `kid` values causes at most one key-set fetch per cooldown,
+  and a failing key-set endpoint leaves the cached keys in service.
 - **Revocation.** A token on the denylist is rejected within the configured refresh interval, and the test asserts the interval rather than assuming immediacy.
 - **Rewriter fidelity.** A corpus of every expression in the query registry is parsed, rewritten, and re-parsed, asserting the result is a valid query that differs from the input only in the enforced matcher. The registry is the corpus, which means the test grows with the dashboards.
+- **Oracle agreement.** The same corpus, restricted to `environment`-class expressions, is rewritten by `prom-label-proxy` and by the proxy,
+  and the parsed results are identical.
+  Generated PromQL extends the comparison past the expressions the registry contains.
 - **Limits.** A query exceeding the maximum range or minimum step is refused with a useful error rather than attempted.
 - **Base-path concatenation.** A real Grafana Loki datasource against the configured base path returns data, because the failure mode is a 404 that reads like a broken install.
 - **Grant separation.** A metrics-only token is refused on every LogQL endpoint and a logs-only token on every PromQL endpoint, asserted per endpoint rather than once — the enforcement is per handler, and a handler added later is the one that will miss it.
@@ -29928,8 +30133,8 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - `logs-and-events/` — the equivalent for LogQL, including the structured-metadata-versus-stream-label limitation on the self-managed shape.
 - `dashboards/grafana/architecture.md` — the datasource section gains an external-Grafana half; today it documents the in-cluster datasources only.
 - `architecture.md` — the read path currently ends at Grafana.
-- `reference/stability.md` and `reference/internal/versioning.md` — whichever of the query-manifest options is chosen changes what is committed.
-- `reference/internal/roadmap.md` — ✅ done. A read-path section and a follow-up-documentation entry point here.
+- `reference/stability.md` and `reference/development/versioning.md` — whichever of the query-manifest options is chosen changes what is committed.
+- `reference/development/roadmap.md` — ✅ done. A read-path section and a follow-up-documentation entry point here.
 - `operating/production-best-practices.md` — publishing the endpoint is a shared-responsibility item with a checklist of its own.
 - `logs-and-events/storing.md` — the retention section mentions audit-relevant streams as a tiered-retention example; it should say what the `audit` class is and, until a producer exists, that nothing populates it.
 - A **compliance-facing audit page** stating which record is the system of record, what the Loki copy is for, and what WORM does and does not guarantee. The distinction is the whole answer to an auditor's question and it is currently in nobody's document.
@@ -29938,7 +30143,8 @@ The kind tiers extend to cover this, and the important assertions are the negati
 
 - [ ] **What is the tenant claim, exactly** — a single opaque identifier, or an organization and environment pair? It should match whatever the [BYOC certificate identity](../20260813-byoc-observability/#open-questions) settles on, and both depend on control-plane identity outside this repo.
 - [ ] **Who issues tokens in self-managed?** The operator holding a signing key is the smallest answer and makes the operator a credential issuer, which it is not today. The customer's own OIDC provider avoids that and cannot be assumed present.
-- [ ] **Compose or build?** The recommendation above is compose first, build for what ships. Whether the composed shape is worth building at all depends on how quickly Console needs something to develop against.
+- [x] ~~**Compose or build?**~~ **Build.** One Rust service, with `prom-label-proxy` as its oracle; the composed shape is not built.
+  See [Build, with `prom-label-proxy` as the oracle](#build-with-prom-label-proxy-as-the-oracle).
 - [ ] **Is `cluster`-class data ever readable by a Cloud customer token?** Aggregate node pressure affecting their environment is genuinely useful to them and is derived from series describing other tenants' workloads. Pre-aggregated, environment-scoped recording rules are the safe version of yes.
 - [ ] **Does the proxy serve the bundled Grafana too**, rather than Grafana keeping direct datasources? One path is easier to reason about and adds a hop and a failure mode to the deployment that works today.
 - [ ] **Is tailing offered?** A long-lived connection and a short-lived token do not compose, and closing at expiry is a worse user experience than not offering it.
@@ -29946,7 +30152,11 @@ The kind tiers extend to cover this, and the important assertions are the negati
 - [ ] **Does Console degrade or hide?** A deployment with no endpoint could hide the charts or show them disabled with an explanation. Hiding is cleaner and teaches nobody that the capability exists.
 - [ ] **Does the mandate apply retroactively?** Existing self-managed installs without the monitoring stack get a Console with no charts on upgrade. That is a migration with a communication plan, not a release note.
 - [ ] **What is the minimum sizing envelope**, and does it fit the smallest install we support? This needs measuring rather than asserting, and the answer decides whether the mandate is honest.
-- [ ] **Is the rewriter's correctness testable enough to trust?** The registry corpus is a strong test and it only covers expressions we wrote. A customer's Grafana sends arbitrary PromQL, which is the case the corpus does not reach.
+- [ ] **Is the rewriter's correctness testable enough to trust?** The registry corpus is a strong test and it only covers expressions we wrote.
+  A customer's Grafana sends arbitrary PromQL, which is the case the corpus does not reach.
+  Differential fuzzing against `prom-label-proxy` reaches it for `environment`-class selectors; the class decisions have no oracle.
+- [ ] **Which read token does Cloud accept?** The recommendation is a minted token from an exchange.
+  Where the exchange lives is control-plane work outside this repo, and whether app passwords also reach the proxy is open.
 - [ ] **Does a customer's read of the control-plane copy ship with the rest**, or wait? It is the strongest trust argument BYOC has and it depends on the control-plane deployment existing at all.
 - [ ] **What feeds the `audit` log class?** Materialize's audit events mirrored in, the proxy's read records, the control plane's issuance records, Kubernetes audit — the class was declared without an answer and the answer decides its retention and its limits.
 - [ ] **Does the audit mirror into Loki carry a completeness marker** — a sequence number or a periodic count from the system of record — so that a gap is detectable rather than invisible? Without one the copy cannot tell "nothing happened" from "the line was dropped", which is most of why it is not the system of record.
@@ -29958,7 +30168,7 @@ The kind tiers extend to cover this, and the important assertions are the negati
 
 --------------------------------------------------------------------------------
 title: "Alerting in Self-Managed: Evaluation, Routing, and Customer Extension"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260917-alerting-self-managed/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260917-alerting-self-managed/index.md
 date: "2026-09-17"
 --------------------------------------------------------------------------------
 
@@ -30862,8 +31072,8 @@ The kind E2E tiers can prove most of this, and the parts they cannot are worth n
 - **`operating/production-best-practices.md`** — 🔨 an Alertmanager section exists; the deadman's-switch item in it waits
   for the switch. The deadman's switch is worth nothing without an external receiver, and that belongs on a checklist.
 - **`architecture.md`** — ✅ the Alertmanager entry describes the notifier and points at the alerting section.
-- **`reference/internal/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
-- **`reference/internal/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
+- **`reference/development/roadmap.md`** — ✅ done. The [Rules & alerts](../../roadmap/#rules--alerts) section and a follow-up-documentation entry point here.
+- **`reference/development/versioning.md`** and **`reference/stability.md`** — alert and recording-rule names join the committed surface, and the roadmap's open naming decision closes. Both pages list what is and is not covered, and neither mentions alerts today.
 - **A migration note for Cloud** — Cloud adopts these rules when it adopts this stack's Alertmanager. The note that is owed is what changes for the definitions in the process, since per-region duplication, the `tier`/`team` label vocabulary, and the stack-type exclusions have no equivalent here.
 
 ## Open questions
@@ -30885,7 +31095,7 @@ Settled in review and recorded in the sections above rather than here: alert nam
 
 --------------------------------------------------------------------------------
 title: "Call-Home: Opt-In Telemetry from Self-Managed to the Control Plane"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260917-call-home-self-managed/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260917-call-home-self-managed/index.md
 date: "2026-09-17"
 --------------------------------------------------------------------------------
 
@@ -31427,7 +31637,7 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
 - `operating/production-best-practices.md` — the shared responsibility model gains a call-home row, and the checklist gains the decision.
 - `alerting/` — the alerts level is a consumer of the rule set, and the page should say that nothing evaluates rules until that ships.
 - `metrics/storing.md` and `logs-and-events/storing.md` — the control plane as a destination in the fan-out, mirroring the BYOC additions.
-- `reference/internal/roadmap.md` — a call-home section and a follow-up-documentation entry pointing here.
+- `reference/development/roadmap.md` — a call-home section and a follow-up-documentation entry pointing here.
 - [Securing](../../../../operating/securing/) — the credential choice and the forward-proxy shape, once settled.
 
 ## Open questions
@@ -31449,7 +31659,7 @@ The kind tiers extend to cover this, and the assertions that matter are the ones
 
 --------------------------------------------------------------------------------
 title: "Monitoring Materialize's External Dependencies"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260920-external-dependency-monitoring/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260920-external-dependency-monitoring/index.md
 date: "2026-09-20"
 --------------------------------------------------------------------------------
 
@@ -32456,15 +32666,15 @@ Tier 3 is where the provider pull can be proven against a real account, which is
 - `operating/troubleshooting-materialize.md` — the "is it Materialize or is it underneath" path currently has no entry point.
 - `operating/production-best-practices.md` — which vantage points to configure per deployment shape, and the multipart-upload lifecycle rule as a shared-responsibility item.
 - `architecture.md` — the dependency surface is not described anywhere; the page starts at the chart.
-- `reference/internal/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
+- `reference/development/pipelines/metrics.md` — the provider exporters as gateway components, and why they are not on the agent.
 - `reference/list-metrics.md` — the `ext:*` family, once the naming decision lands, and whatever commitment it carries.
-- `reference/internal/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
-- `reference/internal/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
+- `reference/development/versioning.md` — recorded series are a new surface class, and the stability policy does not currently say anything about them.
+- `reference/development/roadmap.md` — the External components row, the collection-gaps table, and a follow-up-documentation entry. Updated alongside this doc.
 - The **CockroachDB alert descriptions**, which should say which flavor they target. They currently read as general CockroachDB coverage.
 - The **`persist-failures` degraded text**, which names CockroachDB as the likely cause on deployments that run PostgreSQL.
 - `operating/runbooks/` — one per dependency alert, per the alerting design. The remediation text already in the existing CockroachDB alert descriptions is most of the first two.
 - **A Day 0 dependency-preflight page**, since the failure it describes happens before anyone has a dashboard to read.
-- `docs/content/reference/internal/dashboard/style-guidelines.md` — the discovered-variable section gains a second worked example if the flavor mechanism diverges from the CNI one.
+- `docs/content/reference/development/dashboard/style-guidelines.md` — the discovered-variable section gains a second worked example if the flavor mechanism diverges from the CNI one.
 
 ## Open questions
 
@@ -32499,7 +32709,7 @@ Four questions from the first draft are settled and are recorded here rather tha
 
 --------------------------------------------------------------------------------
 title: "Secret Filtering: A Last Line of Defense for Stored and Egressed Logs"
-url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/internal/design-docs/20260924-log-secret-filtering/index.md
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-alertmanager-2-x/reference/development/design-docs/20260924-log-secret-filtering/index.md
 date: "2026-09-24"
 --------------------------------------------------------------------------------
 
