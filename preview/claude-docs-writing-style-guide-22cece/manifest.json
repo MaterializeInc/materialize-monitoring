@@ -1,0 +1,15 @@
+{
+  "name": "materialize-monitoring Documentation",
+  "short_name": "materialize-monitoring Documentation",
+  "start_url": "/materialize-monitoring/preview/claude-docs-writing-style-guide-22cece/",
+  "scope": "/materialize-monitoring/preview/claude-docs-writing-style-guide-22cece/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/materialize-monitoring/preview/claude-docs-writing-style-guide-22cece/favicon.svg",
+      "sizes": "512x512"
+    }
+  ]
+}
