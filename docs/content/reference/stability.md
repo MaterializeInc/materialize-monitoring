@@ -9,28 +9,28 @@ params:
 
 # Stability Guarantees and Deprecation Policy
 
-This page describes what functionality provided by `materialize-monitoring`
-a user can reasonably rely on.
+This page describes which parts of `materialize-monitoring` you can rely on, and how the project retires an interface before it changes.
 
 <!-- more -->
 {{< rfc-2119 >}}
 
-## Semantic Artifact Versioning
+## Semantic artifact versioning
 
-This repository is broken up into multiple different release artifacts all
-with their own discrete [SemVer](https://semver.org/) versions.
-Generally:
-* Breaking changes are tracked by major version bumps
-* New functionality / non-breaking changes are tracked by minor version bumps
-* Backwards-compatible bug fixes / inconsequential changes are tracked by patch version bumps
+This repository publishes several release artifacts, and each one carries its own [SemVer](https://semver.org/) version.
+An artifact bumps its version for the following kinds of change:
+
+Major
+: A breaking change to a [public interface](#public-interfaces), after its [deprecation](#deprecations) cycle.
+
+Minor
+: New functionality, or another non-breaking change.
+
+Patch
+: A backward-compatible bug fix, or an inconsequential change.
 
 <!-- TODO: create a reference/components.md page to link to -->
-Most consumers will be concerned specifically with the `materialize-monitoring` Helm chart and Terraform modules.
-
-> [!WARNING]
-> Before the Helm/TF 1.0 release, minor versions carry both breaking and non-breaking features.
-> `materialize-monitoring` SHOULD try to adhere to notices of breaking changes and
-> deprecations, but can only provide best-effort guarantees before 1.0.
+Most consumers depend on the `materialize-monitoring` Helm chart and Terraform module, which share one version.
+The guarantees on this page apply from v1.0.0 of the chart and module.
 
 ## Public Interfaces
 
@@ -57,17 +57,14 @@ This list describes some of the interfaces (non-comprehensive) a consumer may bu
 
 ## Deprecations
 
-`materialize-monitoring` MUST provide notice for deprecations of a public interface.
-This notice MUST appear in the release notes in [Changelog](../changelog/) using a `**Deprecated**:` notation.
+`materialize-monitoring` MUST give notice before it removes a public interface, and retires one in the following order:
 
-Our policy is as follows (post 1.0):
-1. Deprecated interfaces MUST be clearly documented in the release notes using a `**Deprecated**:` notation.
-2. At least one major version and at least 30 days MUST pass before a deprecated interface is removed.
-3. A removed interface MUST use the `**Removed**:` notation in our release notes after being successfully deprecated.
+1. It MUST announce the deprecation in the [changelog](../changelog/), in a `**Deprecated:**` bullet that names the replacement.
+2. It MUST keep the deprecated interface working for at least 30 days, and MUST NOT remove it before the next major version.
+3. It MUST record the removal in the changelog, in a `**Removed:**` bullet.
 
 > [!WARNING]
-> Interfaces which are known to not have any consumers MAY be treated as unstable
-> retroactively and removed without a full deprecation cycle.
+> An interface known to have no consumers MAY be treated as unstable retroactively, and removed without a full deprecation cycle.
 
 ## Unstable Interfaces
 

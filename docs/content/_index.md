@@ -7,17 +7,21 @@ weight: 1
 ---
 # materialize-monitoring Documentation
 
-`materialize-monitoring` is first-class observability for Materialize deployments — metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
-It is a one-stop shop for teams who want one, and every piece of it can be turned off for teams who already run their own.
+`materialize-monitoring` is first-class observability for Materialize deployments:
+metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
+It's a one-stop shop if you want one, and you can turn off any piece of it if you already run your own.
 
-If you install Materialize with the Terraform modules, the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward — set `enable_observability = false` to opt out.
+If you install Materialize with the Terraform modules,
+the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward.
+To opt out, set `enable_observability = false`.
 
 Nothing here is required to run Materialize.
-If you are looking for the main Materialize documentation, see [materialize.com/docs](https://materialize.com/docs/).
+For Materialize itself, see the [Materialize documentation](https://materialize.com/docs/).
 
-> [!WARNING]
->  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
+From v1.0.0, a breaking change to the committed surface goes through a deprecation cycle and lands only in a major release.
+For what you can rely on, see the [stability guarantees]({{< relref "reference/stability.md" >}}).
+For what's planned, see the [Roadmap]({{< relref "reference/development/roadmap.md" >}}),
+and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md" >}}).
 
 ## Start here
 
@@ -39,10 +43,11 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 |---|---|
 | **Metrics** | [Collecting]({{< relref "metrics/collecting/overview.md" >}}) — the four ways metrics get in — plus [scraping]({{< relref "metrics/scraping.md" >}}), [storing]({{< relref "metrics/storing.md" >}}) in Thanos, and [querying]({{< relref "metrics/querying.md" >}}) them back out |
 | **Logs & Events** | The [Alloy agent/gateway split]({{< relref "logs-and-events/architecture.md" >}}), [collecting]({{< relref "logs-and-events/collecting.md" >}}), [storing]({{< relref "logs-and-events/storing.md" >}}) in Loki, [querying]({{< relref "logs-and-events/querying.md" >}}), and [rules]({{< relref "logs-and-events/rules.md" >}}) |
+| **Alerting** | The [alert architecture]({{< relref "alerting/architecture.md" >}}) from ruler to receiver, [configuring]({{< relref "alerting/configuring.md" >}}) the rule evaluators, [alert channels]({{< relref "alerting/channels.md" >}}), [maintenance windows]({{< relref "alerting/maintenance.md" >}}), and [configuring alerting through Terraform]({{< relref "alerting/terraform.md" >}}) |
 | **Dashboards** | [Available dashboards]({{< relref "dashboards/all.md" >}}) and [importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
 
-Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind them.
+Metrics → Rules is a stub, so this page doesn't link to it.
+It appears in the sidebar because the section exists, and the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind it.
 
 ## Operating the stack
 
