@@ -8,17 +8,21 @@ url: https://materializeinc.github.io/materialize-monitoring/index.md
 --------------------------------------------------------------------------------
 # materialize-monitoring Documentation
 
-`materialize-monitoring` is first-class observability for Materialize deployments — metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
-It is a one-stop shop for teams who want one, and every piece of it can be turned off for teams who already run their own.
+`materialize-monitoring` is first-class observability for Materialize deployments:
+metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
+It's a one-stop shop if you want one, and you can turn off any piece of it if you already run your own.
 
-If you install Materialize with the Terraform modules, the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward — set `enable_observability = false` to opt out.
+If you install Materialize with the Terraform modules,
+the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward.
+To opt out, set `enable_observability = false`.
 
 Nothing here is required to run Materialize.
-If you are looking for the main Materialize documentation, see [materialize.com/docs](https://materialize.com/docs/).
+For Materialize itself, see the [Materialize documentation](https://materialize.com/docs/).
 
-> [!WARNING]
->  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) for what is built and what is coming, and the [Changelog]({{< relref "reference/changelog.md" >}}) for what has shipped.
+From v1.0.0, a breaking change to the committed surface goes through a deprecation cycle and lands only in a major release.
+For what you can rely on, see the [stability guarantees]({{< relref "reference/stability.md" >}}).
+For what's planned, see the [Roadmap]({{< relref "reference/development/roadmap.md" >}}),
+and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md" >}}).
 
 ## Start here
 
@@ -40,10 +44,11 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 |---|---|
 | **Metrics** | [Collecting]({{< relref "metrics/collecting/overview.md" >}}) — the four ways metrics get in — plus [scraping]({{< relref "metrics/scraping.md" >}}), [storing]({{< relref "metrics/storing.md" >}}) in Thanos, and [querying]({{< relref "metrics/querying.md" >}}) them back out |
 | **Logs & Events** | The [Alloy agent/gateway split]({{< relref "logs-and-events/architecture.md" >}}), [collecting]({{< relref "logs-and-events/collecting.md" >}}), [storing]({{< relref "logs-and-events/storing.md" >}}) in Loki, [querying]({{< relref "logs-and-events/querying.md" >}}), and [rules]({{< relref "logs-and-events/rules.md" >}}) |
+| **Alerting** | The [alert architecture]({{< relref "alerting/architecture.md" >}}) from ruler to receiver, [configuring]({{< relref "alerting/configuring.md" >}}) the rule evaluators, [alert channels]({{< relref "alerting/channels.md" >}}), [maintenance windows]({{< relref "alerting/maintenance.md" >}}), and [configuring alerting through Terraform]({{< relref "alerting/terraform.md" >}}) |
 | **Dashboards** | [Available dashboards]({{< relref "dashboards/all.md" >}}) and [importing the Grafana set]({{< relref "dashboards/grafana/importing.md" >}}), the [Grafana Operator]({{< relref "dashboards/grafana/grafana-operator.md" >}}) path that keeps it in sync, [how Grafana is wired]({{< relref "dashboards/grafana/architecture.md" >}}), [authentication]({{< relref "dashboards/grafana/auth.md" >}}), and [Datadog]({{< relref "dashboards/datadog.md" >}}) |
 
-Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind them.
+Metrics → Rules is a stub, so this page doesn't link to it.
+It appears in the sidebar because the section exists, and the [Roadmap]({{< relref "reference/development/roadmap.md" >}}) tracks the work behind it.
 
 ## Operating the stack
 
@@ -378,8 +383,8 @@ The goal is one path per metric, named consistently, with no SQL on the scrape p
 
 ### 1.0, and what the number promises
 
-`materialize-monitoring` stamped 1.0 on 2026-10-06, and breaking changes no longer ride a minor release.
-The label and metric contract, the profile semantics, the alert names, and the chart value paths all carry a deprecation cycle.
+`materialize-monitoring` stamped 1.0 on 2026-10-06, and from that release a breaking change rides only a major.
+The label and metric contract, the profile semantics, and the alert names carry a deprecation cycle; chart value paths don't.
 The number was stamped before broad adoption on purpose.
 Once enough customers have dashboards built on these labels, the contract is frozen in practice whether or not it is frozen on paper.
 
@@ -11497,7 +11502,7 @@ Everything else installs only when named in `rules.selected`.
 
 An alert MUST NOT enter the default set until its expression has been evaluated against a live self-managed install and does not fire falsely there.
 It SHOULD also have a unit test (see below), and it SHOULD have evidence that the condition matters, such as incident history or a Cloud counterpart that pages.
-Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and, after 1.0, a deprecation cycle.
+Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and a deprecation cycle.
 
 An alert whose normal duration depends on the workload SHOULD carry that duration in `for`, and its notes SHOULD say so.
 `rules.overrides` changes a rule's `for` and labels per deployment, and never its expression.
@@ -23485,7 +23490,7 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
 | [`alerting`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/alerting/SKILL.md) | adding, changing or vetting an alerting rule — an `alerts:` entry in `packages/queries`, its capabilities and default-set membership, the chart's `rules.*` values, and the promtool unit tests |
-| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the house voice, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
+| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the Google developer documentation style guide it follows, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
 | [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
 
 ## Skills in code review
@@ -25171,8 +25176,8 @@ Even though we have different Grafana targets, we should **not encode the Grafan
 may be upgraded across versions).
 
 UIDs must follow the
-[strict UID format introduced in Grafana 11.2](https://grafana.com/whats-new/2025-05-05-enforcing-stricter-data-source-uid-format/)
-: Latin alphanumeric with dashes and underscores, 40 characters max.
+[strict UID format introduced in Grafana 11.2](https://grafana.com/whats-new/2025-05-05-enforcing-stricter-data-source-uid-format/):
+Latin alphanumeric with dashes and underscores, 40 characters max.
 We use the `mz-mon-` prefix for all UIDs.
 
 **Dashboard v2 caveat:** in v2 the UID is *not* part of the dashboard spec — it lives in the surrounding
@@ -25325,28 +25330,28 @@ url: https://materializeinc.github.io/materialize-monitoring/reference/stability
 
 # Stability Guarantees and Deprecation Policy
 
-This page describes what functionality provided by `materialize-monitoring`
-a user can reasonably rely on.
+This page describes which parts of `materialize-monitoring` you can rely on, and how the project retires an interface before it changes.
 
 <!-- more -->
 {{< rfc-2119 >}}
 
-## Semantic Artifact Versioning
+## Semantic artifact versioning
 
-This repository is broken up into multiple different release artifacts all
-with their own discrete [SemVer](https://semver.org/) versions.
-Generally:
-* Breaking changes are tracked by major version bumps
-* New functionality / non-breaking changes are tracked by minor version bumps
-* Backwards-compatible bug fixes / inconsequential changes are tracked by patch version bumps
+This repository publishes several release artifacts, and each one carries its own [SemVer](https://semver.org/) version.
+An artifact bumps its version for the following kinds of change:
+
+Major
+: A breaking change to a [public interface](#public-interfaces), after its [deprecation](#deprecations) cycle.
+
+Minor
+: New functionality, or another non-breaking change.
+
+Patch
+: A backward-compatible bug fix, or an inconsequential change.
 
 <!-- TODO: create a reference/components.md page to link to -->
-Most consumers will be concerned specifically with the `materialize-monitoring` Helm chart and Terraform modules.
-
-> [!WARNING]
-> Before the Helm/TF 1.0 release, minor versions carry both breaking and non-breaking features.
-> `materialize-monitoring` SHOULD try to adhere to notices of breaking changes and
-> deprecations, but can only provide best-effort guarantees before 1.0.
+Most consumers depend on the `materialize-monitoring` Helm chart and Terraform module, which share one version.
+The guarantees on this page apply from v1.0.0 of the chart and module.
 
 ## Public Interfaces
 
@@ -25373,17 +25378,14 @@ This list describes some of the interfaces (non-comprehensive) a consumer may bu
 
 ## Deprecations
 
-`materialize-monitoring` MUST provide notice for deprecations of a public interface.
-This notice MUST appear in the release notes in [Changelog](../changelog/) using a `**Deprecated**:` notation.
+`materialize-monitoring` MUST give notice before it removes a public interface, and retires one in the following order:
 
-Our policy is as follows (post 1.0):
-1. Deprecated interfaces MUST be clearly documented in the release notes using a `**Deprecated**:` notation.
-2. At least one major version and at least 30 days MUST pass before a deprecated interface is removed.
-3. A removed interface MUST use the `**Removed**:` notation in our release notes after being successfully deprecated.
+1. It MUST announce the deprecation in the [changelog](../changelog/), in a `**Deprecated:**` bullet that names the replacement.
+2. It MUST keep the deprecated interface working for at least 30 days, and MUST NOT remove it before the next major version.
+3. It MUST record the removal in the changelog, in a `**Removed:**` bullet.
 
 > [!WARNING]
-> Interfaces which are known to not have any consumers MAY be treated as unstable
-> retroactively and removed without a full deprecation cycle.
+> An interface known to have no consumers MAY be treated as unstable retroactively, and removed without a full deprecation cycle.
 
 ## Unstable Interfaces
 
@@ -26337,25 +26339,31 @@ A released section can therefore sit above other components' unreleased placehol
 ## Choosing the next version {#choosing-the-next-version}
 
 **The placeholder heading is the decision.**
-The tooling reads the version out of it and never overrides it — `release` writes a fresh placeholder at `bump_minor()` of what it just released, and that is only a default for the *next* cycle.
-Anything other than a minor is driven by editing that heading before the release goes out.
+The tooling reads the version from it and never overrides it.
+After a release, `release` writes a fresh placeholder at `bump_minor()` of the version it released, which is only a default for the next cycle.
+For anything other than a minor, edit that heading before the release goes out:
 
 ```markdown
-## <title> v0.11.1 (Unreleased)   ← edited down from the v0.12.0 the tooling wrote
+## COMPONENT_TITLE v1.1.1 (Unreleased)   ← edited down from the v1.2.0 the tooling wrote
 ```
 
-Current policy, pre-1.0:
+Choose the bump by the largest change the release carries:
 
-- **Patch** — small, low-risk changes. Preferred, and kept genuinely small now that releases are published more often.
-- **Minor** — a batch of features, or anything a consumer has to react to (a new required value, a changed default, a new Terraform variable).
-- **Major** — not stamped yet. Until it is, a breaking change goes in a minor with the break called out in the entry.
+- **Patch:** a small, low-risk change.
+  Prefer a patch, and keep it small, because releases go out often.
+- **Minor:** a batch of features, or any other change that leaves the [committed surface](../versioning/#stability-guarantees) working.
+  A changed default, a `values.yaml` path change, and a `**Deprecated:**` announcement all ride a minor.
+- **Major:** a breaking change to the committed surface, including the removal at the end of a deprecation cycle.
 
 > [!WARNING]
->   That heading is the *only* place the intended bump is recorded, and it lives uncommitted in your working tree until you push it.
->   A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default — and the next release goes out as a minor with no diff to show why.
->   Commit the edit as its own change when you make it.
+> That heading is the *only* place the intended bump is recorded, and it stays uncommitted in your working tree until you push it.
+> A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default.
+> The next release then goes out as a minor, with no diff to show why.
+> Commit the edit as its own change when you make it.
 
-Two other things are expressed by editing this heading rather than by a flag: seeding a newly merged or renamed component stream at a starting version, and re-baselining after a component `title` change (see [Versioning](../versioning/)).
+Editing this heading, rather than passing a flag, also seeds a newly merged or renamed component stream at a starting version,
+and re-baselines after a component `title` change.
+For more information, see [Versioning](../versioning/).
 
 ## State machine
 
@@ -26558,11 +26566,13 @@ These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-m
 The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.
 Adding an identifier needs nothing — the check is only about **renames and removals**, which show up as a delete-plus-add in one of the generated or committed files above.
 
-**What to check.** For each removed or renamed identifier, one of:
+**What to check.** For each removed or renamed identifier, check that one of the following is true:
 
-- It was announced at least **30 days** ago. Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
-- It is being announced *now*, in which case the PR keeps the old name working and adds the `**Deprecated:**` bullet — removal is a later PR.
-- It is exempt, and the PR body says why. The honest exemptions are that nothing ever consumed it, or that it is in the [pre-1.0 batch](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget). Say which.
+- It was announced at least **30 days** ago, and the release is a major.
+  Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
+- It's being announced *now*, so the PR keeps the old name working and adds the `**Deprecated:**` bullet.
+  The removal is a later PR, in a major release.
+- It's exempt because nothing ever consumed it, and the PR body says so.
 
 **How a deprecation is recorded.** In the **PR description**, never by hand-editing `CHANGELOG.md` — that file is generated, and `propose-bumps` overwrites it on the next merge to the default branch (the one exception being the unreleased placeholder heading, which is edited to [choose the next version](#choosing-the-next-version)).
 
@@ -26682,13 +26692,18 @@ See [Release notes from PR descriptions](../releasing/#release-notes-from-pr-des
 
 ## How versions are synced
 
-Versions are read from `CHANGELOG.md` for each component.
-Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](../releasing/)).
+The tooling reads each component's version from `CHANGELOG.md`.
+An unreleased section is a `_Changes Pending_` placeholder.
+A version-update PR populates the placeholder, promotes it to a released section,
+and rewrites that component's `version_paths` to the released version.
+For more information, see [Releasing](../releasing/).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
 Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
 so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
-The next version defaults to a minor bump; **a patch or a major is expressed by editing the placeholder heading**, which the tooling reads and never overrides.
-See [Choosing the next version](../releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose, and [Stability guarantees](#stability-guarantees) for what a version bump is allowed to change.
+The next version defaults to a minor bump.
+**To release a patch or a major, edit the placeholder heading**, which the tooling reads and never overrides.
+For which bump a change needs and why that edit is easy to lose, see [Choosing the next version](../releasing/#choosing-the-next-version).
+For what a version bump is allowed to change, see [Stability guarantees](#stability-guarantees).
 
 ## Tooling
 
@@ -26712,8 +26727,8 @@ See [Releasing](../releasing/) for the full state machine and the workflows that
 The published version of this is [Stability Guarantees and Deprecation Policy](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
 This section is the policy of record, and is kept in step with the published page.
 
-The design doc predates both and argued for a stricter pre-1.0 position than the one below.
-It is a dated artifact and is not being retro-edited; where the two differ, this section governs.
+The design doc predates both, and argued for a stricter pre-1.0 position than this section takes.
+It's a dated record, so it stays as written; where the two differ, this section governs.
 
 **Surfaces are graded by how much control we have over them.**
 
@@ -26739,9 +26754,9 @@ That keeps the obligation deliberate rather than ambient: 76 of the 374 declarat
 3. **Remove** — a later major, with a `**Removed:**` bullet.
    `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
-**The cycle binds from 1.0.**
-Before then, minors carry breaking and non-breaking changes alike, and the obligation is best-effort: announce what we can, and say so in the changelog.
-The steps above describe what we are working toward, not a promise a pre-1.0 release keeps.
+**The cycle binds from v1.0.0.**
+A break to the committed surface lands only in a major, and only after its cycle.
+A release before v1.0.0 could carry a breaking change in a minor.
 
 Additions are free, in any release.
 
@@ -26750,15 +26765,19 @@ The cycle is keyed to identifiers, not to conduct.
 Committing to every observable behavior of this stack would be unbounded, and an obligation nobody can enumerate is one nobody can keep.
 The bounded exception is the content of `canonical` queries above, which is committed precisely because it is enumerated.
 
+**A changed default is a behavior change, so it can ride a minor.**
+It still has to leave the committed surface working.
+Describe it in the PR's release notes, because a consumer might need to react to it.
+
 **Ceremony is graded by failure mode, not by surface size.**
 A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
 A renamed or removed alert leaves *silence*, and silence during an incident is indistinguishable from health.
 So alerts get the strictest treatment — cooldown, dual-publish, explicit notes, a named owner on removal — and metrics get the lightest.
 This deliberately inverts the "the label/metric contract is the public API" framing: on a failure-mode reading, metrics are among the most forgiving things we publish.
 
-**Chart values are handled by contact, not by cycle.**
-Their consumer is our own Terraform module, which pins a chart version, so a rename is absorbed by bumping the module.
-The exception is direct `helm install` users, and that list is short enough to notify individually.
+**A chart value path change isn't a breaking change.**
+The consumer of `values.yaml` is our own Terraform module, which pins a chart version, so bumping the module absorbs a rename.
+Direct `helm install` users are the exception, and that list is short enough to notify individually.
 
 **Enforcement builds nothing.**
 Every committed identifier already appears in a generated, committed artifact — `terraform-docs` output for module variables, `pre-rendered/` for dashboards and tiers, `packages/queries/` for alerts — so a rename already shows as a diff in the PR.
@@ -26790,22 +26809,17 @@ The cheapest non-breaking change is one to a surface that was never published.
 `%%{mzSqlPrefix}` is the working example: one query definition renders against either the `mz_` or `v2_mz_` namespace, so the difference never reaches a name we publish.
 Where a value differs by deployment, or looks likely to move, parameterize rather than bake it in.
 
-**Ship new behavior opt-in.**
-Adding a value whose default preserves current behavior is not breaking; changing a default is.
-Introduce it default-off, then flip the default in a later major.
-
 **Name for the condition, not the grade.**
-29 of the 89 alerts end in `-critical`, `-high`, or `-elevated`, and six families differ only by that suffix — so re-grading any of them forces a rename.
-Severity belongs in the `severity` label, and the name should describe what is wrong.
-This does not remove the exposure, since severity values are themselves committed, but it shrinks it: a label change misroutes an alert that still fires under a name people can still find, where a rename breaks both at once.
-Alerts are unshipped, so this is free to fix now and a cycle per alert later.
+Many alerts end in `-critical`, `-high`, or `-elevated`, and several families differ only by that suffix, so re-grading one of them forces a rename.
+Put the severity in the `severity` label, and name the alert for what is wrong.
+Severity values are committed too, so this shrinks the exposure rather than removing it.
+A label change misroutes an alert that still fires under a name people can find; a rename breaks both at once.
+Every shipped alert name is committed, so renaming one costs a full cycle: name a new alert for its condition from the start.
 
 **When a rename is genuinely required, accept both.**
-Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
-No module variable does this yet, so it is a pattern to establish rather than one to copy.
-
-**Pre-1.0.** Breaking changes ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205), and the cycle is best-effort rather than binding.
-Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
+Keep the old identifier working rather than merely present.
+For a Terraform variable, that means you retain it and let the new one win, rather than delete it and document the replacement.
+No module variable follows this pattern, so there's no example in the module to copy.
 
 ## Design principles
 

@@ -3,17 +3,21 @@
 
 # materialize-monitoring Documentation
 
-`materialize-monitoring` is first-class observability for Materialize deployments — metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
-It is a one-stop shop for teams who want one, and every piece of it can be turned off for teams who already run their own.
+`materialize-monitoring` is first-class observability for Materialize deployments:
+metrics, logs, events, dashboards, and alerts, packaged as a Helm chart and a Terraform module.
+It's a one-stop shop if you want one, and you can turn off any piece of it if you already run your own.
 
-If you install Materialize with the Terraform modules, the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward — set `enable_observability = false` to opt out.
+If you install Materialize with the Terraform modules,
+the stack comes up with the cluster by default from `materialize-terraform-self-managed` v11 onward.
+To opt out, set `enable_observability = false`.
 
 Nothing here is required to run Materialize.
-If you are looking for the main Materialize documentation, see [materialize.com/docs](https://materialize.com/docs/).
+For Materialize itself, see the [Materialize documentation](https://materialize.com/docs/).
 
-> [!WARNING]
->  **Pre-1.0.** Interfaces are still moving, and breaking changes can ride a minor release until 1.0 is stamped.
->  See the [Roadmap](/materialize-monitoring/reference/development/roadmap/) for what is built and what is coming, and the [Changelog](/materialize-monitoring/reference/changelog/) for what has shipped.
+From v1.0.0, a breaking change to the committed surface goes through a deprecation cycle and lands only in a major release.
+For what you can rely on, see the [stability guarantees](/materialize-monitoring/reference/stability/).
+For what's planned, see the [Roadmap](/materialize-monitoring/reference/development/roadmap/),
+and for what has shipped, see the [Changelog](/materialize-monitoring/reference/changelog/).
 
 ## Start here
 
@@ -35,10 +39,11 @@ If you are looking for the main Materialize documentation, see [materialize.com/
 |---|---|
 | **Metrics** | [Collecting](/materialize-monitoring/metrics/collecting/overview/) — the four ways metrics get in — plus [scraping](/materialize-monitoring/metrics/scraping/), [storing](/materialize-monitoring/metrics/storing/) in Thanos, and [querying](/materialize-monitoring/metrics/querying/) them back out |
 | **Logs & Events** | The [Alloy agent/gateway split](/materialize-monitoring/logs-and-events/architecture/), [collecting](/materialize-monitoring/logs-and-events/collecting/), [storing](/materialize-monitoring/logs-and-events/storing/) in Loki, [querying](/materialize-monitoring/logs-and-events/querying/), and [rules](/materialize-monitoring/logs-and-events/rules/) |
+| **Alerting** | The [alert architecture](/materialize-monitoring/alerting/architecture/) from ruler to receiver, [configuring](/materialize-monitoring/alerting/configuring/) the rule evaluators, [alert channels](/materialize-monitoring/alerting/channels/), [maintenance windows](/materialize-monitoring/alerting/maintenance/), and [configuring alerting through Terraform](/materialize-monitoring/alerting/terraform/) |
 | **Dashboards** | [Available dashboards](/materialize-monitoring/dashboards/all/) and [importing the Grafana set](/materialize-monitoring/dashboards/grafana/importing/), the [Grafana Operator](/materialize-monitoring/dashboards/grafana/grafana-operator/) path that keeps it in sync, [how Grafana is wired](/materialize-monitoring/dashboards/grafana/architecture/), [authentication](/materialize-monitoring/dashboards/grafana/auth/), and [Datadog](/materialize-monitoring/dashboards/datadog/) |
 
-Two areas are still stubs and are not linked above: **Alerting**, and Metrics → Rules.
-They appear in the sidebar because the sections exist; the [Roadmap](/materialize-monitoring/reference/development/roadmap/) tracks the work behind them.
+Metrics → Rules is a stub, so this page doesn't link to it.
+It appears in the sidebar because the section exists, and the [Roadmap](/materialize-monitoring/reference/development/roadmap/) tracks the work behind it.
 
 ## Operating the stack
 

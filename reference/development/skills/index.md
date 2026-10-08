@@ -21,7 +21,7 @@ Each skill is a `SKILL.md` with front matter naming when it applies, plus option
 | [`dashboards-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/dashboards-as-code/SKILL.md) | authoring Grafana dashboards in `packages/dashboards` |
 | [`pipelines-as-code`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/pipelines-as-code/SKILL.md) | authoring Alloy pipelines in `packages/alloy-pipelines` |
 | [`alerting`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/alerting/SKILL.md) | adding, changing or vetting an alerting rule — an `alerts:` entry in `packages/queries`, its capabilities and default-set membership, the chart's `rules.*` values, and the promtool unit tests |
-| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the house voice, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
+| [`docs-writing`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/docs-writing/SKILL.md) | writing or editing Markdown prose anywhere in the repo — the Google developer documentation style guide it follows, the RFC 2119 convention for normative pages, and the `params.author` / `params.agent` provenance fields |
 | [`code-review`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) | reviewing a PR or diff — catching renames and removals that owe a [deprecation cycle](../releasing/#the-committed-surface-check), and what is not a breakage |
 
 ## Skills in code review

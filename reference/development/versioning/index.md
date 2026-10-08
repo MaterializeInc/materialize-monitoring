@@ -83,13 +83,18 @@ See [Release notes from PR descriptions](../releasing/#release-notes-from-pr-des
 
 ## How versions are synced
 
-Versions are read from `CHANGELOG.md` for each component.
-Unreleased sections are `_Changes Pending_` placeholders; a version-update PR populates a placeholder, promotes it to a released section, and rewrites that component's `version_paths` to the released version (see [Releasing](../releasing/)).
+The tooling reads each component's version from `CHANGELOG.md`.
+An unreleased section is a `_Changes Pending_` placeholder.
+A version-update PR populates the placeholder, promotes it to a released section,
+and rewrites that component's `version_paths` to the released version.
+For more information, see [Releasing](../releasing/).
 Bumping a `pyproject.toml` also rewrites the matching package's `version` in `uv.lock`, so the lockfile does not drift behind the version files.
 Bumping a `Chart.yaml` also rewrites the helm-docs version badge in the `README.md` beside it,
 so the PR does not wait on [auto-format](../releasing/#auto-format) for that line.
-The next version defaults to a minor bump; **a patch or a major is expressed by editing the placeholder heading**, which the tooling reads and never overrides.
-See [Choosing the next version](../releasing/#choosing-the-next-version) for the current pre-1.0 policy and for why that edit is easy to lose, and [Stability guarantees](#stability-guarantees) for what a version bump is allowed to change.
+The next version defaults to a minor bump.
+**To release a patch or a major, edit the placeholder heading**, which the tooling reads and never overrides.
+For which bump a change needs and why that edit is easy to lose, see [Choosing the next version](../releasing/#choosing-the-next-version).
+For what a version bump is allowed to change, see [Stability guarantees](#stability-guarantees).
 
 ## Tooling
 
@@ -113,8 +118,8 @@ See [Releasing](../releasing/) for the full state machine and the workflows that
 The published version of this is [Stability Guarantees and Deprecation Policy](../../stability/); the rationale, the surface inventory, and the alternatives considered are in [the design doc](../design-docs/20260823-deprecation-policy/).
 This section is the policy of record, and is kept in step with the published page.
 
-The design doc predates both and argued for a stricter pre-1.0 position than the one below.
-It is a dated artifact and is not being retro-edited; where the two differ, this section governs.
+The design doc predates both, and argued for a stricter pre-1.0 position than this section takes.
+It's a dated record, so it stays as written; where the two differ, this section governs.
 
 **Surfaces are graded by how much control we have over them.**
 
@@ -140,9 +145,9 @@ That keeps the obligation deliberate rather than ambient: 76 of the 374 declarat
 3. **Remove** — a later major, with a `**Removed:**` bullet.
    `stability: unsupported` tombstones the identifier so it is never reused for different semantics.
 
-**The cycle binds from 1.0.**
-Before then, minors carry breaking and non-breaking changes alike, and the obligation is best-effort: announce what we can, and say so in the changelog.
-The steps above describe what we are working toward, not a promise a pre-1.0 release keeps.
+**The cycle binds from v1.0.0.**
+A break to the committed surface lands only in a major, and only after its cycle.
+A release before v1.0.0 could carry a breaking change in a minor.
 
 Additions are free, in any release.
 
@@ -151,15 +156,19 @@ The cycle is keyed to identifiers, not to conduct.
 Committing to every observable behavior of this stack would be unbounded, and an obligation nobody can enumerate is one nobody can keep.
 The bounded exception is the content of `canonical` queries above, which is committed precisely because it is enumerated.
 
+**A changed default is a behavior change, so it can ride a minor.**
+It still has to leave the committed surface working.
+Describe it in the PR's release notes, because a consumer might need to react to it.
+
 **Ceremony is graded by failure mode, not by surface size.**
 A renamed metric leaves a visibly blank panel that a customer can diagnose and fix on their own schedule.
 A renamed or removed alert leaves *silence*, and silence during an incident is indistinguishable from health.
 So alerts get the strictest treatment — cooldown, dual-publish, explicit notes, a named owner on removal — and metrics get the lightest.
 This deliberately inverts the "the label/metric contract is the public API" framing: on a failure-mode reading, metrics are among the most forgiving things we publish.
 
-**Chart values are handled by contact, not by cycle.**
-Their consumer is our own Terraform module, which pins a chart version, so a rename is absorbed by bumping the module.
-The exception is direct `helm install` users, and that list is short enough to notify individually.
+**A chart value path change isn't a breaking change.**
+The consumer of `values.yaml` is our own Terraform module, which pins a chart version, so bumping the module absorbs a rename.
+Direct `helm install` users are the exception, and that list is short enough to notify individually.
 
 **Enforcement builds nothing.**
 Every committed identifier already appears in a generated, committed artifact — `terraform-docs` output for module variables, `pre-rendered/` for dashboards and tiers, `packages/queries/` for alerts — so a rename already shows as a diff in the PR.
@@ -191,22 +200,17 @@ The cheapest non-breaking change is one to a surface that was never published.
 `%%{mzSqlPrefix}` is the working example: one query definition renders against either the `mz_` or `v2_mz_` namespace, so the difference never reaches a name we publish.
 Where a value differs by deployment, or looks likely to move, parameterize rather than bake it in.
 
-**Ship new behavior opt-in.**
-Adding a value whose default preserves current behavior is not breaking; changing a default is.
-Introduce it default-off, then flip the default in a later major.
-
 **Name for the condition, not the grade.**
-29 of the 89 alerts end in `-critical`, `-high`, or `-elevated`, and six families differ only by that suffix — so re-grading any of them forces a rename.
-Severity belongs in the `severity` label, and the name should describe what is wrong.
-This does not remove the exposure, since severity values are themselves committed, but it shrinks it: a label change misroutes an alert that still fires under a name people can still find, where a rename breaks both at once.
-Alerts are unshipped, so this is free to fix now and a cycle per alert later.
+Many alerts end in `-critical`, `-high`, or `-elevated`, and several families differ only by that suffix, so re-grading one of them forces a rename.
+Put the severity in the `severity` label, and name the alert for what is wrong.
+Severity values are committed too, so this shrinks the exposure rather than removing it.
+A label change misroutes an alert that still fires under a name people can find; a rename breaks both at once.
+Every shipped alert name is committed, so renaming one costs a full cycle: name a new alert for its condition from the start.
 
 **When a rename is genuinely required, accept both.**
-Keep the old identifier working rather than merely present — for a Terraform variable that means retaining it and letting the new one win, not deleting it and documenting the replacement.
-No module variable does this yet, so it is a pattern to establish rather than one to copy.
-
-**Pre-1.0.** Breaking changes ride minors until [1.0](https://linear.app/materializeinc/issue/DEP-205), and the cycle is best-effort rather than binding.
-Adoption is currently low enough that renames we already know we want should be batched and taken now — see the design doc's [breaking-change budget](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget).
+Keep the old identifier working rather than merely present.
+For a Terraform variable, that means you retain it and let the new one win, rather than delete it and document the replacement.
+No module variable follows this pattern, so there's no example in the module to copy.
 
 ## Design principles
 
