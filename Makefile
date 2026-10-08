@@ -398,7 +398,7 @@ HELM_UNITTEST_ARGS ?=
 # CI job on one renderer, so a snapshot regenerated locally is one CI accepts.
 #
 # renovate: datasource=github-releases depName=helm-unittest/helm-unittest
-HELM_UNITTEST_VERSION ?= v1.1.2
+HELM_UNITTEST_VERSION ?= v1.2.1
 
 # Helm 4 refuses an unsigned plugin source unless verification is waived, and
 # the flag it wants does not exist on Helm 3, so it cannot be passed
