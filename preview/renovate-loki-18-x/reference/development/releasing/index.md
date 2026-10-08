@@ -28,25 +28,31 @@ A released section can therefore sit above other components' unreleased placehol
 ## Choosing the next version {#choosing-the-next-version}
 
 **The placeholder heading is the decision.**
-The tooling reads the version out of it and never overrides it — `release` writes a fresh placeholder at `bump_minor()` of what it just released, and that is only a default for the *next* cycle.
-Anything other than a minor is driven by editing that heading before the release goes out.
+The tooling reads the version from it and never overrides it.
+After a release, `release` writes a fresh placeholder at `bump_minor()` of the version it released, which is only a default for the next cycle.
+For anything other than a minor, edit that heading before the release goes out:
 
 ```markdown
-## <title> v0.11.1 (Unreleased)   ← edited down from the v0.12.0 the tooling wrote
+## COMPONENT_TITLE v1.1.1 (Unreleased)   ← edited down from the v1.2.0 the tooling wrote
 ```
 
-Current policy, pre-1.0:
+Choose the bump by the largest change the release carries:
 
-- **Patch** — small, low-risk changes. Preferred, and kept genuinely small now that releases are published more often.
-- **Minor** — a batch of features, or anything a consumer has to react to (a new required value, a changed default, a new Terraform variable).
-- **Major** — not stamped yet. Until it is, a breaking change goes in a minor with the break called out in the entry.
+- **Patch:** a small, low-risk change.
+  Prefer a patch, and keep it small, because releases go out often.
+- **Minor:** a batch of features, or any other change that leaves the [committed surface](../versioning/#stability-guarantees) working.
+  A changed default, a `values.yaml` path change, and a `**Deprecated:**` announcement all ride a minor.
+- **Major:** a breaking change to the committed surface, including the removal at the end of a deprecation cycle.
 
 > [!WARNING]
->   That heading is the *only* place the intended bump is recorded, and it lives uncommitted in your working tree until you push it.
->   A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default — and the next release goes out as a minor with no diff to show why.
->   Commit the edit as its own change when you make it.
+> That heading is the *only* place the intended bump is recorded, and it stays uncommitted in your working tree until you push it.
+> A stray `git checkout -- CHANGELOG.md`, or a tool that rewrites the file, silently reverts the decision to the tooling's minor default.
+> The next release then goes out as a minor, with no diff to show why.
+> Commit the edit as its own change when you make it.
 
-Two other things are expressed by editing this heading rather than by a flag: seeding a newly merged or renamed component stream at a starting version, and re-baselining after a component `title` change (see [Versioning](../versioning/)).
+Editing this heading, rather than passing a flag, also seeds a newly merged or renamed component stream at a starting version,
+and re-baselines after a component `title` change.
+For more information, see [Versioning](../versioning/).
 
 ## State machine
 
@@ -249,11 +255,13 @@ These are the paths [CODEOWNERS](https://github.com/MaterializeInc/materialize-m
 The [`code-review` skill](https://github.com/MaterializeInc/materialize-monitoring/blob/main/.claude/skills/code-review/SKILL.md) encodes this check, and Copilot code review reads it — so a review comment may raise it before a human does. Treat that as a prompt, not a gate.
 Adding an identifier needs nothing — the check is only about **renames and removals**, which show up as a delete-plus-add in one of the generated or committed files above.
 
-**What to check.** For each removed or renamed identifier, one of:
+**What to check.** For each removed or renamed identifier, check that one of the following is true:
 
-- It was announced at least **30 days** ago. Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
-- It is being announced *now*, in which case the PR keeps the old name working and adds the `**Deprecated:**` bullet — removal is a later PR.
-- It is exempt, and the PR body says why. The honest exemptions are that nothing ever consumed it, or that it is in the [pre-1.0 batch](../design-docs/20260823-deprecation-policy/#the-pre-10-breaking-change-budget). Say which.
+- It was announced at least **30 days** ago, and the release is a major.
+  Read back through the released changelog sections for the `**Deprecated:**` bullet, and check the date on that release's tag.
+- It's being announced *now*, so the PR keeps the old name working and adds the `**Deprecated:**` bullet.
+  The removal is a later PR, in a major release.
+- It's exempt because nothing ever consumed it, and the PR body says so.
 
 **How a deprecation is recorded.** In the **PR description**, never by hand-editing `CHANGELOG.md` — that file is generated, and `propose-bumps` overwrites it on the next merge to the default branch (the one exception being the unreleased placeholder heading, which is edited to [choose the next version](#choosing-the-next-version)).
 

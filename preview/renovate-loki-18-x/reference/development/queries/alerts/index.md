@@ -144,7 +144,7 @@ Everything else installs only when named in `rules.selected`.
 
 An alert MUST NOT enter the default set until its expression has been evaluated against a live self-managed install and does not fire falsely there.
 It SHOULD also have a unit test (see below), and it SHOULD have evidence that the condition matters, such as incident history or a Cloud counterpart that pages.
-Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and, after 1.0, a deprecation cycle.
+Entering the default set commits the alert's name; renaming it afterwards owes a changelog entry and a deprecation cycle.
 
 An alert whose normal duration depends on the workload SHOULD carry that duration in `for`, and its notes SHOULD say so.
 `rules.overrides` changes a rule's `for` and labels per deployment, and never its expression.
