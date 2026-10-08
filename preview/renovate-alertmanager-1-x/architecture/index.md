@@ -95,7 +95,7 @@ It runs as a DaemonSet, is scraped by [`alloy-gateway`](#alloy-gateway-grafana-a
 
 Two things about it are worth knowing before you change anything:
 
-- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/internal/design-docs/20260803-terraform-modules/) for the full argument.
+- **It is a separate DaemonSet on purpose.** Alloy's `prometheus.exporter.unix` *is* node_exporter, and folding it into the agent would be one workload fewer. Keeping them apart keeps their resource limits apart, so a metrics regression cannot starve log collection — the signal you most need during the incident it caused. See [the Terraform modules design doc](../reference/development/design-docs/20260803-terraform-modules/) for the full argument.
 - **Collectors are an allowlist, not the upstream defaults.** The chart passes `--collector.disable-defaults` and names each collector it wants, so a new default-on collector in a future node_exporter release cannot silently join the cardinality budget. The list, and the reasoning behind every inclusion and exclusion, is in the [values reference](../reference/helm/materialize-monitoring-values/) under Node Exporter.
 
 The pods run with `hostNetwork: true`, which the network collectors require — `netdev`, `netclass`, `netstat`, `sockstat` and `conntrack` all read namespaced files under `/proc/net`, and in a pod network namespace they would report the pod's traffic rather than the node's.
@@ -124,6 +124,8 @@ Loki writes all durable data to object storage (S3-compatible, GCS, or Azure Blo
 
 Thanos is included in `materialize-monitoring` as its default metrics storage and querying backend.
 
+For the full flow, with diagrams of collection, the write path, the block lifecycle, the read path and rule evaluation, see [Metrics > Metrics Architecture](../metrics/architecture/).
+
 Refer to [Thanos Design](https://thanos.io/tip/thanos/design.md/) for more details on the architecture of Thanos.
 
 The Thanos Receiver path includes:
@@ -141,7 +143,7 @@ The Thanos Query path includes:
 Additional components include:
 * A `thanos-compactor` singleton deployment that operates against the storage layer to compact, manage retention, and downsample metrics.
 * A `thanos-ruler` deployment that runs the `Ruler` component for alerting and recording rules.
-  * The `Ruler` subcomponent evaluates alerting and recording rules against incoming metrics.
+  * The `Ruler` subcomponent evaluates alerting and recording rules by querying `thanos-query`, and remote-writes the results to `alloy-gateway`.
 
 ## `grafana`: Grafana
 
