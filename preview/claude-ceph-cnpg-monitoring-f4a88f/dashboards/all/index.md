@@ -179,7 +179,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-ceph-cnpg-monitoring-f4a88f/dashboards/grafana/env-persist.json?xxhash=f93fce8fe6d070ea" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-ceph-cnpg-monitoring-f4a88f/dashboards/grafana/env-persist.json?xxhash=12a5095111f04cf3" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
         <br /><small>UID <code>mz-mon-env-persist</code></small>
       </td>
       <td>

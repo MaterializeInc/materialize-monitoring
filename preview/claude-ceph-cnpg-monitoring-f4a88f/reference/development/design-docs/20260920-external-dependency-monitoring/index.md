@@ -967,7 +967,7 @@ Three departures from the design, each for want of something the design assumed 
 The first exporter-vantage rows are the two flavors that need nothing deployed: **CloudNativePG** and **Ceph run by Rook**.
 Both publish their own metrics, and the operator owns the scrape:
 a `PodMonitor` per CNPG cluster, and Rook's two `ServiceMonitor`s for the Ceph manager and `rook-ceph-exporter`.
-They were built against a Materialize whose metadata database is CNPG and whose bucket is on Ceph RGW, on a test install.
+They were built and checked against a Materialize whose metadata database is CNPG and whose bucket is on Ceph RGW, on a test install.
 
 | Decision | As built |
 |---|---|
