@@ -112,7 +112,7 @@ dependencies:
       - bundled-backends
       - loki
   - name: thanos
-    version: "0.46.0"
+    version: "0.47.1"
     repository: oci://ghcr.io/thanos-community/helm-charts
     condition: thanos.enabled
     tags:
