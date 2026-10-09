@@ -34,9 +34,1554 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "The metadata database, as Materialize experiences it.\n\nCommits, failures, latency and connection pools, measured by the processes that use the database — the same on every database flavor. What the database itself reports is on the Infrastructure Cloud Provider dashboard.",
+    "description": "The metadata database, as Materialize experiences it.\n\nCommits, failures, latency and connection pools, measured by the processes that use the database — the same on every database flavor. What a CloudNativePG database reports about itself is on the Database Internals tab, and what a managed database's cloud provider reports is on the Infrastructure Cloud Provider dashboard.",
     "editable": true,
     "elements": {
+      "cnpg-archive-failures": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (pod) (rate(cnpg_pg_stat_archiver_failed_count{pod=~\"($cnpgClusterList)-[0-9]+\"}[$__rate_interval]))\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "sum by (pod) (rate(cnpg_pg_stat_archiver_failed_count{pod=~\"($cnpgClusterList)-[0-9]+\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**WAL segments that failed to archive, per second.**\n\n**Nominal:** Zero, or no data where WAL archiving is not configured.\n\n**Degraded:** Failed archiving makes point-in-time recovery impossible past the last good segment, and keeps WAL on disk until it succeeds.",
+          "id": 1048,
+          "links": [],
+          "title": "WAL Archiving Failures",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-backup-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "time() - max(cnpg_collector_last_available_backup_timestamp{pod=~\"($cnpgClusterList)-[0-9]+\"} > 0)\n",
+                        "legendFormat": "age",
+                        "qryType": 1,
+                        "query": "time() - max(cnpg_collector_last_available_backup_timestamp{pod=~\"($cnpgClusterList)-[0-9]+\"} > 0)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Time since the most recent backup CNPG can restore from.**\n\n**Nominal:** Under the backup schedule's interval — typically under a day.\n\n**Degraded:** Older than the schedule means backups are failing. The metadata database cannot be rebuilt from object storage, so it is the backup that makes a lost database recoverable.\n\nAbsent when the cluster has no completed backup, which is what a cluster with no backup configured reports.",
+          "id": 1036,
+          "links": [],
+          "title": "Last Backup",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No completed backup. CNPG reports none when backups are not configured.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-cache-hit": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n  sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval]))\n  / (\n      sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval]))\n    + sum by (datname) (rate(cnpg_pg_stat_database_blks_read{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval]))\n  )\n) >= 0\n",
+                        "legendFormat": "{{datname}}",
+                        "qryType": 1,
+                        "query": "(\n  sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval]))\n  / (\n      sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval]))\n    + sum by (datname) (rate(cnpg_pg_stat_database_blks_read{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval]))\n  )\n) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The fraction of block reads served from PostgreSQL's shared buffers rather than from disk, by database.**\n\n**Nominal:** Close to 100%. The consensus table is small and hot, and should live in memory.\n\n**Degraded:** Well below 99% means reads are going to disk, so commits wait on I/O. The instance needs more memory, or its `shared_buffers` setting is smaller than the working set.",
+          "id": 1043,
+          "links": [],
+          "title": "Buffer Cache Hit Ratio",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-connections-by-database": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname, usename) (cnpg_backends_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "{{datname}} ({{usename}})",
+                        "qryType": 1,
+                        "query": "sum by (datname, usename) (cnpg_backends_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "min(\n    max by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=\"max_connections\"})\n  - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=~\"superuser_reserved_connections|reserved_connections\"})\n)\n",
+                        "legendFormat": "ceiling",
+                        "qryType": 1,
+                        "query": "min(\n    max by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=\"max_connections\"})\n  - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=~\"superuser_reserved_connections|reserved_connections\"})\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Client connections open on each instance, by database and role, beside the ceiling an ordinary role is refused at.**\n\n**Nominal:** Materialize's role holding nearly all of them, well under the ceiling.\n\n**Degraded:** Connections near the ceiling. If they are Materialize's, its pools have grown with the number of replicas; if they are another database's, something else is sharing the instance and Materialize is competing with it.\n\nMaterialize's own count of the connections it holds is on the Connections tab, and should match its line here.",
+          "id": 1038,
+          "links": [],
+          "title": "Connections by Database and Role",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-connections-by-state": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (state) (cnpg_backends_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "{{state}}",
+                        "qryType": 1,
+                        "query": "sum by (state) (cnpg_backends_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Client connections by what they are doing: running a statement (`active`), waiting for the next one (`idle`), or holding a transaction open between statements (`idle in transaction`).**\n\n**Nominal:** Mostly `idle`. A connection pool keeps connections open between uses.\n\n**Degraded:** `idle in transaction` that does not drain is a client holding a transaction open, which blocks vacuum and can hold locks. It is a different fault from too many connections, and the fix is in the client that opened it.",
+          "id": 1039,
+          "links": [],
+          "title": "Connections by State",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-connections-used": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(\n  sum by (pod) (cnpg_backends_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n  / on (pod) (\n      max by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=\"max_connections\"})\n    - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=~\"superuser_reserved_connections|reserved_connections\"})\n  )\n)\n",
+                        "legendFormat": "used",
+                        "qryType": 1,
+                        "query": "max(\n  sum by (pod) (cnpg_backends_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n  / on (pod) (\n      max by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=\"max_connections\"})\n    - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~\"($cnpgClusterList)-[0-9]+\", name=~\"superuser_reserved_connections|reserved_connections\"})\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Client connections open on the primary, as a fraction of the connections an ordinary role may open.**\n\n**Nominal:** Well below 1. Materialize holds a pool of connections per process, so the count rises with every cluster replica added.\n\n**Degraded:** Above 80%, the next cluster scale-up or rollout — which briefly runs two generations of every process — can exhaust it.\n\n**Unhealthy:** At 1, PostgreSQL refuses new connections with `remaining connection slots are reserved`, and every Materialize process reports connection errors at once.\n\nThe ceiling is `max_connections` less `superuser_reserved_connections` and `reserved_connections`, which is where an ordinary role is refused. Connections from every database on the instance count against it, not only Materialize's.",
+          "id": 1033,
+          "links": [],
+          "title": "Connections Used",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.8
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.95
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-database-size": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (datname) (cnpg_pg_database_size_bytes{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "{{datname}}",
+                        "qryType": 1,
+                        "query": "max by (datname) (cnpg_pg_database_size_bytes{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The size of each database on the instance.**\n\n**Nominal:** Materialize's database small and roughly flat: persist keeps only current state there, and the data itself is in object storage.\n\n**Degraded:** Materialize's database growing without bound means truncation has stopped. Another database growing is a neighbour consuming the volume — a full disk looks the same either way from outside the database, and this is what tells them apart.",
+          "id": 1044,
+          "links": [],
+          "title": "Size by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-not-serving": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(count(cnpg_collector_up{pod=~\"($cnpgClusterList)-[0-9]+\"} == 0) or vector(0))\n+ (count(up{pod=~\"($cnpgClusterList)-[0-9]+\", container=\"postgres\"} == 0) or vector(0))\n",
+                        "legendFormat": "instances",
+                        "qryType": 1,
+                        "query": "(count(cnpg_collector_up{pod=~\"($cnpgClusterList)-[0-9]+\"} == 0) or vector(0))\n+ (count(up{pod=~\"($cnpgClusterList)-[0-9]+\", container=\"postgres\"} == 0) or vector(0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**PostgreSQL instances in the selected CNPG clusters that are not serving: the exporter cannot reach PostgreSQL, or cannot be scraped.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** One or more instances is down. If it is the primary, Materialize's commits fail until CNPG promotes a replica; with a single instance, until the pod comes back.\n\nCounts both ways an instance can go dark: CNPG's own `cnpg_collector_up` reading 0, and the pod's metrics endpoint not answering at all.",
+          "id": 1031,
+          "links": [],
+          "title": "Instances Not Serving",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 1
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 1
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-oldest-transaction": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(cnpg_backends_max_tx_duration_seconds{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "oldest",
+                        "qryType": 1,
+                        "query": "max(cnpg_backends_max_tx_duration_seconds{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long the oldest open transaction on any instance has been running.**\n\n**Nominal:** Under a second. Persist's commits are single, short transactions.\n\n**Degraded:** Minutes. A long-running transaction holds back vacuum on every table, so the consensus table grows and every commit slows. It is usually something other than Materialize: a migration, a backup tool, or a session left `idle in transaction`.\n\n_Oldest Transaction by Database_ on this tab names the database and state it is in.",
+          "id": 1034,
+          "links": [],
+          "title": "Oldest Open Transaction",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 60
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 900
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-primary": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (cnpg_pg_replication_in_recovery{pod=~\"($cnpgClusterList)-[0-9]+\"} == 0)\n",
+                        "instant": true,
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "max by (pod) (cnpg_pg_replication_in_recovery{pod=~\"($cnpgClusterList)-[0-9]+\"} == 0)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "labelsToFields",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {}
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**The instance currently serving as primary — the only one that accepts Materialize's writes.**\n\n**Nominal:** One instance, which stays the same between maintenance windows.\n\n**Degraded:** A change of name is a switchover or a failover. Materialize reconnects on its own; expect a burst of connection errors on the other tabs at the same moment.\n\n**Unhealthy:** No instance at all means there is no primary, and nothing can commit.",
+          "id": 1032,
+          "links": [],
+          "title": "Primary",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "noValue": "No instance reports itself as primary."
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "fields": "/^pod$/",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "text": {
+                  "valueSize": 20
+                },
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-replication-lag": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (cnpg_pg_replication_lag{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "max by (pod) (cnpg_pg_replication_lag{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How far each replica is behind the primary, in seconds.**\n\n**Nominal:** Under a second. A cluster with one instance has no replicas and reads zero.\n\n**Degraded:** A replica that falls behind is a replica that would lose recent commits if it were promoted in a failover, or take longer to promote.\n\nMaterialize reads and writes only the primary, so replica lag never slows it down directly.",
+          "id": 1047,
+          "links": [],
+          "title": "Replication Lag",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-rows": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(cnpg_pg_stat_database_tup_inserted{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} inserted",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(cnpg_pg_stat_database_tup_inserted{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(cnpg_pg_stat_database_tup_updated{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} updated",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(cnpg_pg_stat_database_tup_updated{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(cnpg_pg_stat_database_tup_deleted{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} deleted",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(cnpg_pg_stat_database_tup_deleted{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Rows inserted, updated and deleted per second, by database.**\n\n**Nominal:** A steady churn on Materialize's database. Every commit rewrites a small state record and truncation deletes the versions behind it, so deletes track inserts.\n\n**Degraded:** Inserts with no matching deletes means truncation has stopped and the consensus table is growing; _State and Cleanup_ shows it from Materialize's side. Heavy churn on another database is a neighbour competing for the same disk.",
+          "id": 1042,
+          "links": [],
+          "title": "Rows Written by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "rowsps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-transactions": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} committed",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} rolled back",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~\"($cnpgClusterList)-[0-9]+\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Transactions committed and rolled back per second, by database.**\n\n**Nominal:** Materialize's database committing steadily — tens per second on an idle environment — and few rollbacks.\n\n**Degraded:** A commit rate well below Materialize's own count of commits means its calls are not arriving. Rising rollbacks on Materialize's database are usually commits that lost a race, which persist expects and retries.\n\nCompare with _Commits_ on the Overview tab, which is the same work counted by Materialize.",
+          "id": 1041,
+          "links": [],
+          "title": "Transactions by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-transactions-held": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "oldest {{datname}} ({{state}})",
+                        "qryType": 1,
+                        "query": "max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(cnpg_backends_waiting_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "legendFormat": "waiting on a lock",
+                        "qryType": 1,
+                        "query": "sum(cnpg_backends_waiting_total{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The oldest open transaction, and the number of sessions waiting on a lock, by database.**\n\n**Nominal:** Transactions under a second, and nothing waiting.\n\n**Degraded:** A transaction that keeps aging holds back vacuum. Sessions waiting on locks are contention: persist's commits are conditional updates to a handful of rows, so a client locking those rows stalls Materialize's writes.",
+          "id": 1040,
+          "links": [],
+          "title": "Oldest Transaction and Lock Waits",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-version": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (full) (cnpg_collector_postgres_version{pod=~\"($cnpgClusterList)-[0-9]+\"})\n",
+                        "instant": true,
+                        "legendFormat": "{{full}}",
+                        "qryType": 1,
+                        "query": "max by (full) (cnpg_collector_postgres_version{pod=~\"($cnpgClusterList)-[0-9]+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "labelsToFields",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {}
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**The PostgreSQL version each selected CNPG cluster runs.**\n\n**Nominal:** A supported major version, the same on every instance.\n\nAn out-of-date dependency has been the cause of an incident before, and this is the one place it is visible without a database login. Two versions at once means a rolling upgrade is under way.",
+          "id": 1037,
+          "links": [],
+          "title": "PostgreSQL Version",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker."
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "fields": "/^full$/",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "text": {
+                  "valueSize": 20
+                },
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-wal": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (cnpg_collector_pg_wal{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"size\"})\n",
+                        "legendFormat": "{{pod}} on disk",
+                        "qryType": 1,
+                        "query": "max by (pod) (cnpg_collector_pg_wal{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"size\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (cnpg_collector_pg_wal_archive_status{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"ready\"})\n* on (pod) (\n    max by (pod) (cnpg_collector_pg_wal{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"size\"})\n  / on (pod) max by (pod) (cnpg_collector_pg_wal{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"count\"})\n)\n",
+                        "legendFormat": "{{pod}} waiting to archive",
+                        "qryType": 1,
+                        "query": "max by (pod) (cnpg_collector_pg_wal_archive_status{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"ready\"})\n* on (pod) (\n    max by (pod) (cnpg_collector_pg_wal{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"size\"})\n  / on (pod) max by (pod) (cnpg_collector_pg_wal{pod=~\"($cnpgClusterList)-[0-9]+\", value=\"count\"})\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Write-ahead log kept on each instance's disk, and the part of it still waiting to be archived.**\n\n**Nominal:** WAL size steady, around `min_wal_size` to `max_wal_size`, and nothing waiting to be archived for long.\n\n**Degraded:** WAL that grows without falling back is being retained: by an archive command that keeps failing, by a replica that has stopped consuming it, or by an abandoned replication slot. It fills the volume, and a full volume stops PostgreSQL.\n\nSegments waiting to be archived exist only where backups or WAL archiving are configured.",
+          "id": 1045,
+          "links": [],
+          "title": "Write-Ahead Log",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-xid-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (datname) (cnpg_pg_database_xid_age{pod=~\"($cnpgClusterList)-[0-9]+\"}) / 2147483648\n",
+                        "legendFormat": "{{datname}}",
+                        "qryType": 1,
+                        "query": "max by (datname) (cnpg_pg_database_xid_age{pod=~\"($cnpgClusterList)-[0-9]+\"}) / 2147483648\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Transaction-ID space consumed by each database since it was last fully frozen, as a fraction of the wraparound limit.**\n\n**Nominal:** Below 10%, and saw-toothed: each autovacuum freeze pass brings it down.\n\n**Degraded:** A line that only rises means vacuum cannot freeze that database — usually a long-running transaction or an abandoned replication slot holding it back.",
+          "id": 1046,
+          "links": [],
+          "title": "Transaction IDs Used by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.25
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.5
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "cnpg-xid-used": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(cnpg_pg_database_xid_age{pod=~\"($cnpgClusterList)-[0-9]+\"}) / 2147483648\n",
+                        "legendFormat": "used",
+                        "qryType": 1,
+                        "query": "max(cnpg_pg_database_xid_age{pod=~\"($cnpgClusterList)-[0-9]+\"}) / 2147483648\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How much of the transaction-ID space the most at-risk database has consumed since it was last fully frozen by vacuum.**\n\n**Nominal:** Below 10%. Autovacuum freezes old rows long before this matters.\n\n**Degraded:** Above 25% means freezing is falling behind. Persist commits constantly, so a small instance whose autovacuum is blocked reaches this faster than most workloads.\n\n**Unhealthy:** At 100%, PostgreSQL stops accepting writes to protect itself (wraparound), and Materialize stops with it. PostgreSQL warns well before then, at about 95%.\n\n`age(datfrozenxid)` against the 2^31 wraparound limit, the same measure Cloud SQL publishes as transaction-ID utilization.",
+          "id": 1035,
+          "links": [],
+          "title": "Transaction IDs Used",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.25
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.5
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "database-none-detected": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no database rows on it.",
+          "id": 1049,
+          "links": [],
+          "title": "No Database Metrics",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**The metadata database is not reporting its own metrics.**\n\nThis tab shows what a database running in the cluster says about itself: connections against its ceiling, transactions, the size of each database, vacuum and replication. It renders for **CloudNativePG (CNPG)**, which publishes these from every instance with nothing extra to deploy.\n\n- **On CNPG**, create a `PodMonitor` for the cluster, selecting `cnpg.io/cluster: <name>` and the `metrics` port. CNPG's documentation has the manifest; its `spec.monitoring.enablePodMonitor` is deprecated. If one exists and this note remains, check `up{container=\"postgres\"}` — a scrape that fails outright, such as one blocked by a NetworkPolicy, reports nothing else.\n- **On a managed database** — RDS, Cloud SQL, Azure Database for PostgreSQL — the provider's view is on the **Infrastructure Cloud Provider** dashboard instead.\n\nThe other tabs here need none of this: they are Materialize's own measurement of the database, and work on every flavor.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "ops-by-type": {
         "kind": "Panel",
         "spec": {
@@ -3134,6 +4679,406 @@
               },
               "title": "State and Cleanup"
             }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "cnpg_collector_up",
+                                  "variable": "cnpgDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-not-serving"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-primary"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-connections-used"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-oldest-transaction"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-xid-used"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-backup-age"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-version"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 7,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "CNPG: Status"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "cnpg_collector_up",
+                                  "variable": "cnpgDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-connections-by-database"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-connections-by-state"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-transactions-held"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "CNPG: Connections"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "cnpg_collector_up",
+                                  "variable": "cnpgDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-transactions"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-rows"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-cache-hit"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "CNPG: Activity"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "cnpg_collector_up",
+                                  "variable": "cnpgDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-database-size"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-wal"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-xid-age"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "CNPG: Storage and Vacuum"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "cnpg_collector_up",
+                                  "variable": "cnpgDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-replication-lag"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "cnpg-archive-failures"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "CNPG: Replication and Archiving"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "cnpg_collector_up",
+                                  "variable": "cnpgDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "database-none-detected"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "No Database Metrics"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Database Internals"
+            }
           }
         ]
       }
@@ -3307,6 +5252,79 @@
           "label": "Advanced Metric Filter",
           "name": "metricAdhoc",
           "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(cnpg_collector_up, __name__)",
+          "description": "Whether a CloudNativePG instance is being scraped; empty when none is",
+          "hide": "hideVariable",
+          "includeAll": false,
+          "label": "CNPG",
+          "multi": false,
+          "name": "cnpgDetected",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(cnpg_collector_up, __name__)",
+              "qryType": 1,
+              "query": "label_values(cnpg_collector_up, __name__)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": true,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".+",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(cnpg_collector_up, pod)",
+          "description": "The CloudNativePG cluster(s) serving as this environment's metadata database",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "CNPG Cluster",
+          "multi": true,
+          "name": "cnpgClusterList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(cnpg_collector_up, pod)",
+              "qryType": 1,
+              "query": "label_values(cnpg_collector_up, pod)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "/^(?<value>.+)-[0-9]+$/",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
         }
       }
     ]

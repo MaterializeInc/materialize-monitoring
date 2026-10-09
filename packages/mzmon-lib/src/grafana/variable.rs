@@ -121,6 +121,10 @@ pub mod extra {
     pub const CLOUD_PROVIDER_LIST: &str = "cloudProviderList";
     /// Whether Karpenter's controller is being scraped.
     pub const KARPENTER_DETECTED: &str = "karpenterDetected";
+    /// Whether any CloudNativePG instance is being scraped.
+    pub const CNPG_DETECTED: &str = "cnpgDetected";
+    /// Whether a Rook-managed Ceph cluster's manager is being scraped.
+    pub const CEPH_DETECTED: &str = "cephDetected";
 }
 
 /// An empty current selection.
@@ -912,6 +916,115 @@ pub fn karpenter_detected() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Whether any CloudNativePG instance is being scraped, which the metadata
+/// database's CNPG rows render on.
+///
+/// Discovered from `cnpg_collector_up` rather than from `up`, which is the one
+/// departure from the discovered-row rules, and a narrow one. A CNPG instance's
+/// `up` carries `app="postgresql"` and `container="postgres"`, which every other
+/// PostgreSQL chart sets too, so nothing on it says CNPG. `cnpg_collector_up`
+/// is CNPG's own, and its exporter publishes it on every successful scrape —
+/// at 0 when PostgreSQL itself is down — so it still tells "no CNPG here" from
+/// "CNPG here and PostgreSQL mute". What it cannot see is a scrape that fails
+/// outright, which the fallback row's text names.
+///
+/// The value is the metric name itself, `cnpg_collector_up`. Hidden, single
+/// valued and without "All", for the reasons [`karpenter_detected`] gives.
+pub fn cnpg_detected() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::CNPG_DETECTED,
+        label: "CNPG",
+        description: "Whether a CloudNativePG instance is being scraped; empty when none is",
+        expr: "label_values(cnpg_collector_up, __name__)".to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// The CloudNativePG clusters a metadata-database panel reads.
+///
+/// **The reader's answer to a question nothing else can answer**: which CNPG
+/// cluster is this environment's metadata database. CNPG's series carry the
+/// instance pod and namespace and no Materialize identity, and the metadata
+/// backend URL that would say is in a Secret. So the cluster is picked, from
+/// the names CNPG gives its instance pods (`<cluster>-<n>`), and the queries
+/// match `pod=~"($cnpgClusterList)-[0-9]+"`.
+///
+/// Multi-select with an `.+` "All", which is the regex-safe form: on a single
+/// CNPG cluster — the common case — "All" is the right answer without the
+/// reader touching it.
+pub fn cnpg_clusters() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::CNPG_CLUSTER_LIST,
+        label: "CNPG Cluster",
+        description: "The CloudNativePG cluster(s) serving as this environment's metadata database",
+        expr: "label_values(cnpg_collector_up, pod)".to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: r"/^(?<value>.+)-[0-9]+$/".to_string(),
+    }
+    .build()
+}
+
+/// Whether a Rook-managed Ceph cluster's manager is being scraped, which the
+/// object store's Ceph rows render on.
+///
+/// Discovered from `up`, per the discovered-row rules: Rook labels its manager
+/// pods `app.kubernetes.io/name: ceph-mgr`, which the gateway copies to `app`.
+/// Hidden, single valued and without "All", for the reasons
+/// [`karpenter_detected`] gives.
+pub fn ceph_detected() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::CEPH_DETECTED,
+        label: "Ceph",
+        description: "Whether a Ceph manager is being scraped; empty when none is",
+        expr: r#"label_values(up{app="ceph-mgr"}, app)"#.to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// The Ceph clusters an object-store panel reads, by the namespace Rook runs
+/// each in.
+///
+/// Like [`cnpg_clusters`], a mapping the reader supplies: nothing on a Ceph
+/// series says which environment's bucket it holds. Discovered from the
+/// manager's `ceph_health_status`, which every Ceph cluster publishes exactly
+/// once. Multi-select with an `.+` "All", so the usual single cluster needs no
+/// choice.
+pub fn ceph_namespaces() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::CEPH_NAMESPACE,
+        label: "Ceph Cluster",
+        description: "Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket",
+        expr: "label_values(ceph_health_status, namespace)".to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Namespaces the log store runs in.
 ///
 /// Discovered from `up{app_instance="loki"}` rather than from a `loki_*` metric,
@@ -1502,6 +1615,22 @@ pub fn dependency_scoped() -> Vec<dashboardv2::VariableKind> {
         namespaces(),
         metric_adhoc(),
     ]
+}
+
+/// Controls for the metadata database dashboard: [`dependency_scoped`], plus
+/// the discovery and picker for a CloudNativePG cluster's own view.
+pub fn consensus_scoped() -> Vec<dashboardv2::VariableKind> {
+    let mut variables = dependency_scoped();
+    variables.extend([cnpg_detected(), cnpg_clusters()]);
+    variables
+}
+
+/// Controls for the object storage dashboard: [`dependency_scoped`], plus the
+/// discovery and picker for a Ceph cluster's own view.
+pub fn persist_scoped() -> Vec<dashboardv2::VariableKind> {
+    let mut variables = dependency_scoped();
+    variables.extend([ceph_detected(), ceph_namespaces()]);
+    variables
 }
 
 /// Controls for the cloud provider dashboard.

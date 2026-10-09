@@ -1,0 +1,399 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# The metadata database, as a CloudNativePG cluster reports it about itself.
+
+description: |
+  What a CloudNativePG (CNPG) cluster publishes about itself, for the
+  deployments whose metadata database runs in Kubernetes rather than on a
+  cloud provider's managed service.
+
+  CNPG runs a metrics exporter inside every PostgreSQL instance pod, on the
+  container port named `metrics` (9187). It reports the operator's view —
+  which instance is primary, replication, WAL archiving and backups — beside
+  the ordinary PostgreSQL statistics from `pg_stat_activity`,
+  `pg_stat_database` and `pg_settings`. Nothing has to be deployed to collect
+  it, only a `PodMonitor` per cluster, which CNPG's documentation asks the
+  operator to own now that `spec.monitoring.enablePodMonitor` is deprecated.
+
+  This is the database's own view, which is the diagnosis: it can say *why*
+  Materialize's commits are slow or its connections refused. Whether they are
+  is Materialize's own measurement, on the other tabs of Materialize
+  Consensus. The external dependency design doc calls this the exporter
+  vantage point.
+
+  ## Scope
+
+  The series carry the instance's `pod` and `namespace` and no Materialize
+  identity, so nothing can say which CNPG cluster serves which environment.
+  `$cnpgClusterList` is that mapping, chosen by the reader. It holds CNPG
+  cluster names, discovered from instance pod names (`<cluster>-<n>`), and
+  every query here matches `pod=~"($cnpgClusterList)-[0-9]+"`. Two CNPG
+  clusters of the same name in different namespaces are read as one.
+
+  ## Label families
+
+  `datname` is the database, and a CNPG cluster serving Materialize usually
+  holds three: the one Materialize uses (`materialize` in the self-managed
+  examples), `postgres`, and `template1`. Anything else is something else
+  sharing the instance — which is the attribution the per-database panels
+  exist for. `state` on `cnpg_backends_*` is `pg_stat_activity.state`.
+
+  ## What it does not publish
+
+  The size of the instance's volume, so there is no "disk full" ratio here:
+  CNPG's own WAL volume gauges read `NaN` unless WAL has a volume of its own,
+  and kubelet volume statistics are not collected by this stack.
+
+metricImportanceHint: extended
+
+queries:
+  # --- Status -----------------------------------------------------------------
+  - id: infra.cnpg.health.not_serving
+    stability: experimental
+    description:
+      summary: |
+        PostgreSQL instances in the selected CNPG clusters that are not
+        serving: the exporter cannot reach PostgreSQL, or cannot be scraped.
+      nominal: Zero.
+      unhealthy: |
+        One or more instances is down. If it is the primary, Materialize's
+        commits fail until CNPG promotes a replica; with a single instance,
+        until the pod comes back.
+      notes: |
+        Counts both ways an instance can go dark: CNPG's own `cnpg_collector_up`
+        reading 0, and the pod's metrics endpoint not answering at all.
+    promQL: |
+      (count(cnpg_collector_up{pod=~"($cnpgClusterList)-[0-9]+"} == 0) or vector(0))
+      + (count(up{pod=~"($cnpgClusterList)-[0-9]+", container="postgres"} == 0) or vector(0))
+
+  - id: infra.cnpg.health.primary
+    stability: experimental
+    description:
+      summary: |
+        The instance currently serving as primary — the only one that accepts
+        Materialize's writes.
+      nominal: One instance, which stays the same between maintenance windows.
+      degraded: |
+        A change of name is a switchover or a failover. Materialize reconnects
+        on its own; expect a burst of connection errors on the other tabs at
+        the same moment.
+      unhealthy: No instance at all means there is no primary, and nothing can commit.
+    promQL: |
+      max by (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
+    instant: true
+
+  - id: infra.cnpg.health.connections_used
+    stability: experimental
+    description:
+      summary: |
+        Client connections open on the primary, as a fraction of the
+        connections an ordinary role may open.
+      nominal: |
+        Well below 1. Materialize holds a pool of connections per process,
+        so the count rises with every cluster replica added.
+      degraded: |
+        Above 80%, the next cluster scale-up or rollout — which briefly runs
+        two generations of every process — can exhaust it.
+      unhealthy: |
+        At 1, PostgreSQL refuses new connections with `remaining connection
+        slots are reserved`, and every Materialize process reports connection
+        errors at once.
+      notes: |
+        The ceiling is `max_connections` less `superuser_reserved_connections`
+        and `reserved_connections`, which is where an ordinary role is
+        refused. Connections from every database on the instance count against
+        it, not only Materialize's.
+    promQL: |
+      max(
+        sum by (pod) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+        / on (pod) (
+            max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
+          - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+        )
+      )
+
+  - id: infra.cnpg.health.oldest_transaction
+    stability: experimental
+    description:
+      summary: |
+        How long the oldest open transaction on any instance has been running.
+      nominal: |
+        Under a second. Persist's commits are single, short transactions.
+      degraded: |
+        Minutes. A long-running transaction holds back vacuum on every table,
+        so the consensus table grows and every commit slows. It is usually
+        something other than Materialize: a migration, a backup tool, or a
+        session left `idle in transaction`.
+      notes: |
+        _Oldest Transaction by Database_ on this tab names the database and
+        state it is in.
+    promQL: |
+      max(cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
+
+  - id: infra.cnpg.health.xid_used
+    stability: experimental
+    description:
+      summary: |
+        How much of the transaction-ID space the most at-risk database has
+        consumed since it was last fully frozen by vacuum.
+      nominal: Below 10%. Autovacuum freezes old rows long before this matters.
+      degraded: |
+        Above 25% means freezing is falling behind. Persist commits
+        constantly, so a small instance whose autovacuum is blocked reaches
+        this faster than most workloads.
+      unhealthy: |
+        At 100%, PostgreSQL stops accepting writes to protect itself
+        (wraparound), and Materialize stops with it. PostgreSQL warns well
+        before then, at about 95%.
+      notes: |
+        `age(datfrozenxid)` against the 2^31 wraparound limit, the same
+        measure Cloud SQL publishes as transaction-ID utilization.
+    promQL: |
+      max(cnpg_pg_database_xid_age{pod=~"($cnpgClusterList)-[0-9]+"}) / 2147483648
+
+  - id: infra.cnpg.health.version
+    stability: experimental
+    description:
+      summary: |
+        The PostgreSQL version each selected CNPG cluster runs.
+      nominal: A supported major version, the same on every instance.
+      notes: |
+        An out-of-date dependency has been the cause of an incident before, and
+        this is the one place it is visible without a database login. Two
+        versions at once means a rolling upgrade is under way.
+    promQL: |
+      max by (full) (cnpg_collector_postgres_version{pod=~"($cnpgClusterList)-[0-9]+"})
+    instant: true
+
+  - id: infra.cnpg.health.backup_age
+    stability: experimental
+    description:
+      summary: |
+        Time since the most recent backup CNPG can restore from.
+      nominal: |
+        Under the backup schedule's interval — typically under a day.
+      degraded: |
+        Older than the schedule means backups are failing. The metadata
+        database cannot be rebuilt from object storage, so it is the backup
+        that makes a lost database recoverable.
+      notes: |
+        Absent when the cluster has no completed backup, which is what a
+        cluster with no backup configured reports.
+    promQL: |
+      time() - max(cnpg_collector_last_available_backup_timestamp{pod=~"($cnpgClusterList)-[0-9]+"} > 0)
+
+  # --- Connections ------------------------------------------------------------
+  - id: infra.cnpg.connections.by_database
+    stability: experimental
+    description:
+      summary: |
+        Client connections open on each instance, by database and role,
+        beside the ceiling an ordinary role is refused at.
+      nominal: |
+        Materialize's role holding nearly all of them, well under the ceiling.
+      degraded: |
+        Connections near the ceiling. If they are Materialize's, its pools
+        have grown with the number of replicas; if they are another
+        database's, something else is sharing the instance and Materialize is
+        competing with it.
+      notes: |
+        Materialize's own count of the connections it holds is on the
+        Connections tab, and should match its line here.
+    promQL:
+      - |
+        sum by (datname, usename) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+      - |
+        min(
+            max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
+          - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+        )
+
+  - id: infra.cnpg.connections.by_state
+    stability: experimental
+    description:
+      summary: |
+        Client connections by what they are doing: running a statement
+        (`active`), waiting for the next one (`idle`), or holding a
+        transaction open between statements (`idle in transaction`).
+      nominal: |
+        Mostly `idle`. A connection pool keeps connections open between uses.
+      degraded: |
+        `idle in transaction` that does not drain is a client holding a
+        transaction open, which blocks vacuum and can hold locks. It is a
+        different fault from too many connections, and the fix is in the
+        client that opened it.
+    promQL: |
+      sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+
+  - id: infra.cnpg.connections.oldest_transaction
+    stability: experimental
+    description:
+      summary: |
+        The oldest open transaction, and the number of sessions waiting on a
+        lock, by database.
+      nominal: Transactions under a second, and nothing waiting.
+      degraded: |
+        A transaction that keeps aging holds back vacuum. Sessions waiting on
+        locks are contention: persist's commits are conditional updates to a
+        handful of rows, so a client locking those rows stalls Materialize's
+        writes.
+    promQL:
+      - |
+        max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
+      - |
+        sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
+
+  # --- Activity ---------------------------------------------------------------
+  - id: infra.cnpg.activity.transactions
+    stability: experimental
+    description:
+      summary: |
+        Transactions committed and rolled back per second, by database.
+      nominal: |
+        Materialize's database committing steadily — tens per second on an
+        idle environment — and few rollbacks.
+      degraded: |
+        A commit rate well below Materialize's own count of commits means its
+        calls are not arriving. Rising rollbacks on Materialize's database are
+        usually commits that lost a race, which persist expects and retries.
+      notes: |
+        Compare with _Commits_ on the Overview tab, which is the same work
+        counted by Materialize.
+    promQL:
+      - |
+        sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+      - |
+        sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+
+  - id: infra.cnpg.activity.rows
+    stability: experimental
+    description:
+      summary: |
+        Rows inserted, updated and deleted per second, by database.
+      nominal: |
+        A steady churn on Materialize's database. Every commit rewrites a
+        small state record and truncation deletes the versions behind it, so
+        deletes track inserts.
+      degraded: |
+        Inserts with no matching deletes means truncation has stopped and the
+        consensus table is growing; _State and Cleanup_ shows it from
+        Materialize's side. Heavy churn on another database is a neighbour
+        competing for the same disk.
+    promQL:
+      - |
+        sum by (datname) (rate(cnpg_pg_stat_database_tup_inserted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+      - |
+        sum by (datname) (rate(cnpg_pg_stat_database_tup_updated{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+      - |
+        sum by (datname) (rate(cnpg_pg_stat_database_tup_deleted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+
+  - id: infra.cnpg.activity.cache_hit
+    stability: experimental
+    description:
+      summary: |
+        The fraction of block reads served from PostgreSQL's shared buffers
+        rather than from disk, by database.
+      nominal: |
+        Close to 100%. The consensus table is small and hot, and should live
+        in memory.
+      degraded: |
+        Well below 99% means reads are going to disk, so commits wait on I/O.
+        The instance needs more memory, or its `shared_buffers` setting is
+        smaller than the working set.
+    promQL: |
+      (
+        sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval}))
+        / (
+            sum by (datname) (rate(cnpg_pg_stat_database_blks_hit{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval}))
+          + sum by (datname) (rate(cnpg_pg_stat_database_blks_read{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval}))
+        )
+      ) >= 0
+
+  # --- Storage ----------------------------------------------------------------
+  - id: infra.cnpg.storage.database_size
+    stability: experimental
+    description:
+      summary: |
+        The size of each database on the instance.
+      nominal: |
+        Materialize's database small and roughly flat: persist keeps only
+        current state there, and the data itself is in object storage.
+      degraded: |
+        Materialize's database growing without bound means truncation has
+        stopped. Another database growing is a neighbour consuming the
+        volume — a full disk looks the same either way from outside the
+        database, and this is what tells them apart.
+    promQL: |
+      max by (datname) (cnpg_pg_database_size_bytes{pod=~"($cnpgClusterList)-[0-9]+"})
+
+  - id: infra.cnpg.storage.wal
+    stability: experimental
+    description:
+      summary: |
+        Write-ahead log kept on each instance's disk, and the part of it still
+        waiting to be archived.
+      nominal: |
+        WAL size steady, around `min_wal_size` to `max_wal_size`, and nothing
+        waiting to be archived for long.
+      degraded: |
+        WAL that grows without falling back is being retained: by an archive
+        command that keeps failing, by a replica that has stopped consuming
+        it, or by an abandoned replication slot. It fills the volume, and a
+        full volume stops PostgreSQL.
+      notes: |
+        Segments waiting to be archived exist only where backups or WAL
+        archiving are configured.
+    promQL:
+      - |
+        max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="size"})
+      - |
+        max by (pod) (cnpg_collector_pg_wal_archive_status{pod=~"($cnpgClusterList)-[0-9]+", value="ready"})
+        * on (pod) (
+            max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="size"})
+          / on (pod) max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="count"})
+        )
+
+  - id: infra.cnpg.storage.xid_age
+    stability: experimental
+    description:
+      summary: |
+        Transaction-ID space consumed by each database since it was last fully
+        frozen, as a fraction of the wraparound limit.
+      nominal: |
+        Below 10%, and saw-toothed: each autovacuum freeze pass brings it down.
+      degraded: |
+        A line that only rises means vacuum cannot freeze that database —
+        usually a long-running transaction or an abandoned replication slot
+        holding it back.
+    promQL: |
+      max by (datname) (cnpg_pg_database_xid_age{pod=~"($cnpgClusterList)-[0-9]+"}) / 2147483648
+
+  # --- Replication ------------------------------------------------------------
+  - id: infra.cnpg.replication.lag
+    stability: experimental
+    description:
+      summary: |
+        How far each replica is behind the primary, in seconds.
+      nominal: |
+        Under a second. A cluster with one instance has no replicas and reads
+        zero.
+      degraded: |
+        A replica that falls behind is a replica that would lose recent
+        commits if it were promoted in a failover, or take longer to promote.
+      notes: |
+        Materialize reads and writes only the primary, so replica lag never
+        slows it down directly.
+    promQL: |
+      max by (pod) (cnpg_pg_replication_lag{pod=~"($cnpgClusterList)-[0-9]+"})
+
+  - id: infra.cnpg.replication.archive_failures
+    stability: experimental
+    description:
+      summary: |
+        WAL segments that failed to archive, per second.
+      nominal: |
+        Zero, or no data where WAL archiving is not configured.
+      degraded: |
+        Failed archiving makes point-in-time recovery impossible past the last
+        good segment, and keeps WAL on disk until it succeeds.
+    promQL: |
+      sum by (pod) (rate(cnpg_pg_stat_archiver_failed_count{pod=~"($cnpgClusterList)-[0-9]+"}%%{interval}))

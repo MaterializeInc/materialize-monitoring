@@ -7,7 +7,7 @@ aliases:
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-20
-lastmod: 2026-10-05
+lastmod: 2026-10-09
 # custom parameters
 params:
   author: Heather Lapointe
@@ -938,6 +938,39 @@ Three departures from the design, each for want of something the design assumed 
 - **No `ext:*` series are read.** None are recorded yet, so each client panel reads persist's families directly, and `infra-cloud` draws one expression per provider in place of a normalized one.
 - **Provider rows are discovered from the pull's `up`**, as `$cloudProviderList`, rather than from a `flavor` label on a recorded series.
 - **There is no exporter row.** No exporter is deployed, so there is nothing to discover and nothing to fall back from.
+
+### As built: self-hosted flavors on the client dashboards
+
+<!-- Agent note: recorded as a decision rather than rewriting "Dependency series are infra-*", which is the reasoning that was reviewed. -->
+
+The first exporter-vantage rows are the two flavors that need nothing deployed: **CloudNativePG** and **Ceph run by Rook**.
+Both publish their own metrics, and the operator owns the scrape:
+a `PodMonitor` per CNPG cluster, and Rook's two `ServiceMonitor`s for the Ceph manager and `rook-ceph-exporter`.
+They were built against a Materialize whose metadata database is CNPG and whose bucket is on Ceph RGW, on a test install.
+
+| Decision | As built |
+|---|---|
+| Where they live | A last tab on each client dashboard, **Database Internals** on `env-consensus` and **Object Store Internals** on `env-persist`, not `infra-*` |
+| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, defaulting to "All". It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303) |
+| Discovery | `$cnpgDetected` and `$cephDetected`, hidden, with one negated fallback per tab that says which scrape to create |
+| Queries | Flavor-native, in `infra-cnpg.yaml` and `infra-ceph.yaml` at `extended`. No `ext:*` series yet |
+
+Three departures, each with its reason.
+
+- **The client dashboards, not `infra-*`.**
+  A self-hosted dependency has no provider, so its own account is the only diagnosis there is,
+  and the reader comparing it with persist's measurement wants both on one dashboard.
+  The argument for `infra-*` was that nothing joins these series to an environment;
+  the picker makes that the reader's call, out loud, instead of the folder's.
+- **CNPG is discovered from `cnpg_collector_up`, not `up`.**
+  A CNPG instance's `up` carries `app="postgresql"`, which every PostgreSQL chart sets.
+  CNPG's exporter publishes `cnpg_collector_up` on every successful scrape, at 0 when PostgreSQL is down,
+  so it still separates "no CNPG" from "PostgreSQL mute"; only a failing scrape goes unseen, and the fallback names that case.
+  Ceph follows the rule, on `up{app="ceph-mgr"}`.
+- **Rook's `monitoring.enabled` is not the only route the fallback names.**
+  It also installs Rook's `PrometheusRule`s, which the Thanos ruler imports and evaluates,
+  so turning on a dashboard would turn on a second alert set.
+  The fallback names both routes.
 
 ## Deployment shapes
 

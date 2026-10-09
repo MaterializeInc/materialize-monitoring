@@ -1165,6 +1165,7 @@
   - infra.alloy.resources.terminations
   - infra.alloy.resources.throttling
   - infra.cloud.collection.pulls
+  - infra.cnpg.health.not_serving
   - infra.loki.health.up
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
@@ -2950,11 +2951,355 @@
   - infra.karpenter.controller.aws_errors
 - importance: extended
   labels:
+  - namespace
+  name: ceph_cluster_total_bytes
+  usage:
+  - infra.ceph.capacity.raw
+  - infra.ceph.health.raw_used
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_cluster_total_used_raw_bytes
+  usage:
+  - infra.ceph.capacity.raw
+  - infra.ceph.health.raw_used
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_health_detail
+  usage:
+  - infra.ceph.health.checks
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_health_status
+  usage:
+  - infra.ceph.health.status
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_num_objects_degraded
+  usage:
+  - infra.ceph.health.objects_degraded
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_osd_commit_latency_ms
+  usage:
+  - infra.ceph.osd.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_osd_metadata
+  usage:
+  - infra.ceph.health.version
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_osd_stat_bytes
+  usage:
+  - infra.ceph.osd.utilization
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_osd_stat_bytes_used
+  usage:
+  - infra.ceph.osd.utilization
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_osd_up
+  usage:
+  - infra.ceph.health.osds_down
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pg_active
+  usage:
+  - infra.ceph.osd.placement_groups
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pg_clean
+  usage:
+  - infra.ceph.osd.placement_groups
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pg_degraded
+  usage:
+  - infra.ceph.osd.placement_groups
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pg_total
+  usage:
+  - infra.ceph.osd.placement_groups
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pg_undersized
+  usage:
+  - infra.ceph.osd.placement_groups
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pool_max_avail
+  usage:
+  - infra.ceph.health.bucket_pool_available
+- importance: extended
+  labels:
+  - name
+  - namespace
+  name: ceph_pool_metadata
+  usage:
+  - infra.ceph.capacity.pools
+  - infra.ceph.health.bucket_pool_available
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_pool_stored
+  usage:
+  - infra.ceph.capacity.pools
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_failed_req
+  usage:
+  - infra.ceph.health.rgw_failure_ratio
+  - infra.ceph.rgw.requests
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_del_obj_lat_count
+  usage:
+  - infra.ceph.rgw.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_del_obj_lat_sum
+  usage:
+  - infra.ceph.rgw.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_del_obj_ops
+  usage:
+  - infra.ceph.rgw.requests
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_get_obj_bytes
+  usage:
+  - infra.ceph.rgw.throughput
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_get_obj_lat_count
+  usage:
+  - infra.ceph.rgw.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_get_obj_lat_sum
+  usage:
+  - infra.ceph.rgw.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_get_obj_ops
+  usage:
+  - infra.ceph.rgw.requests
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_put_obj_bytes
+  usage:
+  - infra.ceph.rgw.throughput
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_put_obj_lat_count
+  usage:
+  - infra.ceph.rgw.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_put_obj_lat_sum
+  usage:
+  - infra.ceph.rgw.latency
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_op_put_obj_ops
+  usage:
+  - infra.ceph.rgw.requests
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_qactive
+  usage:
+  - infra.ceph.rgw.queue
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_qlen
+  usage:
+  - infra.ceph.rgw.queue
+- importance: extended
+  labels:
+  - namespace
+  name: ceph_rgw_req
+  usage:
+  - infra.ceph.health.rgw_failure_ratio
+- importance: extended
+  labels:
   - app
   - code
   name: client_go_request_total
   usage:
   - infra.karpenter.controller.kube_errors
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_backends_max_tx_duration_seconds
+  usage:
+  - infra.cnpg.connections.oldest_transaction
+  - infra.cnpg.health.oldest_transaction
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_backends_total
+  usage:
+  - infra.cnpg.connections.by_database
+  - infra.cnpg.connections.by_state
+  - infra.cnpg.health.connections_used
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_backends_waiting_total
+  usage:
+  - infra.cnpg.connections.oldest_transaction
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_collector_last_available_backup_timestamp
+  usage:
+  - infra.cnpg.health.backup_age
+- importance: extended
+  labels:
+  - pod
+  - value
+  name: cnpg_collector_pg_wal
+  usage:
+  - infra.cnpg.storage.wal
+- importance: extended
+  labels:
+  - pod
+  - value
+  name: cnpg_collector_pg_wal_archive_status
+  usage:
+  - infra.cnpg.storage.wal
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_collector_postgres_version
+  usage:
+  - infra.cnpg.health.version
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_collector_up
+  usage:
+  - infra.cnpg.health.not_serving
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_pg_database_size_bytes
+  usage:
+  - infra.cnpg.storage.database_size
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_pg_database_xid_age
+  usage:
+  - infra.cnpg.health.xid_used
+  - infra.cnpg.storage.xid_age
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_pg_replication_in_recovery
+  usage:
+  - infra.cnpg.health.primary
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_pg_replication_lag
+  usage:
+  - infra.cnpg.replication.lag
+- importance: extended
+  labels:
+  - name
+  - pod
+  name: cnpg_pg_settings_setting
+  usage:
+  - infra.cnpg.connections.by_database
+  - infra.cnpg.health.connections_used
+- importance: extended
+  labels:
+  - pod
+  name: cnpg_pg_stat_archiver_failed_count
+  usage:
+  - infra.cnpg.replication.archive_failures
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_blks_hit
+  usage:
+  - infra.cnpg.activity.cache_hit
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_blks_read
+  usage:
+  - infra.cnpg.activity.cache_hit
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_tup_deleted
+  usage:
+  - infra.cnpg.activity.rows
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_tup_inserted
+  usage:
+  - infra.cnpg.activity.rows
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_tup_updated
+  usage:
+  - infra.cnpg.activity.rows
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_xact_commit
+  usage:
+  - infra.cnpg.activity.transactions
+- importance: extended
+  labels:
+  - datname
+  - pod
+  name: cnpg_pg_stat_database_xact_rollback
+  usage:
+  - infra.cnpg.activity.transactions
 - importance: extended
   labels:
   - app

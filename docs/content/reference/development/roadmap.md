@@ -265,7 +265,8 @@ Designed in [Monitoring Materialize's External Dependencies](../design-docs/2026
 **The client's measurement of a dependency is the SLI, and the dependency's own telemetry is the diagnosis.**
 Several pieces shipped with 1.0: the client vantage point, the provider pulls, and the client and provider dashboards.
 So did the `persist-failures` split and the `ext:consensus_*` recording rules.
-What remains is the flavor-specific half.
+Since then, the first flavor-native rows have shipped: CloudNativePG on `env-consensus` and Rook Ceph on `env-persist`.
+What remains of the flavor-specific half is the normalized rules those flavors feed, and the other flavors.
 It stays opt-in behind the normalized `ext:*` contract.
 That contract keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
@@ -273,8 +274,8 @@ That contract keeps seven database flavors and five object stores from multiplyi
 |---|---|
 | [DEP-295] The rest of the `ext:*` layer: `ext:consensus_connections_used_ratio` and the `ext:objstore_*` families | 🔨 |
 | [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ⬜ |
-| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter | ⬜ |
-| [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph | ⬜ |
+| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. CNPG's flavor-native rows are on `env-consensus`; the `ext:*` rules and the other flavors remain | 🔨 |
+| [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
 | [DEP-300] Version reporting (`ext:*_version_info`) across every adapter | ⬜ |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |

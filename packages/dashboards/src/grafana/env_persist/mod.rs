@@ -24,6 +24,11 @@
 //! that comparison: what Materialize's current state refers to, and what it is
 //! keeping only for a reader, which the bucket cannot tell apart.
 //!
+//! The exception is an on-premise store, which has no provider to ask and can
+//! fill up or lose a disk. Object Store Internals carries its own account, for
+//! Ceph run by Rook, on rows that render only where Ceph is scraped — see
+//! [`object_store`].
+//!
 //! # Scope
 //!
 //! The environment picker and nothing narrower, for the reason
@@ -40,6 +45,7 @@
 //! both draw as a flat zero.
 
 pub mod compaction;
+pub mod object_store;
 pub mod operations;
 pub mod overview;
 pub mod storage;
@@ -80,14 +86,16 @@ pub const REC_MZ_VERSION: &str = "v26.41.0";
 ///
 /// Overview answers "is it object storage". Operations and Compaction are the
 /// foreground and background traffic, in the order a slowdown is usually
-/// traced. Storage is last because it is about cost and slow growth rather
-/// than about anything being broken today.
+/// traced. Storage is about cost and slow growth rather than about anything
+/// being broken today. Object Store Internals is last because it is the store's
+/// own account rather than persist's, and only an on-premise store gives one.
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::OVERVIEW.title).rows(overview::rows(q)),
         Tab::new(theme::OPERATIONS.title).rows(operations::rows(q)),
         Tab::new(theme::COMPACTION.title).rows(compaction::rows(q)),
         Tab::new(theme::STORAGE.title).rows(storage::rows(q)),
+        Tab::new(theme::OBJECT_STORE.title).rows(object_store::rows(q)),
     ]
 }
 
@@ -125,13 +133,14 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "Object storage, as Materialize experiences it.\n\n\
              Reads, writes, failures, compaction and what the stored data is \
              for, measured by the processes that use the bucket — the same on \
-             every store. What the bucket itself reports is on the \
-             Infrastructure Cloud Provider dashboard.",
+             every store. What a Ceph object store reports about itself is on \
+             the Object Store Internals tab, and what a cloud bucket's provider \
+             reports is on the Infrastructure Cloud Provider dashboard.",
         )
         .tags([tags::MATERIALIZE, tags::MZMON, tags::content::DEPENDENCIES])
         .folder(Folder::Materialize)
         .cursor_sync(CursorSync::Crosshair)
-        .variables(variable::dependency_scoped())
+        .variables(variable::persist_scoped())
         .metadata_annotation(
             "monitoring.materialize.cloud/min-mz-version",
             MIN_MZ_VERSION,
@@ -227,6 +236,64 @@ mod tests {
             );
             rest = &rest[pos + 1..];
         }
+    }
+
+    #[test]
+    fn every_ceph_row_renders_only_where_ceph_is_scraped() {
+        // A Ceph row without a condition draws empty panels on every cloud
+        // bucket, which is most installs.
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let when: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "matches")
+            .collect();
+        assert_eq!(when.len(), 5, "{conditions:?}");
+        for (title, _, value) in when {
+            assert_eq!(value, object_store::CEPH, "{title}");
+            assert!(title.starts_with("Ceph: "), "{title}");
+        }
+    }
+
+    #[test]
+    fn the_object_store_tab_has_exactly_one_fallback_covering_every_store() {
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let fallbacks: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "notMatches")
+            .collect();
+        assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
+        assert!(fallbacks[0].2.contains(object_store::CEPH), "{fallbacks:?}");
+    }
+
+    #[test]
+    fn selecting_every_ceph_cluster_still_renders_the_rows() {
+        test_support::assert_row_conditions_can_read_all(&built());
+    }
+
+    #[test]
+    fn an_unset_detection_variable_renders_no_ceph_row() {
+        for unset in ["", "undefined", "null", "[object Object]"] {
+            assert!(!unset.contains(object_store::CEPH), "{unset}");
+        }
+    }
+
+    #[test]
+    fn every_ceph_query_is_scoped_by_the_ceph_picker() {
+        // Ceph's series carry no environment, so the picker is the only thing
+        // keeping a second Ceph cluster's numbers off these panels.
+        let resource = built();
+        let json = serde_json::to_string(&resource.spec.elements).expect("serialize");
+        let selectors = test_support::selectors_of(&json, "ceph_");
+        assert!(!selectors.is_empty(), "no Ceph queries found");
+        for selector in selectors {
+            assert!(selector.contains("$cephNamespace"), "unscoped: {selector}");
+        }
+    }
+
+    #[test]
+    fn the_fallback_explains_rather_than_announces() {
+        assert!(object_store::NO_STORE.contains("monitoring.enabled"));
+        assert!(object_store::NO_STORE.contains("Infrastructure Cloud Provider"));
     }
 
     #[test]
