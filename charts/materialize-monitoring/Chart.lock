@@ -13,7 +13,7 @@ dependencies:
   version: 0.46.0
 - name: grafana
   repository: oci://ghcr.io/grafana-community/helm-charts
-  version: 13.4.0
+  version: 13.5.0
 - name: grafana-operator
   repository: oci://ghcr.io/grafana/helm-charts
   version: 5.25.0
@@ -29,5 +29,5 @@ dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
-digest: sha256:92718b1557852097707486ae05fac086200f6d025b0c738c057b1bc0abb7e3fd
-generated: "2026-10-08T18:58:28.587921936Z"
+digest: sha256:e6ea3247fc914b1e83da5dec0e81c915264cd9aa9cb717d824b7cd1d8679781a
+generated: "2026-10-09T20:30:15.393535817Z"
