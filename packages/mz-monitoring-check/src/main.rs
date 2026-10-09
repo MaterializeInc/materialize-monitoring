@@ -7,9 +7,12 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
+use std::process::ExitCode;
+
 use clap::{Parser, Subcommand};
 
 mod check_queries;
+mod terraform_render;
 
 #[derive(Parser)]
 #[command(
@@ -25,10 +28,19 @@ struct Cli {
 enum Command {
     /// Validate query-registry YAML files against the query schema.
     CheckQueries(check_queries::CheckQueriesArgs),
+    /// Plan each Terraform example and assert its values land in the rendered chart.
+    TerraformRender(terraform_render::TerraformRenderArgs),
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> ExitCode {
     match Cli::parse().command {
-        Command::CheckQueries(args) => check_queries::check_queries(args),
+        Command::CheckQueries(args) => match check_queries::check_queries(args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("Error: {err:?}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::TerraformRender(args) => terraform_render::terraform_render(args),
     }
 }

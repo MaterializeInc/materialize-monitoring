@@ -522,9 +522,15 @@ terraform-check: terraform-render
 # Plan each example and render the chart against the values it composes. This is
 # the only check that proves a module value reached the setting it was aimed at —
 # `validate` accepts any well-formed HCL, including a path the chart never reads.
-# Needs no cluster; see the script header.
-terraform-render:
-	./bin/terraform-render-check.sh
+# Needs no cluster; see packages/mz-monitoring-check/src/terraform_render/mod.rs.
+#
+# A libtest-style runner, like the E2E suite, so flags pass straight through:
+#
+#   make terraform-render TERRAFORM_RENDER_FLAGS='--example aws scheduling'
+TERRAFORM_RENDER_FLAGS ?=
+
+terraform-render: target/debug/mz-monitoring-check
+	target/debug/mz-monitoring-check terraform-render --terraform "$(TERRAFORM)" $(TERRAFORM_RENDER_FLAGS)
 .PHONY: terraform-render
 
 ### E2E (kind) ###

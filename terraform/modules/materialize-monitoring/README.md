@@ -150,13 +150,23 @@ The credentials are in it because they are deliberately *not* in the value docum
 
 ## Testing
 
-`examples/aws` and `examples/gcp` are not deployable roots — their buckets and roles are placeholders. They exist as plan targets, so the values this module composes can be rendered against the chart with no cluster involved:
+The directories under `examples/` are not deployable roots.
+Their buckets, roles, and keys are placeholders.
+They exist as plan targets, so you can render the values this module composes against the chart with no cluster involved:
 
 ```bash
 make terraform-render
 ```
 
 Each example is planned against a kubeconfig that does not exist (every resource is a create, so nothing refreshes and the providers never connect), the `helm_release` values are read back out of the plan, and the chart is rendered against them. Rendering is the only step that proves a value reached the setting it was aimed at — `terraform validate` accepts every wrong value path, because they are all still valid HCL.
+
+The assertions live in [`packages/mz-monitoring-check/src/terraform_render/`](../../../packages/mz-monitoring-check/src/terraform_render/).
+Each runs once per example as a named trial, such as `gcp::storage_class::reaches_every_claim`, and reports as ignored where the example declares nothing for it to check.
+The runner takes the same flags as `cargo test`, plus `--example` to plan a single example:
+
+```bash
+make terraform-render TERRAFORM_RENDER_FLAGS='--example gcp storage_class'
+```
 
 Both clouds are rendered, and that is not redundancy. The chart's storage defaults are S3-shaped, so an AWS-only example agrees with every default it fails to set. The GCP example is what catches a backend key the module forgot to override.
 
