@@ -200,15 +200,17 @@ queries:
       summary: |
         Object gateway requests per second, by operation, and how many failed.
       nominal: |
-        PUTs, GETs and DELETEs tracking persist's own uploads, fetches and
-        deletes on the Operations tab.
+        PUTs and DELETEs tracking persist's own uploads and deletes on the
+        Operations tab, and GETs tracking its fetches plus its deletes.
       degraded: |
         Failures rising with no change in persist's traffic are the gateway's
         own trouble. Requests well above persist's are another client sharing
         the gateway.
       notes: |
         Every client of every gateway in the selected Ceph cluster, not only
-        Materialize.
+        Materialize. RGW counts a `HEAD` as a GET, and persist checks each
+        object with a `HEAD` before deleting it, so GETs here run well above
+        persist's own reads — about the sum of its reads and deletes.
     promQL:
       - |
         sum(rate(ceph_rgw_op_put_obj_ops{namespace=~"$cephNamespace"}%%{interval}))

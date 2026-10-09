@@ -1219,11 +1219,11 @@ spec:
         description: |-
           **Object gateway requests per second, by operation, and how many failed.**
 
-          **Nominal:** PUTs, GETs and DELETEs tracking persist's own uploads, fetches and deletes on the Operations tab.
+          **Nominal:** PUTs and DELETEs tracking persist's own uploads and deletes on the Operations tab, and GETs tracking its fetches plus its deletes.
 
           **Degraded:** Failures rising with no change in persist's traffic are the gateway's own trouble. Requests well above persist's are another client sharing the gateway.
 
-          Every client of every gateway in the selected Ceph cluster, not only Materialize.
+          Every client of every gateway in the selected Ceph cluster, not only Materialize. RGW counts a `HEAD` as a GET, and persist checks each object with a `HEAD` before deleting it, so GETs here run well above persist's own reads — about the sum of its reads and deletes.
         id: 1038
         links: []
         title: Gateway Requests by Operation
