@@ -3069,8 +3069,8 @@ failing is persist&rsquo;s own measurement, on the other tabs of Materialize
 Persist; this is why.</p>
 <h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
 <p>The series carry the <code>namespace</code> of the Rook cluster and no Materialize
-identity. <code>$cephNamespace</code> picks the Ceph cluster, and every query here
-matches it; nothing can say which object store holds which environment&rsquo;s
+identity. <code>$cephNamespace</code> picks the Ceph cluster, from the dashboard
+section these rows sit in, and every query here matches it; nothing can say which object store holds which environment&rsquo;s
 bucket, so the RGW panels sum every gateway in that cluster.</p>
 <h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
 <p><code>ceph_daemon</code> names a daemon (<code>osd.0</code>, <code>mon.a</code>). Pool series carry only
@@ -3080,6 +3080,9 @@ RGW counters carry <code>instance_id</code>, the gateway&rsquo;s own suffix (<co
 <code>rgw.my.store.a</code>).</p>
 <p>The RGW latency families are a <code>_sum</code> and <code>_count</code> pair, so every latency
 here is a mean, never a percentile.</p>
+<p>Ceph&rsquo;s counters do not end in <code>_total</code>, so Grafana marks every <code>rate()</code> over
+one with Prometheus&rsquo;s &ldquo;metric might not be a counter&rdquo; notice. They are
+counters — the exporter types them so — and the notice is harmless.</p>
 
 <h4 id="infra.ceph.health.status">infra.ceph.health.status
   <a class="anchor" href="#infra.ceph.health.status">#</a>
@@ -4058,9 +4061,11 @@ vantage point.</p>
 <h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
 <p>The series carry the instance&rsquo;s <code>pod</code> and <code>namespace</code> and no Materialize
 identity, so nothing can say which CNPG cluster serves which environment.
-<code>$cnpgClusterList</code> is that mapping, chosen by the reader. It holds CNPG
-cluster names, discovered from instance pod names (<code>&lt;cluster&gt;-&lt;n&gt;</code>), and
-every query here matches <code>pod=~&quot;($cnpgClusterList)-[0-9]+&quot;</code>. Two CNPG
+<code>$cnpgClusterList</code> is that mapping, chosen by the reader, and is declared on
+the dashboard section these rows sit in rather than on the dashboard. It
+holds CNPG cluster names, discovered from instance pod names
+(<code>&lt;cluster&gt;-&lt;n&gt;</code>), and every query here matches
+<code>pod=~&quot;($cnpgClusterList)-[0-9]+&quot;</code>. Two CNPG
 clusters of the same name in different namespaces are read as one.</p>
 <h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
 <p><code>datname</code> is the database, and a CNPG cluster serving Materialize usually
@@ -4068,6 +4073,11 @@ holds three: the one Materialize uses (<code>materialize</code> in the self-mana
 examples), <code>postgres</code>, and <code>template1</code>. Anything else is something else
 sharing the instance — which is the attribution the per-database panels
 exist for. <code>state</code> on <code>cnpg_backends_*</code> is <code>pg_stat_activity.state</code>.</p>
+<p>The <code>pg_stat_*</code> counters do not end in <code>_total</code>, so Grafana marks every
+<code>rate()</code> over one with Prometheus&rsquo;s &ldquo;metric might not be a counter&rdquo; notice.
+They are counters, and the notice is harmless. CNPG caches each query&rsquo;s
+result for 30 seconds by default (<code>metricsQueriesTTL</code>), so at a 30-second
+scrape every other sample repeats; rates are unaffected.</p>
 <h2 id="what-it-does-not-publish">What it does not publish<a class="anchor" href="#what-it-does-not-publish">#</a></h2>
 <p>The size of the instance&rsquo;s volume, so there is no &ldquo;disk full&rdquo; ratio here:
 CNPG&rsquo;s own WAL volume gauges read <code>NaN</code> unless WAL has a volume of its own,

@@ -24482,6 +24482,32 @@ Verified rendering, on Grafana 13.2.2 against a live EKS install: with "All" sel
 VPC CNI rows, and `infra-cloud` shows its RDS rows over a window in which CloudWatch was pulled and its fallback over one
 in which nothing was.
 
+### A picker that only means something where its rows render
+
+Sometimes the discovered rows need a picker of their own: which CNPG cluster, which Ceph cluster.
+Declare it on the rows, not on the dashboard.
+A dashboard-level picker sits in the controls of every install, including the ones where the rows never render,
+and asks a question there that has no answer.
+
+`Row::section(title, rows)` groups a flavor's rows under one header, and `Row::variables` declares the picker on that section.
+Put the discovery condition on the section, and leave the rows inside it unconditioned.
+Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
+`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
+
+Three things to know about section variables:
+
+- **Scope is enforced here too.** Only panels inside the section can read the variable.
+  `Dashboard::build` rejects a panel elsewhere that names it,
+  and `test_support::assert_variables_defined` does the same, through `layout::section_variables`.
+- **The detection variable stays on the dashboard, hidden.**
+  A condition on the section has to read something that exists whether or not the section renders.
+- **The URL carries the picker only while the section is on screen.**
+  On any other tab it reads as an empty `var-…=`, and fills in when its tab is opened.
+
+Verified on Grafana 13.2.3 against the GCP reference install:
+with CNPG scraped, the picker renders under the CloudNativePG header and the panels read it.
+With detection forced to miss, the picker disappears with the rows and only the fallback renders.
+
 ## Cloud provider families
 
 What `infra-cloud` is built on: the metrics the gateway pulls from CloudWatch, Cloud Monitoring and Azure Monitor.
@@ -32610,7 +32636,7 @@ They were built and checked against a Materialize whose metadata database is CNP
 | Decision | As built |
 |---|---|
 | Where they live | A last tab on each client dashboard, **Database Internals** on `env-consensus` and **Object Store Internals** on `env-persist`, not `infra-*` |
-| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, defaulting to "All". It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303) |
+| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, defaulting to "All". It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303). Each is a section variable on the row that holds its flavor's rows, so it appears only where that flavor is detected |
 | Discovery | `$cnpgDetected` and `$cephDetected`, hidden, with one negated fallback per tab that says which scrape to create |
 | Queries | Flavor-native, in `infra-cnpg.yaml` and `infra-ceph.yaml` at `extended`. No `ext:*` series yet |
 

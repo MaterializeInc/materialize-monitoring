@@ -4708,325 +4708,311 @@
                             "visibility": "show"
                           }
                         },
-                        "hideHeader": true,
-                        "layout": {
-                          "kind": "AutoGridLayout",
-                          "spec": {
-                            "columnWidthMode": "narrow",
-                            "fillScreen": false,
-                            "items": [
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-not-serving"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-primary"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-connections-used"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-oldest-transaction"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-xid-used"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-backup-age"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-version"
-                                  }
-                                }
-                              }
-                            ],
-                            "maxColumnCount": 7,
-                            "rowHeightMode": "short"
-                          }
-                        },
-                        "title": "CNPG: Status"
-                      }
-                    },
-                    {
-                      "kind": "RowsLayoutRow",
-                      "spec": {
-                        "collapse": false,
-                        "conditionalRendering": {
-                          "kind": "ConditionalRenderingGroup",
-                          "spec": {
-                            "condition": "and",
-                            "items": [
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "operator": "matches",
-                                  "value": "cnpg_collector_up",
-                                  "variable": "cnpgDetected"
-                                }
-                              }
-                            ],
-                            "visibility": "show"
-                          }
-                        },
                         "hideHeader": false,
                         "layout": {
-                          "kind": "AutoGridLayout",
+                          "kind": "RowsLayout",
                           "spec": {
-                            "columnWidthMode": "wide",
-                            "fillScreen": false,
-                            "items": [
+                            "rows": [
                               {
-                                "kind": "AutoGridLayoutItem",
+                                "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-connections-by-database"
-                                  }
+                                  "collapse": false,
+                                  "hideHeader": true,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "narrow",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-not-serving"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-primary"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-connections-used"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-oldest-transaction"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-xid-used"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-backup-age"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-version"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 7,
+                                      "rowHeightMode": "short"
+                                    }
+                                  },
+                                  "title": "Status"
                                 }
                               },
                               {
-                                "kind": "AutoGridLayoutItem",
+                                "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-connections-by-state"
-                                  }
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-connections-by-database"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-connections-by-state"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-transactions-held"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 3,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Connections"
                                 }
                               },
                               {
-                                "kind": "AutoGridLayoutItem",
+                                "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-transactions-held"
-                                  }
-                                }
-                              }
-                            ],
-                            "maxColumnCount": 3,
-                            "rowHeightMode": "standard"
-                          }
-                        },
-                        "title": "CNPG: Connections"
-                      }
-                    },
-                    {
-                      "kind": "RowsLayoutRow",
-                      "spec": {
-                        "collapse": false,
-                        "conditionalRendering": {
-                          "kind": "ConditionalRenderingGroup",
-                          "spec": {
-                            "condition": "and",
-                            "items": [
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "operator": "matches",
-                                  "value": "cnpg_collector_up",
-                                  "variable": "cnpgDetected"
-                                }
-                              }
-                            ],
-                            "visibility": "show"
-                          }
-                        },
-                        "hideHeader": false,
-                        "layout": {
-                          "kind": "AutoGridLayout",
-                          "spec": {
-                            "columnWidthMode": "wide",
-                            "fillScreen": false,
-                            "items": [
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-transactions"
-                                  }
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-transactions"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-rows"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-cache-hit"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 3,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Activity"
                                 }
                               },
                               {
-                                "kind": "AutoGridLayoutItem",
+                                "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-rows"
-                                  }
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-database-size"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-wal"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-xid-age"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 3,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Storage and Vacuum"
                                 }
                               },
                               {
-                                "kind": "AutoGridLayoutItem",
+                                "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-cache-hit"
-                                  }
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-replication-lag"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "cnpg-archive-failures"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 2,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Replication and Archiving"
                                 }
                               }
-                            ],
-                            "maxColumnCount": 3,
-                            "rowHeightMode": "standard"
+                            ]
                           }
                         },
-                        "title": "CNPG: Activity"
-                      }
-                    },
-                    {
-                      "kind": "RowsLayoutRow",
-                      "spec": {
-                        "collapse": false,
-                        "conditionalRendering": {
-                          "kind": "ConditionalRenderingGroup",
-                          "spec": {
-                            "condition": "and",
-                            "items": [
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "operator": "matches",
-                                  "value": "cnpg_collector_up",
-                                  "variable": "cnpgDetected"
-                                }
-                              }
-                            ],
-                            "visibility": "show"
-                          }
-                        },
-                        "hideHeader": false,
-                        "layout": {
-                          "kind": "AutoGridLayout",
-                          "spec": {
-                            "columnWidthMode": "wide",
-                            "fillScreen": false,
-                            "items": [
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-database-size"
-                                  }
-                                }
+                        "title": "CloudNativePG",
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "allValue": ".+",
+                              "allowCustomValue": true,
+                              "current": {
+                                "text": "",
+                                "value": ""
                               },
-                              {
-                                "kind": "AutoGridLayoutItem",
+                              "definition": "label_values(cnpg_collector_up, pod)",
+                              "description": "The CloudNativePG cluster(s) serving as this environment's metadata database",
+                              "hide": "dontHide",
+                              "includeAll": true,
+                              "label": "CNPG Cluster",
+                              "multi": true,
+                              "name": "cnpgClusterList",
+                              "options": [],
+                              "query": {
+                                "datasource": {
+                                  "name": "${metricsDatasource}"
+                                },
+                                "group": "prometheus",
+                                "kind": "DataQuery",
                                 "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-wal"
-                                  }
-                                }
+                                  "expr": "label_values(cnpg_collector_up, pod)",
+                                  "qryType": 1,
+                                  "query": "label_values(cnpg_collector_up, pod)"
+                                },
+                                "version": "v0"
                               },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-xid-age"
-                                  }
-                                }
-                              }
-                            ],
-                            "maxColumnCount": 3,
-                            "rowHeightMode": "standard"
+                              "refresh": "never",
+                              "regex": "/^(?<value>.+)-[0-9]+$/",
+                              "regexApplyTo": "value",
+                              "skipUrlSync": false,
+                              "sort": "alphabeticalAsc"
+                            }
                           }
-                        },
-                        "title": "CNPG: Storage and Vacuum"
-                      }
-                    },
-                    {
-                      "kind": "RowsLayoutRow",
-                      "spec": {
-                        "collapse": false,
-                        "conditionalRendering": {
-                          "kind": "ConditionalRenderingGroup",
-                          "spec": {
-                            "condition": "and",
-                            "items": [
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "operator": "matches",
-                                  "value": "cnpg_collector_up",
-                                  "variable": "cnpgDetected"
-                                }
-                              }
-                            ],
-                            "visibility": "show"
-                          }
-                        },
-                        "hideHeader": false,
-                        "layout": {
-                          "kind": "AutoGridLayout",
-                          "spec": {
-                            "columnWidthMode": "wide",
-                            "fillScreen": false,
-                            "items": [
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-replication-lag"
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "AutoGridLayoutItem",
-                                "spec": {
-                                  "element": {
-                                    "kind": "ElementReference",
-                                    "name": "cnpg-archive-failures"
-                                  }
-                                }
-                              }
-                            ],
-                            "maxColumnCount": 2,
-                            "rowHeightMode": "standard"
-                          }
-                        },
-                        "title": "CNPG: Replication and Archiving"
+                        ]
                       }
                     },
                     {
@@ -5287,43 +5273,6 @@
           "regex": "",
           "regexApplyTo": "value",
           "skipUrlSync": true,
-          "sort": "alphabeticalAsc"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "allValue": ".+",
-          "allowCustomValue": true,
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "definition": "label_values(cnpg_collector_up, pod)",
-          "description": "The CloudNativePG cluster(s) serving as this environment's metadata database",
-          "hide": "dontHide",
-          "includeAll": true,
-          "label": "CNPG Cluster",
-          "multi": true,
-          "name": "cnpgClusterList",
-          "options": [],
-          "query": {
-            "datasource": {
-              "name": "${metricsDatasource}"
-            },
-            "group": "prometheus",
-            "kind": "DataQuery",
-            "spec": {
-              "expr": "label_values(cnpg_collector_up, pod)",
-              "qryType": 1,
-              "query": "label_values(cnpg_collector_up, pod)"
-            },
-            "version": "v0"
-          },
-          "refresh": "never",
-          "regex": "/^(?<value>.+)-[0-9]+$/",
-          "regexApplyTo": "value",
-          "skipUrlSync": false,
           "sort": "alphabeticalAsc"
         }
       }
