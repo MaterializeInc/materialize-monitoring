@@ -62,6 +62,8 @@ fn dollar_references(expr: &str) -> Vec<String> {
 ///
 /// An undefined Grafana variable interpolates to nothing, the selector matches
 /// no series, and the panel renders empty and correct-looking.
+///
+/// A variable declared on a row or tab counts only for the panels inside it.
 pub(crate) fn assert_variables_defined(resource: &Resource) {
     let defined: Vec<&str> = resource
         .spec
@@ -69,10 +71,15 @@ pub(crate) fn assert_variables_defined(resource: &Resource) {
         .iter()
         .map(variable::name_of)
         .collect();
+    let sections = mzmon_lib::grafana::layout::section_variables(&resource.spec.layout);
     let mut missing = Vec::new();
     for (panel, expr) in expressions(resource) {
+        let scoped = sections.get(&panel).map(Vec::as_slice).unwrap_or_default();
         for reference in dollar_references(&expr) {
-            if !BUILTINS.contains(&reference.as_str()) && !defined.contains(&reference.as_str()) {
+            if !BUILTINS.contains(&reference.as_str())
+                && !defined.contains(&reference.as_str())
+                && !scoped.contains(&reference)
+            {
                 missing.push(format!("{panel}: ${reference}"));
             }
         }

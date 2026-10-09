@@ -30,8 +30,8 @@ description: |
   ## Scope
 
   The series carry the `namespace` of the Rook cluster and no Materialize
-  identity. `$cephNamespace` picks the Ceph cluster, and every query here
-  matches it; nothing can say which object store holds which environment's
+  identity. `$cephNamespace` picks the Ceph cluster, from the dashboard
+  section these rows sit in, and every query here matches it; nothing can say which object store holds which environment's
   bucket, so the RGW panels sum every gateway in that cluster.
 
   ## Label families
@@ -44,6 +44,10 @@ description: |
 
   The RGW latency families are a `_sum` and `_count` pair, so every latency
   here is a mean, never a percentile.
+
+  Ceph's counters do not end in `_total`, so Grafana marks every `rate()` over
+  one with Prometheus's "metric might not be a counter" notice. They are
+  counters — the exporter types them so — and the notice is harmless.
 
 metricImportanceHint: extended
 

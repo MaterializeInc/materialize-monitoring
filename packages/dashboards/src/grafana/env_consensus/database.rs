@@ -21,6 +21,10 @@
 //! cluster is this environment's database is the reader's to say, on
 //! `$cnpgClusterList`. On the usual single cluster, "All" is already right.
 //!
+//! The picker is a section variable on the one CloudNativePG row that holds the
+//! rest, so it renders under that header and hides with it. A dashboard-level
+//! picker would sit in the controls of every environment, CNPG or not.
+//!
 //! # Why these signals
 //!
 //! The Status row answers the four questions the reference installs' incidents
@@ -38,7 +42,7 @@ use super::{latency_ladder, theme, zero_is_healthy};
 use crate::grafana::dependency::ratio_ladder;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
-use mzmon_lib::grafana::variable::extra;
+use mzmon_lib::grafana::variable::{self, extra};
 
 const SHADE: &str = theme::DATABASE.shade;
 
@@ -60,19 +64,28 @@ pub(crate) fn known_flavors() -> String {
     CNPG.to_string()
 }
 
+/// The title of the section holding every CNPG row.
+pub(crate) const CNPG_SECTION: &str = "CloudNativePG";
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![
-        status(q),
-        connections(q),
-        activity(q),
-        storage(q),
-        replication(q),
-        no_flavor_row(),
-    ]
+    vec![cnpg_section(q), no_flavor_row()]
 }
 
-fn cnpg_row(title: &str) -> Row {
-    Row::new(title).only_when_variable(CNPG_DETECTED, CNPG)
+/// Every CNPG row, in one section that renders only where CNPG is scraped and
+/// carries the cluster picker its rows read.
+fn cnpg_section(q: &Queries) -> Row {
+    Row::section(
+        CNPG_SECTION,
+        vec![
+            status(q),
+            connections(q),
+            activity(q),
+            storage(q),
+            replication(q),
+        ],
+    )
+    .only_when_variable(CNPG_DETECTED, CNPG)
+    .variables([variable::cnpg_clusters()])
 }
 
 /// What a CNPG panel shows when its row rendered and the series is absent.
@@ -116,7 +129,7 @@ fn no_flavor_row() -> Row {
 // --- CNPG ----------------------------------------------------------------
 
 fn status(q: &Queries) -> Row {
-    cnpg_row("CNPG: Status").hide_header().grid(
+    Row::new("Status").hide_header().grid(
         AutoGrid::new(7)
             .column_width(ColumnWidth::Narrow)
             .row_height(RowHeight::Short)
@@ -131,7 +144,7 @@ fn status(q: &Queries) -> Row {
 }
 
 fn connections(q: &Queries) -> Row {
-    cnpg_row("CNPG: Connections").grid(
+    Row::new("Connections").grid(
         AutoGrid::new(3)
             .column_width(ColumnWidth::Wide)
             .panel("cnpg-connections-by-database", connections_by_database(q))
@@ -141,7 +154,7 @@ fn connections(q: &Queries) -> Row {
 }
 
 fn activity(q: &Queries) -> Row {
-    cnpg_row("CNPG: Activity").grid(
+    Row::new("Activity").grid(
         AutoGrid::new(3)
             .column_width(ColumnWidth::Wide)
             .panel("cnpg-transactions", transactions(q))
@@ -151,7 +164,7 @@ fn activity(q: &Queries) -> Row {
 }
 
 fn storage(q: &Queries) -> Row {
-    cnpg_row("CNPG: Storage and Vacuum").grid(
+    Row::new("Storage and Vacuum").grid(
         AutoGrid::new(3)
             .column_width(ColumnWidth::Wide)
             .panel("cnpg-database-size", database_size(q))
@@ -161,7 +174,7 @@ fn storage(q: &Queries) -> Row {
 }
 
 fn replication(q: &Queries) -> Row {
-    cnpg_row("CNPG: Replication and Archiving").grid(
+    Row::new("Replication and Archiving").grid(
         AutoGrid::new(2)
             .column_width(ColumnWidth::Wide)
             .panel("cnpg-replication-lag", replication_lag(q))

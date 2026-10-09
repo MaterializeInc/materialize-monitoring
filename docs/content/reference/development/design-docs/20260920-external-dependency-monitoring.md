@@ -951,7 +951,7 @@ They were built and checked against a Materialize whose metadata database is CNP
 | Decision | As built |
 |---|---|
 | Where they live | A last tab on each client dashboard, **Database Internals** on `env-consensus` and **Object Store Internals** on `env-persist`, not `infra-*` |
-| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, defaulting to "All". It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303) |
+| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, defaulting to "All". It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303). Each is a section variable on the row that holds its flavor's rows, so it appears only where that flavor is detected |
 | Discovery | `$cnpgDetected` and `$cephDetected`, hidden, with one negated fallback per tab that says which scrape to create |
 | Queries | Flavor-native, in `infra-cnpg.yaml` and `infra-ceph.yaml` at `extended`. No `ext:*` series yet |
 

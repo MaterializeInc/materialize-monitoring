@@ -4309,197 +4309,193 @@ spec:
                           value: ceph-mgr
                           variable: cephDetected
                       visibility: show
-                  hideHeader: true
-                  layout:
-                    kind: AutoGridLayout
-                    spec:
-                      columnWidthMode: narrow
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-health
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-osds-down
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-raw-used
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-bucket-pool-available
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-objects-degraded
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-rgw-failure-ratio
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-version
-                      maxColumnCount: 7
-                      rowHeightMode: short
-                  title: 'Ceph: Status'
-              - kind: RowsLayoutRow
-                spec:
-                  collapse: false
-                  conditionalRendering:
-                    kind: ConditionalRenderingGroup
-                    spec:
-                      condition: and
-                      items:
-                      - kind: ConditionalRenderingVariable
-                        spec:
-                          operator: matches
-                          value: ceph-mgr
-                          variable: cephDetected
-                      visibility: show
                   hideHeader: false
                   layout:
-                    kind: AutoGridLayout
+                    kind: RowsLayout
                     spec:
-                      columnWidthMode: wide
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
+                      rows:
+                      - kind: RowsLayoutRow
                         spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-health-checks
-                      maxColumnCount: 1
-                      rowHeightMode: standard
-                  title: 'Ceph: Health Checks'
-              - kind: RowsLayoutRow
-                spec:
-                  collapse: false
-                  conditionalRendering:
-                    kind: ConditionalRenderingGroup
+                          collapse: false
+                          hideHeader: true
+                          layout:
+                            kind: AutoGridLayout
+                            spec:
+                              columnWidthMode: narrow
+                              fillScreen: false
+                              items:
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-health
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-osds-down
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-raw-used
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-bucket-pool-available
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-objects-degraded
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-rgw-failure-ratio
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-version
+                              maxColumnCount: 7
+                              rowHeightMode: short
+                          title: Status
+                      - kind: RowsLayoutRow
+                        spec:
+                          collapse: false
+                          hideHeader: false
+                          layout:
+                            kind: AutoGridLayout
+                            spec:
+                              columnWidthMode: wide
+                              fillScreen: false
+                              items:
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-health-checks
+                              maxColumnCount: 1
+                              rowHeightMode: standard
+                          title: Health Checks
+                      - kind: RowsLayoutRow
+                        spec:
+                          collapse: false
+                          hideHeader: false
+                          layout:
+                            kind: AutoGridLayout
+                            spec:
+                              columnWidthMode: wide
+                              fillScreen: false
+                              items:
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-rgw-requests
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-rgw-latency
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-rgw-throughput
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-rgw-queue
+                              maxColumnCount: 2
+                              rowHeightMode: standard
+                          title: Object Gateway
+                      - kind: RowsLayoutRow
+                        spec:
+                          collapse: false
+                          hideHeader: false
+                          layout:
+                            kind: AutoGridLayout
+                            spec:
+                              columnWidthMode: wide
+                              fillScreen: false
+                              items:
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-capacity-raw
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-capacity-pools
+                              maxColumnCount: 2
+                              rowHeightMode: standard
+                          title: Capacity
+                      - kind: RowsLayoutRow
+                        spec:
+                          collapse: false
+                          hideHeader: false
+                          layout:
+                            kind: AutoGridLayout
+                            spec:
+                              columnWidthMode: wide
+                              fillScreen: false
+                              items:
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-osd-utilization
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-osd-latency
+                              - kind: AutoGridLayoutItem
+                                spec:
+                                  element:
+                                    kind: ElementReference
+                                    name: ceph-placement-groups
+                              maxColumnCount: 3
+                              rowHeightMode: standard
+                          title: Disks
+                  title: Ceph
+                  variables:
+                  - kind: QueryVariable
                     spec:
-                      condition: and
-                      items:
-                      - kind: ConditionalRenderingVariable
+                      allValue: .+
+                      allowCustomValue: true
+                      current:
+                        text: ''
+                        value: ''
+                      definition: label_values(ceph_health_status, namespace)
+                      description: Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket
+                      hide: dontHide
+                      includeAll: true
+                      label: Ceph Cluster
+                      multi: true
+                      name: cephNamespace
+                      options: []
+                      query:
+                        datasource:
+                          name: ${metricsDatasource}
+                        group: prometheus
+                        kind: DataQuery
                         spec:
-                          operator: matches
-                          value: ceph-mgr
-                          variable: cephDetected
-                      visibility: show
-                  hideHeader: false
-                  layout:
-                    kind: AutoGridLayout
-                    spec:
-                      columnWidthMode: wide
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-rgw-requests
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-rgw-latency
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-rgw-throughput
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-rgw-queue
-                      maxColumnCount: 2
-                      rowHeightMode: standard
-                  title: 'Ceph: Object Gateway'
-              - kind: RowsLayoutRow
-                spec:
-                  collapse: false
-                  conditionalRendering:
-                    kind: ConditionalRenderingGroup
-                    spec:
-                      condition: and
-                      items:
-                      - kind: ConditionalRenderingVariable
-                        spec:
-                          operator: matches
-                          value: ceph-mgr
-                          variable: cephDetected
-                      visibility: show
-                  hideHeader: false
-                  layout:
-                    kind: AutoGridLayout
-                    spec:
-                      columnWidthMode: wide
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-capacity-raw
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-capacity-pools
-                      maxColumnCount: 2
-                      rowHeightMode: standard
-                  title: 'Ceph: Capacity'
-              - kind: RowsLayoutRow
-                spec:
-                  collapse: false
-                  conditionalRendering:
-                    kind: ConditionalRenderingGroup
-                    spec:
-                      condition: and
-                      items:
-                      - kind: ConditionalRenderingVariable
-                        spec:
-                          operator: matches
-                          value: ceph-mgr
-                          variable: cephDetected
-                      visibility: show
-                  hideHeader: false
-                  layout:
-                    kind: AutoGridLayout
-                    spec:
-                      columnWidthMode: wide
-                      fillScreen: false
-                      items:
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-osd-utilization
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-osd-latency
-                      - kind: AutoGridLayoutItem
-                        spec:
-                          element:
-                            kind: ElementReference
-                            name: ceph-placement-groups
-                      maxColumnCount: 3
-                      rowHeightMode: standard
-                  title: 'Ceph: Disks'
+                          expr: label_values(ceph_health_status, namespace)
+                          qryType: 1
+                          query: label_values(ceph_health_status, namespace)
+                        version: v0
+                      refresh: never
+                      regex: ''
+                      regexApplyTo: value
+                      skipUrlSync: false
+                      sort: alphabeticalAsc
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -4697,34 +4693,4 @@ spec:
       regex: ''
       regexApplyTo: value
       skipUrlSync: true
-      sort: alphabeticalAsc
-  - kind: QueryVariable
-    spec:
-      allValue: .+
-      allowCustomValue: true
-      current:
-        text: ''
-        value: ''
-      definition: label_values(ceph_health_status, namespace)
-      description: Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket
-      hide: dontHide
-      includeAll: true
-      label: Ceph Cluster
-      multi: true
-      name: cephNamespace
-      options: []
-      query:
-        datasource:
-          name: ${metricsDatasource}
-        group: prometheus
-        kind: DataQuery
-        spec:
-          expr: label_values(ceph_health_status, namespace)
-          qryType: 1
-          query: label_values(ceph_health_status, namespace)
-        version: v0
-      refresh: never
-      regex: ''
-      regexApplyTo: value
-      skipUrlSync: false
       sort: alphabeticalAsc

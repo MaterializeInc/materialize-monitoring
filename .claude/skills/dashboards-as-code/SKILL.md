@@ -482,7 +482,9 @@ Five things about them are not re-derivable by reading the modules:
   `$cnpgDetected` (`cnpg_collector_up`, since a CNPG pod's `up` says only `postgresql`) and `$cephDetected`
   (`up{app="ceph-mgr"}`), each with one fallback. Neither family carries an environment, so the reader picks the
   cluster on `$cnpgClusterList` (from pod names, `<cluster>-<n>`) or `$cephNamespace`; a test holds every selector to
-  its picker. `variable::consensus_scoped` and `persist_scoped` add them to `dependency_scoped`.
+  its picker. **The pickers are section variables**, declared with `Row::variables` on the one `Row::section` that
+  holds a flavor's rows, so they render under its header and hide with it instead of sitting in every environment's
+  controls. `variable::consensus_scoped` and `persist_scoped` add only the hidden detection to `dependency_scoped`.
 
 ### `infra-cloud` tabs
 

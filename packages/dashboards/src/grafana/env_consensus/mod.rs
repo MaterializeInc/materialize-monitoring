@@ -229,11 +229,10 @@ mod tests {
             .iter()
             .filter(|(_, op, _)| op == "matches")
             .collect();
-        assert_eq!(when.len(), 5, "{conditions:?}");
-        for (title, _, value) in when {
-            assert_eq!(value, database::CNPG, "{title}");
-            assert!(title.starts_with("CNPG: "), "{title}");
-        }
+        // One section holds them all, so its condition is the only one.
+        assert_eq!(when.len(), 1, "{conditions:?}");
+        assert_eq!(when[0].0, database::CNPG_SECTION);
+        assert_eq!(when[0].2, database::CNPG);
     }
 
     #[test]
@@ -273,6 +272,55 @@ mod tests {
                 selector.contains("$cnpgClusterList"),
                 "unscoped: {selector}"
             );
+        }
+    }
+
+    #[test]
+    fn the_cluster_picker_lives_on_its_section_not_the_dashboard() {
+        // A dashboard-level picker sits in the controls of every environment,
+        // whether or not it runs this flavor; on the section, it hides with it.
+        let resource = built();
+        assert!(
+            !resource
+                .spec
+                .variables
+                .iter()
+                .any(|v| variable::name_of(v) == "cnpgClusterList"),
+            "the picker is dashboard-level"
+        );
+        let json = serde_json::to_value(&resource.spec.layout).expect("serialize");
+        let mut found = Vec::new();
+        find_section_variables(&json, &mut found);
+        assert_eq!(
+            found,
+            vec![(
+                database::CNPG_SECTION.to_string(),
+                "cnpgClusterList".to_string()
+            )]
+        );
+    }
+
+    /// `(row title, variable name)` for every row that declares a variable.
+    fn find_section_variables(value: &serde_json::Value, out: &mut Vec<(String, String)>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if let Some(spec) = map.get("spec")
+                    && let Some(vars) = spec.get("variables").and_then(|v| v.as_array())
+                {
+                    let title = spec["title"].as_str().unwrap_or_default().to_string();
+                    for v in vars {
+                        out.push((
+                            title.clone(),
+                            v["spec"]["name"].as_str().unwrap_or_default().to_string(),
+                        ));
+                    }
+                }
+                map.values().for_each(|v| find_section_variables(v, out));
+            }
+            serde_json::Value::Array(items) => {
+                items.iter().for_each(|v| find_section_variables(v, out))
+            }
+            _ => {}
         }
     }
 

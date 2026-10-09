@@ -23,6 +23,10 @@
 //! `$cephNamespace`. On the usual single cluster, "All" is already right. The
 //! gateway panels sum every client of the store, Materialize among them.
 //!
+//! The picker is a section variable on the one Ceph row that holds the rest,
+//! so it renders under that header and hides with it, for the reason the
+//! metadata database's CNPG section gives.
+//!
 //! # Why these signals
 //!
 //! Status answers whether the store can take persist's writes right now:
@@ -34,7 +38,7 @@
 use mzmon_lib::grafana::generated::{dashboardv2, stat::BigValueGraphMode};
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
-use mzmon_lib::grafana::variable::extra;
+use mzmon_lib::grafana::variable::{self, extra};
 use mzmon_lib::grafana::{palette, threshold};
 
 use super::{latency_ladder, theme, zero_is_healthy};
@@ -61,19 +65,28 @@ pub(crate) fn known_stores() -> String {
     CEPH.to_string()
 }
 
+/// The title of the section holding every Ceph row.
+pub(crate) const CEPH_SECTION: &str = "Ceph";
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![
-        status(q),
-        health_checks(q),
-        gateway(q),
-        capacity(q),
-        disks(q),
-        no_store_row(),
-    ]
+    vec![ceph_section(q), no_store_row()]
 }
 
-fn ceph_row(title: &str) -> Row {
-    Row::new(title).only_when_variable(CEPH_DETECTED, CEPH)
+/// Every Ceph row, in one section that renders only where Ceph is scraped and
+/// carries the Ceph cluster picker its rows read.
+fn ceph_section(q: &Queries) -> Row {
+    Row::section(
+        CEPH_SECTION,
+        vec![
+            status(q),
+            health_checks(q),
+            gateway(q),
+            capacity(q),
+            disks(q),
+        ],
+    )
+    .only_when_variable(CEPH_DETECTED, CEPH)
+    .variables([variable::ceph_namespaces()])
 }
 
 /// What a Ceph panel shows when its row rendered and the series is absent.
@@ -119,7 +132,7 @@ fn no_store_row() -> Row {
 // --- Ceph ----------------------------------------------------------------
 
 fn status(q: &Queries) -> Row {
-    ceph_row("Ceph: Status").hide_header().grid(
+    Row::new("Status").hide_header().grid(
         AutoGrid::new(7)
             .column_width(ColumnWidth::Narrow)
             .row_height(RowHeight::Short)
@@ -134,7 +147,7 @@ fn status(q: &Queries) -> Row {
 }
 
 fn health_checks(q: &Queries) -> Row {
-    ceph_row("Ceph: Health Checks").grid(
+    Row::new("Health Checks").grid(
         AutoGrid::new(1)
             .column_width(ColumnWidth::Wide)
             .panel("ceph-health-checks", checks(q)),
@@ -142,7 +155,7 @@ fn health_checks(q: &Queries) -> Row {
 }
 
 fn gateway(q: &Queries) -> Row {
-    ceph_row("Ceph: Object Gateway").grid(
+    Row::new("Object Gateway").grid(
         AutoGrid::new(2)
             .column_width(ColumnWidth::Wide)
             .panel("ceph-rgw-requests", rgw_requests(q))
@@ -153,7 +166,7 @@ fn gateway(q: &Queries) -> Row {
 }
 
 fn capacity(q: &Queries) -> Row {
-    ceph_row("Ceph: Capacity").grid(
+    Row::new("Capacity").grid(
         AutoGrid::new(2)
             .column_width(ColumnWidth::Wide)
             .panel("ceph-capacity-raw", capacity_raw(q))
@@ -162,7 +175,7 @@ fn capacity(q: &Queries) -> Row {
 }
 
 fn disks(q: &Queries) -> Row {
-    ceph_row("Ceph: Disks").grid(
+    Row::new("Disks").grid(
         AutoGrid::new(3)
             .column_width(ColumnWidth::Wide)
             .panel("ceph-osd-utilization", osd_utilization(q))

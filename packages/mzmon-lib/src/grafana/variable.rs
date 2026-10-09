@@ -959,6 +959,10 @@ pub fn cnpg_detected() -> dashboardv2::VariableKind {
 /// Multi-select with an `.+` "All", which is the regex-safe form: on a single
 /// CNPG cluster — the common case — "All" is the right answer without the
 /// reader touching it.
+///
+/// A section variable: declare it with
+/// [`Row::variables`](crate::grafana::layout::Row::variables) on the rows that
+/// read it, not on the dashboard.
 pub fn cnpg_clusters() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::CNPG_CLUSTER_LIST,
@@ -1007,7 +1011,7 @@ pub fn ceph_detected() -> dashboardv2::VariableKind {
 /// series says which environment's bucket it holds. Discovered from the
 /// manager's `ceph_health_status`, which every Ceph cluster publishes exactly
 /// once. Multi-select with an `.+` "All", so the usual single cluster needs no
-/// choice.
+/// choice. A section variable, like [`cnpg_clusters`].
 pub fn ceph_namespaces() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::CEPH_NAMESPACE,
@@ -1618,18 +1622,23 @@ pub fn dependency_scoped() -> Vec<dashboardv2::VariableKind> {
 }
 
 /// Controls for the metadata database dashboard: [`dependency_scoped`], plus
-/// the discovery and picker for a CloudNativePG cluster's own view.
+/// the hidden discovery of a CloudNativePG cluster.
+///
+/// Not [`cnpg_clusters`]: that picker is declared on the section of rows it
+/// scopes, so it renders only where CNPG does.
 pub fn consensus_scoped() -> Vec<dashboardv2::VariableKind> {
     let mut variables = dependency_scoped();
-    variables.extend([cnpg_detected(), cnpg_clusters()]);
+    variables.push(cnpg_detected());
     variables
 }
 
 /// Controls for the object storage dashboard: [`dependency_scoped`], plus the
-/// discovery and picker for a Ceph cluster's own view.
+/// hidden discovery of a Ceph cluster.
+///
+/// Not [`ceph_namespaces`], for the reason [`consensus_scoped`] gives.
 pub fn persist_scoped() -> Vec<dashboardv2::VariableKind> {
     let mut variables = dependency_scoped();
-    variables.extend([ceph_detected(), ceph_namespaces()]);
+    variables.push(ceph_detected());
     variables
 }
 

@@ -24,9 +24,11 @@ description: |
 
   The series carry the instance's `pod` and `namespace` and no Materialize
   identity, so nothing can say which CNPG cluster serves which environment.
-  `$cnpgClusterList` is that mapping, chosen by the reader. It holds CNPG
-  cluster names, discovered from instance pod names (`<cluster>-<n>`), and
-  every query here matches `pod=~"($cnpgClusterList)-[0-9]+"`. Two CNPG
+  `$cnpgClusterList` is that mapping, chosen by the reader, and is declared on
+  the dashboard section these rows sit in rather than on the dashboard. It
+  holds CNPG cluster names, discovered from instance pod names
+  (`<cluster>-<n>`), and every query here matches
+  `pod=~"($cnpgClusterList)-[0-9]+"`. Two CNPG
   clusters of the same name in different namespaces are read as one.
 
   ## Label families
@@ -36,6 +38,12 @@ description: |
   examples), `postgres`, and `template1`. Anything else is something else
   sharing the instance — which is the attribution the per-database panels
   exist for. `state` on `cnpg_backends_*` is `pg_stat_activity.state`.
+
+  The `pg_stat_*` counters do not end in `_total`, so Grafana marks every
+  `rate()` over one with Prometheus's "metric might not be a counter" notice.
+  They are counters, and the notice is harmless. CNPG caches each query's
+  result for 30 seconds by default (`metricsQueriesTTL`), so at a 30-second
+  scrape every other sample repeats; rates are unaffected.
 
   ## What it does not publish
 
