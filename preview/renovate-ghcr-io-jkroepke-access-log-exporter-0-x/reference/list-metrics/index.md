@@ -490,6 +490,15 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="ext:consensus_up">ext:consensus_up
+        <details>
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#materialize.consensus.alerts.unreachable">materialize.consensus.alerts.unreachable</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="kube_deployment_status_condition">kube_deployment_status_condition
         <details>
             Used labels: condition, deployment, status
@@ -1124,37 +1133,9 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
-    <li id="mz_persist_blob_failures">mz_persist_blob_failures
-        <details>
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="mz_persist_cmd_failed_count">mz_persist_cmd_failed_count
-        <details>
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
-            </ul>
-        </details>
-    </li>
     <li id="mz_persist_columnar_op_count">mz_persist_columnar_op_count
         <details>
             Used labels: op, result
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="mz_persist_columnar_validation_count">mz_persist_columnar_validation_count
-        <details>
-            Used labels: result
             <br />
             Example queries:
             <ul>
@@ -1199,7 +1180,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
-                <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
+                <li><a href="../common-queries#materialize.consensus.alerts.failures">materialize.consensus.alerts.failures</a></li>
             </ul>
         </details>
     </li>
@@ -1220,7 +1201,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#materialize.consensus.failures.by_operation">materialize.consensus.failures.by_operation</a></li>
                 <li><a href="../common-queries#materialize.consensus.health.failed_ops">materialize.consensus.health.failed_ops</a></li>
-                <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
+                <li><a href="../common-queries#materialize.persist.alerts.blob_failures">materialize.persist.alerts.blob_failures</a></li>
                 <li><a href="../common-queries#materialize.persist.failures.by_operation">materialize.persist.failures.by_operation</a></li>
                 <li><a href="../common-queries#materialize.persist.health.failed_ops">materialize.persist.health.failed_ops</a></li>
             </ul>
@@ -1311,15 +1292,6 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.console.query_latency">materialize.console.query_latency</a></li>
-            </ul>
-        </details>
-    </li>
-    <li id="mz_txn_placeholder_schema_apply">mz_txn_placeholder_schema_apply
-        <details>
-            <br />
-            Example queries:
-            <ul>
-                <li><a href="../common-queries#materialize.persist.failures">materialize.persist.failures</a></li>
             </ul>
         </details>
     </li>
@@ -2761,6 +2733,7 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#ext.consensus.persist.up">ext.consensus.persist.up</a></li>
                 <li><a href="../common-queries#materialize.consensus.state.versions">materialize.consensus.state.versions</a></li>
             </ul>
         </details>

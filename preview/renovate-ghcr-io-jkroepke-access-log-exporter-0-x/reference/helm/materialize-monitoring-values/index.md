@@ -40,11 +40,11 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 12.11.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
-| [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.24.0 |
+| [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.4.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.56.1 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.46.0 |
 
@@ -1094,7 +1094,7 @@ Materialize-specific configuration values.
       <td class="helm-value-default"><pre>
 []</pre>
 </td>
-      <td class="helm-value-desc">Override for default metric endpoints
+      <td class="helm-value-desc">Override for default metric endpoints The defaults share one port, so each copies `__metrics_path__` into `metrics_path` with a `relabelings` entry. A replacement keeps that on every endpoint, or their `up` and `scrape_*` series collide.
 </td>
     </tr>
     <tr>
@@ -1910,7 +1910,7 @@ the managed database and the buckets a deployment depends on, and write it
 beside every other metric. The result shares retention, PromQL and alerting
 with the rest of the stack, so a provider series is joinable with
 `mz_persist_*` in one expression. The [external-dependency
-design](https://materializeinc.github.io/materialize-monitoring/reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
+design](https://materializeinc.github.io/materialize-monitoring/reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline)
 records why this is a pull rather than a Grafana datasource.
 
 | Provider | Services | Alloy component |
@@ -2407,14 +2407,51 @@ Multiple exporters can be enabled at once.
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
-      <td class="helm-value-desc">Enable writing to a Google Cloud Monitoring / Cloud Logging destination.
+      <td class="helm-value-desc">Enable writing metrics to Google Cloud Managed Service for Prometheus.
+
+Metrics go over OTLP to Google's
+[Telemetry API](https://docs.cloud.google.com/stackdriver/docs/otlp/overview)
+(`telemetry.googleapis.com`) and land as `prometheus.googleapis.com/`
+metric types, queryable with PromQL in Cloud Monitoring. They are
+billed as Prometheus samples ingested, not per byte as custom
+`workload.googleapis.com/` metrics are.
+
+**Names.** The metric type carries the point kind:
+`prometheus.googleapis.com/<name>/gauge`, `/counter`, `/histogram`,
+`/summary`, and `/unknown` plus `/unknown:counter` for an untyped
+series. The gateway's scrapes honor metadata, so the kind is the one
+the target declares. PromQL takes the bare name, as it does in
+Thanos, and a histogram answers to `<name>_bucket`, `_count` and
+`_sum`. There is no prefix to set: the Telemetry API accepts only
+`prometheus.googleapis.com` or no domain at all.
+
+**Labels.** Cloud Monitoring files each series under a
+`prometheus_target` resource whose labels are `project_id`,
+`location`, `cluster`, `namespace`, `job` and `instance`. `job` and
+`instance` are the scrape target's. `namespace` is the series' own,
+as in Thanos. `cluster` is `CLUSTER_NAME` (the `cluster` label every
+other destination carries) unless the series has one of its own.
+`location` and the project come from the GKE metadata server unless
+`location` and `project` below say otherwise. A series that already
+carries a `location`, `project_id`, `job` or `instance` label keeps
+it as `exported_<label>`. Every series also carries
+`collected_by="materialize-monitoring"`, which sets it apart from
+other Prometheus data in the project: GKE's managed
+kube-state-metrics, for one, writes the same metric types under the
+same `job`.
+
+**Auth** is the gateway's ambient Google identity (Workload Identity
+on GKE) through `otelcol.auth.google`, which needs
+`roles/monitoring.metricWriter` and the `telemetry.googleapis.com`
+API enabled on the project. That component is public preview, which
+the gateway's `experimental` stability level already allows.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.compression</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"gzip"</code></td>
-      <td class="helm-value-desc">Compression for logs/metrics Only gzip is supported for Google Cloud Monitoring / Logging.
+      <td class="helm-value-desc">Compression for the OTLP request body.
 </td>
     </tr>
     <tr>
@@ -2425,21 +2462,42 @@ Multiple exporters can be enabled at once.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.endpoint</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"https://telemetry.googleapis.com"</code></td>
+      <td class="helm-value-desc">Telemetry API endpoint. Override for a Private Service Connect endpoint.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.project</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Google Cloud project to write to. Empty writes to the project the gateway runs in, as GKE's metadata server reports it. Required off GKE: `otelcol.auth.google` will not start without a project, and nothing else supplies one there.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.location</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">`location` label for every series: a Google Cloud region or zone. Empty uses the GKE cluster's own. Required off GKE: the Telemetry API refuses a point without one.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.handlers</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "otelcol.exporter.googlecloud.destination.input"
+  "otelcol.processor.filter.googleCloud.input"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter.
+      <td class="helm-value-desc">Handlers to use for the Google Cloud exporter: the first component of the chain in `config`.
 </td>
     </tr>
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.gateway<wbr>.destination<wbr>.otel<wbr>.googleCloudExporter<wbr>.config</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>An `otelcol.exporter.googlecloud.destination` definition.</code></td>
-      <td class="helm-value-desc">Raw configuration for an otelcol.exporter.googlecloud block. The default config uses Workload Identity Federation (WIF) to authenticate to GCP.
+      <td class="helm-value-default"><code>The chain rendered by the chart's `mzmon.alloyGateway.otelDest.googleCloud` helper.</code></td>
+      <td class="helm-value-desc">Raw configuration for the Google Cloud export chain. Override it only to change the chain itself; every component is labelled `googleCloud`, and `handlers` must name its first one.
 </td>
     </tr>
     <tr>
@@ -3094,7 +3152,16 @@ because what it stored is the literal placeholder text.
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`).
+      <td class="helm-value-desc">Extra `jsonData`, merged over the chart's defaults (`prometheusType: Thanos`, `httpMethod: POST`, and `timeInterval`).
+
+`timeInterval` is the scrape interval Grafana assumes when it sizes
+`$__rate_interval`. The chart sets it to the slower of
+`pipeline.metrics.kubelet.scrapeInterval` and
+`pipeline.metrics.kubeProxy.scrapeInterval` (60s by default). `rate()`
+needs two samples in its window, and with Grafana's own 15s assumption
+the window is one minute, which holds one sample of a 60s scrape.
+Set it here only when this datasource reads metrics scraped more slowly
+than that; the render warns about a shorter one.
 </td>
     </tr>
     <tr>
@@ -3420,7 +3487,7 @@ every replica like any other.
 
 #### Alerting rules
 
-Which alerting rules install: the bundled rule set, gated by what this deployment contains.
+Which alerting and recording rules install: the bundled rule set, gated by what this deployment contains.
 
 The bundled rules are rendered at build time from the query registry
 (`packages/queries/`) and installed as `PrometheusRule` resources, each
@@ -3430,14 +3497,19 @@ Thanos ruler imports the PromQL ones and evaluates them. The alloy-gateway's
 install only where this release runs both. Where they go once they fire is
 `alerting`, below.
 
-A rule installs when **every capability it requires is present**, and it is
+An alert installs when **every capability it requires is present**, and it is
 either in the **default set** or named in `selected`, and it is not named in
 `disabled`. Capabilities name what a deployment contains, never who operates
 it: a CockroachDB rule is for a deployment running CockroachDB. Most are
 derived from what this chart deploys (`materialize`, `kube-state-metrics`,
-`loki`, …); the rest are listed in `capabilities`. The generated
-`pre-rendered/rules/_index.yaml` lists every rule with its engine and the
-capabilities it requires.
+`loki`, a provider pull, …); the rest are listed in `capabilities`. The
+generated `pre-rendered/rules/_index.yaml` lists every rule with its engine
+and the capabilities it requires.
+
+A **recording rule** installs wherever its capabilities are present, with no
+selection: the normalized `ext:*` series are what other rules and panels
+read, and recording one costs a few series. `selected`, `disabled` and
+`overrides` name alerts only.
 
 <table class="helm-values">
   <thead>
@@ -3447,7 +3519,7 @@ capabilities it requires.
       <td class="helm-value-key">rules<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
-      <td class="helm-value-desc">Install the bundled alerting rules.
+      <td class="helm-value-desc">Install the bundled alerting and recording rules.
 </td>
     </tr>
     <tr>
@@ -3475,8 +3547,10 @@ capabilities it requires.
 
 The derived ones are `materialize`, `materialize-sql`, `materialize-operator`,
 `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki` and `alloy`, each
-present when this chart runs the component and collects its metrics. List
-one here as well when something outside the chart provides it — your own
+present when this chart runs the component and collects its metrics, and
+`cloudwatch`, `cloud-monitoring` and `azure-monitor`, present when the
+gateway runs that provider pull (`pipeline.metrics.provider.*`). List one
+here as well when something outside the chart provides it — your own
 kube-state-metrics, say. An unknown name fails the render.
 </td>
     </tr>
@@ -3696,6 +3770,53 @@ alone.
   </tbody>
 </table>
 
+#### External dependencies
+
+The services Materialize depends on and does not run: which of the resources the stack watches are which.
+
+A provider pull (`pipeline.metrics.provider.*`) watches every database it is
+told to, and the provider cannot say which of them is Materialize's metadata
+database: the Terraform modules add Grafana's database to the same pull. This
+block says which is which. The normalized `ext:consensus_*` recording rules
+read only the databases named here, so an undeclared database, Grafana's
+among them, is never recorded as a metadata database.
+
+Nothing here is needed for Materialize's own view of its metadata database,
+which the `persist` adapter records wherever Materialize is.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">externalDependencies<wbr>.consensus</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Metadata (consensus) databases, by flavor and provider resource name.
+
+| `flavor` | `resourceId` | Watched by |
+|---|---|---|
+| `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
+| `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
+| `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+
+```yaml
+externalDependencies:
+  consensus:
+    - flavor: rds
+      resourceId: mzmon-prod-db
+```
+
+The resource has to be watched by its provider pull as well, or there is
+nothing to record, and the render warns. Each recorded series carries the
+resource as its `resource` label. Matching ignores case.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 #### Alert routing
 
 Where alerts go: receivers, severity presets, and extra routes.
@@ -3883,12 +4004,59 @@ routes:
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">alerting<wbr>.defaultTemplates</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Make the chart's notification templates every receiver's default.
+
+The chart ships its templates as `mzmon.gotmpl` whatever this says, as
+`mzmon.*` definitions a receiver can reference. On, they also replace
+Alertmanager's built-in defaults, so a receiver that sets no `title`, `text`
+or link of its own gets them:
+
+| Built-in | Becomes |
+| --- | --- |
+| `__subject`, the title or subject of nearly every integration | `[FIRING:2] env-uptime-sla — prod/materialize (critical)`: alert, `cluster/namespace`, severity |
+| `__alertmanagerURL`, every integration's link | The alert group in Grafana, or nothing when Grafana's URL is unknown; Alertmanager's own UI when `alertmanager.baseURL` is set instead |
+| `slack.default.text`, empty upstream | The summary, the description, one line per alert, and links to the runbook, Grafana and a pre-filled silence |
+| `slack.default.color` | By severity rather than red for everything |
+
+A template under `templates` that defines one of these names again still
+wins, because the chart's file is loaded first. Off restores Alertmanager's
+own defaults, whose links name the pod's address.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alerting<wbr>.grafanaURL</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>""</code></td>
+      <td class="helm-value-desc">Grafana's browser-facing URL, for the links in notifications. Empty derives it.
+
+Notifications link to the alert group and to a pre-filled silence in
+Grafana's alerting pages, which read the bundled Alertmanager through the
+`connections.datasources.alertmanager` datasource. Empty takes the URL
+Grafana builds its own links from:
+
+| `connections.grafana.mode` | Derived from |
+| --- | --- |
+| `bundled` | `grafana.grafana.ini.server.root_url` |
+| `operator` | `connections.grafana.operator.spec.config.server.root_url` |
+| `external` | `connections.grafana.external.url` |
+
+Set this when that address is not the one people reach Grafana at: an
+external Grafana addressed in-cluster, or a `root_url` written with
+Grafana's `%(domain)s` placeholders, which the chart cannot resolve. With no
+URL, notifications carry no Grafana links, and the render warns once a
+receiver exists.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">alerting<wbr>.templates</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {}</pre>
 </td>
-      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render.
+      <td class="helm-value-desc">Notification templates, keyed by file name, loaded by every receiver. Names end in `.tmpl`; anything else is not loaded and fails the render. They load after the chart's `mzmon.gotmpl`, so a name defined in both takes the definition here. See `defaultTemplates`.
 </td>
     </tr>
     <tr>
@@ -4547,8 +4715,17 @@ Upstream reference:
     <tr>
       <td class="helm-value-key">alloy-gateway<wbr>.alloy<wbr>.stabilityLevel</td>
       <td class="helm-value-type">string</td>
-      <td class="helm-value-default"><code>"generally-available"</code></td>
+      <td class="helm-value-default"><code>"experimental"</code></td>
       <td class="helm-value-desc">Stability level of alloy components.
+
+`experimental`, because every gateway scrape sets `honor_metadata`, which
+Alloy refuses to build below that level. It is what types the metrics the
+OpenTelemetry destinations receive. The Google Cloud exporter's
+`otelcol.auth.google` is public preview and needs no more than this.
+
+A lower level renders an error rather than a gateway that crashloops:
+`alloy validate`, and so the pre-validate job, does not check a component's
+arguments against it.
 </td>
     </tr>
     <tr>
@@ -4557,12 +4734,12 @@ Upstream reference:
       <td class="helm-value-default"><pre>
 [
   {
-    "name": "GOMEMLIMIT",
-    "value": "600MiB"
+    "name": "AUTOMEMLIMIT",
+    "value": "0.8"
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `GOMEMLIMIT` at ~80% of the memory limit, for the same reason as the agent's. The gateway now carries the kubelet cAdvisor scrape, so its heap scales with node count — keep this in step with the limit.  It is the ceiling the GC works against, so it also sets where the gateway idles. Leaving it near the old limit while raising `resources` would waste the new headroom; leaving it *above* the limit forfeits the whole point, since the runtime would only start collecting hard after the kubelet has already OOM-killed the pod.
+      <td class="helm-value-desc">Extra environment variables to pass to the alloy gateway pod. `AUTOMEMLIMIT` sets `GOMEMLIMIT` to 80% of the container's memory limit when Alloy starts, for the same reason as the agent's `GOMEMLIMIT`. Deriving it means raising `resources` is the whole change: the GC ceiling follows, and so do the memory limiter's thresholds, which are percentages of the same limit.  The ratio has to stay below the limiter's 85%. The GC should be holding the heap down well before the limiter starts refusing scrapes, and a refused scrape is lost. An explicit `GOMEMLIMIT` here takes precedence and is not kept in step with `resources`. Replacing this list without either leaves Alloy's own default of 90%, which sits above the limiter.
 </td>
     </tr>
     <tr>
@@ -4703,15 +4880,36 @@ the `tls.*File` carriers are preferred over the inline PEMs.
 {
   "limits": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   },
   "requests": {
     "cpu": "500m",
-    "memory": "768Mi"
+    "memory": "2Gi"
   }
 }</pre>
 </td>
-      <td class="helm-value-desc">Resources for the alloy gateway containers. Memory is the gateway's binding constraint and the only axis that actually relieves it — see the `targetMemoryUtilizationPercentage` note below for why adding replicas does not. Sized for the floor a CPU-scaled gateway settles at: at `minReplicas` each pod carries the whole scrape fan-out rather than a shard of it, so the per-pod working set is higher than it looks at a scaled-out replica count. Raise this, and `GOMEMLIMIT` with it, as node count grows.
+      <td class="helm-value-desc">Resources for the alloy gateway containers.
+
+Memory is the gateway's binding constraint. Its live heap is about 200MiB
+of fixed cost plus about 2.6KiB for every series the pod holds. Each series
+is held three times: by the scrape cache, the OTLP-to-Prometheus bridge
+and the remote-write queue. The gateways split the scrape targets, so at
+`minReplicas` each pod holds its share of every series in the cluster. It
+also holds, until its write-ahead log next checkpoints, the series of
+targets a recent resharding moved away from it.
+
+Keep that live heap under about half of `GOMEMLIMIT`. Past that the GC
+runs constantly: measured with a 600MiB `GOMEMLIMIT`, a pod with 300MiB
+live collected about 3 times a minute on 0.07 cores, and one with 450MiB
+live collected 30 or more times a minute on 0.3 cores. That CPU is what the
+autoscaler scales on, so a gateway short of memory also scales out and
+back for no other reason.
+
+The default fits a medium install. It was measured on 9 nodes and ten
+Materialize replicas, a quarter of a million series in all. At 2 replicas a
+pod there holds 120k to 160k series, about 500 to 600MiB live, against a
+1.6GiB `GOMEMLIMIT`. Raise this as series grow. `GOMEMLIMIT` and the
+memory limiter's thresholds follow it (see `extraEnv`).
 </td>
     </tr>
     <tr>
@@ -4734,7 +4932,33 @@ the `tls.*File` carriers are preferred over the inline PEMs.
       <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.targetMemoryUtilizationPercentage</td>
       <td class="helm-value-type">int</td>
       <td class="helm-value-default"><code>0</code></td>
-      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory is the wrong *signal* for this component, because scaling out does not relieve it. The gateway's footprint is dominated by fixed per-process cost, not by per-replica load: measured on a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi. Each new replica adds a whole baseline to save a few Mi on its peers, so a memory-driven scale-out makes cluster memory pressure *worse*.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Relieve gateway memory vertically instead: raise `resources` and keep `GOMEMLIMIT` in step (see both, above). That is also what the node-count scaling in the `GOMEMLIMIT` note means in practice.
+      <td class="helm-value-desc">Memory scaling is deliberately OFF (`0` is the subchart's disable value; it renders the metric away rather than setting it to zero). Not a tuning choice — memory utilization does not say whether a gateway is short of memory. The Go runtime lets the heap grow toward `GOMEMLIMIT` before it collects hard, so a healthy pod's working set reads high too, and on a small cluster most of it is fixed per-process cost that a new replica only duplicates. On a 7-node cluster, going from 3 replicas to 6 moved per-pod memory from 370Mi to 341Mi while total consumption went from 1.1Gi to 2.0Gi.  It also cannot stabilize. Idle sat at ~62% of the request, so a 60% target was below the floor: the HPA scaled up, the metric did not move, and it flapped against maxReplicas indefinitely. No target value fixes that, because the control loop is open — the action does not change the measurement.  Size gateway memory vertically instead (`resources`, above). A pod that is short of it shows on CPU first, because collecting more often is what it spends the CPU on.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">alloy-gateway<wbr>.controller<wbr>.autoscaling<wbr>.horizontal<wbr>.scaleDown</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "policies": [
+    {
+      "periodSeconds": 600,
+      "type": "Pods",
+      "value": 1
+    }
+  ],
+  "selectPolicy": "Max",
+  "stabilizationWindowSeconds": 3600
+}</pre>
+</td>
+      <td class="helm-value-desc">Scale down slowly: only after an hour of low CPU, and one pod at a time.
+
+Every scale event reshards the scrape targets. A scale-down hands each
+remaining pod a larger share, and every pod keeps the series of the
+targets it gave up until its write-ahead log next checkpoints, hours
+later. A gateway that scales down and back up within the hour pays for
+both shares at once. The scale-up path stays fast, because it relieves
+load rather than concentrating it.
 </td>
     </tr>
     <tr>
@@ -5124,6 +5348,7 @@ image, this one included. The profiles under `profiles/registry/` repoint
   "alertmanager_url": "http://_http._tcp.alertmanager-headless.{{ .Release.Namespace }}.svc.{{ include \"mzmon.clusterDomain\" . }}",
   "enable_alertmanager_discovery": true,
   "enable_alertmanager_v2": true,
+  "enable_sharding": true,
   "evaluation_interval": "1m",
   "poll_interval": "1m",
   "remote_write": {
@@ -5149,7 +5374,7 @@ image, this one included. The profiles under `profiles/registry/` repoint
           },
           {
             "regex": "",
-            "replacement": "${POD_NAME}",
+            "replacement": "loki-ruler",
             "source_labels": [
               "instance"
             ],
@@ -5185,6 +5410,26 @@ side uses — and why `split-namespace` overrides both of them.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.enable_sharding</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Divide the rule groups between the ruler replicas, so each group is evaluated by one of them.
+
+Without it every replica loads every group: each alert is sent once per
+replica, and each recording-rule sample is written once per replica.
+
+The replicas divide the groups through a hash ring. Loki puts every ring
+on memberlist when `memberlist.join_members` is set, which the subchart
+does, so the ruler's ring rides the same gossip cluster as the rest of
+Loki and needs no configuration of its own.
+
+| A replica | Its groups move to the others |
+| --- | --- |
+| Stops cleanly (rollout, eviction, drain) | Within one evaluation, because it leaves the ring on the way out |
+| Is lost without stopping (node failure) | After two `heartbeat_timeout`s (two minutes by default), when the others forget it. The groups are not evaluated until then |
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.loki<wbr>.rulerConfig<wbr>.remote_write</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -5211,7 +5456,7 @@ side uses — and why `split-namespace` overrides both of them.
         },
         {
           "regex": "",
-          "replacement": "${POD_NAME}",
+          "replacement": "loki-ruler",
           "source_labels": [
             "instance"
           ],
@@ -5352,7 +5597,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "0.4.21"
+  "tag": "0.4.22"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -5830,6 +6075,13 @@ https://grafana.com/docs/loki/latest/get-started/components/
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">loki<wbr>.ruler<wbr>.replicas</td>
+      <td class="helm-value-type">int</td>
+      <td class="helm-value-default"><code>2</code></td>
+      <td class="helm-value-desc">Replicas. Two, for availability. They divide the rule groups between them rather than each evaluating all of them; see `loki.loki.rulerConfig.enable_sharding`.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">loki<wbr>.ruler<wbr>.persistence<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>true</code></td>
@@ -5875,18 +6127,10 @@ https://grafana.com/docs/loki/latest/get-started/components/
         "name": "ruler-env"
       }
     }
-  },
-  {
-    "name": "POD_NAME",
-    "valueFrom": {
-      "fieldRef": {
-        "fieldPath": "metadata.name"
-      }
-    }
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">The cluster name and the pod name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. `POD_NAME` is the `instance` of every remote-written sample, from `rulerConfig.remote_write.clients.gateway.write_relabel_configs`. A list: restate both when adding one.
+      <td class="helm-value-desc">The cluster name, which Loki's `-config.expand-env` substitutes into `rulerConfig`. `CLUSTER_NAME` is stamped on alerts by `rulerConfig.alert_relabel_configs`, read from the `ruler-env` ConfigMap the chart renders in the Loki namespace from `clusterName`. A list: restate it when adding another.
 </td>
     </tr>
     <tr>
@@ -5960,7 +6204,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.10.1"
+  "tag": "2.11.2"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -6527,7 +6771,8 @@ reason, and it is worth spelling out because Receive looks stateful.
 Durability comes from `--receive.replication-factor=3`, not from disk.
 Blocks ship to object storage every 2h, so the window that exists only
 locally is at most 2h — and every replica uploads its own copy under a
-distinct `replica` external label, which the Compactor deduplicates. A pod
+distinct `receive_replica` external label, which the Compactor
+deduplicates (see `compactor.extraArgs`). A pod
 that comes back with an empty volume has lost its copy of that window, and
 the query path still answers from the surviving replicas.
 
@@ -6761,6 +7006,47 @@ intent. 30d clears both comfortably.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">thanos<wbr>.compactor<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--log.level=info",
+  "--log.format=logfmt",
+  "--consistency-delay=30m",
+  "--compact.enable-vertical-compaction",
+  "--deduplication.replica-label=receive_replica"
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra CLI arguments for the Compactor.
+**This is a list, and Helm overwrites lists rather than merging them.**
+The first three entries restate the subchart's defaults, which are also
+Thanos's own, so an override that drops them changes nothing. An override
+that drops either flag below brings back the failure it prevents.
+
+`--compact.enable-vertical-compaction` lets the Compactor merge
+overlapping blocks. Without it, any overlap halts compaction, retention
+and downsampling until someone repairs the bucket by hand. Receive
+produces overlaps on every restart: the block it flushes on shutdown ends
+at its last sample, and after restart it accepts replicated and retried
+samples a few seconds older than that. Overlaps of 5–40s were observed
+after ordinary rollouts.
+
+`--deduplication.replica-label=receive_replica` drops the per-pod label
+from block grouping, so the replication factor's copies compact into one
+block. The bucket then holds one copy of each series rather than RF. The
+default merge function deduplicates only identical samples, which is what
+Receive replication writes. Thanos Query still deduplicates the recent
+window on `receive_replica`, so reads are unchanged. A deduplicated group
+holds every series, so above `replicaCount == replicationFactor` a
+compaction group is larger than one replica's was.
+
+Both flags are irreversible for the blocks they touch. The replica label
+alone also turns on vertical compaction (Thanos `cmd/thanos/compact.go`);
+the explicit flag keeps overlaps from halting compaction if an override
+drops the replica label.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">thanos<wbr>.compactor<wbr>.vpa</td>
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
@@ -6981,7 +7267,6 @@ validator warns when the two disagree.
   },
   "enabled": true,
   "extraArgs": [
-    "--remote-write.config-file=/etc/thanos/remote-write.yaml",
     "--label=cluster=\"$(CLUSTER_NAME)\""
   ],
   "extraEnv": [
@@ -6997,24 +7282,12 @@ validator warns when the two disagree.
   ],
   "extraVolumeMounts": [
     {
-      "mountPath": "/etc/thanos/remote-write.yaml",
-      "name": "remote-write",
-      "readOnly": true,
-      "subPath": "remote-write.yaml"
-    },
-    {
       "mountPath": "/etc/mzmon/tls",
       "name": "mzmon-tls",
       "readOnly": true
     }
   ],
   "extraVolumes": [
-    {
-      "configMap": {
-        "name": "thanos-ruler-remote-write-v2"
-      },
-      "name": "remote-write"
-    },
     {
       "name": "mzmon-tls",
       "secret": {
@@ -7036,6 +7309,10 @@ validator warns when the two disagree.
     "urls": [
       "http://thanos-query:9090"
     ]
+  },
+  "remoteWrite": {
+    "enabled": true,
+    "secretName": "thanos-ruler-remote-write-v2"
   },
   "replicaCount": 2,
   "resources": {
@@ -7167,8 +7444,8 @@ lists `example-alerts.yaml` as a required property**, so neither
 `rules: {}` (which would not clear a subchart default anyway) nor
 `example-alerts.yaml: null` renders — the second fails schema validation
 before any template runs. A rule file declaring no groups is the only
-spelling that both satisfies the schema and evaluates nothing. Fixing that
-upstream is on the same list as the missing `remoteWrite` key.
+spelling that both satisfies the schema and evaluates nothing, until the
+schema is fixed upstream.
 
 The render fails if the example rule comes back.
 
@@ -7241,22 +7518,15 @@ advice applies: keep it within one minor of your API server.
 </td>
     </tr>
     <tr>
-      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
-      <td class="helm-value-type">list</td>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.remoteWrite</td>
+      <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
-[
-  "--remote-write.config-file=/etc/thanos/remote-write.yaml",
-  "--label=cluster=\"$(CLUSTER_NAME)\""
-]</pre>
+{
+  "enabled": true,
+  "secretName": "thanos-ruler-remote-write-v2"
+}</pre>
 </td>
       <td class="helm-value-desc">Run stateless: remote-write rule results, keep no TSDB.
-
-**The subchart models no `remoteWrite` key**, and its StatefulSet passes
-`--objstore.config-file` unconditionally, so stateless is reached by
-pointing `extraArgs` at a ConfigMap the umbrella renders
-(`templates/thanos-ruler-remote-write.yaml`). Fixing that upstream is
-tracked; until it lands, **this flag is load-bearing** — drop it and the
-Ruler silently reverts to a local TSDB.
 
 Three reasons stateless is the right mode here, in ascending order of how
 much they matter. It removes a stateful workload. It puts rule results on
@@ -7266,16 +7536,41 @@ interaction. And it is what makes alert state forwardable: a Ruler shipping
 blocks puts `ALERTS` in Thanos and out of reach of every gateway
 destination except Thanos.
 
-The residue is that the Ruler still starts a block shipper against the
-object store. With an agent WAL and no blocks in the data directory it
-scans every 30s and uploads nothing.
+With `enabled`, the subchart passes `--remote-write.config-file` and drops
+`--objstore.config-file`, so the Ruler runs no block shipper. The
+configuration targets the alloy-gateway's metrics listener, and **the
+chart renders it as a Secret** (`templates/thanos-ruler-remote-write.yaml`)
+rather than through `config`, because the gateway's address follows
+umbrella values that the subchart's `tpl` cannot read.
 
-**`--label=cluster` is load-bearing too.** It is an external label, which
-the Ruler adds to every alert it sends that does not already carry
-`cluster`, and to every sample it writes. `$(CLUSTER_NAME)` is expanded by
-Kubernetes from `extraEnv` below, which reads the `ruler-env` ConfigMap the
-chart renders from `clusterName`. Both flags have to survive
-an override of this list; the render warns when either goes missing.
+`secretName` is one of two Secrets the chart renders, `-tls` for when
+`pipeline.metrics.gateway.server.tls` is on, which
+`profiles/mtls.values.yaml` selects and the render enforces. The Ruler
+reads the file once at startup, so the names carry the mode and a
+revision: switching Secrets changes the pod template, which is what rolls
+it.
+
+Writing elsewhere means naming another Secret here, or setting
+`secretName: ""` with `createSecret: true` and the configuration in
+`config`. The render's gateway checks then no longer apply.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">thanos<wbr>.ruler<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--label=cluster=\"$(CLUSTER_NAME)\""
+]</pre>
+</td>
+      <td class="helm-value-desc">Extra Ruler flags.
+
+**`--label=cluster` is load-bearing.** It is an external label, which the
+Ruler adds to every alert it sends that does not already carry `cluster`,
+and to every sample it writes. `$(CLUSTER_NAME)` is expanded by Kubernetes
+from `extraEnv` below, which reads the `ruler-env` ConfigMap the chart
+renders from `clusterName`. It has to survive an override of this list;
+the render warns when it goes missing.
 </td>
     </tr>
     <tr>
@@ -7303,12 +7598,6 @@ an override of this list; the render warns when either goes missing.
       <td class="helm-value-default"><pre>
 [
   {
-    "configMap": {
-      "name": "thanos-ruler-remote-write-v2"
-    },
-    "name": "remote-write"
-  },
-  {
     "name": "mzmon-tls",
     "secret": {
       "optional": true,
@@ -7317,21 +7606,14 @@ an override of this list; the render warns when either goes missing.
   }
 ]</pre>
 </td>
-      <td class="helm-value-desc">Volumes for the Ruler: the remote-write ConfigMap above, and the Thanos certificate.
-
-`remote-write` is the plaintext variant of the Ruler's remote-write
-configuration. When `pipeline.metrics.gateway.server.tls` is on it has to
-name the `-tls` variant instead, which `profiles/mtls.values.yaml` does and
-the render enforces. The Ruler reads the file once at startup, so the names
-carry the mode and a revision: switching ConfigMaps changes the pod
-template, which is what rolls it.
+      <td class="helm-value-desc">The Thanos certificate, for the Ruler's TLS clients.
 
 `mzmon-thanos-tls` is the certificate the chart issues for Thanos when
 `certificates` is on. The Ruler presents it to Alertmanager when
 `alerting.server.tls` is on and to the gateway when its metrics listener
 serves TLS, and trusts its `ca.crt`. Mounted unconditionally and optionally,
 so the same values work before issuance, during it and after.
-This is a list: restate both entries when adding one.
+This is a list: restate the entry when adding one.
 </td>
     </tr>
     <tr>
@@ -7346,10 +7628,14 @@ This is a list: restate both entries when adding one.
 
 The Loki ruler keeps a volume for the same WAL, on the argument that
 buffering derived samples through a metric-store outage is worth a disk.
-That argument applies here too and is deliberately not taken yet: this
-Ruler evaluates no recording rules, so there is nothing to buffer, and a
-10Gi PVC per replica for an empty WAL is not a default worth shipping.
-Revisit when recording rules land.
+That argument applies here too and is deliberately not taken: the
+recording rules this Ruler evaluates are the `ext:*` layer, a few
+low-cardinality series, and the WAL holds them through a store outage on
+the pod's own volume. What a PVC would add is keeping them across a pod
+rescheduled during that outage, which loses minutes of history rather
+than any alert, and a 10Gi PVC per replica is not a default worth shipping
+for that. Revisit if a recording rule's history becomes something an
+alert or a report depends on.
 </td>
     </tr>
     <tr>
@@ -7455,7 +7741,7 @@ Upstream references:
 {
   "registry": "ghcr.io",
   "repository": "grafana/grafana-operator",
-  "tag": "v5.24.0"
+  "tag": "v5.25.0"
 }</pre>
 </td>
       <td class="helm-value-desc">Operator image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -7674,37 +7960,31 @@ check warns when it is missing.
 }</pre>
 </td>
       <td class="helm-value-desc">Container security context for Grafana.
-Only the delta over the subchart's own, which already drops every
-capability, forbids privilege escalation and sets `RuntimeDefault` seccomp.
+The subchart's own already drops every capability, forbids privilege
+escalation, sets `RuntimeDefault` seccomp and makes the root filesystem
+read-only. The chart restates the read-only root because the validators
+and the production checklist depend on it.
 
-A read-only root filesystem needs two things from the rest of this block,
-and Grafana breaks quietly without either:
+A read-only root filesystem needs two things, and Grafana breaks quietly
+without either:
 
 | Needs | Supplied by | Without it |
 |---|---|---|
-| A writable `/tmp` | `extraEmptyDirMounts` | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
+| A writable `/tmp` | The subchart, which mounts an `emptyDir` named `tmp` there | Every backend plugin fails to start, Prometheus and Loki included. Each one listens on a Unix socket under `/tmp`. The pod stays Ready and every panel fails with `Unable to find datasource plugin`. |
 | `grafana.ini.plugins.preinstall_auto_update: false` | `grafana.ini` | Grafana unloads a bundled datasource plugin to update it, fails to delete the old copy from the image, and leaves the datasource unloaded until the next restart. |
 
 Everything else Grafana writes lands on the `storage` and `search` volumes
 the subchart mounts at `/var/lib/grafana` and `/var/lib/grafana-search`.
 The one exception is `GF_AWS_PROFILES`: the image's entrypoint writes those
-profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own.
-Validators fail the render on each of these gaps, and warn when this is
-turned off.
-</td>
-    </tr>
-    <tr>
-      <td class="helm-value-key">grafana<wbr>.extraEmptyDirMounts</td>
-      <td class="helm-value-type">list</td>
-      <td class="helm-value-default"><pre>
-[
-  {
-    "mountPath": "/tmp",
-    "name": "tmp"
-  }
-]</pre>
-</td>
-      <td class="helm-value-desc">Writable `emptyDir` mounts. `/tmp` is required; see `containerSecurityContext`. This is a list, so a values file that sets it replaces the entry below rather than adding to it. Keep `/tmp` in any list that replaces it.
+profiles to `/usr/share/grafana/.aws`, which then needs a mount of its own
+through `grafana.extraEmptyDirMounts`.
+
+A second mount at `/tmp`, or a second volume named `tmp`, makes the API
+server reject the Deployment. Neither `grafana.extraEmptyDirMounts` nor
+`grafana.extraVolumeMounts` may add one.
+
+Validators fail the render on the plugin setting, a missing `.aws` mount
+and a duplicate `/tmp`, and warn when this is turned off.
 </td>
     </tr>
     <tr>
@@ -8062,7 +8342,7 @@ the StatefulSet, whose volumes do not follow; see
       <td class="helm-value-default"><pre>
 {
   "repository": "quay.io/prometheus/alertmanager",
-  "tag": "v0.34.0"
+  "tag": "v0.34.1"
 }</pre>
 </td>
       <td class="helm-value-desc">Alertmanager image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -8245,7 +8525,7 @@ and turning `alerting.server.tls` on changes no volume.
   ],
   "image": {
     "repository": "quay.io/prometheus-operator/prometheus-config-reloader",
-    "tag": "v0.93.1"
+    "tag": "v0.94.1"
   },
   "resources": {
     "limits": {
@@ -8552,23 +8832,22 @@ relabeling drops the headless Service's targets.
       <td class="helm-value-default"><code>""</code></td>
       <td class="helm-value-desc">Alertmanager's own external URL (`--web.external-url`). Leave it empty unless Alertmanager itself is exposed.
 
-The default notification templates build two kinds of link from it: the
-alert list (`<baseURL>/#/alerts`) and a pre-filled silence
-(`<baseURL>/#/silences/new`). Both are paths in Alertmanager's own UI.
+Alertmanager's built-in notification templates link to its alert list
+(`<baseURL>/#/alerts`) from it. The chart's templates
+(`alerting.defaultTemplates`) link to Grafana instead whenever Grafana's URL
+is known, and fall back to the alert list and a pre-filled silence
+(`<baseURL>/#/silences/new`) only when it is not and this is set.
 
 **Do not point it at Grafana.** Grafana serves neither path, so every link
-lands on Grafana's home page. Grafana's equivalents live under
-`<grafana>/alerting/` and name the Alertmanager datasource by its *name*
-(`connections.datasources.alertmanager.name`), for example
-`/alerting/silence/new?alertmanager=Alertmanager&matcher=alertname%3DFoo`.
-A notification template in `alerting.templates` is the place to build them;
-see Alert Channels.
+lands on Grafana's home page. Set `alerting.grafanaURL`, or Grafana's
+`root_url`, for links into Grafana.
 
-Unset, the links name the pod's own address, which is unreachable from
-outside the cluster but harmless. Set this when Alertmanager is exposed,
-behind authentication, to the address operators reach it at. A path is
-fine: `extraArgs.web.route-prefix` keeps the endpoints at `/`, so an
-ingress serving a sub-path strips the prefix before forwarding.
+Unset, Alertmanager's own links name the pod's address, which is
+unreachable from outside the cluster, and the chart's templates leave them
+out. Set this when Alertmanager is exposed, behind authentication, to the
+address operators reach it at. A path is fine:
+`extraArgs.web.route-prefix` keeps the endpoints at `/`, so an ingress
+serving a sub-path strips the prefix before forwarding.
 </td>
     </tr>
   </tbody>
@@ -8610,16 +8889,42 @@ Upstream reference:
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]"
+  "nodes=[karpenter.sh/nodepool,eks.amazonaws.com/nodegroup,cloud.google.com/gke-nodepool,kubernetes.azure.com/agentpool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone]",
+  "pods=[cluster.environmentd.materialize.cloud/cluster-id,cluster.environmentd.materialize.cloud/replica-id,cluster.environmentd.materialize.cloud/size,materialize.cloud/environment-id]"
 ]</pre>
 </td>
-      <td class="helm-value-desc">Node labels copied onto `kube_node_labels`, as `label_<key>` with every character outside `[a-zA-Z0-9_]` mapped to `_`.
+      <td class="helm-value-desc">Node and pod labels copied onto `kube_node_labels` and `kube_pod_labels`.
 
-The node pool, by whichever label the cluster's provisioner sets — Karpenter,
-an EKS managed node group, a GKE node pool or an AKS agent pool — and the
-instance type and zone. The Infrastructure Autoscaling dashboard groups nodes
-by all three. One series per node, so the cost is negligible; add a label here
-rather than `nodes=[*]`, which copies every label on every node.
+kube-state-metrics publishes each label as `label_<key>`, with every
+character outside `[a-zA-Z0-9_]` mapped to `_`. It publishes neither family
+until an entry names a label for that resource.
+
+| Entry   | Labels | Read by |
+| ------- | ------ | ------- |
+| `nodes` | The node pool, by whichever label the provisioner sets (Karpenter, an EKS managed node group, a GKE node pool or an AKS agent pool), the instance type and the zone | The Infrastructure Autoscaling dashboard, which groups nodes by all three |
+| `pods`  | A replica pod's Materialize cluster id, replica id and replica size, and the environment id | Any join from a `kube_pod_*` family to a Materialize cluster or replica, such as cost or requests per replica |
+
+The `pods` labels arrive under the canonical names `cluster_id`,
+`replica_id`, `replica_size` and `environment_id` rather than as `label_*`.
+`prometheus.monitor.http.metricRelabelings` renames them. Only clusterd pods
+carry the first three. No released Materialize operator sets
+`materialize.cloud/environment-id` yet, so `environment_id` is absent until
+one does.
+
+**Cardinality.** Each family has one series per object, whatever the list
+names, because the labels are carried on that one series. A broader list
+costs index size and series churn rather than series count: a label whose
+value changes on a running object ends one series and starts another.
+`pods=[*]` copies every label on every pod in the cluster, including the
+per-rollout hashes and whatever a workload owner chose to set, so name labels
+individually instead.
+
+**Extending the list.** Helm replaces a list rather than merging it, so an
+override restates both entries. Leaving out `nodes` empties every per-pool
+panel with nothing else failing. The Terraform module's
+`kube_state_metrics_pod_labels` appends to the `pods` entry without
+restating it. An ownership label for cost-center allocation is the expected
+addition, and arrives as `label_<key>`.
 </td>
     </tr>
     <tr>
@@ -8715,7 +9020,37 @@ you know it.
       <td class="helm-value-type">object</td>
       <td class="helm-value-default"><pre>
 {
-  "honorLabels": true
+  "honorLabels": true,
+  "metricRelabelings": [
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_cluster_id"
+      ],
+      "targetLabel": "cluster_id"
+    },
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_replica_id"
+      ],
+      "targetLabel": "replica_id"
+    },
+    {
+      "sourceLabels": [
+        "label_cluster_environmentd_materialize_cloud_size"
+      ],
+      "targetLabel": "replica_size"
+    },
+    {
+      "sourceLabels": [
+        "label_materialize_cloud_environment_id"
+      ],
+      "targetLabel": "environment_id"
+    },
+    {
+      "action": "labeldrop",
+      "regex": "label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id"
+    }
+  ]
 }</pre>
 </td>
       <td class="helm-value-desc">Keep kube-state-metrics' own labels when they collide with the scrape's.
@@ -8741,6 +9076,63 @@ Both endpoints, so turning `selfMonitor` on does not reintroduce it on the
 half nobody was looking at. The subchart defaults both to `false`.
 
 Asserted by the e2e suite: `kube_state::labels_are_honored`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">kube-state-metrics<wbr>.prometheus<wbr>.monitor<wbr>.http<wbr>.metricRelabelings</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_cluster_id"
+    ],
+    "targetLabel": "cluster_id"
+  },
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_replica_id"
+    ],
+    "targetLabel": "replica_id"
+  },
+  {
+    "sourceLabels": [
+      "label_cluster_environmentd_materialize_cloud_size"
+    ],
+    "targetLabel": "replica_size"
+  },
+  {
+    "sourceLabels": [
+      "label_materialize_cloud_environment_id"
+    ],
+    "targetLabel": "environment_id"
+  },
+  {
+    "action": "labeldrop",
+    "regex": "label_cluster_environmentd_materialize_cloud_(cluster_id|replica_id|size)|label_materialize_cloud_environment_id"
+  }
+]</pre>
+</td>
+      <td class="helm-value-desc">Rename the Materialize pod labels on `kube_pod_labels` to their canonical names.
+
+| Pod label                                          | Published as     |
+| -------------------------------------------------- | ---------------- |
+| `cluster.environmentd.materialize.cloud/cluster-id` | `cluster_id`     |
+| `cluster.environmentd.materialize.cloud/replica-id` | `replica_id`     |
+| `cluster.environmentd.materialize.cloud/size`       | `replica_size`   |
+| `materialize.cloud/environment-id`                  | `environment_id` |
+
+`cluster_id` and `replica_id` are the names `mz_cluster_info` and
+`mz_replica_info` already carry, so a join through `kube_pod_labels`
+needs no `label_replace`. Without the rename the keys would be
+`label_cluster_environmentd_materialize_cloud_cluster_id` and its
+siblings. The `label_*` form is dropped rather than kept beside the
+canonical one, because nothing read it before these labels were
+allowlisted.
+
+A pod without the label is left alone: the copy writes an empty value,
+which is no label at all. Restate these rules when overriding the
+list, since Helm replaces it.
 </td>
     </tr>
   </tbody>

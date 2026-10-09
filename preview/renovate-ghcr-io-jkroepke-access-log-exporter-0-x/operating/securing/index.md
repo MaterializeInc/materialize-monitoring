@@ -167,9 +167,9 @@ Two consequences follow from those deviations, and the second is the one that su
   The chart sets one for grafana-operator, Thanos, metrics-server, node-exporter and the Alloy pre-validate job, and sets seccomp on the Alloy containers directly.
   Thanos takes it per component, because Compactor, Store Gateway, Receive and Ruler each ship a context of their own that `thanos.global.podSecurityContext` never overrides.
 - [x] `[chart]` **Grafana runs on a read-only root filesystem.**
-  It needs a writable `/tmp`, which the chart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
+  It needs a writable `/tmp`, which the Grafana subchart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
   Without either, the pod stays Ready while its datasources fail.
-  A validator errors on both.
+  A validator errors when the plugin setting is turned back on, and when a values file adds a second `/tmp` mount.
   See `grafana.containerSecurityContext` in the [values reference](../../reference/helm/materialize-monitoring-values/).
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
@@ -313,9 +313,9 @@ Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare
 Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
 
 Both rulers also remote-write rule results, including the `ALERTS` series, to the gateway's metrics listener on 9090, which the profile moves to TLS.
-The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` ConfigMap.
-The profile points the ruler at the TLS one.
-The ruler reads that file once at startup, so switching ConfigMaps, which changes its pod template, is what rolls it onto TLS.
+The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` Secret.
+The profile points `thanos.ruler.remoteWrite.secretName` at the TLS one.
+The ruler reads that file once at startup, so switching Secrets, which changes its pod template, is what rolls it onto TLS.
 The names also carry a revision, which is bumped whenever the contents change, so a chart upgrade rolls the ruler onto new contents too.
 The Loki ruler's is in its subchart's values, so the profile restates its URL as https and adds a `tls_config`.
 Both present their own component's certificate from phase 1, so phase 3 can require one in any rollout order.
@@ -407,7 +407,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 
 Where the phases land is therefore your choice, not the chart's. A stack sitting at phase 1 or 2 is **encrypted and not authenticated**, and phase 2 is the state most likely to be mistaken for mTLS: every values file carries a `certFile`, the servers name a client CA, and a client presenting nothing is still served. Only phase 3 refuses it.
 
-The design for the first three is written up in the [TLS and authentication design doc](../../reference/internal/design-docs/20260816-tls-authentication/) (internal), including the two-phase rollout that gets there without an outage.
+The design for the first three is written up in the [TLS and authentication design doc](../../reference/development/design-docs/20260816-tls-authentication/), including the two-phase rollout that gets there without an outage.
 
 ## See also
 

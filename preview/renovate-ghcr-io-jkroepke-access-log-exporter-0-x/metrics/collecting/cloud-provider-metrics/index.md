@@ -18,7 +18,7 @@ Persist, Loki and Thanos measure every request they make against the database an
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
 For the cluster's nodes it adds the provider's own view: host and instance health, node groups that cannot reach their desired size, compute quota,
 and on AKS the managed cluster autoscaler, which runs where nothing in the cluster can scrape it.
-The [external-dependency design](../../../reference/internal/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
+The [external-dependency design](../../../reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
 Agent note: each pull is a custom component in packages/alloy-pipelines/gateway-provider.yaml, and
@@ -289,9 +289,9 @@ A registry tier admits a metric at that tier and above, so `metricImportance` de
 
 A destination that bills per series, such as Datadog or a BYOC fan-out, therefore does not receive them unless its floor or the provider's tier is changed.
 
-The Google Cloud Monitoring destination deserves the same care on an install that also pulls from GCP.
+The Google Cloud destination deserves the same care on an install that also pulls from GCP.
 Its default floor is `recommended`, which keeps the pulled families out.
-Raising either would write each series back into Cloud Monitoring as a custom `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
+Raising either would write each series back into Cloud Monitoring as a `prometheus.googleapis.com/` metric: a billed second copy of data Cloud Monitoring already holds.
 The pull does not read those types back, so it does not loop.
 
 ## What is deliberately not pulled

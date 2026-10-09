@@ -16,7 +16,7 @@ The other pages in this section cover each stage in depth, including its day-2 a
 
 Two Alloy roles sit in front of Loki.
 The Alloy [agent](#alloy-agent) (a DaemonSet, one per node) tails container logs and the systemd journal and forwards them to the Alloy [gateway](#alloy-gateway).
-The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/internal/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
+The gateway also watches the Kubernetes events API, does the heavy [log processing](../../reference/development/pipelines/logging/) — level normalization and [cardinality](../../o11y-glossary/#observability-foundations) reduction — and pushes the result into Loki.
 
 Loki is a [log store modeled after Prometheus](../../o11y-glossary/#stack-components): it indexes only the **labels** on each [log stream](../../o11y-glossary/#logs-and-events), never the log contents.
 That is what keeps it cheap at high volume, and it is why the gateway works to keep label cardinality under control before logs ever reach Loki — high-cardinality attributes belong in the log body or in [structured metadata](#storage), not in stream labels.
@@ -94,7 +94,7 @@ It discovers the pods scheduled on its own node, tails their container log files
 It does only light work locally — attaching node and pod metadata, basic relabeling, and a per-node rate limit — then forwards everything to the gateway over the Loki push API.
 Because it is a DaemonSet, collection scales with the number of nodes, and no application needs a logging sidecar.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ### alloy-gateway
 
@@ -105,7 +105,7 @@ Its ingress port (`ALLOY_LOKI_PORT`, default `3100`) and its write destination (
 
 The gateway is also the egress point for the [remote-only topology](#alternative-topologies) and the conduit the [Loki Ruler](#ruler) uses to remote-write recording-rule samples to the long-term metric store.
 
-*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/internal/pipelines/logging/).
+*See more:* [Collecting](../collecting/) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## The hash ring
 
@@ -124,6 +124,7 @@ flowchart LR
 Replication gives durability and quorum: a single ingester can be lost or restarted without dropping writes, and queriers deduplicate the copies on read.
 The ring is also what makes scaling and rolling restarts safe — components join and leave the ring and traffic rebalances around them.
 A replication factor of 3 implies you run **at least three ingesters**.
+The rulers keep a ring of their own on the same memberlist cluster, which assigns each rule group to one ruler; see [Loki Ruler](#ruler).
 
 > [!INFO]
 >   `memberlist` is the default ring backend in current Loki.
@@ -231,8 +232,26 @@ The **Loki Ruler** evaluates LogQL [alerting and recording rules](../rules/) on 
 - **Alerting rules** emit alerts to [Alertmanager](../../alerting/), which routes and notifies.
 - **Recording rules** turn a LogQL expression into a metric sample. Because that output is a metric — not a log — the ruler **remote-writes those samples back through `alloy-gateway`**, which forwards them to the long-term metric store ([Thanos](../../o11y-glossary/#stack-components)) alongside the rest of the metrics pipeline. This keeps log-derived metrics in the same place you query everything else.
 
-Rule definitions live in object storage, and when multiple rulers run they shard rule groups across themselves via a consistent hash ring.
-A ruler can delegate query execution to the query frontend to benefit from splitting and caching.
+Rule definitions live in object storage.
+The chart runs two rulers, and they divide the rule groups between them through a [hash ring](#the-hash-ring) on the same memberlist cluster as the rest of Loki.
+Outside a ring change, each group is evaluated by one ruler, so each alert is sent once and each recording-rule sample is written once.
+While the ring changes, a group's old and new ruler can both hold it until each one's next sync, and an evaluation that falls in that window runs on both.
+A group's ruler follows a hash of the group, so with only a few groups one ruler can hold all of them while the other holds none.
+Grafana's rule list is complete from either ruler, because the ruler that answers collects the other's groups over gRPC.
+
+| When a ruler | Its groups move to the other ruler |
+| --- | --- |
+| Stops cleanly, as in a rollout, an eviction or a node drain | Within one evaluation interval, because it leaves the ring as it stops |
+| Is lost without stopping, as in a node failure | After two minutes, when the survivor forgets it. Its groups are not evaluated until then |
+
+A recording-rule sample with no `job` or `instance` of its own gets `loki-ruler` for each; one that already carries either keeps it.
+`instance` is a constant rather than the pod name because every rollout moves groups between rulers, and a per-pod value would start a new series each time.
+
+The rulers run their queries themselves.
+Loki can instead hand them to the query frontend for its splitting and caching, but the chart does not configure that.
+
+<!-- Verified 2026-10-02 against two Loki 3.7.6 rulers on one memberlist cluster: disjoint group ownership, a clean stop handed off in about 9s, and a SIGKILL in about 2m04s (auto-forget at 2 × the 1m heartbeat_timeout).
+Also verified the same day on a live EKS install with the chart's config patched in: a rolling restart, a pod deletion, and a scale to one replica and back each left every group evaluated exactly once per interval, and a recording rule stayed one series. `ruler.evaluation.mode` is `local` there. -->
 
 *See more:* [Ruler](https://grafana.com/docs/loki/latest/get-started/components/#ruler) (official) and [Logs & Events > Rules](../rules/).
 
@@ -322,6 +341,6 @@ Cross-cutting operational guidance (upgrades, securing, tuning) lives under [Ope
 - [Loki deployment modes](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) — monolithic vs. simple scalable vs. microservice.
 - [Loki hash rings](https://grafana.com/docs/loki/latest/get-started/hash-rings/) — ring membership and replication in detail.
 - [Loki storage](https://grafana.com/docs/loki/latest/operations/storage/) — object storage, the index, and retention.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative gateway/agent pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative gateway/agent pipeline definition.
 - [o11y Glossary](../../o11y-glossary/) — definitions for the vocabulary used on this page.
 
