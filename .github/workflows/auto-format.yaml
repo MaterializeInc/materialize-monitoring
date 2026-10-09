@@ -23,10 +23,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 
-permissions:
-  contents: write
-  # dorny/paths-filter lists a PR's changed files via the API.
-  pull-requests: read
+permissions: {}
 
 concurrency:
   group: auto-format-${{ github.event.pull_request.number }}
@@ -46,6 +43,10 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'auto-format')
     runs-on: ubuntu-26.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # dorny/paths-filter lists a PR's changed files via the API.
+      pull-requests: read
     outputs:
       proceed: ${{ steps.guard.outputs.proceed }}
       helm_deps: ${{ steps.filter.outputs.helm_deps }}
@@ -90,6 +91,9 @@ jobs:
     if: ${{ needs.check.outputs.proceed == 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    permissions:
+      # The push falls back to GITHUB_TOKEN when MATERIALIZE_BOT_TOKEN is unset.
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
