@@ -27,31 +27,35 @@ name: design-doc-notify
 #
 # A notification is sent when all of these hold:
 #   * A ready-to-review PR is (re-)opened, or a draft is marked ready.
+#   * The PR comes from a branch in this repository, not a fork.
 #   * That PR *adds* a Markdown page under docs/content/reference/development/design-docs/.
 #
-# pull_request_target rather than pull_request: the Slack credential is only
-# readable from a workflow running against the base repository. Nothing from
-# the PR head is checked out or executed here, so the elevated context stays
-# inert.
+# Runs on pull_request, not pull_request_target. Secrets reach pull_request
+# runs for same-repository branches only, so the Slack credential is never
+# exposed to a fork. The job skips fork PRs outright rather than failing at
+# the Slack step without a token.
 #
 # This is the one workflow that path-filters on the trigger rather than in a
 # `changes` job. The usual reason not to — a required check skipped at the
 # trigger level stays pending forever — does not apply, because this workflow
 # reports no status anyone gates on.
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, ready_for_review]
     paths:
       - docs/content/reference/development/design-docs/*.md
 
-# dorny/paths-filter lists a PR's changed files via the API.
-permissions:
-  contents: read
-  pull-requests: read
+permissions: {}
 
 jobs:
   notify:
-    if: ${{ !github.event.pull_request.draft }}
+    if: >
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      # dorny/paths-filter lists a PR's changed files via the API.
+      pull-requests: read
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

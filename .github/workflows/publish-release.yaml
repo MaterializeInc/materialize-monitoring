@@ -7,9 +7,7 @@ on:
   pull_request:
     types: [closed]
 
-permissions:
-  contents: write
-  packages: write
+permissions: {}
 
 concurrency:
   group: publish-release-${{ github.event.pull_request.head.ref }}
@@ -47,6 +45,11 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'version-update/')
     runs-on: ubuntu-26.04
     timeout-minutes: 20
+    permissions:
+      # Create the tag and the GitHub Release.
+      contents: write
+      # Push the chart to GHCR.
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
