@@ -62,6 +62,8 @@ fn dollar_references(expr: &str) -> Vec<String> {
 ///
 /// An undefined Grafana variable interpolates to nothing, the selector matches
 /// no series, and the panel renders empty and correct-looking.
+///
+/// A variable declared on a row or tab counts only for the panels inside it.
 pub(crate) fn assert_variables_defined(resource: &Resource) {
     let defined: Vec<&str> = resource
         .spec
@@ -69,10 +71,15 @@ pub(crate) fn assert_variables_defined(resource: &Resource) {
         .iter()
         .map(variable::name_of)
         .collect();
+    let sections = mzmon_lib::grafana::layout::section_variables(&resource.spec.layout);
     let mut missing = Vec::new();
     for (panel, expr) in expressions(resource) {
+        let scoped = sections.get(&panel).map(Vec::as_slice).unwrap_or_default();
         for reference in dollar_references(&expr) {
-            if !BUILTINS.contains(&reference.as_str()) && !defined.contains(&reference.as_str()) {
+            if !BUILTINS.contains(&reference.as_str())
+                && !defined.contains(&reference.as_str())
+                && !scoped.contains(&reference)
+            {
                 missing.push(format!("{panel}: ${reference}"));
             }
         }
@@ -236,6 +243,31 @@ pub(crate) fn assert_row_conditions_can_read_all(resource: &Resource) {
             );
         }
     }
+}
+
+/// Every metric selector in `json` whose metric name starts with `prefix`, from
+/// the name to its closing brace.
+///
+/// Only a name followed directly by `{` is a selector; the same name in a
+/// panel description is prose, and is skipped.
+pub(crate) fn selectors_of<'a>(json: &'a str, prefix: &str) -> Vec<&'a str> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(found) = json[from..].find(prefix) {
+        let start = from + found;
+        let name_len = json[start..]
+            .bytes()
+            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            .count();
+        let after = start + name_len;
+        if json[after..].starts_with('{')
+            && let Some(close) = json[after..].find('}')
+        {
+            out.push(&json[start..=after + close]);
+        }
+        from = start + 1;
+    }
+    out
 }
 
 #[cfg(test)]

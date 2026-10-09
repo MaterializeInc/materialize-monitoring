@@ -1,0 +1,378 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Object storage, as a Rook-managed Ceph cluster reports it about itself.
+
+description: |
+  What a Ceph cluster run by Rook publishes about itself, for the deployments
+  whose persist bucket is on Ceph's S3-compatible object gateway (RGW) rather
+  than on a cloud provider's object store.
+
+  Two sources, both of which Rook can scrape for you:
+
+  * **The active manager** (`rook-ceph-mgr` Service, port `http-metrics`,
+    9283) reports the cluster as a whole: overall health and each active
+    health check, capacity, pools, placement groups, and whether each disk
+    daemon (OSD) is up and in.
+  * **`rook-ceph-exporter`**, a DaemonSet with one pod per node (port
+    `ceph-exporter-http-metrics`, 9926), reports the performance counters of
+    every Ceph daemon on its node. The `ceph_rgw_*` request counters and
+    latencies — the server side of every call persist makes — and per-OSD
+    utilization come only from here.
+
+  Rook creates a `ServiceMonitor` for each when the `CephCluster` sets
+  `monitoring.enabled: true`, and ships both as examples under
+  `deploy/examples/monitoring/`.
+
+  Unlike a cloud bucket, an on-premise store can fill up and can lose a disk,
+  and this is the only vantage point that says so. Whether persist's calls are
+  failing is persist's own measurement, on the other tabs of Materialize
+  Persist; this is why.
+
+  ## Scope
+
+  The series carry the `namespace` of the Rook cluster and no Materialize
+  identity. `$cephNamespace` picks the Ceph cluster, from the dashboard
+  section these rows sit in, and every query here matches it; nothing can say which object store holds which environment's
+  bucket, so the RGW panels sum every gateway in that cluster.
+
+  ## Label families
+
+  `ceph_daemon` names a daemon (`osd.0`, `mon.a`). Pool series carry only
+  `pool_id`; `ceph_pool_metadata` maps it to `name`, and each RGW object store
+  `<store>` keeps its object data in the pool `<store>.rgw.buckets.data`. The
+  RGW counters carry `instance_id`, the gateway's own suffix (`a` for
+  `rgw.my.store.a`).
+
+  The RGW latency families are a `_sum` and `_count` pair, so every latency
+  here is a mean, never a percentile.
+
+  Ceph's counters do not end in `_total`, so Grafana marks every `rate()` over
+  one with Prometheus's "metric might not be a counter" notice. They are
+  counters — the exporter types them so — and the notice is harmless.
+
+metricImportanceHint: extended
+
+queries:
+  # --- Status -----------------------------------------------------------------
+  - id: infra.ceph.health.status
+    stability: experimental
+    description:
+      summary: |
+        Ceph's own verdict on the cluster: `HEALTH_OK`, `HEALTH_WARN` or
+        `HEALTH_ERR`.
+      nominal: HEALTH_OK.
+      degraded: |
+        HEALTH_WARN covers everything from a misconfiguration notice to a disk
+        that is nearly full. _Active Health Checks_ on this tab lists which
+        checks are raised.
+      unhealthy: |
+        HEALTH_ERR means data is unavailable or at risk: writes may be
+        blocked, which persist reports as failed uploads.
+    promQL: |
+      max(ceph_health_status{namespace=~"$cephNamespace"})
+
+  - id: infra.ceph.health.osds_down
+    stability: experimental
+    description:
+      summary: |
+        Disk daemons (OSDs) that are down.
+      nominal: Zero.
+      degraded: |
+        Ceph keeps serving from the remaining copies, with less redundancy.
+        If an OSD stays down, Ceph marks it out and copies its data elsewhere,
+        which costs the remaining disks I/O.
+      unhealthy: |
+        Enough OSDs down that a placement group loses all its copies makes
+        objects unavailable, and persist's reads and writes against them fail.
+    promQL: |
+      count(ceph_osd_up{namespace=~"$cephNamespace"} == 0) or vector(0)
+
+  - id: infra.ceph.health.raw_used
+    stability: experimental
+    description:
+      summary: |
+        Raw disk capacity used across the cluster, replication included.
+      nominal: |
+        Below 75%. Ceph needs room to re-replicate a failed disk's data onto
+        the others.
+      degraded: |
+        Above 75%, losing a disk may push the others past Ceph's `nearfull`
+        ratio (85% by default) while it recovers.
+      unhealthy: |
+        At the `full` ratio (95% by default) on any OSD, Ceph stops accepting
+        writes to the pools on it, and persist cannot upload.
+      notes: |
+        A cluster-wide average. Ceph enforces `full` per OSD, so one uneven
+        disk can stop writes first; _OSD Utilization_ shows each.
+    promQL: |
+      sum(ceph_cluster_total_used_raw_bytes{namespace=~"$cephNamespace"})
+      / sum(ceph_cluster_total_bytes{namespace=~"$cephNamespace"})
+
+  - id: infra.ceph.health.bucket_pool_available
+    stability: experimental
+    description:
+      summary: |
+        Space still writable in each object store's bucket data pool, after
+        replication.
+      nominal: Comfortably more than a few days' growth of persist's data.
+      degraded: |
+        Little headroom left. Persist's stored data only shrinks when
+        compaction catches up, so this is the number to plan disks against.
+      notes: |
+        Ceph's own estimate, from the fullest OSD the pool can write to and
+        the pool's replication. It moves when any other pool on the same
+        disks grows.
+    promQL: |
+      max by (name) (
+        ceph_pool_max_avail{namespace=~"$cephNamespace"}
+        * on (namespace, pool_id) group_left (name)
+          max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~"$cephNamespace", name=~".+\\.rgw\\.buckets\\.data"})
+      )
+
+  - id: infra.ceph.health.objects_degraded
+    stability: experimental
+    description:
+      summary: |
+        Object copies Ceph is missing and has not yet re-created.
+      nominal: Zero.
+      degraded: |
+        Non-zero after a disk or node failure while Ceph recovers. Reads and
+        writes continue, with fewer copies behind them.
+      unhealthy: |
+        A count that stops falling is recovery that cannot proceed — usually
+        too few disks left to place another copy on.
+    promQL: |
+      sum(ceph_num_objects_degraded{namespace=~"$cephNamespace"})
+
+  - id: infra.ceph.health.rgw_failure_ratio
+    stability: experimental
+    description:
+      summary: |
+        The fraction of object gateway requests that failed.
+      nominal: |
+        A small, steady fraction. RGW counts every request that does not
+        succeed, so a lookup of an object that does not exist counts too.
+      degraded: |
+        A rise that coincides with failures on persist's own panels is the
+        gateway refusing work: overloaded, out of space, or unable to reach
+        the disks behind it.
+    promQL: |
+      (
+        sum(rate(ceph_rgw_failed_req{namespace=~"$cephNamespace"}%%{interval}))
+        / sum(rate(ceph_rgw_req{namespace=~"$cephNamespace"}%%{interval}))
+      ) >= 0
+
+  - id: infra.ceph.health.version
+    stability: experimental
+    description:
+      summary: |
+        The Ceph version the cluster's disk daemons run.
+      nominal: One supported release on every daemon.
+      notes: |
+        More than one version means an upgrade is rolling through. An
+        out-of-date dependency has been the cause of an incident before, and
+        this is the one place it is visible without a Ceph login.
+
+        Shortened from Ceph's own string, `ceph version 20.2.4 (<commit>)
+        tentacle (stable)`, to the release and its code name.
+    promQL: |
+      count by (ceph_version) (
+        label_replace(
+          ceph_osd_metadata{namespace=~"$cephNamespace"},
+          "ceph_version", "$1 $2", "ceph_version", "ceph version ([^ ]+) \\([0-9a-f]+\\) ([a-z]+).*"
+        )
+      )
+    instant: true
+
+  - id: infra.ceph.health.checks
+    stability: experimental
+    description:
+      summary: |
+        Every health check Ceph has raised and not cleared, with its severity.
+      nominal: Empty.
+      degraded: |
+        Each row is one reason the cluster is not `HEALTH_OK`. Names are
+        Ceph's own — `OSD_NEARFULL`, `PG_DEGRADED`, `RECENT_CRASH` — and
+        `ceph health detail` in the Rook toolbox explains each.
+    promQL: |
+      max by (name, severity) (ceph_health_detail{namespace=~"$cephNamespace"} == 1)
+    instant: true
+
+  # --- Object gateway ---------------------------------------------------------
+  - id: infra.ceph.rgw.requests
+    stability: experimental
+    description:
+      summary: |
+        Object gateway requests per second, by operation, and how many failed.
+      nominal: |
+        PUTs and DELETEs tracking persist's own uploads and deletes on the
+        Operations tab, and GETs tracking its fetches plus its deletes.
+      degraded: |
+        Failures rising with no change in persist's traffic are the gateway's
+        own trouble. Requests well above persist's are another client sharing
+        the gateway.
+      notes: |
+        Every client of every gateway in the selected Ceph cluster, not only
+        Materialize. RGW counts a `HEAD` as a GET, and persist checks each
+        object with a `HEAD` before deleting it, so GETs here run well above
+        persist's own reads — about the sum of its reads and deletes.
+    promQL:
+      - |
+        sum(rate(ceph_rgw_op_put_obj_ops{namespace=~"$cephNamespace"}%%{interval}))
+      - |
+        sum(rate(ceph_rgw_op_get_obj_ops{namespace=~"$cephNamespace"}%%{interval}))
+      - |
+        sum(rate(ceph_rgw_op_del_obj_ops{namespace=~"$cephNamespace"}%%{interval}))
+      - |
+        sum(rate(ceph_rgw_failed_req{namespace=~"$cephNamespace"}%%{interval}))
+
+  - id: infra.ceph.rgw.latency
+    stability: experimental
+    description:
+      summary: |
+        Mean time the object gateway takes to serve each operation.
+      nominal: |
+        Milliseconds to low tens of milliseconds, with PUTs slower than GETs:
+        a PUT returns once every copy is on disk.
+      degraded: |
+        Rising together with _OSD Latency_ is the disks. Rising alone is the
+        gateway itself — CPU, or a queue of requests.
+      notes: |
+        A mean from the gateway's own counters, so it cannot show the tail.
+        Persist's latency on the Operations tab includes the network as well,
+        and the difference between the two is the path in between.
+    promQL:
+      - |
+        (sum(rate(ceph_rgw_op_put_obj_lat_sum{namespace=~"$cephNamespace"}%%{interval}))
+          / sum(rate(ceph_rgw_op_put_obj_lat_count{namespace=~"$cephNamespace"}%%{interval}))) >= 0
+      - |
+        (sum(rate(ceph_rgw_op_get_obj_lat_sum{namespace=~"$cephNamespace"}%%{interval}))
+          / sum(rate(ceph_rgw_op_get_obj_lat_count{namespace=~"$cephNamespace"}%%{interval}))) >= 0
+      - |
+        (sum(rate(ceph_rgw_op_del_obj_lat_sum{namespace=~"$cephNamespace"}%%{interval}))
+          / sum(rate(ceph_rgw_op_del_obj_lat_count{namespace=~"$cephNamespace"}%%{interval}))) >= 0
+
+  - id: infra.ceph.rgw.throughput
+    stability: experimental
+    description:
+      summary: |
+        Bytes written to and read from the object gateway per second.
+      nominal: |
+        Writes tracking persist's uploads and compaction, reads tracking
+        hydration and queries that miss persist's cache.
+    promQL:
+      - |
+        sum(rate(ceph_rgw_op_put_obj_bytes{namespace=~"$cephNamespace"}%%{interval}))
+      - |
+        sum(rate(ceph_rgw_op_get_obj_bytes{namespace=~"$cephNamespace"}%%{interval}))
+
+  - id: infra.ceph.rgw.queue
+    stability: experimental
+    description:
+      summary: |
+        Requests each gateway is working on, and requests queued behind them.
+      nominal: A handful active and none queued.
+      degraded: |
+        A standing queue is a gateway at its concurrency limit: every request,
+        persist's included, waits for a slot. Add gateway instances to the
+        object store, or find what is holding requests open.
+    promQL:
+      - |
+        sum by (instance_id) (ceph_rgw_qactive{namespace=~"$cephNamespace"})
+      - |
+        sum by (instance_id) (ceph_rgw_qlen{namespace=~"$cephNamespace"})
+
+  # --- Capacity ---------------------------------------------------------------
+  - id: infra.ceph.capacity.raw
+    stability: experimental
+    description:
+      summary: |
+        Raw disk capacity used, and the cluster's total.
+      nominal: Used well below the total, growing slowly.
+      degraded: |
+        Used approaching the total. Raw capacity counts every copy, so with
+        three-way replication each byte persist stores uses three here.
+    promQL:
+      - |
+        sum(ceph_cluster_total_used_raw_bytes{namespace=~"$cephNamespace"})
+      - |
+        sum(ceph_cluster_total_bytes{namespace=~"$cephNamespace"})
+
+  - id: infra.ceph.capacity.pools
+    stability: experimental
+    description:
+      summary: |
+        Data stored in each pool, before replication.
+      nominal: |
+        The bucket data pool (`<store>.rgw.buckets.data`) holding nearly all of
+        it, close to persist's own total on the Storage tab.
+      degraded: |
+        The bucket pool well above what persist says it stores is data
+        persist no longer refers to — objects it has not deleted yet, or
+        uploads that never finished. Another pool growing is another user of
+        the same disks.
+    promQL: |
+      max by (name) (
+        ceph_pool_stored{namespace=~"$cephNamespace"}
+        * on (namespace, pool_id) group_left (name)
+          max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~"$cephNamespace"})
+      ) > 0
+
+  # --- Disks ------------------------------------------------------------------
+  - id: infra.ceph.osd.utilization
+    stability: experimental
+    description:
+      summary: |
+        How full each disk daemon (OSD) is.
+      nominal: |
+        Every OSD within a few points of the others, below Ceph's `nearfull`
+        ratio (85% by default).
+      degraded: |
+        One OSD well above the rest fills first, and Ceph stops writes to its
+        pools when it reaches `full`, however empty the others are. The
+        balancer, or reweighting that OSD, evens them out.
+    promQL: |
+      max by (ceph_daemon) (
+        ceph_osd_stat_bytes_used{namespace=~"$cephNamespace"}
+        / ceph_osd_stat_bytes{namespace=~"$cephNamespace"}
+      )
+
+  - id: infra.ceph.osd.latency
+    stability: experimental
+    description:
+      summary: |
+        How long each OSD takes to commit a write to its disk.
+      nominal: |
+        Single-digit milliseconds on SSDs, tens on spinning disks, and every
+        OSD close to the others.
+      degraded: |
+        One OSD much slower than the rest is a failing or overloaded disk, and
+        every write with a copy on it waits for it.
+      notes: |
+        Ceph's own recent average, published by the manager.
+    promQL: |
+      max by (ceph_daemon) (ceph_osd_commit_latency_ms{namespace=~"$cephNamespace"}) / 1000
+
+  - id: infra.ceph.osd.placement_groups
+    stability: experimental
+    description:
+      summary: |
+        Placement groups that are not fully healthy, by the state that is
+        wrong.
+      nominal: |
+        All zero. A placement group is the unit Ceph replicates and recovers;
+        a healthy one is `active+clean`.
+      degraded: |
+        `degraded` and `undersized` after a disk failure, falling as Ceph
+        recovers. Lines that stay up mean recovery cannot complete.
+      unhealthy: |
+        Any that are not `active` cannot serve reads or writes, and persist's
+        calls against the objects in them fail.
+    promQL:
+      - |
+        sum(ceph_pg_total{namespace=~"$cephNamespace"}) - sum(ceph_pg_active{namespace=~"$cephNamespace"})
+      - |
+        sum(ceph_pg_degraded{namespace=~"$cephNamespace"})
+      - |
+        sum(ceph_pg_undersized{namespace=~"$cephNamespace"})
+      - |
+        sum(ceph_pg_total{namespace=~"$cephNamespace"}) - sum(ceph_pg_clean{namespace=~"$cephNamespace"})

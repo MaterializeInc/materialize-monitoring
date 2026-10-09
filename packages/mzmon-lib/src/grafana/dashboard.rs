@@ -459,22 +459,30 @@ fn check_variable_references(name: &str, dashboard: &dashboardv2::Dashboard) -> 
     ];
 
     let defined: Vec<&str> = dashboard.variables.iter().map(variable::name_of).collect();
+    // A variable declared on a row or tab reaches only the panels inside it.
+    let sections = layout::section_variables(&dashboard.layout);
 
     // Panels only: a variable's *own* query legitimately references its
     // predecessors, and `variable::environment_scoped` already checks that chain.
-    let panels = serde_json::to_value(&dashboard.elements).unwrap_or(serde_json::Value::Null);
-    let mut referenced = Vec::new();
-    collect_references(&panels, &mut referenced);
+    for (element, panel) in &dashboard.elements {
+        let panel = serde_json::to_value(panel).unwrap_or(serde_json::Value::Null);
+        let mut referenced = Vec::new();
+        collect_references(&panel, &mut referenced);
+        let scoped = sections.get(element).map(Vec::as_slice).unwrap_or_default();
 
-    for reference in referenced {
-        if BUILTINS.contains(&reference.as_str()) || defined.contains(&reference.as_str()) {
-            continue;
+        for reference in referenced {
+            if BUILTINS.contains(&reference.as_str())
+                || defined.contains(&reference.as_str())
+                || scoped.contains(&reference)
+            {
+                continue;
+            }
+            return Err(Error::UndefinedVariable {
+                name: name.to_string(),
+                variable: reference,
+                defined: defined.join(", "),
+            });
         }
-        return Err(Error::UndefinedVariable {
-            name: name.to_string(),
-            variable: reference,
-            defined: defined.join(", "),
-        });
     }
     Ok(())
 }
@@ -660,6 +668,39 @@ mod tests {
             .expect_err("should fail");
         match err {
             Error::UndefinedVariable { variable, .. } => assert_eq!(variable, "metricsDatasource"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_section_variable_is_defined_only_inside_its_section() {
+        let panel =
+            |expr: &str| {
+                let data = crate::grafana::query::query_group(vec![
+                    crate::grafana::query::promql_data_query(expr, "metricsDatasource", None),
+                ]);
+                Panel::timeseries("A").data(data).build(0)
+            };
+        let build = |outside: &str| {
+            Dashboard::new("n", "T")
+                .variables(vec![variable::metrics_datasource()])
+                .layout(Layout::rows([
+                    Row::section(
+                        "S",
+                        vec![Row::new("Inner").grid(
+                            AutoGrid::new(1).panel("in", panel(r#"up{pod=~"$cnpgClusterList"}"#)),
+                        )],
+                    )
+                    .variables([variable::cnpg_clusters()]),
+                    Row::new("Outside").grid(AutoGrid::new(1).panel("out", panel(outside))),
+                ]))
+                .build_spec()
+        };
+        assert!(build("up").is_ok());
+        match build(r#"up{pod=~"$cnpgClusterList"}"#) {
+            Err(Error::UndefinedVariable { variable, .. }) => {
+                assert_eq!(variable, "cnpgClusterList")
+            }
             other => panic!("unexpected {other:?}"),
         }
     }

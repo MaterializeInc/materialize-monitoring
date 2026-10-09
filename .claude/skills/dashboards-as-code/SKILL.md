@@ -464,8 +464,9 @@ per-process legend, the empty state, the latency ladder) is `grafana/dependency.
 | Operations | `operations.rs` | Operations | `operations.rs` |
 | Compaction | `compaction.rs` | Connections | `connections.rs` |
 | Storage | `storage.rs` | State and Cleanup | `state.rs` |
+| Object Store Internals | `object_store.rs` | Database Internals | `database.rs` |
 
-Four things about them are not re-derivable by reading the modules:
+Five things about them are not re-derivable by reading the modules:
 
 - **`variable::dependency_scoped` has no cluster or replica picker.** environmentd carries no cluster label and is a
   heavy client of both dependencies, so a picker would need `env-top`'s two-matcher pattern on every query. "Which
@@ -476,6 +477,14 @@ Four things about them are not re-derivable by reading the modules:
 - **The S3 client's counters exist on Azure and read zero**, so the panels on them gate on
   `mz_persist_s3_operations > 0`.
 - **Every mean is `(A / B) >= 0`**, so an operation nobody called does not put the empty-state text into the legend.
+- **The last tab is the dependency's own account, for self-hosted flavors only.** Database Internals reads CNPG
+  (`infra-cnpg.yaml`) and Object Store Internals reads Rook Ceph (`infra-ceph.yaml`), on rows discovered from
+  `$cnpgDetected` (`cnpg_collector_up`, since a CNPG pod's `up` says only `postgresql`) and `$cephDetected`
+  (`up{app="ceph-mgr"}`), each with one fallback. Neither family carries an environment, so the reader picks the
+  cluster on `$cnpgClusterList` (from pod names, `<cluster>-<n>`) or `$cephNamespace`; a test holds every selector to
+  its picker. **The pickers are section variables**, declared with `Row::variables` on the one `Row::section` that
+  holds a flavor's rows, so they render under its header and hide with it instead of sitting in every environment's
+  controls. `variable::consensus_scoped` and `persist_scoped` add only the hidden detection to `dependency_scoped`.
 
 ### `infra-cloud` tabs
 

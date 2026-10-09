@@ -34,9 +34,1650 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "Object storage, as Materialize experiences it.\n\nReads, writes, failures, compaction and what the stored data is for, measured by the processes that use the bucket — the same on every store. What the bucket itself reports is on the Infrastructure Cloud Provider dashboard.",
+    "description": "Object storage, as Materialize experiences it.\n\nReads, writes, failures, compaction and what the stored data is for, measured by the processes that use the bucket — the same on every store. What a Ceph object store reports about itself is on the Object Store Internals tab, and what a cloud bucket's provider reports is on the Infrastructure Cloud Provider dashboard.",
     "editable": true,
     "elements": {
+      "ceph-bucket-pool-available": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (name) (\n  ceph_pool_max_avail{namespace=~\"$cephNamespace\"}\n  * on (namespace, pool_id) group_left (name)\n    max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~\"$cephNamespace\", name=~\".+\\\\.rgw\\\\.buckets\\\\.data\"})\n)\n",
+                        "legendFormat": "{{name}}",
+                        "qryType": 1,
+                        "query": "max by (name) (\n  ceph_pool_max_avail{namespace=~\"$cephNamespace\"}\n  * on (namespace, pool_id) group_left (name)\n    max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~\"$cephNamespace\", name=~\".+\\\\.rgw\\\\.buckets\\\\.data\"})\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Space still writable in each object store's bucket data pool, after replication.**\n\n**Nominal:** Comfortably more than a few days' growth of persist's data.\n\n**Degraded:** Little headroom left. Persist's stored data only shrinks when compaction catches up, so this is the number to plan disks against.\n\nCeph's own estimate, from the fullest OSD the pool can write to and the pool's replication. It moves when any other pool on the same disks grows.",
+          "id": 1033,
+          "links": [],
+          "title": "Bucket Space Available",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE3377",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No RGW bucket data pool in the selected Ceph cluster.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-capacity-pools": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (name) (\n  ceph_pool_stored{namespace=~\"$cephNamespace\"}\n  * on (namespace, pool_id) group_left (name)\n    max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~\"$cephNamespace\"})\n) > 0\n",
+                        "legendFormat": "{{name}}",
+                        "qryType": 1,
+                        "query": "max by (name) (\n  ceph_pool_stored{namespace=~\"$cephNamespace\"}\n  * on (namespace, pool_id) group_left (name)\n    max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~\"$cephNamespace\"})\n) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Data stored in each pool, before replication.**\n\n**Nominal:** The bucket data pool (`<store>.rgw.buckets.data`) holding nearly all of it, close to persist's own total on the Storage tab.\n\n**Degraded:** The bucket pool well above what persist says it stores is data persist no longer refers to — objects it has not deleted yet, or uploads that never finished. Another pool growing is another user of the same disks.",
+          "id": 1043,
+          "links": [],
+          "title": "Stored Data by Pool",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-capacity-raw": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_cluster_total_used_raw_bytes{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "used",
+                        "qryType": 1,
+                        "query": "sum(ceph_cluster_total_used_raw_bytes{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_cluster_total_bytes{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "total",
+                        "qryType": 1,
+                        "query": "sum(ceph_cluster_total_bytes{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Raw disk capacity used, and the cluster's total.**\n\n**Nominal:** Used well below the total, growing slowly.\n\n**Degraded:** Used approaching the total. Raw capacity counts every copy, so with three-way replication each byte persist stores uses three here.",
+          "id": 1042,
+          "links": [],
+          "title": "Raw Capacity",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-health": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(ceph_health_status{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "health",
+                        "qryType": 1,
+                        "query": "max(ceph_health_status{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Ceph's own verdict on the cluster: `HEALTH_OK`, `HEALTH_WARN` or `HEALTH_ERR`.**\n\n**Nominal:** HEALTH_OK.\n\n**Degraded:** HEALTH_WARN covers everything from a misconfiguration notice to a disk that is nearly full. _Active Health Checks_ on this tab lists which checks are raised.\n\n**Unhealthy:** HEALTH_ERR means data is unavailable or at risk: writes may be blocked, which persist reports as failed uploads.",
+          "id": 1030,
+          "links": [],
+          "title": "Ceph Health",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "mappings": [
+                    {
+                      "options": {
+                        "0": {
+                          "color": "#A2F49B",
+                          "index": 1,
+                          "text": "HEALTH_OK"
+                        }
+                      },
+                      "type": "value"
+                    },
+                    {
+                      "options": {
+                        "1": {
+                          "color": "#F19903",
+                          "index": 2,
+                          "text": "HEALTH_WARN"
+                        }
+                      },
+                      "type": "value"
+                    },
+                    {
+                      "options": {
+                        "2": {
+                          "color": "#AB0003",
+                          "index": 3,
+                          "text": "HEALTH_ERR"
+                        }
+                      },
+                      "type": "value"
+                    }
+                  ],
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 1
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 2
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-health-checks": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (name, severity) (ceph_health_detail{namespace=~\"$cephNamespace\"} == 1)\n",
+                        "format": "table",
+                        "instant": true,
+                        "qryType": 2,
+                        "query": "max by (name, severity) (ceph_health_detail{namespace=~\"$cephNamespace\"} == 1)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "organize",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "Value": true
+                      },
+                      "indexByName": {
+                        "name": 1,
+                        "severity": 0
+                      },
+                      "renameByName": {
+                        "name": "Check",
+                        "severity": "Severity"
+                      }
+                    }
+                  }
+                },
+                {
+                  "group": "sortBy",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "desc": true,
+                          "field": "Severity"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**Every health check Ceph has raised and not cleared, with its severity.**\n\n**Nominal:** Empty.\n\n**Degraded:** Each row is one reason the cluster is not `HEALTH_OK`. Names are Ceph's own — `OSD_NEARFULL`, `PG_DEGRADED`, `RECENT_CRASH` — and `ceph health detail` in the Rook toolbox explains each.",
+          "id": 1037,
+          "links": [],
+          "title": "Active Health Checks",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "No health checks raised: Ceph reports HEALTH_OK."
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-objects-degraded": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_num_objects_degraded{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "degraded",
+                        "qryType": 1,
+                        "query": "sum(ceph_num_objects_degraded{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Object copies Ceph is missing and has not yet re-created.**\n\n**Nominal:** Zero.\n\n**Degraded:** Non-zero after a disk or node failure while Ceph recovers. Reads and writes continue, with fewer copies behind them.\n\n**Unhealthy:** A count that stops falling is recovery that cannot proceed — usually too few disks left to place another copy on.",
+          "id": 1034,
+          "links": [],
+          "title": "Degraded Objects",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 250.75
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 500.5
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 750.25
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 1000
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-osd-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (ceph_daemon) (ceph_osd_commit_latency_ms{namespace=~\"$cephNamespace\"}) / 1000\n",
+                        "legendFormat": "{{ceph_daemon}}",
+                        "qryType": 1,
+                        "query": "max by (ceph_daemon) (ceph_osd_commit_latency_ms{namespace=~\"$cephNamespace\"}) / 1000\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long each OSD takes to commit a write to its disk.**\n\n**Nominal:** Single-digit milliseconds on SSDs, tens on spinning disks, and every OSD close to the others.\n\n**Degraded:** One OSD much slower than the rest is a failing or overloaded disk, and every write with a copy on it waits for it.\n\nCeph's own recent average, published by the manager.",
+          "id": 1045,
+          "links": [],
+          "title": "OSD Commit Latency",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-osd-utilization": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (ceph_daemon) (\n  ceph_osd_stat_bytes_used{namespace=~\"$cephNamespace\"}\n  / ceph_osd_stat_bytes{namespace=~\"$cephNamespace\"}\n)\n",
+                        "legendFormat": "{{ceph_daemon}}",
+                        "qryType": 1,
+                        "query": "max by (ceph_daemon) (\n  ceph_osd_stat_bytes_used{namespace=~\"$cephNamespace\"}\n  / ceph_osd_stat_bytes{namespace=~\"$cephNamespace\"}\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How full each disk daemon (OSD) is.**\n\n**Nominal:** Every OSD within a few points of the others, below Ceph's `nearfull` ratio (85% by default).\n\n**Degraded:** One OSD well above the rest fills first, and Ceph stops writes to its pools when it reaches `full`, however empty the others are. The balancer, or reweighting that OSD, evens them out.",
+          "id": 1044,
+          "links": [],
+          "title": "OSD Utilization",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.75
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.85
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-osds-down": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count(ceph_osd_up{namespace=~\"$cephNamespace\"} == 0) or vector(0)\n",
+                        "legendFormat": "down",
+                        "qryType": 1,
+                        "query": "count(ceph_osd_up{namespace=~\"$cephNamespace\"} == 0) or vector(0)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Disk daemons (OSDs) that are down.**\n\n**Nominal:** Zero.\n\n**Degraded:** Ceph keeps serving from the remaining copies, with less redundancy. If an OSD stays down, Ceph marks it out and copies its data elsewhere, which costs the remaining disks I/O.\n\n**Unhealthy:** Enough OSDs down that a placement group loses all its copies makes objects unavailable, and persist's reads and writes against them fail.",
+          "id": 1031,
+          "links": [],
+          "title": "Disks (OSDs) Down",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 1.25
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 1.5
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 1.75
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 2
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-placement-groups": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_pg_total{namespace=~\"$cephNamespace\"}) - sum(ceph_pg_active{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "not active",
+                        "qryType": 1,
+                        "query": "sum(ceph_pg_total{namespace=~\"$cephNamespace\"}) - sum(ceph_pg_active{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_pg_degraded{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "degraded",
+                        "qryType": 1,
+                        "query": "sum(ceph_pg_degraded{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_pg_undersized{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "undersized",
+                        "qryType": 1,
+                        "query": "sum(ceph_pg_undersized{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_pg_total{namespace=~\"$cephNamespace\"}) - sum(ceph_pg_clean{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "not clean",
+                        "qryType": 1,
+                        "query": "sum(ceph_pg_total{namespace=~\"$cephNamespace\"}) - sum(ceph_pg_clean{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-3"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Placement groups that are not fully healthy, by the state that is wrong.**\n\n**Nominal:** All zero. A placement group is the unit Ceph replicates and recovers; a healthy one is `active+clean`.\n\n**Degraded:** `degraded` and `undersized` after a disk failure, falling as Ceph recovers. Lines that stay up mean recovery cannot complete.\n\n**Unhealthy:** Any that are not `active` cannot serve reads or writes, and persist's calls against the objects in them fail.",
+          "id": 1046,
+          "links": [],
+          "title": "Placement Groups Not Healthy",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-raw-used": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(ceph_cluster_total_used_raw_bytes{namespace=~\"$cephNamespace\"})\n/ sum(ceph_cluster_total_bytes{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "used",
+                        "qryType": 1,
+                        "query": "sum(ceph_cluster_total_used_raw_bytes{namespace=~\"$cephNamespace\"})\n/ sum(ceph_cluster_total_bytes{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Raw disk capacity used across the cluster, replication included.**\n\n**Nominal:** Below 75%. Ceph needs room to re-replicate a failed disk's data onto the others.\n\n**Degraded:** Above 75%, losing a disk may push the others past Ceph's `nearfull` ratio (85% by default) while it recovers.\n\n**Unhealthy:** At the `full` ratio (95% by default) on any OSD, Ceph stops accepting writes to the pools on it, and persist cannot upload.\n\nA cluster-wide average. Ceph enforces `full` per OSD, so one uneven disk can stop writes first; _OSD Utilization_ shows each.",
+          "id": 1032,
+          "links": [],
+          "title": "Raw Capacity Used",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.75
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.85
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-rgw-failure-ratio": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n  sum(rate(ceph_rgw_failed_req{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_req{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n) >= 0\n",
+                        "legendFormat": "failed",
+                        "qryType": 1,
+                        "query": "(\n  sum(rate(ceph_rgw_failed_req{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_req{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The fraction of object gateway requests that failed.**\n\n**Nominal:** A small, steady fraction. RGW counts every request that does not succeed, so a lookup of an object that does not exist counts too.\n\n**Degraded:** A rise that coincides with failures on persist's own panels is the gateway refusing work: overloaded, out of space, or unable to reach the disks behind it.",
+          "id": 1035,
+          "links": [],
+          "title": "Gateway Failed Requests",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.05
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.25
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-rgw-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(sum(rate(ceph_rgw_op_put_obj_lat_sum{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_op_put_obj_lat_count{namespace=~\"$cephNamespace\"}[$__rate_interval]))) >= 0\n",
+                        "legendFormat": "PUT",
+                        "qryType": 1,
+                        "query": "(sum(rate(ceph_rgw_op_put_obj_lat_sum{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_op_put_obj_lat_count{namespace=~\"$cephNamespace\"}[$__rate_interval]))) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(sum(rate(ceph_rgw_op_get_obj_lat_sum{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_op_get_obj_lat_count{namespace=~\"$cephNamespace\"}[$__rate_interval]))) >= 0\n",
+                        "legendFormat": "GET",
+                        "qryType": 1,
+                        "query": "(sum(rate(ceph_rgw_op_get_obj_lat_sum{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_op_get_obj_lat_count{namespace=~\"$cephNamespace\"}[$__rate_interval]))) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(sum(rate(ceph_rgw_op_del_obj_lat_sum{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_op_del_obj_lat_count{namespace=~\"$cephNamespace\"}[$__rate_interval]))) >= 0\n",
+                        "legendFormat": "DELETE",
+                        "qryType": 1,
+                        "query": "(sum(rate(ceph_rgw_op_del_obj_lat_sum{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n  / sum(rate(ceph_rgw_op_del_obj_lat_count{namespace=~\"$cephNamespace\"}[$__rate_interval]))) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Mean time the object gateway takes to serve each operation.**\n\n**Nominal:** Milliseconds to low tens of milliseconds, with PUTs slower than GETs: a PUT returns once every copy is on disk.\n\n**Degraded:** Rising together with _OSD Latency_ is the disks. Rising alone is the gateway itself — CPU, or a queue of requests.\n\nA mean from the gateway's own counters, so it cannot show the tail. Persist's latency on the Operations tab includes the network as well, and the difference between the two is the path in between.",
+          "id": 1039,
+          "links": [],
+          "title": "Gateway Latency by Operation (Mean)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.1
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-rgw-queue": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (instance_id) (ceph_rgw_qactive{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "active on {{instance_id}}",
+                        "qryType": 1,
+                        "query": "sum by (instance_id) (ceph_rgw_qactive{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (instance_id) (ceph_rgw_qlen{namespace=~\"$cephNamespace\"})\n",
+                        "legendFormat": "queued on {{instance_id}}",
+                        "qryType": 1,
+                        "query": "sum by (instance_id) (ceph_rgw_qlen{namespace=~\"$cephNamespace\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Requests each gateway is working on, and requests queued behind them.**\n\n**Nominal:** A handful active and none queued.\n\n**Degraded:** A standing queue is a gateway at its concurrency limit: every request, persist's included, waits for a slot. Add gateway instances to the object store, or find what is holding requests open.",
+          "id": 1041,
+          "links": [],
+          "title": "Gateway Requests in Progress",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-rgw-requests": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(ceph_rgw_op_put_obj_ops{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n",
+                        "legendFormat": "PUT",
+                        "qryType": 1,
+                        "query": "sum(rate(ceph_rgw_op_put_obj_ops{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(ceph_rgw_op_get_obj_ops{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n",
+                        "legendFormat": "GET",
+                        "qryType": 1,
+                        "query": "sum(rate(ceph_rgw_op_get_obj_ops{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(ceph_rgw_op_del_obj_ops{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n",
+                        "legendFormat": "DELETE",
+                        "qryType": 1,
+                        "query": "sum(rate(ceph_rgw_op_del_obj_ops{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(ceph_rgw_failed_req{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n",
+                        "legendFormat": "failed",
+                        "qryType": 1,
+                        "query": "sum(rate(ceph_rgw_failed_req{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-3"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Object gateway requests per second, by operation, and how many failed.**\n\n**Nominal:** PUTs and DELETEs tracking persist's own uploads and deletes on the Operations tab, and GETs tracking its fetches plus its deletes.\n\n**Degraded:** Failures rising with no change in persist's traffic are the gateway's own trouble. Requests well above persist's are another client sharing the gateway.\n\nEvery client of every gateway in the selected Ceph cluster, not only Materialize. RGW counts a `HEAD` as a GET, and persist checks each object with a `HEAD` before deleting it, so GETs here run well above persist's own reads — about the sum of its reads and deletes.",
+          "id": 1038,
+          "links": [],
+          "title": "Gateway Requests by Operation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "reqps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-rgw-throughput": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(ceph_rgw_op_put_obj_bytes{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n",
+                        "legendFormat": "written",
+                        "qryType": 1,
+                        "query": "sum(rate(ceph_rgw_op_put_obj_bytes{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(ceph_rgw_op_get_obj_bytes{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n",
+                        "legendFormat": "read",
+                        "qryType": 1,
+                        "query": "sum(rate(ceph_rgw_op_get_obj_bytes{namespace=~\"$cephNamespace\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes written to and read from the object gateway per second.**\n\n**Nominal:** Writes tracking persist's uploads and compaction, reads tracking hydration and queries that miss persist's cache.",
+          "id": 1040,
+          "links": [],
+          "title": "Gateway Throughput",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.",
+                  "unit": "Bps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ceph-version": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (ceph_version) (\n  label_replace(\n    ceph_osd_metadata{namespace=~\"$cephNamespace\"},\n    \"ceph_version\", \"$1 $2\", \"ceph_version\", \"ceph version ([^ ]+) \\\\([0-9a-f]+\\\\) ([a-z]+).*\"\n  )\n)\n",
+                        "instant": true,
+                        "legendFormat": "{{ceph_version}}",
+                        "qryType": 1,
+                        "query": "count by (ceph_version) (\n  label_replace(\n    ceph_osd_metadata{namespace=~\"$cephNamespace\"},\n    \"ceph_version\", \"$1 $2\", \"ceph_version\", \"ceph version ([^ ]+) \\\\([0-9a-f]+\\\\) ([a-z]+).*\"\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "labelsToFields",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {}
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**The Ceph version the cluster's disk daemons run.**\n\n**Nominal:** One supported release on every daemon.\n\nMore than one version means an upgrade is rolling through. An out-of-date dependency has been the cause of an incident before, and this is the one place it is visible without a Ceph login.\n\nShortened from Ceph's own string, `ceph version 20.2.4 (<commit>) tentacle (stable)`, to the release and its code name.",
+          "id": 1036,
+          "links": [],
+          "title": "Ceph Version",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE3377",
+                    "mode": "shades"
+                  },
+                  "noValue": "Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager."
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "fields": "/^ceph_version$/",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "text": {
+                  "valueSize": 20
+                },
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
       "compaction-busy": {
         "kind": "Panel",
         "spec": {
@@ -346,6 +1987,43 @@
                   "mode": "single",
                   "sort": "asc"
                 }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "object-store-none-detected": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no object store rows on it.",
+          "id": 1047,
+          "links": [],
+          "title": "No Object Store Metrics",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**The object store is not reporting its own metrics.**\n\nThis tab shows what an object store running on disks you own says about itself: its health, its free space, its disks, and the server side of every request persist makes. It renders for **Ceph run by Rook**, whose S3-compatible gateway (RGW) can hold the persist bucket.\n\n- **On Rook Ceph**, scrape the manager and the per-node exporter. Setting `monitoring.enabled: true` on the `CephCluster` makes Rook create a `ServiceMonitor` for each; `deploy/examples/monitoring/` in the Rook repository has both as standalone manifests, which leave out the alert rules that setting also installs.\n- **On S3, GCS or Azure Blob**, the bucket cannot fill up or lose a disk, and what the provider reports about it is on the **Infrastructure Cloud Provider** dashboard.\n\nThe other tabs here need none of this: they are persist's own measurement of the store, and work on every one.",
+                "mode": "markdown"
               }
             },
             "version": ""
@@ -3214,6 +4892,383 @@
               },
               "title": "Storage"
             }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "ceph-mgr",
+                                  "variable": "cephDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": true,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "narrow",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-health"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-osds-down"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-raw-used"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-bucket-pool-available"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-objects-degraded"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-rgw-failure-ratio"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-version"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 7,
+                                      "rowHeightMode": "short"
+                                    }
+                                  },
+                                  "title": "Status"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-health-checks"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 1,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Health Checks"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-rgw-requests"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-rgw-latency"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-rgw-throughput"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-rgw-queue"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 2,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Object Gateway"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-capacity-raw"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-capacity-pools"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 2,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Capacity"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-osd-utilization"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-osd-latency"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "ceph-placement-groups"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 3,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Disks"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "title": "Ceph",
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "allValue": ".+",
+                              "allowCustomValue": true,
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "definition": "label_values(ceph_health_status, namespace)",
+                              "description": "Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket",
+                              "hide": "dontHide",
+                              "includeAll": true,
+                              "label": "Ceph Cluster",
+                              "multi": true,
+                              "name": "cephNamespace",
+                              "options": [],
+                              "query": {
+                                "datasource": {
+                                  "name": "${metricsDatasource}"
+                                },
+                                "group": "prometheus",
+                                "kind": "DataQuery",
+                                "spec": {
+                                  "expr": "label_values(ceph_health_status, namespace)",
+                                  "qryType": 1,
+                                  "query": "label_values(ceph_health_status, namespace)"
+                                },
+                                "version": "v0"
+                              },
+                              "refresh": "never",
+                              "regex": "",
+                              "regexApplyTo": "value",
+                              "skipUrlSync": false,
+                              "sort": "alphabeticalAsc"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "ceph-mgr",
+                                  "variable": "cephDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "object-store-none-detected"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "No Object Store Metrics"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Object Store Internals"
+            }
           }
         ]
       }
@@ -3387,6 +5442,42 @@
           "label": "Advanced Metric Filter",
           "name": "metricAdhoc",
           "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(up{app=\"ceph-mgr\"}, app)",
+          "description": "Whether a Ceph manager is being scraped; empty when none is",
+          "hide": "hideVariable",
+          "includeAll": false,
+          "label": "Ceph",
+          "multi": false,
+          "name": "cephDetected",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(up{app=\"ceph-mgr\"}, app)",
+              "qryType": 1,
+              "query": "label_values(up{app=\"ceph-mgr\"}, app)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": true,
+          "sort": "alphabeticalAsc"
         }
       }
     ]

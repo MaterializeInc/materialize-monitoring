@@ -56,20 +56,24 @@ It needs both a metrics and a logs datasource.
 
 ### Materialize Persist (Storage) (`env-persist`)
 
-Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
+Object storage, as a Materialize environment experiences it, across five tabs: Overview, Operations, Compaction, Storage, and Object Store Internals.
 Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
+The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
+Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-persist" >}}
 
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
-The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
+The metadata database, as a Materialize environment experiences it, across five tabs:
+Overview, Operations, Connections, State and Cleanup, and Database Internals.
 Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
@@ -77,6 +81,10 @@ The Overview tab's verdict row separates the common failures: connection errors,
 The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
 State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
 Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
+The Database Internals tab is the database's own account, for a CloudNativePG (CNPG) cluster:
+which instance is primary, connections against the ceiling PostgreSQL refuses them at, the oldest open transaction,
+transaction-ID headroom, the size of each database on the instance, and backups.
+It appears when you create a `PodMonitor` for the CNPG cluster; on a managed database, the tab points you to `infra-cloud` instead.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}

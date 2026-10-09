@@ -76,6 +76,8 @@ Ordered so the cheapest question that could explain everything comes first.
    stalls every collection at once and looks like a Materialize problem.
    Each Overview ends with the dependency's own error text from the logs, which separates a wrong URL or credential from
    a database at `max_connections`.
+   If the database runs on CloudNativePG or the bucket on Ceph, each dashboard's last tab is the dependency's own
+   account of why: Database Internals and Object Store Internals.
 5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that
