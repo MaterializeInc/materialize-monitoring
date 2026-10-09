@@ -13,12 +13,11 @@ classifiers = [
     "Topic :: System :: Monitoring",
 ]
 
-# The dashboards and the query registry are Rust now (`packages/dashboards`,
-# `packages/mzmon-lib`). What is left of Python here is the helper scripts under
-# `bin/`, which only read YAML.
-dependencies = [
-    "pyyaml>=6.0.3",
-]
+# The dashboards, the query registry, and the Terraform render check are Rust now
+# (`packages/dashboards`, `packages/mzmon-lib`, `packages/mz-monitoring-check`).
+# What is left of Python here is `bin/merge_trivy_sarif.py`, which needs nothing
+# beyond the standard library, and the dev tooling below.
+dependencies = []
 
 [dependency-groups]
 dev = [

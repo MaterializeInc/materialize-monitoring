@@ -1550,8 +1550,13 @@ name = "mz-monitoring-check"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "clap",
+ "libtest-mimic",
  "mzmon-lib",
+ "regex",
+ "serde_json",
+ "serde_yaml_ng",
  "tempfile",
 ]
 

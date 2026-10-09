@@ -83,12 +83,13 @@ jobs:
         with:
           # The wrapper intercepts stdout, which the render check parses as JSON.
           terraform_wrapper: false
-      # The render check's scheduling assertion needs a YAML parser, which jq
-      # cannot provide, so it runs `uv run python` (the Makefile's PY_RUN).
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # The render check is `mz-monitoring-check terraform-render`, which the
+      # Makefile builds before running.
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # fmt, validate, and — via the terraform-render prerequisite — a plan of
       # every example with the chart rendered against the values it composes.
-      # helm and jq are preinstalled on the runner image. No cluster needed: the
+      # helm is preinstalled on the runner image. No cluster needed: the
       # examples plan against a kubeconfig that does not exist.
       - name: terraform check
         run: make terraform-check

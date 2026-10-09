@@ -177,11 +177,12 @@ repos:
 
       - id: terraform-render
         name: Render the chart against the module's composed values
-        # pre-push only: plans two examples and renders the chart, so it costs
-        # ~20s. Triggered by chart changes as well as Terraform ones — the module
-        # writes into the chart's value paths, so either side can break the pair.
+        # pre-push only: plans every example and renders the chart. Triggered by
+        # chart changes as well as Terraform ones — the module writes into the
+        # chart's value paths, so either side can break the pair — and by changes
+        # to the check itself.
         entry: make terraform-render
         language: system
         pass_filenames: false
         stages: [pre-push]
-        files: ^(terraform/.*\.tf|charts/materialize-monitoring/(values\.yaml|Chart\.yaml|profiles/.*|templates/.*))$
+        files: ^(terraform/.*\.tf|charts/materialize-monitoring/(values\.yaml|Chart\.yaml|profiles/.*|templates/.*)|packages/mz-monitoring-check/src/terraform_render/.*)$
