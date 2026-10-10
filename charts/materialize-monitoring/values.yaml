@@ -4332,7 +4332,7 @@ loki:
     image:
       registry: docker.io
       repository: kiwigrid/k8s-sidecar
-      tag: 2.11.2
+      tag: 2.13.3
 
   monitoring:
     serviceMonitor:
