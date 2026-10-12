@@ -88,8 +88,8 @@ module "monitoring" {
   # the path a consumer without existing PKI takes, and the one worth having
   # under test; a real deployment points `internal_issuer_ref` at its own CA
   # instead, and that path renders the same Certificates against a different
-  # issuer. The `issuer_ref` branch is covered at tier 0 by
-  # `bin/terraform-render-check.sh`, which has no cluster to need one on.
+  # issuer. The `issuer_ref` branch is covered at tier 0 by `make
+  # terraform-render`, which has no cluster to need one on.
   #
   # Chart-default lifetimes, deliberately — `certificate_duration` and
   # `certificate_renew_before` are left unset. An earlier version of this used

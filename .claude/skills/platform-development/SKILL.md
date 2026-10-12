@@ -48,9 +48,17 @@ perfectly and is silently ignored.
 
 So the gate is `make terraform-check`, which plans each example, extracts the
 composed Helm values from the plan, and renders the chart against them. It needs
-no cluster. **When you add a lever, add an assertion that it lands** — see the
-`storageClass` count and the GCM filter check in
-[`bin/terraform-render-check.sh`](../../../bin/terraform-render-check.sh).
+no cluster. **When you add a lever, add an assertion that it lands** — one
+function in a module under
+[`packages/mz-monitoring-check/src/terraform_render/checks/`](../../../packages/mz-monitoring-check/src/terraform_render/checks/),
+and one entry in the `CHECKS` table in `terraform_render/mod.rs`. See
+`storage_class.rs` and `destinations::google_cloud` for the two usual shapes.
+
+Gate each assertion on the module input as the example *declared* it
+(`ctx.declares(...)`), never on what the module composed or the chart rendered.
+Gated on the output, a module that stops composing a value switches its own check
+off and passes. Then confirm the assertion can fail: break the module on purpose
+and run `make terraform-render TERRAFORM_RENDER_FLAGS='--example <name>'`.
 
 Both an AWS and a GCP example are rendered, and that is not redundancy: the
 chart's storage defaults are S3-shaped, so an AWS-only example agrees with every

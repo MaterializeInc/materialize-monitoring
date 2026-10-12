@@ -8,7 +8,8 @@
 # It also exercises the Workload Identity labelling, which reaches Thanos through
 # `global.commonLabels` rather than a `podLabels` the chart does not have, and
 # the gateway through `controller.podLabels`. See azure.tf.
-# bin/check_workload_identity_labels.py asserts every annotated pod is labelled.
+# The render check's `workload_identity::pods_labelled` asserts every annotated
+# pod is labelled.
 
 terraform {
   required_version = ">= 1.3.0"
