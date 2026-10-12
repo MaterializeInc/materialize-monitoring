@@ -579,9 +579,11 @@ spec:
         description: |-
           **How full each disk daemon (OSD) is.**
 
-          **Nominal:** Every OSD within a few points of the others, below Ceph's `nearfull` ratio (85% by default).
+          **Nominal:** Every OSD within a few points of the others, below 75%.
 
-          **Degraded:** One OSD well above the rest fills first, and Ceph stops writes to its pools when it reaches `full`, however empty the others are. The balancer, or reweighting that OSD, evens them out.
+          **Degraded:** One OSD well above the rest fills first. The balancer, or reweighting that OSD, evens them out.
+
+          **Unhealthy:** Past Ceph's `nearfull` ratio (85% by default), Ceph warns, and the OSD has little room left before `full` (95%), where Ceph stops writes to its pools however empty the others are.
         id: 1044
         links: []
         title: OSD Utilization
@@ -841,7 +843,7 @@ spec:
 
           **Degraded:** Above 75%, losing a disk may push the others past Ceph's `nearfull` ratio (85% by default) while it recovers.
 
-          **Unhealthy:** At the `full` ratio (95% by default) on any OSD, Ceph stops accepting writes to the pools on it, and persist cannot upload.
+          **Unhealthy:** Past `nearfull`, Ceph raises a health warning, and one disk's recovery can carry the rest to the `full` ratio (95% by default). At `full` on any OSD, Ceph stops accepting writes to the pools on it, and persist cannot upload.
 
           A cluster-wide average. Ceph enforces `full` per OSD, so one uneven disk can stop writes first; _OSD Utilization_ shows each.
         id: 1032
@@ -4468,17 +4470,16 @@ spec:
                   variables:
                   - kind: QueryVariable
                     spec:
-                      allValue: .+
                       allowCustomValue: true
                       current:
                         text: ''
                         value: ''
                       definition: label_values(ceph_health_status, namespace)
-                      description: Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket
+                      description: Namespace of the Rook Ceph cluster holding this environment's bucket
                       hide: dontHide
-                      includeAll: true
+                      includeAll: false
                       label: Ceph Cluster
-                      multi: true
+                      multi: false
                       name: cephNamespace
                       options: []
                       query:

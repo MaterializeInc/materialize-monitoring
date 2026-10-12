@@ -239,11 +239,17 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (datname, usename) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+                      sum by (datname, usename) (
+                        cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"}
+                        and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
+                      )
                     legendFormat: '{{datname}} ({{usename}})'
                     qryType: 1
                     query: |
-                      sum by (datname, usename) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+                      sum by (datname, usename) (
+                        cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"}
+                        and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
+                      )
                   version: v0
                 refId: query-0
             - kind: PanelQuery
@@ -256,32 +262,38 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      min(
-                          max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
-                        - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+                      max(
+                        (
+                            max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
+                          - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+                        )
+                        and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
                       )
                     legendFormat: ceiling
                     qryType: 1
                     query: |
-                      min(
-                          max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
-                        - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+                      max(
+                        (
+                            max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
+                          - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+                        )
+                        and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
                       )
                   version: v0
                 refId: query-1
             queryOptions: {}
             transformations: []
         description: |-
-          **Client connections open on each instance, by database and role, beside the ceiling an ordinary role is refused at.**
+          **Client connections open on the primary, by database and role, beside the ceiling an ordinary role is refused at.**
 
           **Nominal:** Materialize's role holding nearly all of them, well under the ceiling.
 
           **Degraded:** Connections near the ceiling. If they are Materialize's, its pools have grown with the number of replicas; if they are another database's, something else is sharing the instance and Materialize is competing with it.
 
-          Materialize's own count of the connections it holds is on the Connections tab, and should match its line here.
+          The primary only, because the ceiling is per instance and Materialize connects only to the primary. Materialize's own count of the connections it holds is on the Connections tab, and should match its line here.
         id: 1038
         links: []
-        title: Connections by Database and Role
+        title: Primary Connections by Database and Role
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -330,14 +342,33 @@ spec:
                       sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
                   version: v0
                 refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
+                    legendFormat: waiting on a lock
+                    qryType: 1
+                    query: |
+                      sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
+                  version: v0
+                refId: query-1
             queryOptions: {}
             transformations: []
         description: |-
-          **Client connections by what they are doing: running a statement (`active`), waiting for the next one (`idle`), or holding a transaction open between statements (`idle in transaction`).**
+          **Client connections by what they are doing — running a statement (`active`), waiting for the next one (`idle`), or holding a transaction open between statements (`idle in transaction`) — and how many are waiting on a lock.**
 
-          **Nominal:** Mostly `idle`. A connection pool keeps connections open between uses.
+          **Nominal:** Mostly `idle`, and nothing waiting on a lock. A connection pool keeps connections open between uses.
 
-          **Degraded:** `idle in transaction` that does not drain is a client holding a transaction open, which blocks vacuum and can hold locks. It is a different fault from too many connections, and the fix is in the client that opened it.
+          **Degraded:** `idle in transaction` that does not drain is a client holding a transaction open, which blocks vacuum and can hold locks. It is a different fault from too many connections, and the fix is in the client that opened it. Sessions waiting on locks are contention: persist's commits are conditional updates to a handful of rows, so a client locking those rows stalls Materialize's writes.
+
+          Every instance, replicas included.
         id: 1039
         links: []
         title: Connections by State
@@ -970,40 +1001,23 @@ spec:
                   spec:
                     expr: |
                       max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
-                    legendFormat: oldest {{datname}} ({{state}})
+                    legendFormat: '{{datname}} ({{state}})'
                     qryType: 1
                     query: |
                       max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
                   version: v0
                 refId: query-0
-            - kind: PanelQuery
-              spec:
-                hidden: false
-                query:
-                  datasource:
-                    name: ${metricsDatasource}
-                  group: prometheus
-                  kind: DataQuery
-                  spec:
-                    expr: |
-                      sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
-                    legendFormat: waiting on a lock
-                    qryType: 1
-                    query: |
-                      sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
-                  version: v0
-                refId: query-1
             queryOptions: {}
             transformations: []
         description: |-
-          **The oldest open transaction, and the number of sessions waiting on a lock, by database.**
+          **The oldest open transaction, by database and connection state.**
 
-          **Nominal:** Transactions under a second, and nothing waiting.
+          **Nominal:** Under a second.
 
-          **Degraded:** A transaction that keeps aging holds back vacuum. Sessions waiting on locks are contention: persist's commits are conditional updates to a handful of rows, so a client locking those rows stalls Materialize's writes.
+          **Degraded:** A transaction that keeps aging holds back vacuum on every table, so the consensus table grows and every commit slows.
         id: 1040
         links: []
-        title: Oldest Transaction and Lock Waits
+        title: Oldest Transaction by Database
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1279,7 +1293,7 @@ spec:
 
           **Degraded:** Above 25% means freezing is falling behind. Persist commits constantly, so a small instance whose autovacuum is blocked reaches this faster than most workloads.
 
-          **Unhealthy:** At 100%, PostgreSQL stops accepting writes to protect itself (wraparound), and Materialize stops with it. PostgreSQL warns well before then, at about 95%.
+          **Unhealthy:** Past 50%, treat it as urgent: the remaining headroom is what a stalled vacuum has left before wraparound. At 100%, PostgreSQL stops accepting writes to protect itself, and Materialize stops with it; its own warnings start only once fewer than 40 million IDs remain, at about 98%.
 
           `age(datfrozenxid)` against the 2^31 wraparound limit, the same measure Cloud SQL publishes as transaction-ID utilization.
         id: 1035
@@ -4601,17 +4615,16 @@ spec:
                   variables:
                   - kind: QueryVariable
                     spec:
-                      allValue: .+
                       allowCustomValue: true
                       current:
                         text: ''
                         value: ''
                       definition: label_values(cnpg_collector_up, pod)
-                      description: The CloudNativePG cluster(s) serving as this environment's metadata database
+                      description: The CloudNativePG cluster serving as this environment's metadata database
                       hide: dontHide
-                      includeAll: true
+                      includeAll: false
                       label: CNPG Cluster
-                      multi: true
+                      multi: false
                       name: cnpgClusterList
                       options: []
                       query:

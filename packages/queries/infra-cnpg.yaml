@@ -26,10 +26,12 @@ description: |
   identity, so nothing can say which CNPG cluster serves which environment.
   `$cnpgClusterList` is that mapping, chosen by the reader, and is declared on
   the dashboard section these rows sit in rather than on the dashboard. It
-  holds CNPG cluster names, discovered from instance pod names
+  holds one CNPG cluster name, discovered from instance pod names
   (`<cluster>-<n>`), and every query here matches
-  `pod=~"($cnpgClusterList)-[0-9]+"`. Two CNPG
-  clusters of the same name in different namespaces are read as one.
+  `pod=~"($cnpgClusterList)-[0-9]+"`. Single-select, because an environment
+  has one metadata database, and the instance-level numbers here would mix
+  two clusters' instances into one. Two CNPG clusters of the same name in
+  different namespaces are still read as one.
 
   ## Label families
 
@@ -149,9 +151,11 @@ queries:
         constantly, so a small instance whose autovacuum is blocked reaches
         this faster than most workloads.
       unhealthy: |
-        At 100%, PostgreSQL stops accepting writes to protect itself
-        (wraparound), and Materialize stops with it. PostgreSQL warns well
-        before then, at about 95%.
+        Past 50%, treat it as urgent: the remaining headroom is what a stalled
+        vacuum has left before wraparound. At 100%, PostgreSQL stops accepting
+        writes to protect itself, and Materialize stops with it; its own
+        warnings start only once fewer than 40 million IDs remain, at about
+        98%.
       notes: |
         `age(datfrozenxid)` against the 2^31 wraparound limit, the same
         measure Cloud SQL publishes as transaction-ID utilization.
@@ -194,8 +198,8 @@ queries:
     stability: experimental
     description:
       summary: |
-        Client connections open on each instance, by database and role,
-        beside the ceiling an ordinary role is refused at.
+        Client connections open on the primary, by database and role, beside
+        the ceiling an ordinary role is refused at.
       nominal: |
         Materialize's role holding nearly all of them, well under the ceiling.
       degraded: |
@@ -204,51 +208,61 @@ queries:
         database's, something else is sharing the instance and Materialize is
         competing with it.
       notes: |
-        Materialize's own count of the connections it holds is on the
-        Connections tab, and should match its line here.
+        The primary only, because the ceiling is per instance and Materialize
+        connects only to the primary. Materialize's own count of the
+        connections it holds is on the Connections tab, and should match its
+        line here.
     promQL:
       - |
-        sum by (datname, usename) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+        sum by (datname, usename) (
+          cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"}
+          and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
+        )
       - |
-        min(
-            max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
-          - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+        max(
+          (
+              max by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name="max_connections"})
+            - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
+          )
+          and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
         )
 
   - id: infra.cnpg.connections.by_state
     stability: experimental
     description:
       summary: |
-        Client connections by what they are doing: running a statement
+        Client connections by what they are doing — running a statement
         (`active`), waiting for the next one (`idle`), or holding a
-        transaction open between statements (`idle in transaction`).
+        transaction open between statements (`idle in transaction`) — and how
+        many are waiting on a lock.
       nominal: |
-        Mostly `idle`. A connection pool keeps connections open between uses.
+        Mostly `idle`, and nothing waiting on a lock. A connection pool keeps
+        connections open between uses.
       degraded: |
         `idle in transaction` that does not drain is a client holding a
         transaction open, which blocks vacuum and can hold locks. It is a
         different fault from too many connections, and the fix is in the
-        client that opened it.
-    promQL: |
-      sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+        client that opened it. Sessions waiting on locks are contention:
+        persist's commits are conditional updates to a handful of rows, so a
+        client locking those rows stalls Materialize's writes.
+      notes: Every instance, replicas included.
+    promQL:
+      - |
+        sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
+      - |
+        sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
 
   - id: infra.cnpg.connections.oldest_transaction
     stability: experimental
     description:
       summary: |
-        The oldest open transaction, and the number of sessions waiting on a
-        lock, by database.
-      nominal: Transactions under a second, and nothing waiting.
+        The oldest open transaction, by database and connection state.
+      nominal: Under a second.
       degraded: |
-        A transaction that keeps aging holds back vacuum. Sessions waiting on
-        locks are contention: persist's commits are conditional updates to a
-        handful of rows, so a client locking those rows stalls Materialize's
-        writes.
-    promQL:
-      - |
-        max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
-      - |
-        sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
+        A transaction that keeps aging holds back vacuum on every table, so
+        the consensus table grows and every commit slows.
+    promQL: |
+      max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
 
   # --- Activity ---------------------------------------------------------------
   - id: infra.cnpg.activity.transactions

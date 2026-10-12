@@ -19,7 +19,8 @@
 //!
 //! CNPG's series name an instance pod and nothing about Materialize, so which
 //! cluster is this environment's database is the reader's to say, on
-//! `$cnpgClusterList`. On the usual single cluster, "All" is already right.
+//! `$cnpgClusterList`. It is single-select, and on the usual single cluster
+//! Grafana's first choice is already right.
 //!
 //! The picker is a section variable on the one CloudNativePG row that holds the
 //! rest, so it renders under that header and hides with it. A dashboard-level
@@ -270,7 +271,7 @@ fn version(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn connections_by_database(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Connections by Database and Role")
+    Panel::timeseries("Primary Connections by Database and Role")
         .query(q.legended(
             "infra.cnpg.connections.by_database",
             &["{{datname}} ({{usename}})", "ceiling"],
@@ -284,7 +285,10 @@ fn connections_by_database(q: &Queries) -> dashboardv2::PanelKind {
 
 fn connections_by_state(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Connections by State")
-        .query(q.get("infra.cnpg.connections.by_state").legend("{{state}}"))
+        .query(q.legended(
+            "infra.cnpg.connections.by_state",
+            &["{{state}}", "waiting on a lock"],
+        ))
         .unit("short")
         .decimals(0.0)
         .min(0.0)
@@ -293,11 +297,11 @@ fn connections_by_state(q: &Queries) -> dashboardv2::PanelKind {
 }
 
 fn transactions_held(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Oldest Transaction and Lock Waits")
-        .query(q.legended(
-            "infra.cnpg.connections.oldest_transaction",
-            &["oldest {{datname}} ({{state}})", "waiting on a lock"],
-        ))
+    Panel::timeseries("Oldest Transaction by Database")
+        .query(
+            q.get("infra.cnpg.connections.oldest_transaction")
+                .legend("{{datname}} ({{state}})"),
+        )
         .unit("s")
         .min(0.0)
         .no_value(not_reported())

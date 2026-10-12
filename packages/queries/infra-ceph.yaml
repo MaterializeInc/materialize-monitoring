@@ -31,7 +31,9 @@ description: |
 
   The series carry the `namespace` of the Rook cluster and no Materialize
   identity. `$cephNamespace` picks the Ceph cluster, from the dashboard
-  section these rows sit in, and every query here matches it; nothing can say which object store holds which environment's
+  section these rows sit in, and every query here matches it. It is
+  single-select, because an environment's bucket is in one store and daemon
+  names such as `osd.0` repeat across clusters; nothing can say which object store holds which environment's
   bucket, so the RGW panels sum every gateway in that cluster.
 
   ## Label families
@@ -98,8 +100,10 @@ queries:
         Above 75%, losing a disk may push the others past Ceph's `nearfull`
         ratio (85% by default) while it recovers.
       unhealthy: |
-        At the `full` ratio (95% by default) on any OSD, Ceph stops accepting
-        writes to the pools on it, and persist cannot upload.
+        Past `nearfull`, Ceph raises a health warning, and one disk's recovery
+        can carry the rest to the `full` ratio (95% by default). At `full` on
+        any OSD, Ceph stops accepting writes to the pools on it, and persist
+        cannot upload.
       notes: |
         A cluster-wide average. Ceph enforces `full` per OSD, so one uneven
         disk can stop writes first; _OSD Utilization_ shows each.
@@ -324,12 +328,14 @@ queries:
       summary: |
         How full each disk daemon (OSD) is.
       nominal: |
-        Every OSD within a few points of the others, below Ceph's `nearfull`
-        ratio (85% by default).
+        Every OSD within a few points of the others, below 75%.
       degraded: |
-        One OSD well above the rest fills first, and Ceph stops writes to its
-        pools when it reaches `full`, however empty the others are. The
-        balancer, or reweighting that OSD, evens them out.
+        One OSD well above the rest fills first. The balancer, or reweighting
+        that OSD, evens them out.
+      unhealthy: |
+        Past Ceph's `nearfull` ratio (85% by default), Ceph warns, and the OSD
+        has little room left before `full` (95%), where Ceph stops writes to
+        its pools however empty the others are.
     promQL: |
       max by (ceph_daemon) (
         ceph_osd_stat_bytes_used{namespace=~"$cephNamespace"}

@@ -20,7 +20,8 @@
 //!
 //! Ceph's series name a Rook namespace and nothing about Materialize, so
 //! which Ceph cluster holds this environment's bucket is the reader's to say, on
-//! `$cephNamespace`. On the usual single cluster, "All" is already right. The
+//! `$cephNamespace`. It is single-select, and on the usual single cluster
+//! Grafana's first choice is already right. The
 //! gateway panels sum every client of the store, Materialize among them.
 //!
 //! The picker is a section variable on the one Ceph row that holds the rest,

@@ -956,9 +956,11 @@ pub fn cnpg_detected() -> dashboardv2::VariableKind {
 /// the names CNPG gives its instance pods (`<cluster>-<n>`), and the queries
 /// match `pod=~"($cnpgClusterList)-[0-9]+"`.
 ///
-/// Multi-select with an `.+` "All", which is the regex-safe form: on a single
-/// CNPG cluster — the common case — "All" is the right answer without the
-/// reader touching it.
+/// Single-select, with no "All": an environment has one metadata database,
+/// and the instance-level panels — the primary, connections against a
+/// per-instance ceiling, the last backup — would mix two clusters into one
+/// number. Grafana opens on the first discovered cluster, which on the usual
+/// single CNPG cluster is the right one without the reader touching it.
 ///
 /// A section variable: declare it with
 /// [`Row::variables`](crate::grafana::layout::Row::variables) on the rows that
@@ -967,11 +969,11 @@ pub fn cnpg_clusters() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::CNPG_CLUSTER_LIST,
         label: "CNPG Cluster",
-        description: "The CloudNativePG cluster(s) serving as this environment's metadata database",
+        description: "The CloudNativePG cluster serving as this environment's metadata database",
         expr: "label_values(cnpg_collector_up, pod)".to_string(),
-        multi: true,
-        include_all: true,
-        all_value: Some(".+"),
+        multi: false,
+        include_all: false,
+        all_value: None,
         hide: dashboardv2::VariableHide::DontHide,
         sort: dashboardv2::VariableSort::AlphabeticalAsc,
         skip_url_sync: false,
@@ -1010,17 +1012,19 @@ pub fn ceph_detected() -> dashboardv2::VariableKind {
 /// Like [`cnpg_clusters`], a mapping the reader supplies: nothing on a Ceph
 /// series says which environment's bucket it holds. Discovered from the
 /// manager's `ceph_health_status`, which every Ceph cluster publishes exactly
-/// once. Multi-select with an `.+` "All", so the usual single cluster needs no
-/// choice. A section variable, like [`cnpg_clusters`].
+/// once. Single-select, for the reason [`cnpg_clusters`] gives, and sharper
+/// here: daemon names such as `osd.0` repeat in every Ceph cluster, so two
+/// selected clusters would merge disk by disk. A section variable, like
+/// [`cnpg_clusters`].
 pub fn ceph_namespaces() -> dashboardv2::VariableKind {
     QueryVariable {
         name: variables::CEPH_NAMESPACE,
         label: "Ceph Cluster",
-        description: "Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket",
+        description: "Namespace of the Rook Ceph cluster holding this environment's bucket",
         expr: "label_values(ceph_health_status, namespace)".to_string(),
-        multi: true,
-        include_all: true,
-        all_value: Some(".+"),
+        multi: false,
+        include_all: false,
+        all_value: None,
         hide: dashboardv2::VariableHide::DontHide,
         sort: dashboardv2::VariableSort::AlphabeticalAsc,
         skip_url_sync: false,
@@ -2324,6 +2328,20 @@ mod tests {
             names(&set),
             vec!["metricsDatasource", extra::CLOUD_PROVIDER_LIST]
         );
+    }
+
+    #[test]
+    fn self_hosted_dependency_pickers_select_one_cluster() {
+        // An environment has one metadata database and one bucket; a second
+        // selected cluster would merge per-instance and per-disk numbers.
+        for picker in [cnpg_clusters(), ceph_namespaces()] {
+            let dashboardv2::VariableKind::QueryVariableKind(v) = picker else {
+                panic!("not a query variable");
+            };
+            assert!(!v.spec.multi, "{}", v.spec.name);
+            assert!(!v.spec.include_all, "{}", v.spec.name);
+            assert!(v.spec.all_value.is_none(), "{}", v.spec.name);
+        }
     }
 
     #[test]

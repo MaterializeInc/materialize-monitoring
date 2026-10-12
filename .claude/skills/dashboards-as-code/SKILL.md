@@ -466,7 +466,7 @@ per-process legend, the empty state, the latency ladder) is `grafana/dependency.
 | Storage | `storage.rs` | State and Cleanup | `state.rs` |
 | Object Store Internals | `object_store.rs` | Database Internals | `database.rs` |
 
-Five things about them are not re-derivable by reading the modules:
+These things about them are not re-derivable by reading the modules:
 
 - **`variable::dependency_scoped` has no cluster or replica picker.** environmentd carries no cluster label and is a
   heavy client of both dependencies, so a picker would need `env-top`'s two-matcher pattern on every query. "Which

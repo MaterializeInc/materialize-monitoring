@@ -926,7 +926,7 @@ Put the discovery condition on the section, and leave the rows inside it uncondi
 Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
 `env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
 
-Three things to know about section variables:
+What to know about section variables:
 
 - **Scope is enforced here too.** Only panels inside the section can read the variable.
   `Dashboard::build` rejects a panel elsewhere that names it,

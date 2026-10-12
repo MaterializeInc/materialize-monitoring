@@ -3179,7 +3179,7 @@
   - pod
   name: cnpg_backends_waiting_total
   usage:
-  - infra.cnpg.connections.oldest_transaction
+  - infra.cnpg.connections.by_state
 - importance: extended
   labels:
   - pod
@@ -3230,6 +3230,7 @@
   - pod
   name: cnpg_pg_replication_in_recovery
   usage:
+  - infra.cnpg.connections.by_database
   - infra.cnpg.health.primary
 - importance: extended
   labels:

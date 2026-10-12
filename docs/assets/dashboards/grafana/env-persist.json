@@ -691,7 +691,7 @@
               "transformations": []
             }
           },
-          "description": "**How full each disk daemon (OSD) is.**\n\n**Nominal:** Every OSD within a few points of the others, below Ceph's `nearfull` ratio (85% by default).\n\n**Degraded:** One OSD well above the rest fills first, and Ceph stops writes to its pools when it reaches `full`, however empty the others are. The balancer, or reweighting that OSD, evens them out.",
+          "description": "**How full each disk daemon (OSD) is.**\n\n**Nominal:** Every OSD within a few points of the others, below 75%.\n\n**Degraded:** One OSD well above the rest fills first. The balancer, or reweighting that OSD, evens them out.\n\n**Unhealthy:** Past Ceph's `nearfull` ratio (85% by default), Ceph warns, and the OSD has little room left before `full` (95%), where Ceph stops writes to its pools however empty the others are.",
           "id": 1044,
           "links": [],
           "title": "OSD Utilization",
@@ -1011,7 +1011,7 @@
               "transformations": []
             }
           },
-          "description": "**Raw disk capacity used across the cluster, replication included.**\n\n**Nominal:** Below 75%. Ceph needs room to re-replicate a failed disk's data onto the others.\n\n**Degraded:** Above 75%, losing a disk may push the others past Ceph's `nearfull` ratio (85% by default) while it recovers.\n\n**Unhealthy:** At the `full` ratio (95% by default) on any OSD, Ceph stops accepting writes to the pools on it, and persist cannot upload.\n\nA cluster-wide average. Ceph enforces `full` per OSD, so one uneven disk can stop writes first; _OSD Utilization_ shows each.",
+          "description": "**Raw disk capacity used across the cluster, replication included.**\n\n**Nominal:** Below 75%. Ceph needs room to re-replicate a failed disk's data onto the others.\n\n**Degraded:** Above 75%, losing a disk may push the others past Ceph's `nearfull` ratio (85% by default) while it recovers.\n\n**Unhealthy:** Past `nearfull`, Ceph raises a health warning, and one disk's recovery can carry the rest to the `full` ratio (95% by default). At `full` on any OSD, Ceph stops accepting writes to the pools on it, and persist cannot upload.\n\nA cluster-wide average. Ceph enforces `full` per OSD, so one uneven disk can stop writes first; _OSD Utilization_ shows each.",
           "id": 1032,
           "links": [],
           "title": "Raw Capacity Used",
@@ -5182,18 +5182,17 @@
                           {
                             "kind": "QueryVariable",
                             "spec": {
-                              "allValue": ".+",
                               "allowCustomValue": true,
                               "current": {
                                 "text": "",
                                 "value": ""
                               },
                               "definition": "label_values(ceph_health_status, namespace)",
-                              "description": "Namespace(s) of the Rook Ceph cluster(s) holding this environment's bucket",
+                              "description": "Namespace of the Rook Ceph cluster holding this environment's bucket",
                               "hide": "dontHide",
-                              "includeAll": true,
+                              "includeAll": false,
                               "label": "Ceph Cluster",
-                              "multi": true,
+                              "multi": false,
                               "name": "cephNamespace",
                               "options": [],
                               "query": {
