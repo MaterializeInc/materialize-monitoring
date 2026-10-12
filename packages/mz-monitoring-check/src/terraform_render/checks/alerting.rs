@@ -32,7 +32,7 @@ use regex::Regex;
 use serde_json::{Map, Value};
 
 use super::{report, shown, shown_json};
-use crate::terraform_render::ctx::{Ctx, parse_yaml, str_at};
+use crate::terraform_render::ctx::{Ctx, merge, parse_yaml, str_at};
 use crate::terraform_render::manifests::Manifest;
 
 const HINT: &str = "See terraform/modules/materialize-monitoring/alerting.tf.";
@@ -94,21 +94,15 @@ pub fn preset(ctx: &Ctx) -> Result<()> {
         .and_then(Value::as_str)
         .context("alerting.preset is not a string")?;
 
-    let mut presets = ctx
-        .chart_default("alerting.presets")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    if let Some(declared) = ctx
-        .declared_at("alerting", "presets")
-        .and_then(Value::as_object)
-    {
-        presets.extend(declared.clone());
-    }
-    let target = presets.get(preset).and_then(|p| str_at(p, "critical"));
-    let Some(target) = target.filter(|target| *target != "suppressed") else {
+    let target = critical_class(
+        ctx.chart_default("alerting.presets"),
+        ctx.declared_at("alerting", "presets"),
+        preset,
+    );
+    let Some(target) = target.filter(|target| target != "suppressed") else {
         return Ok(());
     };
+    let target = target.as_str();
 
     let receivers = declared_receivers(ctx);
     let serving: BTreeSet<&str> = receivers
@@ -134,6 +128,21 @@ pub fn preset(ctx: &Ctx) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The class a preset routes `critical` to, once the declared presets are
+/// merged over the chart's.
+///
+/// Merged the way Helm merges them, cell by cell: `alerting.presets` takes cells
+/// to change, so an override naming only `warning` keeps the chart's `critical`.
+/// Replacing whole presets instead would lose that cell and leave nothing to
+/// check.
+fn critical_class(chart: Option<&Value>, declared: Option<&Value>, preset: &str) -> Option<String> {
+    let mut presets = chart.cloned().unwrap_or(Value::Null);
+    if let Some(declared) = declared {
+        merge(&mut presets, declared);
+    }
+    str_at(presets.get(preset)?, "critical").map(str::to_owned)
 }
 
 /// Every declared extra route sits at the top of the route tree.
@@ -485,6 +494,23 @@ mod tests {
         assert_eq!(
             receivers_for_severity(&route, "critical"),
             BTreeSet::from(["oncall".to_owned()])
+        );
+    }
+
+    /// A declared preset override names only the cells it changes; the rest
+    /// come from the chart.
+    #[test]
+    fn a_partial_preset_override_keeps_the_charts_critical() {
+        let chart = json!({ "important": { "critical": "high", "warning": "normal" } });
+        let declared =
+            json!({ "important": { "warning": "low" }, "custom": { "critical": "page" } });
+        assert_eq!(
+            critical_class(Some(&chart), Some(&declared), "important").as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            critical_class(Some(&chart), Some(&declared), "custom").as_deref(),
+            Some("page")
         );
     }
 

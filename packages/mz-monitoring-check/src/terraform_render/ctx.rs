@@ -139,7 +139,7 @@ pub fn parse_yaml(text: &str) -> Result<Value> {
 
 /// Helm's coalescing of one values document over another: maps merge key by
 /// key, and anything else — lists included — replaces what was there.
-fn merge(into: &mut Value, from: &Value) {
+pub fn merge(into: &mut Value, from: &Value) {
     match (into, from) {
         (Value::Object(into), Value::Object(from)) => {
             for (key, value) in from {

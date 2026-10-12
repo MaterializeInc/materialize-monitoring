@@ -320,13 +320,7 @@ const CHECKS: &[Check] = &[
     // as the module does.
     Check {
         name: "grafana::database",
-        applies: |ctx| match ctx
-            .declared("grafana_database_enabled")
-            .and_then(Value::as_bool)
-        {
-            Some(enabled) => enabled,
-            None => ctx.declares("grafana_database_host"),
-        },
+        applies: checks::grafana::database_enabled,
         run: checks::grafana::database,
     },
     Check {
@@ -398,41 +392,45 @@ const CHECKS: &[Check] = &[
 /// The trials for one example: its plan, its render, and every assertion.
 fn build_trials(example: Example, harness: &libtest_mimic::Arguments) -> Vec<Trial> {
     let name = example.name;
+    // `render` is `None` when the plan failed and rendering was never attempted.
     let (plan, render, ctx) = match example.outcome {
-        Outcome::Rendered(ctx) => (Ok(()), Ok(()), Some(ctx)),
-        Outcome::PlanFailed(err) => (
-            Err(err),
-            Err(format!("not attempted: {name}::plan failed")),
-            None,
-        ),
-        Outcome::RenderFailed(err) => (Ok(()), Err(err), None),
+        Outcome::Rendered(ctx) => (Ok(()), Some(Ok(())), Some(ctx)),
+        Outcome::PlanFailed(err) => (Err(err), None, None),
+        Outcome::RenderFailed(err) => (Ok(()), Some(Err(err)), None),
     };
-    let failed_stage = match (&plan, &render) {
-        (Err(_), _) => "plan",
-        _ => "render",
-    };
+    let failed_stage = if plan.is_err() { "plan" } else { "render" };
 
-    let mut trials = vec![
-        Trial::test(format!("{name}::plan"), move || plan.map_err(Failed::from)),
-        Trial::test(format!("{name}::render"), move || {
-            render.map_err(Failed::from)
-        }),
-    ];
+    let plan_trial = Trial::test(format!("{name}::plan"), move || plan.map_err(Failed::from));
+    let render_name = format!("{name}::render");
+    let render_trial =
+        render.map(|render| Trial::test(render_name.clone(), move || render.map_err(Failed::from)));
 
-    // With nothing rendered the assertions cannot run. They are ignored, with
-    // the reason, when the failed stage's own trial is in this run to carry the
-    // failure — and fail otherwise, so a filter that selected only assertions
-    // cannot report success on an example that never rendered.
-    let stage_trial = if failed_stage == "plan" {
-        &trials[0]
-    } else {
-        &trials[1]
+    // Anything downstream of a failed stage cannot run. It is ignored, with the
+    // reason, when the failed stage's own trial is in this run to carry the
+    // failure, and fails otherwise, so a filter that selected only downstream
+    // trials cannot report success on an example that never rendered.
+    let stage_trial = match &render_trial {
+        Some(render_trial) if failed_stage == "render" => render_trial,
+        _ => &plan_trial,
     };
     let stage_reported = !harness.is_filtered_out(stage_trial);
+    let downstream = |trial_name: String| {
+        let reason = format!("{name}::{failed_stage} failed");
+        Trial::ignorable_test(trial_name, move || {
+            if stage_reported {
+                Ok(Completion::ignored_with(reason))
+            } else {
+                Err(Failed::from(format!("not checked: {reason}")))
+            }
+        })
+    };
+
+    let render_trial = render_trial.unwrap_or_else(|| downstream(render_name));
+    let mut trials = vec![plan_trial, render_trial];
 
     for check in CHECKS {
         let trial_name = format!("{name}::{}", check.name);
-        let trial = match &ctx {
+        trials.push(match &ctx {
             Some(ctx) => {
                 let ctx = Arc::clone(ctx);
                 let applies = (check.applies)(&ctx);
@@ -444,18 +442,8 @@ fn build_trials(example: Example, harness: &libtest_mimic::Arguments) -> Vec<Tri
                 })
                 .with_ignored_flag(!applies)
             }
-            None => {
-                let reason = format!("{name}::{failed_stage} failed");
-                Trial::ignorable_test(trial_name, move || {
-                    if stage_reported {
-                        Ok(Completion::ignored_with(reason))
-                    } else {
-                        Err(Failed::from(format!("not checked: {reason}")))
-                    }
-                })
-            }
-        };
-        trials.push(trial);
+            None => downstream(trial_name),
+        });
     }
 
     trials

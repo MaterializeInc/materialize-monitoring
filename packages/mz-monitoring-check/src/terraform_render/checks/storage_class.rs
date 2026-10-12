@@ -27,6 +27,7 @@ pub fn reaches_every_claim(ctx: &Ctx) -> Result<()> {
         .context("storage_class is not a string")?;
 
     let mut problems = Vec::new();
+    let mut claims_seen = 0;
     for statefulset in ctx.rendered.of_kind("StatefulSet") {
         let claims = statefulset
             .get("spec.volumeClaimTemplates")
@@ -34,6 +35,7 @@ pub fn reaches_every_claim(ctx: &Ctx) -> Result<()> {
             .into_iter()
             .flatten();
         for claim in claims {
+            claims_seen += 1;
             let got = str_at(claim, "spec.storageClassName");
             if got != Some(want) {
                 problems.push(format!(
@@ -44,6 +46,14 @@ pub fn reaches_every_claim(ctx: &Ctx) -> Result<()> {
                 ));
             }
         }
+    }
+    // Every stack this module installs keeps state on a claim, so a class with
+    // none to reach means the workloads it was meant for stopped rendering.
+    if claims_seen == 0 {
+        problems.push(format!(
+            "storage_class is {want:?} but no StatefulSet renders a volumeClaimTemplate for it \
+             to reach"
+        ));
     }
     report(
         problems,

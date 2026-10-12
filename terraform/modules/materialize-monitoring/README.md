@@ -161,7 +161,8 @@ make terraform-render
 Each example is planned against a kubeconfig that does not exist (every resource is a create, so nothing refreshes and the providers never connect), the `helm_release` values are read back out of the plan, and the chart is rendered against them. Rendering is the only step that proves a value reached the setting it was aimed at — `terraform validate` accepts every wrong value path, because they are all still valid HCL.
 
 The assertions live in [`packages/mz-monitoring-check/src/terraform_render/`](../../../packages/mz-monitoring-check/src/terraform_render/).
-Each runs once per example as a named trial, such as `gcp::storage_class::reaches_every_claim`, and reports as ignored where the example declares nothing for it to check.
+Each runs once per example as a named trial, such as `gcp::storage_class::reaches_every_claim`.
+A trial reports as ignored where the example declares nothing for it to check.
 The runner takes the same flags as `cargo test`, plus `--example` to plan a single example:
 
 ```bash
