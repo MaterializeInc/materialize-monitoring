@@ -1,0 +1,3314 @@
+{
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "annotations": {
+      "grafana.app/folder": "materialize",
+      "monitoring.materialize.cloud/min-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/rec-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/sql-metric-prefix": "mz_",
+      "monitoring.materialize.cloud/target-export": "generic"
+    },
+    "name": "mz-mon-env-consensus"
+  },
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "builtIn": true,
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "query": {
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "group": "grafana",
+            "kind": "DataQuery",
+            "spec": {},
+            "version": "v0"
+          }
+        }
+      }
+    ],
+    "cursorSync": "Crosshair",
+    "description": "The metadata database, as Materialize experiences it.\n\nCommits, failures, latency and connection pools, measured by the processes that use the database — the same on every database flavor. What the database itself reports is on the Infrastructure Cloud Provider dashboard.",
+    "editable": true,
+    "elements": {
+      "ops-by-type": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Metadata database calls per second, by operation.**\n\n**Nominal:** `consensus_cas` — commits — is nearly all of it. `consensus_scan` reads an object's recent history and `consensus_truncate` deletes history nothing needs any more, both at a few per second.\n\n**Degraded:** A step change in commits without a matching change in the number of objects usually means something is being rewritten in a loop — an object that cannot settle.",
+          "id": 1012,
+          "links": [],
+          "title": "Operations by Type",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-bytes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_persist_external_bytes_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_persist_external_bytes_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Bytes per second exchanged with the metadata database, by operation.**\n\n**Nominal:** Small — the state record of an object is kilobytes, not data. A commit writes one; a scan reads several.\n\n**Degraded:** Rising commit bytes with a steady commit rate means the state records themselves are growing, which the _State and Cleanup_ tab explains.",
+          "id": 1014,
+          "links": [],
+          "title": "Data Exchanged by Operation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "Bps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-commit-latency-by-process": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nhistogram_quantile(0.99,\n  sum by (le, app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nhistogram_quantile(0.99,\n  sum by (le, app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nhistogram_quantile(0.99,\n  sum by (le, app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nhistogram_quantile(0.99,\n  sum by (le, app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Slowest 1% of commits, by the process making them.**\n\n**Nominal:** Every process close to the others.\n\n**Degraded:** One process well above the rest is local to it — its network path, or its own pool running out of connections (compare _Connections -> Waiting for a Connection by Process_). All of them rising together is the database.",
+          "id": 1016,
+          "links": [],
+          "title": "Commit Latency by Process (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-commits-by-process": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Commits per second, by the process making them.**\n\n**Nominal:** environmentd and the system cluster (`mz_catalog_server`) commit continuously even with no user workload. User clusters add commits in proportion to the sources, tables and materialized views they maintain.\n\n**Degraded:** The process at the top is the one to look at when the database is busier than expected.",
+          "id": 1013,
+          "links": [],
+          "title": "Commits by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-conflicts": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_cmd_cas_mismatch_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_cmd_cas_mismatch_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_cmd_cas_mismatch_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_cmd_cas_mismatch_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Commits that lost a race with another writer and were retried, per second, by process.**\n\n**Nominal:** A trickle. Several processes write the same objects, so the odd conflict is expected and costs one retry.\n\n**Degraded:** A burst during an upgrade is the two generations overlapping, and stops when the old one is retired. A sustained high rate outside a rollout means two processes are fighting over the same objects — usually a replica that should have been shut down and was not.",
+          "id": 1017,
+          "links": [],
+          "title": "Write Conflicts by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-mean-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n  sum by (op) (\n    rate(mz_persist_external_seconds{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n  )\n  /\n  sum by (op) (\n    rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n  )\n) >= 0\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "(\n  sum by (op) (\n    rate(mz_persist_external_seconds{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n  )\n  /\n  sum by (op) (\n    rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n  )\n) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Average time per metadata database call, by operation.**\n\n**Nominal:** Milliseconds, and similar across operations.\n\n**Degraded:** Truncate alone slowing down is the database struggling to delete — on PostgreSQL, usually a sign that autovacuum is behind on the table persist writes to.\n\nA mean hides the tail. The commit has a real percentile on _Commit Latency by Process (p99)_.",
+          "id": 1015,
+          "links": [],
+          "title": "Mean Latency by Operation",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-oracle-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n  sum by (op) (\n    rate(mz_ts_oracle_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n  /\n  sum by (op) (\n    rate(mz_ts_oracle_started_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n) >= 0\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "(\n  sum by (op) (\n    rate(mz_ts_oracle_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n  /\n  sum by (op) (\n    rate(mz_ts_oracle_started_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Average time per timestamp oracle call, by operation.**\n\n**Nominal:** A millisecond or two.\n\n**Degraded:** Every `SELECT` waits for `read_ts`, so this adds directly to query latency. A rise here beside a rise in commit latency is the database; a rise here alone points at the oracle's own single connection pool, on _Connections_.",
+          "id": 1020,
+          "links": [],
+          "title": "Timestamp Oracle Latency (mean)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No timestamp oracle metrics. The oracle runs in environmentd, so check that it is up.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-oracle-ops": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_ts_oracle_started_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_ts_oracle_started_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Timestamp oracle calls per second, by operation.**\n\n**Nominal:** A few per second. `read_ts` is asked for by queries, `write_ts` and `apply_write` by writes.\n\nThe timestamp oracle keeps the timestamps every query and write is assigned, in the metadata database. It runs in environmentd only, so a failure here stops queries and writes environment-wide rather than on one cluster.",
+          "id": 1019,
+          "links": [],
+          "title": "Timestamp Oracle Operations",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No timestamp oracle metrics. The oracle runs in environmentd, so check that it is up.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "ops-retries": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_persist_retry_retries_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"fetch_state::scan|apply_unbatched_cmd::cas|gc::truncate|maybe_init::cas|consensus::open\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_persist_retry_retries_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"fetch_state::scan|apply_unbatched_cmd::cas|gc::truncate|maybe_init::cas|consensus::open\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_ts_oracle_retry_retries_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "timestamp oracle {{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_ts_oracle_retry_retries_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Metadata database calls retried after a failure, per second, by the work that was retrying.**\n\n**Nominal:** Nothing drawn above zero.\n\n**Degraded:** A retry is a failure that has not been given up on yet. Retries across every operation at once mean the database is unreachable or refusing work; retries on truncation alone are cleanup falling behind, which is not urgent until _State and Cleanup_ shows the backlog growing.\n\nExcludes persist's polling loops, which are named like retries but are waiting for new data rather than recovering from an error.",
+          "id": 1018,
+          "links": [],
+          "title": "Retried Operations",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-collections": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count(group by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n",
+                        "legendFormat": "objects",
+                        "qryType": 1,
+                        "query": "count(group by (shard) (mz_persist_shard_usage_current_state_batches_bytes{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Durable objects in this environment — each one a stream of commits to the metadata database.**\n\n**Nominal:** Grows with what you create. The system catalog alone is around a hundred.\n\nMetadata database sizing guidance is stated in continuously updated objects: roughly 4,500 for the smallest recommended instance and 18,000 for the default. This count is an upper bound on that, since it also includes objects that rarely change.\n\nList them with `SELECT s.shard_id, o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id`.",
+          "id": 1006,
+          "links": [],
+          "title": "Durable Objects",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-commit-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.50,\n  sum by (le) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.50,\n  sum by (le) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (le) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (le) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Commit latency to the metadata database: the median and the slowest 1%.**\n\n**Nominal:** Flat, with the p99 a small multiple of the median.\n\n**Degraded:** Both rising together is the database or the network getting slower for everyone. The p99 rising alone is contention — some commits are waiting on others, or on the pool.",
+          "id": 1007,
+          "links": [],
+          "title": "Commit Latency",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-commit-p99": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (le) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (le) (\n    rate(mz_persist_external_op_latency_bucket{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval])\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long the slowest 1% of commits to the metadata database take.**\n\n**Nominal:** Single-digit to low tens of milliseconds when the database is in the same region as the cluster.\n\n**Degraded:** Every write in Materialize waits on a commit, so this is a floor under how fresh anything can be. A rise that tracks the database's CPU is the database saturating; one that does not is usually the network, or a process waiting for its own connection pool.\n\nMeasured by the client, so it includes the round trip and any wait for a pooled connection. Compare with _Round-Trip Time by Process_ to separate the two.",
+          "id": 1002,
+          "links": [],
+          "title": "Commit Latency (p99)",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.1
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-commits": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval]))\n",
+                        "legendFormat": "commits/s",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_external_started_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Commits to the metadata database per second — the load this environment puts on it.**\n\n**Nominal:** Steady. It scales with the number of durable objects that are being updated, not with data volume or query rate, and an idle environment already commits dozens of times a second.\n\nThis is the number the metadata database is sized against. See _Operations -> Load_ for where it comes from.",
+          "id": 1005,
+          "links": [],
+          "title": "Commits",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-connection-errors": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n+ (sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])) or vector(0))\n",
+                        "legendFormat": "errors/s",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n+ (sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])) or vector(0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Failed attempts to open a connection to the metadata database, per second.**\n\n**Nominal:** Zero.\n\n**Degraded:** Materialize cannot connect. On a new install this is almost always configuration: the host, port, database name or credentials in the metadata backend URL, TLS settings, or a network path the cluster does not have. On a running install it is the database refusing connections — restarting, failing over, or at its `max_connections` limit.\n\nCounts both clients: persist's connection pools and the timestamp oracle's.",
+          "id": 1001,
+          "links": [],
+          "title": "Connection Errors",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 0.01
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 0.2575
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 0.505
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 0.7525
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "cps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-connection-errors-by-process": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  rate(mz_persist_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n",
+                        "legendFormat": "timestamp oracle",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_ts_oracle_postgres_connpool_connection_errors{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Failed connection attempts per second, by the process that made them.**\n\n**Nominal:** Nothing drawn above zero.\n\n**Degraded:** Every process at once is the database, its address, or its credentials. One process alone is that process's network path.",
+          "id": 1010,
+          "links": [],
+          "title": "Connection Errors by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "cps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-connections-held": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"})\n+ (sum(mz_ts_oracle_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}) or vector(0))\n",
+                        "legendFormat": "connections",
+                        "qryType": 1,
+                        "query": "sum(mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"})\n+ (sum(mz_ts_oracle_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}) or vector(0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Connections to the metadata database this environment currently holds open.**\n\n**Nominal:** A few per process — each cluster replica keeps its own pool, and so does environmentd. Around 50 is typical for a small environment.\n\n**Degraded:** This is what the database counts against its `max_connections`. Adding clusters and replicas adds connections, and a rollout briefly runs two generations of every process at once, so the peak during an upgrade is roughly double the steady state. If the database is shared with anything else, that headroom is shared too.\n\nThe database's own count, and its limit, are on the Infrastructure Cloud Provider dashboard under _Metadata Database -> Headroom_.",
+          "id": 1004,
+          "links": [],
+          "title": "Connections Held",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-failed-ops": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_external_failed_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval]))\n",
+                        "legendFormat": "failed/s",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_external_failed_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Metadata database calls that failed, per second, across every Materialize process in this environment.**\n\n**Nominal:** Zero. A short burst while a process restarts or the database fails over is retried and harmless.\n\n**Degraded:** Any sustained rate means Materialize is retrying its writes and cannot make progress while it does: freshness stalls everywhere at once. The cause is almost always on the database side — unreachable, out of connection slots, or restarting.\n\n_Retrying Metadata Database Operations_ below has the database's own error text, which is what tells those causes apart.",
+          "id": 1000,
+          "links": [],
+          "title": "Failed Operations",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 0.01
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 0.2575
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 0.505
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 0.7525
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-failures-by-op": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_persist_external_failed_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "{{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_persist_external_failed_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=~\"consensus_.*\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (op) (\n  rate(mz_ts_oracle_failed_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "timestamp oracle {{op}}",
+                        "qryType": 1,
+                        "query": "sum by (op) (\n  rate(mz_ts_oracle_failed_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Failed metadata database calls per second, by operation.**\n\n**Nominal:** Nothing drawn above zero.\n\n**Degraded:** `consensus_cas` failing is writes failing. `consensus_scan` and `consensus_head` failing are reads of an object's state, which every process does when it opens one — failures there on their own often mean a process that is starting up cannot reach the database. Timestamp oracle failures stop every query from being assigned a timestamp.",
+          "id": 1009,
+          "links": [],
+          "title": "Failed Operations by Type",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-retry-logs": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{namespace=~\"$mzNamespaceList\"}\n  |= \"external operation\"\n  |~ \"external operation (fetch_state::scan|apply_unbatched_cmd::cas|gc::truncate|maybe_init::cas|consensus::open|read_ts|write_ts|peek_write_ts|apply_write|get_all_timelines|open) \"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**What Materialize logged while retrying calls to the metadata database, with the database's own error text.**\n\n**Nominal:** Empty. A healthy database needs no retries worth logging.\n\n**Degraded:** The error text is the diagnosis. The common ones:\n\n- `Connection refused`, or a timeout — the database is down, restarting, or unreachable from the cluster. - `remaining connection slots are reserved` or `too many clients` — the database is at `max_connections`. - `password authentication failed`, or a TLS error — the credentials or `sslmode` in the metadata backend URL. - `could not serialize access` — contention between writers, which retries resolve on their own.\n\nA retry is logged once it has failed a few times, so a single blip does not appear here. If the environment picker is empty, Materialize never started far enough to report metrics; its logs are still on Materialize Logs and Events under _Logs -> All Logs_.",
+          "id": 1011,
+          "links": [],
+          "title": "Retrying Metadata Database Operations",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No retried metadata database calls were logged in this time range."
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-round-trip": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nmax by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_external_rtt_latency{materialize_cloud_organization_name=~\"$environmentNameList\", external=\"consensus\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nmax by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_external_rtt_latency{materialize_cloud_organization_name=~\"$environmentNameList\", external=\"consensus\"}\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nmax by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_external_rtt_latency{materialize_cloud_organization_name=~\"$environmentNameList\", external=\"consensus\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nmax by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_external_rtt_latency{materialize_cloud_organization_name=~\"$environmentNameList\", external=\"consensus\"}\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The network round trip from each Materialize process to the metadata database, as that process last measured it.**\n\n**Nominal:** About a millisecond within one region, and roughly the same for every process.\n\n**Degraded:** One process far above the rest is that process's network path — its node, its zone, or a proxy in the way. Every process high at once is the database, or a database that is not in the cluster's region.\n\nA gauge the client refreshes on its own schedule, so it can trail the latency panels by a few seconds.",
+          "id": 1008,
+          "links": [],
+          "title": "Round-Trip Time by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-waiting": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(clamp_min(-mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0))\n+ (sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)) or vector(0))\n",
+                        "legendFormat": "waiting",
+                        "qryType": 1,
+                        "query": "sum(clamp_min(-mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0))\n+ (sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)) or vector(0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Calls currently queued for a free database connection, across every process.**\n\n**Nominal:** Zero. Each pool normally has spare connections.\n\n**Degraded:** Calls are waiting on the pool rather than on the database. Brief bursts are fine; a queue that persists means the pools are too small for the load or connections are being held too long — which a slow database causes.\n\nA snapshot taken at each connection request, so an idle process reports its last reading.",
+          "id": 1003,
+          "links": [],
+          "title": "Waiting for a Connection",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 3.25
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 5.5
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 7.75
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 10
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pool-acquire-wait": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\n(\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquire_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n  /\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquires{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n) >= 0\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n(\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquire_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n  /\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquires{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n) >= 0\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\n(\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquire_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n  /\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquires{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n) >= 0\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\n(\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquire_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n  /\n  sum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n    rate(mz_persist_postgres_connpool_acquires{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])\n  )\n) >= 0\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n  sum(rate(mz_ts_oracle_postgres_connpool_acquire_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n  /\n  sum(rate(mz_ts_oracle_postgres_connpool_acquires{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n) >= 0\n",
+                        "legendFormat": "timestamp oracle",
+                        "qryType": 1,
+                        "query": "(\n  sum(rate(mz_ts_oracle_postgres_connpool_acquire_seconds{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n  /\n  sum(rate(mz_ts_oracle_postgres_connpool_acquires{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Average time a call waits to be handed a connection, by process.**\n\n**Nominal:** Microseconds — a free connection is almost always ready.\n\n**Degraded:** Milliseconds or more is time added to every commit before it reaches the database, and is invisible from the database's side.",
+          "id": 1024,
+          "links": [],
+          "title": "Connection Wait (mean)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pool-churn": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_postgres_connpool_connections_created{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n+ (sum(rate(mz_ts_oracle_postgres_connpool_connections_created{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])) or vector(0))\n",
+                        "legendFormat": "opened",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_postgres_connpool_connections_created{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n+ (sum(rate(mz_ts_oracle_postgres_connpool_connections_created{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])) or vector(0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_postgres_connpool_ttl_reconnections{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n+ (sum(rate(mz_ts_oracle_postgres_connpool_ttl_reconnections{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])) or vector(0))\n",
+                        "legendFormat": "replaced at age limit",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_postgres_connpool_ttl_reconnections{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n+ (sum(rate(mz_ts_oracle_postgres_connpool_ttl_reconnections{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval])) or vector(0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**New connections opened per second, and how many of those replaced a connection that had reached its age limit.**\n\n**Nominal:** The two lines close together and low: connections are recycled on a timer so that a database failover is picked up, and that recycling is most of what opens new ones.\n\n**Degraded:** New connections well above the recycling rate means connections are being lost and reopened — a database dropping them, or a proxy with a short idle timeout in the path. Each new connection costs the database a TLS handshake and a backend process.",
+          "id": 1025,
+          "links": [],
+          "title": "New Connections",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "cps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pool-held": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(mz_ts_oracle_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"})\n",
+                        "legendFormat": "timestamp oracle",
+                        "qryType": 1,
+                        "query": "sum(mz_ts_oracle_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Connections to the metadata database held open, by process.**\n\n**Nominal:** A handful per process, stable. Pools shrink as idle connections expire and grow back on demand.\n\n**Degraded:** The sum across processes is what the database counts against `max_connections`. A process whose pool keeps growing is waiting on a slow database and opening more connections to compensate.",
+          "id": 1021,
+          "links": [],
+          "title": "Connections Held by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pool-in-use": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n  - clamp_min(mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n  - clamp_min(mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n  - clamp_min(mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  mz_persist_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n  - clamp_min(mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(\n  mz_ts_oracle_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n  - clamp_min(mz_ts_oracle_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n",
+                        "legendFormat": "timestamp oracle",
+                        "qryType": 1,
+                        "query": "sum(\n  mz_ts_oracle_postgres_connpool_size{materialize_cloud_organization_name=~\"$environmentNameList\"}\n  - clamp_min(mz_ts_oracle_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Connections actively lent out to a call, by process.**\n\n**Nominal:** Well under the pool's size.\n\n**Degraded:** In use equal to held, with callers queued in _Waiting for a Connection by Process_, is a pool that is too small or a database that is holding each connection too long.",
+          "id": 1022,
+          "links": [],
+          "title": "Connections in Use by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pool-waiting": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  clamp_min(-mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  clamp_min(-mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)",
+                        "legendFormat": "{{app}} {{cluster_name}}",
+                        "qryType": 1,
+                        "query": "(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  clamp_min(-mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\n* on (cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)\nmax by (cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n)\nor\nlabel_replace(\n(\nsum by (app, cluster_environmentd_materialize_cloud_cluster_id) (\n  clamp_min(-mz_persist_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0)\n)\n\n)\nunless on (cluster_environmentd_materialize_cloud_cluster_id) (\ngroup by (cluster_environmentd_materialize_cloud_cluster_id) (\nlabel_replace(label_replace(mz_cluster_info{materialize_cloud_organization_name=~\"$environmentNameList\"}, \"cluster_environmentd_materialize_cloud_cluster_id\", \"$1\", \"cluster_id\", \"(.*)\"), \"cluster_name\", \"$1\", \"name\", \"(.*)\")\n)\n),\n\"cluster_name\", \"$1\", \"cluster_environmentd_materialize_cloud_cluster_id\", \"(.*)\"\n)"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0))\n",
+                        "legendFormat": "timestamp oracle",
+                        "qryType": 1,
+                        "query": "sum(clamp_min(-mz_ts_oracle_postgres_connpool_available{materialize_cloud_organization_name=~\"$environmentNameList\"}, 0))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Calls queued for a connection, by process.**\n\n**Nominal:** Zero.\n\n**Degraded:** Queueing in one process is that process's pool. Queueing in every process at once, with commit latency rising, is a slow database holding each connection longer.\n\nA snapshot at each connection request rather than a continuous measure.",
+          "id": 1023,
+          "links": [],
+          "title": "Waiting for a Connection by Process",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "state-gc-runs": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_gc_started{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n",
+                        "legendFormat": "started",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_gc_started{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_gc_finished{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n",
+                        "legendFormat": "finished",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_gc_finished{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_gc_noop{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n",
+                        "legendFormat": "skipped",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_gc_noop{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Cleanup passes per second: started, finished, and skipped because another process had already done the work.**\n\n**Nominal:** Started and finished on top of each other.\n\n**Degraded:** Started above finished for any length of time is cleanup failing or stalling, usually on the same database trouble the _Overview_ tab shows. It is what makes _Versions Written and Deleted_ diverge.",
+          "id": 1029,
+          "links": [],
+          "title": "Cleanup Runs",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "state-held": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "topk(10, max by (shard) (mz_persist_shard_seqnos_held{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n",
+                        "legendFormat": "{{shard}}",
+                        "qryType": 1,
+                        "query": "topk(10, max by (shard) (mz_persist_shard_seqnos_held{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The ten objects holding the most old state versions, which cleanup cannot delete until whatever is reading them moves on.**\n\n**Nominal:** Hundreds at most, and moving.\n\n**Degraded:** An object whose count only ever grows has a reader stuck in the past: a subscription or a replica that is not keeping up, or one that went away without releasing its hold. Its hold is released when the reader's lease expires.\n\nTranslate a shard id to an object with `SELECT o.name, o.type FROM mz_internal.mz_storage_shards s JOIN mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.",
+          "id": 1028,
+          "links": [],
+          "title": "Versions Held by Object",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "state-lease-timeouts": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_lease_timeout_read{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n",
+                        "legendFormat": "expired/s",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_lease_timeout_read{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Readers whose lease on an object expired, per second.**\n\n**Nominal:** Occasional, around restarts: a process that goes away without saying so has its leases expire instead.\n\n**Degraded:** Steady expirations with no restarts mean readers are being starved — a process too busy to renew its leases. Each expiry releases the old state versions that reader was holding, so this is also what un-sticks _Versions Held by Object_.",
+          "id": 1030,
+          "links": [],
+          "title": "Expired Reader Leases",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "state-live": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(max by (shard) (mz_persist_shard_gc_live_diffs{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n",
+                        "legendFormat": "versions",
+                        "qryType": 1,
+                        "query": "sum(max by (shard) (mz_persist_shard_gc_live_diffs{materialize_cloud_organization_name=~\"$environmentNameList\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**State versions currently stored in the metadata database, summed across every object — roughly the number of rows persist keeps there.**\n\n**Nominal:** Flat, at a few hundred per object.\n\n**Degraded:** Steady growth is the backlog that _Versions Written and Deleted_ shows as a gap. It is not urgent on its own, but it is the database's storage and vacuum load growing without anything new being stored.\n\nMeasured at each object's last cleanup, so it moves in steps.",
+          "id": 1027,
+          "links": [],
+          "title": "Versions Stored",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#EE3377",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "state-written-deleted": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_external_succeeded_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval]))\n",
+                        "legendFormat": "written",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_external_succeeded_count{materialize_cloud_organization_name=~\"$environmentNameList\", op=\"consensus_cas\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(rate(mz_persist_external_consensus_truncated_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n",
+                        "legendFormat": "deleted",
+                        "qryType": 1,
+                        "query": "sum(rate(mz_persist_external_consensus_truncated_count{materialize_cloud_organization_name=~\"$environmentNameList\"}[$__rate_interval]))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**State versions written to the metadata database per second, beside versions deleted.**\n\n**Nominal:** The two lines on top of each other: every commit adds a version, and cleanup deletes the ones nothing needs any more.\n\n**Degraded:** Written staying above deleted for hours means the table persist writes to is growing. The usual cause is a reader holding old versions — _Versions Held by Object_ names it. On PostgreSQL a growing table is also more work for autovacuum, which is how this eventually shows up as commit latency.",
+          "id": 1026,
+          "links": [],
+          "title": "Versions Written and Deleted",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics from this environment. Check the environment picker, and that Materialize is running.",
+                  "unit": "suffix:versions/s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "TabsLayout",
+      "spec": {
+        "tabs": [
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-failed-ops"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-connection-errors"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-commit-p99"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-waiting"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-connections-held"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-commits"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-collections"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 7,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "Verdict"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-commit-latency"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-round-trip"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Latency"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-failures-by-op"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-connection-errors-by-process"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Failures"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-retry-logs"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Logs"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Overview"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-by-type"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-commits-by-process"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-bytes"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Load"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-mean-latency"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-commit-latency-by-process"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Latency by Operation"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-conflicts"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-retries"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Contention and Retries"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-oracle-ops"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "ops-oracle-latency"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Timestamp Oracle"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Operations"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "pool-held"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "pool-in-use"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "pool-waiting"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "pool-acquire-wait"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Connection Pools"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "pool-churn"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Connection Churn"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Connections"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "state-written-deleted"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "state-live"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "state-held"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "State Versions"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "state-gc-runs"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "state-lease-timeouts"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Cleanup"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "State and Cleanup"
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [
+      "materialize",
+      "mzmon",
+      "external-dependencies"
+    ],
+    "timeSettings": {
+      "autoRefresh": "",
+      "autoRefreshIntervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "fiscalYearStartMonth": 0,
+      "from": "now-6h",
+      "hideTimepicker": false,
+      "timezone": "browser",
+      "to": "now"
+    },
+    "title": "Materialize Consensus (Metadata)",
+    "variables": [
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "allowCustomValue": false,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Datasource for metrics queries",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Metrics Datasource",
+          "multi": false,
+          "name": "metricsDatasource",
+          "options": [],
+          "pluginId": "prometheus",
+          "refresh": "never",
+          "regex": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "allowCustomValue": false,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Datasource for log and event queries",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Logs Datasource",
+          "multi": false,
+          "name": "logsDatasource",
+          "options": [],
+          "pluginId": "loki",
+          "refresh": "never",
+          "regex": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".*",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)",
+          "description": "The current environment to view",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Environment",
+          "multi": false,
+          "name": "environmentNameList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)",
+              "qryType": 1,
+              "query": "label_values(mz_compute_commands_total, materialize_cloud_organization_name)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentNameList\" }, materialize_cloud_organization_namespace)",
+          "description": "The current materialize namespace where environments live",
+          "hide": "hideVariable",
+          "includeAll": true,
+          "label": "Materialize Namespace",
+          "multi": true,
+          "name": "mzNamespaceList",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentNameList\" }, materialize_cloud_organization_namespace)",
+              "qryType": 1,
+              "query": "label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~\"$environmentNameList\" }, materialize_cloud_organization_namespace)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": true,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "datasource": {
+          "name": "$metricsDatasource"
+        },
+        "group": "",
+        "kind": "AdhocVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "baseFilters": [
+            {
+              "key": "namespace",
+              "operator": "=~",
+              "origin": "dashboard",
+              "value": "$mzNamespaceList"
+            }
+          ],
+          "defaultKeys": [],
+          "description": "Adhoc filters to apply to all metrics queries",
+          "enableGroupBy": false,
+          "filters": [],
+          "hide": "inControlsMenu",
+          "label": "Advanced Metric Filter",
+          "name": "metricAdhoc",
+          "skipUrlSync": false
+        }
+      }
+    ]
+  }
+}
