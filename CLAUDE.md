@@ -14,6 +14,8 @@ The [repository layout](docs/content/reference/development/repo-layout.md) is a 
 This repository is under active development, so docs, comments, and tickets go stale quickly.
 When you notice content that no longer matches reality, always offer to update it.
 This includes checking off or updating the status of items that are now done — for example, roadmap milestone statuses.
+Treat work as done once every PR it needs has merged, and have the PR that finishes an item check it off.
+Content that calls work in an open PR "in progress" goes stale when that PR merges, and correcting it takes another PR.
 Prefer fixing stale content in passing over leaving it wrong.
 
 ## Markdown style
@@ -22,8 +24,51 @@ Break Markdown lines on sentence ends — write one sentence per line.
 You may soft wrap at 80-120 characters if you like, but lines should not exceed 150 characters.
 Sentence-per-line keeps diffs small and avoids rewrapping churn when a sentence changes.
 
-How prose should *read* — the house voice, the RFC 2119 keywords used on normative pages, and the `params.author` / `params.agent` provenance fields — lives in the [`docs-writing`](.claude/skills/docs-writing/SKILL.md) skill.
+## Writing style
+
+This repository follows the [Google developer documentation style guide](https://developers.google.com/style), and its voice is second person.
+Most of the repository doesn't follow it.
+When you update content, bring the part you touch into line; a localized rewrite is encouraged.
+
+The [`docs-writing`](.claude/skills/docs-writing/SKILL.md) skill covers the rest of how prose should *read*.
+That includes how the highlights apply here, the gaps filled from Grafana's AI quick reference,
+the RFC 2119 keywords used on normative pages, and the `params.author` / `params.agent` provenance fields.
 Read it before writing or editing prose anywhere in this repository, including skills and READMEs.
+
+The following highlights are copied from [Highlights](https://developers.google.com/style/highlights) without changes to their wording.
+Content © Google, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the page was last updated 2025-04-02.
+
+### Tone and content
+
+- [Be conversational and friendly](https://developers.google.com/style/tone) without being frivolous.
+- [Don't pre-announce anything](https://developers.google.com/style/future) in documentation.
+- [Use descriptive link text](https://developers.google.com/style/cross-references#descriptive-link-text).
+- [Write accessibly](https://developers.google.com/style/accessibility).
+- [Write for a global audience](https://developers.google.com/style/translation).
+
+### Language and grammar
+
+- [Use second person](https://developers.google.com/style/person): "you" rather than "we."
+- [Use active voice](https://developers.google.com/style/voice): make clear who's performing the action.
+- [Use standard American spelling](https://developers.google.com/style/spelling) and punctuation.
+- [Put conditions before instructions](https://developers.google.com/style/sentence-structure), not after.
+- [For usage and spelling of specific words, see the word list](https://developers.google.com/style/wordlist).
+
+### Formatting, punctuation, and organization
+
+- [Use sentence case](https://developers.google.com/style/capitalization) for document titles and section headings.
+- [Use numbered lists](https://developers.google.com/style/lists#types-of-lists) for sequences.
+- [Use bulleted lists](https://developers.google.com/style/lists#types-of-lists) for most other lists.
+- [Use description lists](https://developers.google.com/style/lists#types-of-lists) for pairs of related pieces of data.
+- [Use serial commas](https://developers.google.com/style/commas-serial).
+- [Put code-related text in code font](https://developers.google.com/style/code-in-text).
+- [Put UI elements in bold](https://developers.google.com/style/ui-elements).
+- [Use unambiguous date formatting](https://developers.google.com/style/dates-times).
+
+### Images
+
+- [Provide alt text](https://developers.google.com/style/images#text-associated-with-images).
+- [Provide high-resolution or vector images](https://developers.google.com/style/images#high-resolution-images) when practical.
 
 ## Docsite section indexes
 

@@ -237,7 +237,7 @@ impl AutoGrid {
     }
 }
 
-/// A titled row wrapping one grid.
+/// A titled row wrapping one grid, or a section of rows.
 #[derive(Debug, Clone)]
 pub struct Row {
     title: String,
@@ -245,7 +245,18 @@ pub struct Row {
     collapsed: bool,
     /// Whether this row renders at all, decided by Grafana at view time.
     condition: Option<RowCondition>,
-    grid: AutoGrid,
+    body: RowBody,
+    /// Variables only this row's panels can read; see [`Row::variables`].
+    variables: Vec<dashboardv2::VariableKind>,
+}
+
+/// What a row holds.
+#[derive(Debug, Clone)]
+enum RowBody {
+    /// Panels, the usual case.
+    Grid(AutoGrid),
+    /// Further rows, for a section that owns a variable; see [`Row::section`].
+    Rows(Vec<Row>),
 }
 
 /// What a row's visibility can depend on.
@@ -412,8 +423,38 @@ impl Row {
             hide_header: false,
             collapsed: false,
             condition: None,
-            grid: AutoGrid::new(3),
+            body: RowBody::Grid(AutoGrid::new(3)),
+            variables: Vec::new(),
         }
+    }
+
+    /// A row of rows: a section whose header groups the rows inside it.
+    ///
+    /// The reason to want one is [`Row::variables`]. A variable declared on a
+    /// section renders under its header rather than in the dashboard's
+    /// controls, and is resolved by the panels of every row inside it — so a
+    /// picker that only means something where a section renders lives and
+    /// hides with that section. A dashboard-level picker for something a
+    /// cluster may not run sits in the controls on every cluster.
+    pub fn section(title: impl Into<String>, rows: Vec<Row>) -> Self {
+        Row {
+            body: RowBody::Rows(rows),
+            ..Row::new(title)
+        }
+    }
+
+    /// Declare variables scoped to this row and everything inside it.
+    ///
+    /// Grafana's section variables: the control renders under the row header
+    /// and only panels inside the row may read it. Verified on Grafana 13.2.3,
+    /// where a section conditioned on a discovered variable hides its own
+    /// picker along with its rows.
+    pub fn variables<I: IntoIterator<Item = dashboardv2::VariableKind>>(
+        mut self,
+        variables: I,
+    ) -> Self {
+        self.variables.extend(variables);
+        self
     }
 
     /// Start the row collapsed.
@@ -491,7 +532,7 @@ impl Row {
     }
 
     pub fn grid(mut self, grid: AutoGrid) -> Self {
-        self.grid = grid;
+        self.body = RowBody::Grid(grid);
         self
     }
 
@@ -509,13 +550,26 @@ impl Row {
                 // Grafana adds `collapse` to every row on save, so emitting it
                 // keeps a UI save from diffing on it.
                 collapse: Some(self.collapsed),
-                layout: dashboardv2::RowsLayoutRowSpecLayout::AutoGridLayoutKind(
-                    self.grid.build(sink)?,
-                ),
+                layout: match self.body {
+                    RowBody::Grid(grid) => {
+                        dashboardv2::RowsLayoutRowSpecLayout::AutoGridLayoutKind(grid.build(sink)?)
+                    }
+                    RowBody::Rows(rows) => dashboardv2::RowsLayoutRowSpecLayout::RowsLayoutKind(
+                        dashboardv2::RowsLayoutKind {
+                            kind: ROWS_KIND.to_string(),
+                            spec: dashboardv2::RowsLayoutSpec {
+                                rows: rows
+                                    .into_iter()
+                                    .map(|row| row.build(sink))
+                                    .collect::<Result<Vec<_>>>()?,
+                            },
+                        },
+                    ),
+                },
                 fill_screen: None,
                 conditional_rendering: self.condition.map(RowCondition::build),
                 repeat: None,
-                variables: Vec::new(),
+                variables: self.variables,
             },
         })
     }
@@ -648,6 +702,55 @@ impl Assembled {
     pub fn names(&self) -> Vec<&str> {
         self.elements.keys().map(String::as_str).collect()
     }
+}
+
+/// The variables each panel can read beyond the dashboard's own, by element
+/// name: those declared on every row or tab enclosing it.
+///
+/// What a variable-reference check has to consult once a layout uses
+/// [`Row::variables`]. A section variable is invisible outside its section,
+/// so a panel elsewhere naming it is as broken as one naming nothing.
+pub fn section_variables(layout: &dashboardv2::DashboardLayout) -> BTreeMap<String, Vec<String>> {
+    fn walk(
+        value: &serde_json::Value,
+        inherited: &[String],
+        out: &mut BTreeMap<String, Vec<String>>,
+    ) {
+        let serde_json::Value::Object(map) = value else {
+            if let serde_json::Value::Array(items) = value {
+                for item in items {
+                    walk(item, inherited, out);
+                }
+            }
+            return;
+        };
+        if map.get("kind").and_then(serde_json::Value::as_str) == Some(ELEMENT_REFERENCE_KIND)
+            && let Some(name) = map.get("name").and_then(serde_json::Value::as_str)
+        {
+            out.insert(name.to_string(), inherited.to_vec());
+            return;
+        }
+        let mut scope = inherited.to_vec();
+        if let Some(variables) = map
+            .get("spec")
+            .and_then(|spec| spec.get("variables"))
+            .and_then(serde_json::Value::as_array)
+        {
+            scope.extend(variables.iter().filter_map(|v| {
+                v.pointer("/spec/name")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            }));
+        }
+        for child in map.values() {
+            walk(child, &scope, out);
+        }
+    }
+
+    let mut out = BTreeMap::new();
+    let json = serde_json::to_value(layout).unwrap_or(serde_json::Value::Null);
+    walk(&json, &[], &mut out);
+    out
 }
 
 /// Collects panels as the layout tree is built, assigning ids and rejecting
@@ -982,6 +1085,50 @@ mod tests {
             .assemble()
             .expect("assemble");
         assert_eq!(row_of(&assembled).spec.hide_header, Some(true));
+    }
+
+    #[test]
+    fn a_section_nests_its_rows_and_carries_its_variables() {
+        let assembled = Layout::rows([
+            Row::section(
+                "S",
+                vec![
+                    Row::new("Inner A").grid(grid_with(&["a"])),
+                    Row::new("Inner B").grid(grid_with(&["b"])),
+                ],
+            )
+            .variables([crate::grafana::variable::cnpg_clusters()]),
+            Row::new("Outside").grid(grid_with(&["c"])),
+        ])
+        .assemble()
+        .expect("assemble");
+
+        let section = row_of(&assembled);
+        assert_eq!(section.spec.variables.len(), 1);
+        match &section.spec.layout {
+            dashboardv2::RowsLayoutRowSpecLayout::RowsLayoutKind(rows) => {
+                assert_eq!(rows.spec.rows.len(), 2);
+                assert!(rows.spec.rows.iter().all(|r| r.spec.variables.is_empty()));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        // Panels in nested rows are still registered once each.
+        assert_eq!(assembled.names(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_section_variable_reaches_only_the_panels_inside_it() {
+        let assembled = Layout::rows([
+            Row::section("S", vec![Row::new("Inner").grid(grid_with(&["inside"]))])
+                .variables([crate::grafana::variable::cnpg_clusters()]),
+            Row::new("Outside").grid(grid_with(&["outside"])),
+        ])
+        .assemble()
+        .expect("assemble");
+
+        let scopes = section_variables(&assembled.layout);
+        assert_eq!(scopes["inside"], vec!["cnpgClusterList".to_string()]);
+        assert!(scopes["outside"].is_empty());
     }
 
     fn row_of(assembled: &Assembled) -> &dashboardv2::RowsLayoutRowKind {

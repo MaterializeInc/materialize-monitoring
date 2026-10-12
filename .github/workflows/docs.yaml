@@ -17,14 +17,18 @@ on:
       - packages/**
       - .github/workflows/docs.yaml
 
-permissions:
-  contents: write
-  pull-requests: write
-  pages: read
+permissions: {}
 
 jobs:
   build-and-deploy:
     if: github.event.action != 'closed'
+    permissions:
+      # Push the built site to gh-pages.
+      contents: write
+      # Post the sticky preview comment.
+      pull-requests: write
+      # Resolve the Pages host URL.
+      pages: read
     # Per-target concurrency: a new push for the same PR (or main) cancels any
     # build still in flight. Cleanup uses the same group with cancel-in-progress
     # disabled, so it queues behind an active deploy instead of racing it.
@@ -147,7 +151,7 @@ jobs:
       # place on every push. The cleanup job removes it when the PR closes.
       - name: Update PR preview comment
         if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: docs-preview
           message: |
@@ -164,6 +168,11 @@ jobs:
 
   cleanup:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    permissions:
+      # Push the preview removal to gh-pages.
+      contents: write
+      # Delete the sticky preview comment.
+      pull-requests: write
     # Same group as build-and-deploy for this PR. cancel-in-progress: false
     # queues this job behind any deploy still in flight so we don't delete a
     # directory that a build is about to repopulate.
@@ -210,7 +219,7 @@ jobs:
           done
 
       - name: Remove preview comment from PR
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: docs-preview
           delete: true

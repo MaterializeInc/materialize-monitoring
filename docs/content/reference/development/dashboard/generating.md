@@ -68,8 +68,8 @@ Even though we have different Grafana targets, we should **not encode the Grafan
 may be upgraded across versions).
 
 UIDs must follow the
-[strict UID format introduced in Grafana 11.2](https://grafana.com/whats-new/2025-05-05-enforcing-stricter-data-source-uid-format/)
-: Latin alphanumeric with dashes and underscores, 40 characters max.
+[strict UID format introduced in Grafana 11.2](https://grafana.com/whats-new/2025-05-05-enforcing-stricter-data-source-uid-format/):
+Latin alphanumeric with dashes and underscores, 40 characters max.
 We use the `mz-mon-` prefix for all UIDs.
 
 **Dashboard v2 caveat:** in v2 the UID is *not* part of the dashboard spec — it lives in the surrounding

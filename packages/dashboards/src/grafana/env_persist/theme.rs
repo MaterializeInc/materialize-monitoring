@@ -47,8 +47,14 @@ pub const STORAGE: Theme = Theme {
     shade: palette::THEME[4],
 };
 
+/// What an on-premise object store reports about itself.
+pub const OBJECT_STORE: Theme = Theme {
+    title: "Object Store Internals",
+    shade: palette::THEME[5],
+};
+
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 4] = [OVERVIEW, OPERATIONS, COMPACTION, STORAGE];
+pub const THEMED: [Theme; 5] = [OVERVIEW, OPERATIONS, COMPACTION, STORAGE, OBJECT_STORE];
 
 #[cfg(test)]
 mod tests {

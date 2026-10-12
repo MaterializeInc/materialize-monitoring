@@ -63,6 +63,9 @@ False positives on the policy cost more than misses, because it is new and large
 - **Chart value paths** (`values.yaml`, `profiles/`).
   Their consumer is our own Terraform module, which pins a chart version, so a rename is absorbed by the module bump in the same change.
   Direct `helm install` users are handled by contacting a short known list, not by a cycle.
+- **A changed default.**
+  It can ride a minor, as long as the committed surface keeps working.
+  Ask for a release note, because a consumer might need to react to it.
 - **Dashboard internals** — panels, layout, element keys, the PromQL inside a panel.
   Only `metadata.name` is committed.
 - **`mz_*` metric names** appearing inside queries.
@@ -90,13 +93,14 @@ So ask for a bullet in the PR description, and treat `CHANGELOG.md` as read-only
 
 ## What to ask for
 
-When something does need flagging, ask for **one** of:
+When something needs flagging, ask for one of the following:
 
 1. A `**Deprecated:**` bullet in the PR description naming the replacement, with the old identifier still working.
-   Removal is a separate PR at least 30 days later.
-2. A `**Removed:**` bullet, where a previously released changelog section already shows the `**Deprecated:**` announcement 30+ days ago.
+   Removal is a separate PR, at least 30 days later and in a major release.
+2. A `**Removed:**` bullet, where a previously released changelog section shows the `**Deprecated:**` announcement at least 30 days ago.
+   Ask that the release carrying the removal be a major.
 3. A stated exemption in the PR body.
-   The honest ones are "nothing ever consumed this" and "part of the pre-1.0 rename batch" — ask which, rather than accepting "it's fine".
+   The honest one is "nothing ever consumed this"; ask for that reason rather than accepting "it's fine".
 
 Suggest wording that names what did **not** change alongside what did, the way the [Terraform module's upgrade notes](https://github.com/MaterializeInc/materialize-terraform-self-managed#upgrade-notes) do.
 Naming the non-breaks is what makes the breaks trustworthy.
@@ -118,8 +122,6 @@ The reasoning behind each is in **Designing to avoid the cycle** in `docs/conten
   Every committed identifier is a permanent obligation, and the cheapest non-breaking change is one to a surface that was never published.
 - **Hard-coding something deployment-specific?**
   Suggest templating it, the way `%%{mzSqlPrefix}` renders one query against either metric namespace.
-- **Changing a default?**
-  Suggest a new value that defaults to current behavior, with the default flipped in a later major.
 - **An alert name ending `-critical` / `-high` / `-elevated`?**
   Severity in the identifier means re-grading forces a rename.
   Suggest naming for the condition and carrying the grade in the `severity` label.
@@ -131,7 +133,8 @@ The reasoning behind each is in **Designing to avoid the cycle** in `docs/conten
 ## Context that prevents wrong calls
 
 - **The alerting path renders**, into `charts/materialize-monitoring/pre-rendered/rules/prometheus/`.
-  An alert with `enabledByDefault: true` installs on every deployment where it applies, so its name is committed from the release that first ships it: a rename owes a changelog entry now and a deprecation cycle after 1.0.
+  An alert with `enabledByDefault: true` installs on every deployment where it applies, so its name is committed from the release that first ships it.
+  A rename owes a changelog entry and a deprecation cycle.
   The rest are selectable but not defaults, so renaming one breaks only a deployment that named it in `rules.selected` or `rules.disabled`. Still ask for the note.
   `_index.yaml` in that directory lists every shipped name, which makes the rename easy to see in a diff.
 - **A capability added or removed** changes what `rules.capabilities` accepts; removing one fails the render for a deployment that lists it.
@@ -141,8 +144,9 @@ The reasoning behind each is in **Designing to avoid the cycle** in `docs/conten
 - **`v2_mz_` is not a version.**
   It is the prefix on part of the Cloud platform's SQL metric endpoints and does not exist on self-managed.
   Do not read `(?:v2_)?mz_` as legacy-versus-current, and do not suggest migrating off it.
-- **This repo is pre-1.0 and adoption is low**, so a breaking change may legitimately ride a minor.
-  That is not a finding on its own — the missing cycle is.
+- **From v1.0.0, a break to the committed surface rides a major, after its cycle.**
+  A breaking change in a minor is a finding.
+  So is a major that removes an identifier without a prior `**Deprecated:**` announcement or a stated exemption.
 
 ## Severity
 

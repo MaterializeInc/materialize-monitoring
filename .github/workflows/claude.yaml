@@ -5,6 +5,9 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+
+permissions: {}
+
 jobs:
   claude:
     if: |
@@ -23,15 +26,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Checkout PR branch
-        if: github.event.issue.pull_request
-        run: gh pr checkout ${{ github.event.issue.number }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@cab360f6565aa35a51d6ce9e43f1f4287c0a32ea # v1.0.241
+        uses: anthropics/claude-code-action@2dca132ff0e0c4094ce6048b422c6915a071210b # v1.0.247
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 

@@ -47,8 +47,14 @@ pub const STATE: Theme = Theme {
     shade: palette::THEME[5],
 };
 
+/// What the database reports about itself, where it runs in the cluster.
+pub const DATABASE: Theme = Theme {
+    title: "Database Internals",
+    shade: palette::THEME[2],
+};
+
 /// Every themed tab, in the order they appear.
-pub const THEMED: [Theme; 4] = [OVERVIEW, OPERATIONS, CONNECTIONS, STATE];
+pub const THEMED: [Theme; 5] = [OVERVIEW, OPERATIONS, CONNECTIONS, STATE, DATABASE];
 
 #[cfg(test)]
 mod tests {
