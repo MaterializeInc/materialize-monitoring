@@ -93,6 +93,39 @@
       "commitMessageTopic": "{{{depName}}} Helm Chart"
     },
     {
+      "description": "Point subcharts from the prometheus-community monorepo at the chart sources for release notes. Renovate takes a chart's source from the first `sources:` entry in its Chart.yaml, which for most of these charts is the application repo (prometheus/alertmanager, kubernetes/kube-state-metrics). Application tags never match a chart version, so those PRs carried no notes. The chart repo tags each release `<chart>-<version>`, which Renovate matches. `sourceDirectory` matters as much as `sourceUrl`: Renovate caches release notes per source repo, directory and version, not per package, so without a directory every chart in a monorepo shares one cache entry per version and whichever chart filled it first supplies the notes.",
+      "matchManagers": ["helmv3"],
+      "matchPackageNames": ["ghcr.io/prometheus-community/charts/**"],
+      "sourceUrl": "https://github.com/prometheus-community/helm-charts",
+      "sourceDirectory": "charts/{{{depName}}}"
+    },
+    {
+      "description": "Point the grafana-community subcharts (grafana, loki) at their chart monorepo, for the reasons in the prometheus-community rule above. Their own `sources:` name grafana/grafana and grafana/loki.",
+      "matchManagers": ["helmv3"],
+      "matchPackageNames": ["ghcr.io/grafana-community/helm-charts/**"],
+      "sourceUrl": "https://github.com/grafana-community/helm-charts",
+      "sourceDirectory": "charts/{{{depName}}}"
+    },
+    {
+      "description": "Give the thanos chart a `sourceDirectory` so its release notes get a cache entry of their own, as in the prometheus-community rule above. Its `sources:` already names the chart repo, so notes came through, but the cache entry was still shared with every other chart in that repo.",
+      "matchManagers": ["helmv3"],
+      "matchPackageNames": ["ghcr.io/thanos-community/helm-charts/**"],
+      "sourceUrl": "https://github.com/thanos-community/helm-charts",
+      "sourceDirectory": "charts/{{{depName}}}"
+    },
+    {
+      "description": "Key the release notes of charts from grafana/helm-charts (alloy) by chart, as in the prometheus-community rule above. Without a directory, the alloy 1.13.1 PR showed the notes for tempo-distributed 1.13.1. The notes this finds are the mirror release grafana/helm-charts publishes, which links to the chart's tag in grafana/alloy. The changelog itself lives at operations/helm/charts/alloy/CHANGELOG.md in grafana/alloy, but pointing there sends the compare link to the Alloy application's `v<version>` tags, since the chart's `helm-chart/<version>` tags do not match Renovate's tag patterns.",
+      "matchManagers": ["helmv3"],
+      "matchRegistryUrls": ["https://grafana.github.io/helm-charts"],
+      "sourceUrl": "https://github.com/grafana/helm-charts",
+      "sourceDirectory": "charts/{{{depName}}}"
+    },
+    {
+      "description": "The grafana-operator chart declares no `sources:`, and the image's source label names the Chainguard base image, so neither carried release notes. Both ship from grafana/grafana-operator under one `v<version>` tag.",
+      "matchPackageNames": ["grafana-operator", "**/grafana-operator"],
+      "sourceUrl": "https://github.com/grafana/grafana-operator"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["!devDependencies"],
       "matchCurrentVersion": "!/^0/",
