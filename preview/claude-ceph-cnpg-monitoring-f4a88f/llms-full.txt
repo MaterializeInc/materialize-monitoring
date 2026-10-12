@@ -11641,7 +11641,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.4.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.5.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
@@ -17805,7 +17805,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.11.2"
+  "tag": "2.13.3"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -21407,7 +21407,16 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter, and `infra-cnpg.yaml` and `infra-ceph.yaml`, CloudNativePG and Rook Ceph reporting on themselves — `node-*.yaml` for node-exporter, and `ext-*.yaml` for the normalized `ext:*` recording rules, one adapter per rule group) — the metric/log/alert query definitions and recording rules, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`; `tests/` holds the `promtool test rules` cases for the rendered rules
+    * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
+      validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+      * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
+        persist's own view of object storage and the metadata database
+      * `infra-*.yaml`: the platform, including `infra-loki.yaml` and `infra-alloy.yaml` (the log store and the collectors watching themselves),
+        `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
+        and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
+      * `node-*.yaml`: node-exporter
+      * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
+      * `tests/`: the `promtool test rules` cases for the rendered rules
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
@@ -21454,7 +21463,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `chartlib/`: helm-docs templates
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
-  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
+  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs), `zizmor.yaml` (workflow security scan, uploaded to code scanning); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
     `design-doc-notify.yaml` is the exception, filtering on the trigger because it reports no status anyone gates on
 
 
@@ -24494,7 +24503,7 @@ Put the discovery condition on the section, and leave the rows inside it uncondi
 Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
 `env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
 
-Three things to know about section variables:
+What to know about section variables:
 
 - **Scope is enforced here too.** Only panels inside the section can read the variable.
   `Dashboard::build` rejects a panel elsewhere that names it,
@@ -32636,11 +32645,11 @@ They were built and checked against a Materialize whose metadata database is CNP
 | Decision | As built |
 |---|---|
 | Where they live | A last tab on each client dashboard, **Database Internals** on `env-consensus` and **Object Store Internals** on `env-persist`, not `infra-*` |
-| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, defaulting to "All". It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303). Each is a section variable on the row that holds its flavor's rows, so it appears only where that flavor is detected |
+| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, single-select because an environment has one database and one bucket. It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303). Each is a section variable on the row that holds its flavor's rows, so it appears only where that flavor is detected |
 | Discovery | `$cnpgDetected` and `$cephDetected`, hidden, with one negated fallback per tab that says which scrape to create |
 | Queries | Flavor-native, in `infra-cnpg.yaml` and `infra-ceph.yaml` at `extended`. No `ext:*` series yet |
 
-Three departures, each with its reason.
+The departures, each with its reason.
 
 - **The client dashboards, not `infra-*`.**
   A self-hosted dependency has no provider, so its own account is the only diagnosis there is,

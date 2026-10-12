@@ -3070,7 +3070,9 @@ Persist; this is why.</p>
 <h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
 <p>The series carry the <code>namespace</code> of the Rook cluster and no Materialize
 identity. <code>$cephNamespace</code> picks the Ceph cluster, from the dashboard
-section these rows sit in, and every query here matches it; nothing can say which object store holds which environment&rsquo;s
+section these rows sit in, and every query here matches it. It is
+single-select, because an environment&rsquo;s bucket is in one store and daemon
+names such as <code>osd.0</code> repeat across clusters; nothing can say which object store holds which environment&rsquo;s
 bucket, so the RGW panels sum every gateway in that cluster.</p>
 <h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
 <p><code>ceph_daemon</code> names a daemon (<code>osd.0</code>, <code>mon.a</code>). Pool series carry only
@@ -4063,10 +4065,12 @@ vantage point.</p>
 identity, so nothing can say which CNPG cluster serves which environment.
 <code>$cnpgClusterList</code> is that mapping, chosen by the reader, and is declared on
 the dashboard section these rows sit in rather than on the dashboard. It
-holds CNPG cluster names, discovered from instance pod names
+holds one CNPG cluster name, discovered from instance pod names
 (<code>&lt;cluster&gt;-&lt;n&gt;</code>), and every query here matches
-<code>pod=~&quot;($cnpgClusterList)-[0-9]+&quot;</code>. Two CNPG
-clusters of the same name in different namespaces are read as one.</p>
+<code>pod=~&quot;($cnpgClusterList)-[0-9]+&quot;</code>. Single-select, because an environment
+has one metadata database, and the instance-level numbers here would mix
+two clusters&rsquo; instances into one. Two CNPG clusters of the same name in
+different namespaces are still read as one.</p>
 <h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
 <p><code>datname</code> is the database, and a CNPG cluster serving Materialize usually
 holds three: the one Materialize uses (<code>materialize</code> in the self-managed
@@ -4188,19 +4192,25 @@ Time since the most recent backup CNPG can restore from.
 <h4 id="infra.cnpg.connections.by_database">infra.cnpg.connections.by_database
   <a class="anchor" href="#infra.cnpg.connections.by_database">#</a>
 </h4>
-Client connections open on each instance, by database and role,
-beside the ceiling an ordinary role is refused at.
+Client connections open on the primary, by database and role, beside
+the ceiling an ordinary role is refused at.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.cnpg.connections.by_database-tabs" id="infra.cnpg.connections.by_database-tab-0" checked>
   <label for="infra.cnpg.connections.by_database-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, usename<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_backends_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, usename<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  cnpg_backends_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_replication_in_recovery{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">max_connections</span>&#34;}<span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">superuser_reserved_connections|reserved_connections</span>&#34;}<span style="color:#f92672">)</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">max_connections</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">superuser_reserved_connections|reserved_connections</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_replication_in_recovery{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -4208,9 +4218,10 @@ beside the ceiling an ordinary role is refused at.
 <h4 id="infra.cnpg.connections.by_state">infra.cnpg.connections.by_state
   <a class="anchor" href="#infra.cnpg.connections.by_state">#</a>
 </h4>
-Client connections by what they are doing: running a statement
+Client connections by what they are doing — running a statement
 (<code>active</code>), waiting for the next one (<code>idle</code>), or holding a
-transaction open between statements (<code>idle in transaction</code>).
+transaction open between statements (<code>idle in transaction</code>) — and how
+many are waiting on a lock.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.cnpg.connections.by_state-tabs" id="infra.cnpg.connections.by_state-tab-0" checked>
   <label for="infra.cnpg.connections.by_state-tab-0">PromQL</label>
@@ -4218,22 +4229,21 @@ transaction open between statements (<code>idle in transaction</code>).
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_backends_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>cnpg_backends_waiting_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
   </div>
 </div>
 <h4 id="infra.cnpg.connections.oldest_transaction">infra.cnpg.connections.oldest_transaction
   <a class="anchor" href="#infra.cnpg.connections.oldest_transaction">#</a>
 </h4>
-The oldest open transaction, and the number of sessions waiting on a
-lock, by database.
+The oldest open transaction, by database and connection state.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.cnpg.connections.oldest_transaction-tabs" id="infra.cnpg.connections.oldest_transaction-tab-0" checked>
   <label for="infra.cnpg.connections.oldest_transaction-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_backends_max_tx_duration_seconds{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
-</span></span></code></pre></div>
-          
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>cnpg_backends_waiting_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>

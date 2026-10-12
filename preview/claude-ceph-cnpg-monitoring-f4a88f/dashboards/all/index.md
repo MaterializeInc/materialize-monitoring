@@ -179,7 +179,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-ceph-cnpg-monitoring-f4a88f/dashboards/grafana/env-persist.json?xxhash=65d2bf18ad385c22" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-ceph-cnpg-monitoring-f4a88f/dashboards/grafana/env-persist.json?xxhash=e663d6143588b394" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
         <br /><small>UID <code>mz-mon-env-persist</code></small>
       </td>
       <td>
@@ -231,7 +231,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-ceph-cnpg-monitoring-f4a88f/dashboards/grafana/env-consensus.json?xxhash=d7b55e5d228ff36f" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-ceph-cnpg-monitoring-f4a88f/dashboards/grafana/env-consensus.json?xxhash=f91afab3d72cc763" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
         <br /><small>UID <code>mz-mon-env-consensus</code></small>
       </td>
       <td>
