@@ -1103,6 +1103,58 @@ pub fn loki_components() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Namespaces the metrics store runs in.
+///
+/// Discovered from `up`, for the reason [`alloy_namespaces`] gives: a Thanos
+/// process whose scrape is failing still puts its namespace on the list.
+/// `app="thanos"` is the label the Thanos subchart stamps on every pod.
+///
+/// Multi-select with an `.+` "All", for the reason [`loki_namespaces`] gives.
+pub fn thanos_namespaces() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::THANOS_NAMESPACE,
+        label: "Thanos Namespace",
+        description: "Namespace(s) the metrics store runs in",
+        expr: r#"label_values(up{app="thanos"}, namespace)"#.to_string(),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Which Thanos process to read: receive, query, the store gateway, the
+/// compactor or the ruler.
+///
+/// **One picker across both engines**, on the terms [`loki_components`] sets
+/// out. It is discovered from `container` on the metrics side and applied to
+/// `component` on the log side, which hold the same name. The ruler's
+/// rule-import sidecar logs under the ruler's component, so selecting the ruler
+/// shows both.
+pub fn thanos_components() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::THANOS_COMPONENT,
+        label: "Component",
+        description: "Which Thanos processes to read, on the panels that span several",
+        expr: format!(
+            r#"label_values(up{{app="thanos", namespace=~"${}"}}, container)"#,
+            variables::THANOS_NAMESPACE
+        ),
+        multi: true,
+        include_all: true,
+        all_value: Some(".+"),
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Namespaces the collectors run in.
 ///
 /// Discovered from `up` rather than from an `alloy_*` metric, so a collector
@@ -1596,6 +1648,26 @@ pub fn alloy_scoped() -> Vec<dashboardv2::VariableKind> {
         )),
         log_search(),
         metric_adhoc_on(variables::ALLOY_NAMESPACE),
+        logs_adhoc(),
+    ]
+}
+
+/// Controls for the metrics-store meta-monitoring dashboard.
+///
+/// The same shape as [`loki_scoped`]: both datasources, because Thanos's own
+/// logs live in Loki and stay readable when Thanos does not.
+pub fn thanos_scoped() -> Vec<dashboardv2::VariableKind> {
+    vec![
+        metrics_datasource(),
+        logs_datasource(),
+        thanos_namespaces(),
+        thanos_components(),
+        log_levels_in(format!(
+            r#"{{app="thanos", namespace=~"${}"}}"#,
+            variables::THANOS_NAMESPACE
+        )),
+        log_search(),
+        metric_adhoc_on(variables::THANOS_NAMESPACE),
         logs_adhoc(),
     ]
 }

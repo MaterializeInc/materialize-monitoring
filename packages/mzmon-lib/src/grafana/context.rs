@@ -143,6 +143,18 @@ pub mod variables {
     pub const ALLOY_ROLE: &str = "alloyRole";
     /// Which collector pod a meta-monitoring panel reads.
     pub const ALLOY_POD: &str = "alloyPod";
+
+    /// Namespaces the metrics store runs in, for the Thanos meta-monitoring
+    /// dashboard.
+    ///
+    /// Written literally by `infra-thanos.yaml`, on the same precedent as
+    /// [`LOKI_NAMESPACE`].
+    pub const THANOS_NAMESPACE: &str = "thanosNamespace";
+    /// Which Thanos process a meta-monitoring panel reads.
+    ///
+    /// Matched against `container` on a metric and `component` on a log line,
+    /// which are the same name, as with [`LOKI_COMPONENT`].
+    pub const THANOS_COMPONENT: &str = "thanosComponent";
     /// Which Karpenter NodePools a panel reads.
     ///
     /// Written literally by `infra-karpenter.yaml`, on the same precedent as
@@ -243,6 +255,12 @@ pub const ALLOY_VARIABLES: &[&str] = &[
     variables::ALLOY_ROLE,
     variables::ALLOY_POD,
 ];
+
+/// Variables required only by the metrics-store meta-monitoring dashboard.
+///
+/// Written literally by `infra-thanos.yaml`, for the reason [`LOKI_VARIABLES`]
+/// gives. `thanosComponent` reaches both engines, as `lokiComponent` does.
+pub const THANOS_VARIABLES: &[&str] = &[variables::THANOS_NAMESPACE, variables::THANOS_COMPONENT];
 
 /// Variables required only by the Karpenter dashboard.
 ///

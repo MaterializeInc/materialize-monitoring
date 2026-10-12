@@ -56,6 +56,9 @@ Frequently needed deep links into the Style Guidelines:
   — how a generation reaches a query at all, and why the event filter needs its `or` arm
 - [orchestratord reconciliation metrics](../../../docs/content/reference/development/dashboard/style-guidelines.md#orchestratord-reconciliation-metrics)
   — the outcome vocabulary, and why `abandoned` is not a failure signal
+- [Firing alerts lead an Overview tab](../../../docs/content/reference/development/dashboard/style-guidelines.md#firing-alerts-lead-an-overview-tab)
+  — the habit `infra-thanos` set: the alerts row sits under the verdict, and the firing count's zero comes from a ruler
+  that is evaluating
 - [Known metric quirks and gotchas](../../../docs/content/reference/development/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
 - [PromQL recipes](../../../docs/content/reference/development/dashboard/style-guidelines.md#promql-recipes)
 - [Shared constants and helpers](../../../docs/content/reference/development/dashboard/style-guidelines.md#shared-constants-and-helpers)
@@ -111,6 +114,7 @@ from.
 | `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
 | `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
 | `infra-alloy` | `grafana/infra_alloy/` | `mz-mon-infra-alloy` | Alloy Meta Monitoring |
+| `infra-thanos` | `grafana/infra_thanos/` | `mz-mon-infra-thanos` | Thanos Meta Monitoring |
 | `env-persist` | `grafana/env_persist/` | `mz-mon-env-persist` | Materialize Persist (Storage) |
 | `env-consensus` | `grafana/env_consensus/` | `mz-mon-env-consensus` | Materialize Consensus (Metadata) |
 | `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider |
@@ -445,6 +449,41 @@ Six things about it are not re-derivable by reading the modules:
 - **Drop reasons are classified by a test.** `loki_process_dropped_lines_total` mixes the debug tap's deliberate
   sampling with guard losses. `log_pipeline.rs` reads every `drop_counter_reason` from the rendered pipelines and
   fails when one is neither excluded as deliberate nor a known guard.
+
+## `infra-thanos` tabs
+
+The third meta-monitoring dashboard, in `Folder::MetaO11y`. Queries are `packages/queries/infra-thanos.yaml`.
+
+| # | Tab title | Module |
+|---|---|---|
+| 1 | Overview | `overview.rs` |
+| 2 | Writes | `writes.rs` |
+| 3 | Reads | `reads.rs` |
+| 4 | Ruler | `ruler.rs` |
+| 5 | Storage | `storage.rs` |
+| 6 | Resources | `resources.rs` |
+| 7 | Logs | `logs.rs` |
+
+Overview, Writes, Reads, Storage, and Logs keep `infra-loki`'s shades.
+
+These things about it are not re-derivable by reading the modules:
+
+- **Overview leads with the firing Thanos alerts**, the first dashboard to follow the
+  [style guide's convention](../../../docs/content/reference/development/dashboard/style-guidelines.md#firing-alerts-lead-an-overview-tab).
+  The rules are the upstream mixin's, installed by the Thanos subchart as `PrometheusRule/thanos-rules`, and labelled
+  with nothing but `severity`, so the panels select `alertname=~"Thanos.*"` and are exempt from the namespace test.
+  DEP-391 retrofits the convention onto `infra-loki` and `infra-alloy`.
+- **`$thanosComponent` only reaches panels that span processes.** A panel about one process names its container, and a
+  test holds every metric query to one or the other.
+- **The rulers' `rule_group` label is the generated file's path, a semicolon, then the group**, so every group panel
+  `label_replace`s it down to the group name.
+- **The warning feeds drop `PromQL info:` lines.** The ruler logs PromQL's informational annotations at WARN on every
+  evaluation, about four lines a minute on a reference install, all about rules that work.
+- **The upstream mixin dashboards were read and not ported.** They run without recording rules, but scope by job
+  alone and read five metric names Thanos 0.42 does not publish. The module doc of `infra_thanos/mod.rs` lists them.
+
+At 235 KB rendered, it took the dashboards release to 87% of the Secret ceiling; DEP-392 tracks the room the next
+dashboards need.
 
 ## The external-dependency dashboards
 
