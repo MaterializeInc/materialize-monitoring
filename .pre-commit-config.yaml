@@ -185,4 +185,4 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-        files: ^(terraform/.*\.tf|charts/materialize-monitoring/(values\.yaml|Chart\.yaml|profiles/.*|templates/.*)|packages/mz-monitoring-check/src/terraform_render/.*)$
+        files: ^(terraform/.*\.tf|charts/materialize-monitoring/(values\.yaml|Chart\.yaml|profiles/.*|templates/.*)|packages/mz-monitoring-check/(Cargo\.toml|src/main\.rs|src/terraform_render/.*))$

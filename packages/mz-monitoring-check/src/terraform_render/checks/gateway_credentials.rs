@@ -16,20 +16,73 @@
 //! both from the header name. Nothing errors when those drift. The gateway
 //! starts, `sys.env(...)` resolves empty, and the destination rejects every
 //! request.
+//!
+//! The expectation is the credentials the example declared, compared by value.
+//! That needs no copy of the module's naming scheme, and it keeps a module that
+//! stops planning the Secret from switching these checks off.
 
 use anyhow::{Result, bail};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::terraform_render::ctx::Ctx;
 
-/// The planned `alloy_gateway_env` Secret's data, empty when the module plans
-/// none.
-pub fn planned(ctx: &Ctx) -> &Map<String, Value> {
-    static EMPTY: std::sync::LazyLock<Map<String, Value>> = std::sync::LazyLock::new(Map::new);
-    ctx.planned("kubernetes_secret", "alloy_gateway_env")
-        .and_then(|secret| secret.get("data"))
+/// Every credential the example declared for a gateway destination, labelled by
+/// the input it came from.
+pub fn declared(ctx: &Ctx) -> Vec<(String, &str)> {
+    let mut out = Vec::new();
+    for input in ["datadog_api_key", "otlp_auth_bearer_token"] {
+        if let Some(value) = ctx.declared_str(input).filter(|value| !value.is_empty()) {
+            out.push((input.to_owned(), value));
+        }
+    }
+    let headers = ctx
+        .declared("otlp_auth_header_secrets")
         .and_then(Value::as_object)
-        .unwrap_or(&EMPTY)
+        .into_iter()
+        .flatten();
+    for (header, value) in headers {
+        if let Some(value) = value.as_str().filter(|value| !value.is_empty()) {
+            out.push((format!("otlp_auth_header_secrets.{header}"), value));
+        }
+    }
+    let destinations = ctx
+        .declared("prometheus_remote_write_credentials")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten();
+    for (destination, credentials) in destinations {
+        for field in ["username", "password", "bearer_token"] {
+            if let Some(value) = credentials
+                .get(field)
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+            {
+                out.push((
+                    format!("prometheus_remote_write_credentials.{destination}.{field}"),
+                    value,
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Every declared credential is a value of the planned `alloy_gateway_env`
+/// Secret.
+pub fn reach_the_secret(ctx: &Ctx) -> Result<()> {
+    let data = planned_data(ctx)?;
+    let missing: Vec<String> = declared(ctx)
+        .into_iter()
+        .filter(|(_, value)| !data.values().any(|planned| planned.as_str() == Some(value)))
+        .map(|(input, _)| input)
+        .collect();
+    if !missing.is_empty() {
+        bail!(
+            "the planned alloy_gateway_env Secret does not carry the value of: {}",
+            missing.join(", ")
+        );
+    }
+    Ok(())
 }
 
 /// Every key of the Secret is read by the rendered pipeline.
@@ -37,8 +90,9 @@ pub fn planned(ctx: &Ctx) -> &Map<String, Value> {
 /// That catches a derived name changing on either side, and a Secret key
 /// nothing consumes.
 pub fn read_by_pipeline(ctx: &Ctx) -> Result<()> {
+    let data = planned_data(ctx)?;
     let config = ctx.rendered.gateway_config()?;
-    let unread: Vec<&str> = planned(ctx)
+    let unread: Vec<&str> = data
         .keys()
         .filter(|key| !config.contains(&format!("sys.env(\"{key}\")")))
         .map(String::as_str)
@@ -54,21 +108,17 @@ pub fn read_by_pipeline(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-/// No credential reached the rendered release.
+/// No declared credential reached the rendered release.
 ///
 /// The reason these are not passed as values at all: `values` is recoverable
 /// with `helm get values` by anyone who can read the release Secret. A
 /// credential that reached the rendered manifests got there through the values,
 /// which is the regression.
 pub fn absent_from_release(ctx: &Ctx) -> Result<()> {
-    let leaked: Vec<&str> = planned(ctx)
-        .iter()
-        .filter(|(_, value)| {
-            value
-                .as_str()
-                .is_some_and(|value| !value.is_empty() && ctx.rendered.text().contains(value))
-        })
-        .map(|(key, _)| key.as_str())
+    let leaked: Vec<String> = declared(ctx)
+        .into_iter()
+        .filter(|(_, value)| ctx.rendered.text().contains(value))
+        .map(|(input, _)| input)
         .collect();
     if !leaked.is_empty() {
         bail!(
@@ -79,4 +129,20 @@ pub fn absent_from_release(ctx: &Ctx) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The planned Secret's data. The Secret is a Terraform resource, so the plan
+/// is the only place it appears.
+fn planned_data(ctx: &Ctx) -> Result<&serde_json::Map<String, Value>> {
+    let Some(data) = ctx
+        .planned("kubernetes_secret", "alloy_gateway_env")
+        .and_then(|secret| secret.get("data"))
+        .and_then(Value::as_object)
+    else {
+        bail!(
+            "the example declares destination credentials but the module plans no \
+             alloy_gateway_env Secret, so the gateway starts with none of them"
+        );
+    };
+    Ok(data)
 }

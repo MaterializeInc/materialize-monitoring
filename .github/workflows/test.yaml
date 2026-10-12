@@ -85,7 +85,9 @@ jobs:
           terraform_wrapper: false
       # The render check is `mz-monitoring-check terraform-render`, which the
       # Makefile builds before running.
-      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # fmt, validate, and — via the terraform-render prerequisite — a plan of
       # every example with the chart rendered against the values it composes.

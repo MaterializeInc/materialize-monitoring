@@ -298,24 +298,34 @@ const CHECKS: &[Check] = &[
         applies: |ctx| ctx.declares("otlp_metrics"),
         run: checks::destinations::otlp,
     },
-    // Read from the plan, since the Secret is a Terraform resource and never
-    // appears in `helm template` output.
+    // Gated on the declared credentials. The planned Secret is the module's
+    // output, and gating on it would let a module that stops planning it switch
+    // these off.
+    Check {
+        name: "gateway_credentials::reach_the_secret",
+        applies: |ctx| !checks::gateway_credentials::declared(ctx).is_empty(),
+        run: checks::gateway_credentials::reach_the_secret,
+    },
     Check {
         name: "gateway_credentials::read_by_pipeline",
-        applies: |ctx| !checks::gateway_credentials::planned(ctx).is_empty(),
+        applies: |ctx| !checks::gateway_credentials::declared(ctx).is_empty(),
         run: checks::gateway_credentials::read_by_pipeline,
     },
     Check {
         name: "gateway_credentials::absent_from_release",
-        applies: |ctx| !checks::gateway_credentials::planned(ctx).is_empty(),
+        applies: |ctx| !checks::gateway_credentials::declared(ctx).is_empty(),
         run: checks::gateway_credentials::absent_from_release,
     },
-    // `grafana_database_enabled` is inferred from the host when null, so either
-    // one declares a database.
+    // An explicit `grafana_database_enabled` wins; null infers it from the host,
+    // as the module does.
     Check {
         name: "grafana::database",
-        applies: |ctx| {
-            ctx.declares("grafana_database_host") || ctx.declares("grafana_database_enabled")
+        applies: |ctx| match ctx
+            .declared("grafana_database_enabled")
+            .and_then(Value::as_bool)
+        {
+            Some(enabled) => enabled,
+            None => ctx.declares("grafana_database_host"),
         },
         run: checks::grafana::database,
     },
@@ -341,7 +351,7 @@ const CHECKS: &[Check] = &[
     // credentials; an example that leaves it to another owner has none to check.
     Check {
         name: "alerting::receiver_secret",
-        applies: |ctx| checks::alerting::planned_receiver_secret(ctx).is_some(),
+        applies: |ctx| ctx.declares("alerting_receiver_secrets"),
         run: checks::alerting::receiver_secret,
     },
     Check {

@@ -46,11 +46,6 @@ pub fn config_secret(ctx: &Ctx) -> Option<&Manifest> {
     ctx.rendered.find("Secret", "alertmanager-config")
 }
 
-/// The planned `alertmanager-receivers` Secret, when the module creates one.
-pub fn planned_receiver_secret(ctx: &Ctx) -> Option<&Value> {
-    ctx.planned("kubernetes_secret", "alertmanager_receivers")
-}
-
 /// Whether the bundled rules are on, which they are unless declared off.
 pub fn rules_on(ctx: &Ctx) -> bool {
     ctx.declared_at("alert_rules", "enabled") != Some(&Value::Bool(false))
@@ -170,11 +165,22 @@ pub fn extra_routes(ctx: &Ctx) -> Result<()> {
     report(problems, HINT)
 }
 
-/// The receiver Secret is read, lives beside Alertmanager, and never reached
-/// the release.
+/// The receiver Secret carries every declared credential, is read, lives beside
+/// Alertmanager, and never reached the release.
+///
+/// Gated on `alerting_receiver_secrets` rather than on the planned Secret, so a
+/// module that stops planning it fails here instead of switching this off.
 pub fn receiver_secret(ctx: &Ctx) -> Result<()> {
-    let secret =
-        planned_receiver_secret(ctx).context("no planned alertmanager_receivers Secret")?;
+    let declared = ctx
+        .declared("alerting_receiver_secrets")
+        .and_then(Value::as_object)
+        .context("alerting_receiver_secrets is not a map")?;
+    let secret = ctx
+        .planned("kubernetes_secret", "alertmanager_receivers")
+        .context(
+            "alerting_receiver_secrets is set but the module plans no alertmanager_receivers \
+             Secret, so every receiver reads a file that does not exist",
+        )?;
     let namespace = secret
         .pointer("/metadata/0/namespace")
         .and_then(Value::as_str);
@@ -191,7 +197,17 @@ pub fn receiver_secret(ctx: &Ctx) -> Result<()> {
         .and_then(Manifest::namespace);
 
     let mut problems = Vec::new();
-    let unread: Vec<&str> = data
+    let missing: Vec<&str> = declared
+        .iter()
+        .filter(|(key, value)| data.get(key.as_str()) != Some(value))
+        .map(|(key, _)| key.as_str())
+        .collect();
+    if !missing.is_empty() {
+        problems.push(format!(
+            "the planned receiver Secret does not carry {missing:?} as declared"
+        ));
+    }
+    let unread: Vec<&str> = declared
         .keys()
         .filter(|key| !config.contains(&format!("{RECEIVER_MOUNT}/{key}")))
         .map(String::as_str)
@@ -212,7 +228,7 @@ pub fn receiver_secret(ctx: &Ctx) -> Result<()> {
     }
     // The reason these are not values at all: anything in `values` is readable
     // with `helm get values`. A credential in the render got there through them.
-    let leaked: Vec<&str> = data
+    let leaked: Vec<&str> = declared
         .iter()
         .filter(|(_, value)| {
             value

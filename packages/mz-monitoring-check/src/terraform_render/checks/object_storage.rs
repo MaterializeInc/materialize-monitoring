@@ -69,7 +69,8 @@ pub fn static_credentials_land(ctx: &Ctx) -> Result<()> {
     )
 }
 
-/// The secret key appears in Secrets and nowhere else.
+/// The secret key reaches both backends through Secrets, and appears nowhere
+/// else.
 ///
 /// Helm writes Secrets with `stringData`, so cleartext there is normal and it is
 /// still a Secret at rest. The chart defaults Loki's `configStorageType` to
@@ -77,10 +78,51 @@ pub fn static_credentials_land(ctx: &Ctx) -> Result<()> {
 /// so a regression puts it in a ConfigMap — which works perfectly and publishes
 /// the key to anyone with `get` on ConfigMaps. That is exactly the kind of thing
 /// that needs an assertion rather than trust.
+///
+/// The positive half comes first. Without it, a key that reached neither backend
+/// would leave nothing to leak, and pass.
 pub fn secret_key_stays_in_secrets(ctx: &Ctx) -> Result<()> {
     let secret = ctx
         .declared_str("object_storage_secret_access_key")
         .context("object_storage_secret_access_key is not a string")?;
+
+    let mut problems = Vec::new();
+    let loki = ctx.rendered.iter().find(|doc| {
+        matches!(doc.kind(), "ConfigMap" | "Secret")
+            && doc.name() == "loki"
+            && doc.entry("config.yaml").is_some()
+    });
+    match loki {
+        None => problems.push("no Loki config.yaml rendered".to_owned()),
+        Some(doc) => {
+            let config = ctx.rendered.loki_config()?;
+            let got = str_at(&config, "common.storage.object_store.s3.secret_access_key");
+            if got != Some(secret) {
+                problems.push(format!(
+                    "loki: common.storage.object_store.s3.secret_access_key in {} is not the \
+                     declared key",
+                    doc.id()
+                ));
+            }
+        }
+    }
+    let thanos = ctx
+        .rendered
+        .of_kind("Secret")
+        .find_map(|doc| doc.entry("objstore.yml"));
+    match thanos {
+        None => problems.push("no Secret carries the Thanos objstore.yml".to_owned()),
+        Some(text) => {
+            let objstore = parse_yaml(&text).context("parsing the rendered Thanos objstore.yml")?;
+            if str_at(&objstore, "config.secret_key") != Some(secret) {
+                problems.push(
+                    "thanos: the rendered objstore.yml's config.secret_key is not the declared key"
+                        .to_owned(),
+                );
+            }
+        }
+    }
+
     let mut leaked: Vec<String> = ctx
         .rendered
         .iter()
@@ -90,14 +132,16 @@ pub fn secret_key_stays_in_secrets(ctx: &Ctx) -> Result<()> {
     leaked.sort();
     leaked.dedup();
     if !leaked.is_empty() {
-        bail!(
-            "the secret access key reached non-Secret objects: {}\n\
-             Check that Loki's configStorageType is Secret; the chart default is ConfigMap, which \
-             works but publishes the key to the namespace.",
+        problems.push(format!(
+            "the secret access key reached non-Secret objects: {}",
             leaked.join(", ")
-        );
+        ));
     }
-    Ok(())
+    report(
+        problems,
+        "Check that Loki's configStorageType is Secret; the chart default is ConfigMap, which \
+         works but publishes the key to the namespace.",
+    )
 }
 
 /// An `http://` endpoint reaches both backends bare, with the insecure flag set.

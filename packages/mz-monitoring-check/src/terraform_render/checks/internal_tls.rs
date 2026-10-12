@@ -187,28 +187,44 @@ pub fn alertmanager_serves_tls(ctx: &Ctx) -> Result<()> {
 /// They write to the gateway's metrics listener, which every stage past `off`
 /// serves over TLS and `authenticate` requires a certificate on. A ruler without
 /// a keypair there retries every batch forever.
+///
+/// A ruler that renders has to have a client aimed at the gateway: one with
+/// none at all would otherwise pass for having nothing to check.
 pub fn rulers_remote_write_over_tls(ctx: &Ctx) -> Result<()> {
     let mut problems = Vec::new();
-    if let Some(clients) = thanos_ruler_clients(ctx)? {
+    if ctx.rendered.find("StatefulSet", "thanos-ruler").is_some() {
+        let clients = thanos_ruler_clients(ctx)?.unwrap_or_default();
         check_ruler("Thanos ruler", &clients, &mut problems);
     }
-    let loki = ctx.rendered.loki_config()?;
-    if let Some(clients) = loki
-        .pointer("/ruler/remote_write/clients")
-        .and_then(Value::as_object)
-    {
-        let clients: Vec<Value> = clients.values().cloned().collect();
+    if ctx.rendered.find("StatefulSet", "loki-ruler").is_some() {
+        let loki = ctx.rendered.loki_config()?;
+        let clients: Vec<Value> = loki
+            .pointer("/ruler/remote_write/clients")
+            .and_then(Value::as_object)
+            .map(|clients| clients.values().cloned().collect())
+            .unwrap_or_default();
         check_ruler("Loki ruler", &clients, &mut problems);
     }
     report(problems, "")
 }
 
 fn check_ruler(who: &str, clients: &[Value], problems: &mut Vec<String>) {
-    for client in clients {
+    let to_gateway: Vec<&Value> = clients
+        .iter()
+        .filter(|client| {
+            str_at(client, "url")
+                .unwrap_or("")
+                .contains("alloy-gateway")
+        })
+        .collect();
+    if to_gateway.is_empty() {
+        problems.push(format!(
+            "{who} renders but has no remote-write client aimed at the gateway, so its \
+             recording rules reach no store"
+        ));
+    }
+    for client in to_gateway {
         let url = str_at(client, "url").unwrap_or("");
-        if !url.contains("alloy-gateway") {
-            continue;
-        }
         let tls = client.get("tls_config");
         let keyed = ["ca_file", "cert_file", "key_file"]
             .iter()
@@ -282,4 +298,35 @@ fn receive_args(ctx: &Ctx) -> impl Iterator<Item = &str> {
         .workloads()
         .filter(|workload| workload.name().starts_with("thanos-receive"))
         .flat_map(Manifest::container_args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A ruler that renders with no client aimed at the gateway has lost its
+    /// remote-write, and must not pass for having nothing to check.
+    #[test]
+    fn a_ruler_with_no_gateway_client_fails() {
+        for clients in [
+            vec![],
+            vec![json!({ "url": "https://elsewhere.example/write" })],
+        ] {
+            let mut problems = Vec::new();
+            check_ruler("Thanos ruler", &clients, &mut problems);
+            assert_eq!(problems.len(), 1, "{clients:?}");
+        }
+    }
+
+    #[test]
+    fn a_keyed_gateway_client_passes() {
+        let client = json!({
+            "url": "https://alloy-gateway.monitoring.svc.cluster.local:9090/api/v1/metrics/write",
+            "tls_config": { "ca_file": "ca", "cert_file": "crt", "key_file": "key" },
+        });
+        let mut problems = Vec::new();
+        check_ruler("Thanos ruler", &[client], &mut problems);
+        assert!(problems.is_empty(), "{problems:?}");
+    }
 }
