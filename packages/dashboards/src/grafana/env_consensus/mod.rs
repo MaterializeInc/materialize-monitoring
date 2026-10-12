@@ -27,6 +27,10 @@
 //! cluster and its series carry no environment label, while everything here is
 //! scoped to one environment.
 //!
+//! The exception is a database running in the cluster, which has no provider
+//! to ask. Database Internals carries its own account, for CloudNativePG, on
+//! rows that render only where CNPG is scraped — see [`database`].
+//!
 //! # Scope
 //!
 //! The environment picker and nothing narrower. The dependency serves the
@@ -44,6 +48,7 @@
 //! line is what said it was `max_connections`.
 
 pub mod connections;
+pub mod database;
 pub mod operations;
 pub mod overview;
 pub mod state;
@@ -89,14 +94,17 @@ pub(crate) const ORACLE_OP: &str = "timestamp oracle {{op}}";
 ///
 /// Overview answers "is it the database". Operations and Connections are the
 /// two places the answer usually is — the database being slow, or the pools in
-/// front of it running out. State and Cleanup is last because it is the slow
-/// failure: nothing is wrong today, and the table is growing.
+/// front of it running out. State and Cleanup is the slow failure: nothing is
+/// wrong today, and the table is growing. Database Internals is last because
+/// it is the database's own account rather than Materialize's, and only a
+/// database running in the cluster gives one here.
 fn tabs(q: &Queries) -> Vec<Tab> {
     vec![
         Tab::new(theme::OVERVIEW.title).rows(overview::rows(q)),
         Tab::new(theme::OPERATIONS.title).rows(operations::rows(q)),
         Tab::new(theme::CONNECTIONS.title).rows(connections::rows(q)),
         Tab::new(theme::STATE.title).rows(state::rows(q)),
+        Tab::new(theme::DATABASE.title).rows(database::rows(q)),
     ]
 }
 
@@ -122,13 +130,14 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "The metadata database, as Materialize experiences it.\n\n\
              Commits, failures, latency and connection pools, measured by the \
              processes that use the database — the same on every database \
-             flavor. What the database itself reports is on the Infrastructure \
-             Cloud Provider dashboard.",
+             flavor. What a CloudNativePG database reports about itself is on \
+             the Database Internals tab, and what a managed database's cloud \
+             provider reports is on the Infrastructure Cloud Provider dashboard.",
         )
         .tags([tags::MATERIALIZE, tags::MZMON, tags::content::DEPENDENCIES])
         .folder(Folder::Materialize)
         .cursor_sync(CursorSync::Crosshair)
-        .variables(variable::dependency_scoped())
+        .variables(variable::consensus_scoped())
         .metadata_annotation(
             "monitoring.materialize.cloud/min-mz-version",
             MIN_MZ_VERSION,
@@ -209,6 +218,116 @@ mod tests {
     #[test]
     fn multi_series_panels_are_not_shaded() {
         test_support::assert_multi_series_panels_unshaded(&built());
+    }
+
+    #[test]
+    fn every_cnpg_row_renders_only_where_cnpg_is_scraped() {
+        // A CNPG row without a condition draws empty panels on every managed
+        // database, which is most installs.
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let when: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "matches")
+            .collect();
+        // One section holds them all, so its condition is the only one.
+        assert_eq!(when.len(), 1, "{conditions:?}");
+        assert_eq!(when[0].0, database::CNPG_SECTION);
+        assert_eq!(when[0].2, database::CNPG);
+    }
+
+    #[test]
+    fn the_database_tab_has_exactly_one_fallback_covering_every_flavor() {
+        let conditions = test_support::variable_conditioned_rows(&built());
+        let fallbacks: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "notMatches")
+            .collect();
+        assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
+        assert!(fallbacks[0].2.contains(database::CNPG), "{fallbacks:?}");
+    }
+
+    #[test]
+    fn selecting_every_cnpg_cluster_still_renders_the_rows() {
+        test_support::assert_row_conditions_can_read_all(&built());
+    }
+
+    #[test]
+    fn an_unset_detection_variable_renders_no_cnpg_row() {
+        // An empty discovery reaches the condition as one of these strings.
+        for unset in ["", "undefined", "null", "[object Object]"] {
+            assert!(!unset.contains(database::CNPG), "{unset}");
+        }
+    }
+
+    #[test]
+    fn every_cnpg_query_is_scoped_by_the_cluster_picker() {
+        // CNPG's series carry no environment, so the picker is the only thing
+        // keeping a second CNPG cluster's numbers off these panels.
+        let resource = built();
+        let json = serde_json::to_string(&resource.spec.elements).expect("serialize");
+        let selectors = test_support::selectors_of(&json, "cnpg_");
+        assert!(!selectors.is_empty(), "no CNPG queries found");
+        for selector in selectors {
+            assert!(
+                selector.contains("$cnpgClusterList"),
+                "unscoped: {selector}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_cluster_picker_lives_on_its_section_not_the_dashboard() {
+        // A dashboard-level picker sits in the controls of every environment,
+        // whether or not it runs this flavor; on the section, it hides with it.
+        let resource = built();
+        assert!(
+            !resource
+                .spec
+                .variables
+                .iter()
+                .any(|v| variable::name_of(v) == "cnpgClusterList"),
+            "the picker is dashboard-level"
+        );
+        let json = serde_json::to_value(&resource.spec.layout).expect("serialize");
+        let mut found = Vec::new();
+        find_section_variables(&json, &mut found);
+        assert_eq!(
+            found,
+            vec![(
+                database::CNPG_SECTION.to_string(),
+                "cnpgClusterList".to_string()
+            )]
+        );
+    }
+
+    /// `(row title, variable name)` for every row that declares a variable.
+    fn find_section_variables(value: &serde_json::Value, out: &mut Vec<(String, String)>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if let Some(spec) = map.get("spec")
+                    && let Some(vars) = spec.get("variables").and_then(|v| v.as_array())
+                {
+                    let title = spec["title"].as_str().unwrap_or_default().to_string();
+                    for v in vars {
+                        out.push((
+                            title.clone(),
+                            v["spec"]["name"].as_str().unwrap_or_default().to_string(),
+                        ));
+                    }
+                }
+                map.values().for_each(|v| find_section_variables(v, out));
+            }
+            serde_json::Value::Array(items) => {
+                items.iter().for_each(|v| find_section_variables(v, out))
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn the_fallback_explains_rather_than_announces() {
+        assert!(database::NO_FLAVOR.contains("PodMonitor"));
+        assert!(database::NO_FLAVOR.contains("Infrastructure Cloud Provider"));
     }
 
     #[test]

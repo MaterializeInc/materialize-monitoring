@@ -7,8 +7,8 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! Presentation shared by the two client-side dependency dashboards,
-//! `env-persist` and `env-consensus`.
+//! Presentation shared by the two dependency dashboards, `env-persist` and
+//! `env-consensus`.
 //!
 //! Both read persist's own instrumentation, break it down the same way, and
 //! reach the same empty states, so the legend and the empty-state text are
@@ -52,4 +52,35 @@ pub(crate) fn latency_ladder(degraded: f64, unhealthy: f64) -> dashboardv2::Thre
         .step(degraded, palette::tri_health::DEGRADED)
         .step(unhealthy, palette::tri_health::UNHEALTHY)
         .build()
+}
+
+/// A ladder for a bounded fraction where high is bad: healthy below `degraded`,
+/// unhealthy from `unhealthy`.
+///
+/// The same colours as [`latency_ladder`], named for what the self-hosted
+/// dependency rows draw with it — connections, capacity and transaction IDs
+/// used.
+pub(crate) fn ratio_ladder(degraded: f64, unhealthy: f64) -> dashboardv2::ThresholdsConfig {
+    latency_ladder(degraded, unhealthy)
+}
+
+/// One exact-value mapping: a number replaced by a word and a colour.
+pub(crate) fn value_map(
+    value: f64,
+    text: &str,
+    colour: &str,
+    index: i64,
+) -> dashboardv2::ValueMapping {
+    dashboardv2::ValueMapping::ValueMap(dashboardv2::ValueMap {
+        type_: dashboardv2::MappingType::Value,
+        options: std::collections::BTreeMap::from([(
+            format!("{value}"),
+            dashboardv2::ValueMappingResult {
+                text: Some(text.to_string()),
+                color: Some(colour.to_string()),
+                index: Some(index),
+                icon: None,
+            },
+        )]),
+    })
 }
