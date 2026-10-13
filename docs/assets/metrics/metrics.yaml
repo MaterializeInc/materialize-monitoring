@@ -1124,6 +1124,7 @@
   usage:
   - infra.alloy.metric_pipeline.send_delay
   - infra.alloy.metric_pipeline.send_delay.worst
+  - infra.thanos.health.alerts_firing
   - infra.thanos.rule.remote_write_lag
 - importance: essential
   labels:
@@ -1135,6 +1136,7 @@
   usage:
   - infra.alloy.metric_pipeline.send_delay
   - infra.alloy.metric_pipeline.send_delay.worst
+  - infra.thanos.health.alerts_firing
   - infra.thanos.rule.remote_write_lag
 - importance: essential
   labels:
@@ -3218,6 +3220,7 @@
   name: thanos_objstore_bucket_last_successful_upload_time
   usage:
   - infra.thanos.storage.upload_age
+  - infra.thanos.write.upload_age
 - importance: recommended
   labels:
   - app
@@ -3351,6 +3354,7 @@
 - importance: recommended
   labels:
   - app
+  - container
   - namespace
   name: thanos_store_selects_dropped_total
   usage:
@@ -3765,6 +3769,7 @@
 - importance: extended
   labels:
   - app
+  - container
   - grpc_code
   - grpc_service
   - namespace
@@ -3774,6 +3779,7 @@
 - importance: extended
   labels:
   - app
+  - container
   - grpc_method
   - grpc_service
   - namespace

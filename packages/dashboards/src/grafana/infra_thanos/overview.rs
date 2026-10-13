@@ -86,7 +86,7 @@ fn throughput(q: &Queries) -> Row {
 /// for the broken one, so the text names both.
 fn no_alerts() -> NoValue {
     NoValue::Custom(
-        "No Thanos alert is firing or pending. If the Ruler tab is empty too, nothing is evaluating them."
+        "No Thanos alert is firing or pending, or none reached Thanos. The Ruler tab's Evaluation and Write-back rows say which."
             .to_string(),
     )
 }
@@ -98,7 +98,8 @@ fn alerts_firing(q: &Queries) -> dashboardv2::PanelKind {
         .unit("short")
         .decimals(0.0)
         .no_value(NoValue::Custom(
-            "No ruler has evaluated a rule in five minutes, so no alert can fire".to_string(),
+            "No ruler has evaluated and written back in five minutes, so no alert can show. Check the Ruler tab."
+                .to_string(),
         ))
         .build(0)
 }
@@ -355,6 +356,12 @@ mod tests {
         assert!(!json.contains("vector(0)"), "{json}");
         assert!(
             json.contains("prometheus_rule_group_last_evaluation_timestamp_seconds"),
+            "{json}"
+        );
+        // Nor from a ruler that evaluates and cannot deliver: its `ALERTS`
+        // would go stale in Thanos while its own metrics stay fresh.
+        assert!(
+            json.contains("prometheus_remote_storage_queue_highest_sent_timestamp_seconds"),
             "{json}"
         );
     }

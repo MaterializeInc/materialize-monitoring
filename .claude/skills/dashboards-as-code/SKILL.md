@@ -58,7 +58,7 @@ Frequently needed deep links into the Style Guidelines:
   — the outcome vocabulary, and why `abandoned` is not a failure signal
 - [Firing alerts lead an Overview tab](../../../docs/content/reference/development/dashboard/style-guidelines.md#firing-alerts-lead-an-overview-tab)
   — the habit `infra-thanos` set: the alerts row sits under the verdict, and the firing count's zero comes from a ruler
-  that is evaluating
+  that is evaluating and writing its results back
 - [Known metric quirks and gotchas](../../../docs/content/reference/development/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
 - [PromQL recipes](../../../docs/content/reference/development/dashboard/style-guidelines.md#promql-recipes)
 - [Shared constants and helpers](../../../docs/content/reference/development/dashboard/style-guidelines.md#shared-constants-and-helpers)

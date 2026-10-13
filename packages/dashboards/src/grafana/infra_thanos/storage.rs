@@ -115,9 +115,9 @@ fn block_states(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-/// Shared with the Writes tab, where the receivers' lines are the ones that
-/// matter.
-pub(super) fn upload_age(q: &Queries) -> dashboardv2::PanelKind {
+/// Every process that uploads, narrowed by the component picker. The Writes tab
+/// draws the receivers' own reading instead.
+fn upload_age(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Time Since Last Upload")
         .query(q.get("infra.thanos.storage.upload_age").legend("{{pod}}"))
         .unit("s")

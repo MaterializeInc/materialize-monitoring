@@ -444,7 +444,7 @@
               ]
             }
           },
-          "description": "**Every Thanos alert that is firing or pending now, with the process it is about.**\n\n**Nominal:** Empty.\n\n**Unhealthy:** Any firing row. A pending row has met its condition and is waiting out its `for` duration; it fires if the condition holds.\n\nThe rules are the upstream Thanos mixin's, installed by the Thanos subchart, and their runbook is the mixin's runbook. Rows without a pod are about a whole component, such as a compactor that has not run.",
+          "description": "**Every Thanos alert that is firing or pending now, with the process it is about.**\n\n**Nominal:** Empty.\n\n**Unhealthy:** Any firing row. A pending row has met its condition and is waiting out its `for` duration; it fires if the condition holds.\n\nThe rules are the upstream Thanos mixin's, installed by the Thanos subchart. `ALERTS` carries a rule's labels and not its annotations, so the table has no runbook link. The mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name. Rows without a pod are about a whole component, such as a compactor that has not run.",
           "id": 1006,
           "links": [],
           "title": "Alerts",
@@ -459,7 +459,7 @@
                     "filterable": true,
                     "inspect": false
                   },
-                  "noValue": "No Thanos alert is firing or pending. If the Ruler tab is empty too, nothing is evaluating them."
+                  "noValue": "No Thanos alert is firing or pending, or none reached Thanos. The Ruler tab's Evaluation and Write-back rows say which."
                 },
                 "overrides": [
                   {
@@ -534,10 +534,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "count(\n  max by (alertname, job, pod) (\n    ALERTS{alertname=~\"Thanos.*\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  time()\n  - max(\n    prometheus_rule_group_last_evaluation_timestamp_seconds{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      container=\"ruler\"\n    }\n  )\n  < 300\n)\n",
+                        "expr": "count(\n  max by (alertname, job, pod) (\n    ALERTS{alertname=~\"Thanos.*\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  (\n    time()\n    - max(\n      prometheus_rule_group_last_evaluation_timestamp_seconds{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=\"ruler\"\n      }\n    )\n    < 300\n  )\n  and on ()\n  (\n    min(\n      max by (pod) (\n        prometheus_remote_storage_highest_timestamp_in_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n      - on (pod)\n      max by (pod) (\n        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n    )\n    < 300\n  )\n)\n",
                         "legendFormat": "alerts",
                         "qryType": 1,
-                        "query": "count(\n  max by (alertname, job, pod) (\n    ALERTS{alertname=~\"Thanos.*\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  time()\n  - max(\n    prometheus_rule_group_last_evaluation_timestamp_seconds{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      container=\"ruler\"\n    }\n  )\n  < 300\n)\n"
+                        "query": "count(\n  max by (alertname, job, pod) (\n    ALERTS{alertname=~\"Thanos.*\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  (\n    time()\n    - max(\n      prometheus_rule_group_last_evaluation_timestamp_seconds{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=\"ruler\"\n      }\n    )\n    < 300\n  )\n  and on ()\n  (\n    min(\n      max by (pod) (\n        prometheus_remote_storage_highest_timestamp_in_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n      - on (pod)\n      max by (pod) (\n        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n    )\n    < 300\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -549,7 +549,7 @@
               "transformations": []
             }
           },
-          "description": "**Thanos alerts firing now.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any. _Alerts_ below names each one, and its runbook link says what to do.\n\nReads zero only while a ruler has evaluated a rule in the last five minutes. A ruler that has stopped evaluating fires nothing, so an empty reading means the alert path itself needs checking: _Ruler_ says whether evaluation is running.",
+          "description": "**Thanos alerts firing now.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any. _Alerts_ below names each one. The upstream Thanos mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name.\n\nReads zero only while a ruler has evaluated a rule in the last five minutes and written its results back within five minutes. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either reads as no alerts. An empty reading means the alert path itself needs checking: _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.",
           "id": 1000,
           "links": [],
           "title": "Thanos Alerts Firing",
@@ -561,7 +561,7 @@
                 "defaults": {
                   "decimals": 0,
                   "min": 0,
-                  "noValue": "No ruler has evaluated a rule in five minutes, so no alert can fire",
+                  "noValue": "No ruler has evaluated and written back in five minutes, so no alert can show. Check the Ruler tab.",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -1761,10 +1761,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (container) (\n  rate(\n    thanos_store_selects_dropped_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "sum by (container) (\n  rate(\n    thanos_store_selects_dropped_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      container=~\"$thanosComponent\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{container}} selects",
                         "qryType": 1,
-                        "query": "sum by (container) (\n  rate(\n    thanos_store_selects_dropped_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (container) (\n  rate(\n    thanos_store_selects_dropped_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      container=~\"$thanosComponent\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2134,10 +2134,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "histogram_quantile(\n  0.99,\n  sum by (container, le) (\n    rate(\n      grpc_server_handling_seconds_bucket{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        grpc_service=\"thanos.Store\",\n        grpc_method=\"Series\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (container, le) (\n    rate(\n      grpc_server_handling_seconds_bucket{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=~\"$thanosComponent\",\n        grpc_service=\"thanos.Store\",\n        grpc_method=\"Series\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n",
                         "legendFormat": "{{container}}",
                         "qryType": 1,
-                        "query": "histogram_quantile(\n  0.99,\n  sum by (container, le) (\n    rate(\n      grpc_server_handling_seconds_bucket{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        grpc_service=\"thanos.Store\",\n        grpc_method=\"Series\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
+                        "query": "histogram_quantile(\n  0.99,\n  sum by (container, le) (\n    rate(\n      grpc_server_handling_seconds_bucket{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=~\"$thanosComponent\",\n        grpc_service=\"thanos.Store\",\n        grpc_method=\"Series\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -2204,10 +2204,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "(\n  sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        grpc_service=\"thanos.Store\",\n        grpc_code=~\"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  0 * sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        grpc_service=\"thanos.Store\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n/ sum by (container) (\n  rate(\n    grpc_server_handled_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      grpc_service=\"thanos.Store\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "expr": "(\n  sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=~\"$thanosComponent\",\n        grpc_service=\"thanos.Store\",\n        grpc_code=~\"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  0 * sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=~\"$thanosComponent\",\n        grpc_service=\"thanos.Store\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n/ sum by (container) (\n  rate(\n    grpc_server_handled_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      container=~\"$thanosComponent\",\n      grpc_service=\"thanos.Store\"\n    }\n    [$__rate_interval]\n  )\n)\n",
                         "legendFormat": "{{container}}",
                         "qryType": 1,
-                        "query": "(\n  sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        grpc_service=\"thanos.Store\",\n        grpc_code=~\"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  0 * sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        grpc_service=\"thanos.Store\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n/ sum by (container) (\n  rate(\n    grpc_server_handled_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      grpc_service=\"thanos.Store\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "(\n  sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=~\"$thanosComponent\",\n        grpc_service=\"thanos.Store\",\n        grpc_code=~\"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded\"\n      }\n      [$__rate_interval]\n    )\n  )\n  or\n  0 * sum by (container) (\n    rate(\n      grpc_server_handled_total{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=~\"$thanosComponent\",\n        grpc_service=\"thanos.Store\"\n      }\n      [$__rate_interval]\n    )\n  )\n)\n/ sum by (container) (\n  rate(\n    grpc_server_handled_total{\n      app=\"thanos\",\n      namespace=~\"$thanosNamespace\",\n      container=~\"$thanosComponent\",\n      grpc_service=\"thanos.Store\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -5096,10 +5096,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "time()\n- max by (container, pod) (\n  thanos_objstore_bucket_last_successful_upload_time{\n    app=\"thanos\",\n    namespace=~\"$thanosNamespace\",\n    container=~\"$thanosComponent\"\n  } > 0\n)\n",
+                        "expr": "time()\n- max by (pod) (\n  thanos_objstore_bucket_last_successful_upload_time{\n    app=\"thanos\",\n    namespace=~\"$thanosNamespace\",\n    container=\"receive\"\n  } > 0\n)\n",
                         "legendFormat": "{{pod}}",
                         "qryType": 1,
-                        "query": "time()\n- max by (container, pod) (\n  thanos_objstore_bucket_last_successful_upload_time{\n    app=\"thanos\",\n    namespace=~\"$thanosNamespace\",\n    container=~\"$thanosComponent\"\n  } > 0\n)\n"
+                        "query": "time()\n- max by (pod) (\n  thanos_objstore_bucket_last_successful_upload_time{\n    app=\"thanos\",\n    namespace=~\"$thanosNamespace\",\n    container=\"receive\"\n  } > 0\n)\n"
                       },
                       "version": "v0"
                     },
@@ -5111,7 +5111,7 @@
               "transformations": []
             }
           },
-          "description": "**Time since each pod last uploaded to object storage.**\n\n**Nominal:** Under about two hours for each receiver, which uploads a block every two hours. The compactor uploads after each compaction.\n\n**Unhealthy:** A receiver well over two hours. Its recent data exists only on its own disk. The upstream alert `ThanosReceiveNoUpload` fires on this.\n\nOnly pods that have uploaded at least once since they started appear. The store gateway and the ruler never upload.",
+          "description": "**Time since each receiver last uploaded a block to object storage.**\n\n**Nominal:** Under about two hours. Each receiver uploads a block every two hours.\n\n**Unhealthy:** Well over two hours. That receiver's recent data exists only on its own disk. The upstream alert `ThanosReceiveNoUpload` fires on this.\n\nOnly receivers that have uploaded at least once since they started appear.",
           "id": 1022,
           "links": [],
           "title": "Time Since Last Upload",
@@ -5122,7 +5122,7 @@
               "fieldConfig": {
                 "defaults": {
                   "min": 0,
-                  "noValue": "No process has uploaded to object storage since it started",
+                  "noValue": "No receiver has uploaded a block since it started",
                   "unit": "s"
                 },
                 "overrides": []

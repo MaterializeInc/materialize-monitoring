@@ -1356,13 +1356,25 @@ The rules that keep those panels honest:
   Fall back to a name prefix only where the rules carry nothing else; the upstream Thanos mixin's carry only `severity`, so `infra-thanos` selects `alertname=~"Thanos.*"`.
 - **Deduplicate across rulers** with `max by (alertname, job, pod)` before counting.
   Two ruler replicas evaluate the same rule.
-- **Draw the count's zero from a ruler that is evaluating**, never from `or vector(0)`.
-  A ruler that has stopped evaluating fires nothing, and "no alerts" from a dead alert path is the reading most worth avoiding:
+- **Draw the count's zero from a ruler that is evaluating and delivering**, never from `or vector(0)`.
+  A ruler that has stopped evaluating fires nothing.
+  A ruler whose write-back has stalled keeps evaluating, but its `ALERTS` series go stale in Thanos while its own metrics stay fresh.
+  "No alerts" from either is the reading most worth avoiding:
 
   ```promql
   count(max by (alertname, job, pod) (ALERTS{alertname=~"Thanos.*", alertstate="firing"}))
   or
-  0 * (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{container="ruler"}) < 300)
+  0 * (
+    (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{container="ruler"}) < 300)
+    and on ()
+    (
+      min(
+        max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{container="ruler"})
+        - on (pod)
+        max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{container="ruler"})
+      ) < 300
+    )
+  )
   ```
 
 - **The table is a table of current facts**, so it is an instant query with `table_format`; see

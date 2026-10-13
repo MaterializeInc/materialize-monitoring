@@ -304,10 +304,7 @@ mod tests {
                 continue;
             }
             assert!(
-                expr.contains("$thanosComponent")
-                    || expr.contains(r#"container=""#)
-                    || expr.contains(r#"grpc_service="thanos.Store""#)
-                    || expr.contains("thanos_store_selects_dropped_total"),
+                expr.contains("$thanosComponent") || expr.contains(r#"container=""#),
                 "{name}: {expr}"
             );
         }

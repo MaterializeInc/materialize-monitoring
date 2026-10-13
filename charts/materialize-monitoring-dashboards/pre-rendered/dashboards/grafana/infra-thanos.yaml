@@ -425,7 +425,7 @@ spec:
 
           **Unhealthy:** Any firing row. A pending row has met its condition and is waiting out its `for` duration; it fires if the condition holds.
 
-          The rules are the upstream Thanos mixin's, installed by the Thanos subchart, and their runbook is the mixin's runbook. Rows without a pod are about a whole component, such as a compactor that has not run.
+          The rules are the upstream Thanos mixin's, installed by the Thanos subchart. `ALERTS` carries a rule's labels and not its annotations, so the table has no runbook link. The mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name. Rows without a pod are about a whole component, such as a compactor that has not run.
         id: 1006
         links: []
         title: Alerts
@@ -439,7 +439,7 @@ spec:
                   align: auto
                   filterable: true
                   inspect: false
-                noValue: No Thanos alert is firing or pending. If the Ruler tab is empty too, nothing is evaluating them.
+                noValue: No Thanos alert is firing or pending, or none reached Thanos. The Ruler tab's Evaluation and Write-back rows say which.
               overrides:
               - matcher:
                   id: byName
@@ -493,15 +493,38 @@ spec:
                       )
                       or
                       0 * (
-                        time()
-                        - max(
-                          prometheus_rule_group_last_evaluation_timestamp_seconds{
-                            app="thanos",
-                            namespace=~"$thanosNamespace",
-                            container="ruler"
-                          }
+                        (
+                          time()
+                          - max(
+                            prometheus_rule_group_last_evaluation_timestamp_seconds{
+                              app="thanos",
+                              namespace=~"$thanosNamespace",
+                              container="ruler"
+                            }
+                          )
+                          < 300
                         )
-                        < 300
+                        and on ()
+                        (
+                          min(
+                            max by (pod) (
+                              prometheus_remote_storage_highest_timestamp_in_seconds{
+                                app="thanos",
+                                namespace=~"$thanosNamespace",
+                                container="ruler"
+                              }
+                            )
+                            - on (pod)
+                            max by (pod) (
+                              prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                                app="thanos",
+                                namespace=~"$thanosNamespace",
+                                container="ruler"
+                              }
+                            )
+                          )
+                          < 300
+                        )
                       )
                     legendFormat: alerts
                     qryType: 1
@@ -513,15 +536,38 @@ spec:
                       )
                       or
                       0 * (
-                        time()
-                        - max(
-                          prometheus_rule_group_last_evaluation_timestamp_seconds{
-                            app="thanos",
-                            namespace=~"$thanosNamespace",
-                            container="ruler"
-                          }
+                        (
+                          time()
+                          - max(
+                            prometheus_rule_group_last_evaluation_timestamp_seconds{
+                              app="thanos",
+                              namespace=~"$thanosNamespace",
+                              container="ruler"
+                            }
+                          )
+                          < 300
                         )
-                        < 300
+                        and on ()
+                        (
+                          min(
+                            max by (pod) (
+                              prometheus_remote_storage_highest_timestamp_in_seconds{
+                                app="thanos",
+                                namespace=~"$thanosNamespace",
+                                container="ruler"
+                              }
+                            )
+                            - on (pod)
+                            max by (pod) (
+                              prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                                app="thanos",
+                                namespace=~"$thanosNamespace",
+                                container="ruler"
+                              }
+                            )
+                          )
+                          < 300
+                        )
                       )
                   version: v0
                 refId: query-0
@@ -532,9 +578,9 @@ spec:
 
           **Nominal:** Zero.
 
-          **Unhealthy:** Any. _Alerts_ below names each one, and its runbook link says what to do.
+          **Unhealthy:** Any. _Alerts_ below names each one. The upstream Thanos mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name.
 
-          Reads zero only while a ruler has evaluated a rule in the last five minutes. A ruler that has stopped evaluating fires nothing, so an empty reading means the alert path itself needs checking: _Ruler_ says whether evaluation is running.
+          Reads zero only while a ruler has evaluated a rule in the last five minutes and written its results back within five minutes. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either reads as no alerts. An empty reading means the alert path itself needs checking: _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.
         id: 1000
         links: []
         title: Thanos Alerts Firing
@@ -546,7 +592,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No ruler has evaluated a rule in five minutes, so no alert can fire
+                noValue: No ruler has evaluated and written back in five minutes, so no alert can show. Check the Ruler tab.
                 thresholds:
                   mode: absolute
                   steps:
@@ -1870,7 +1916,8 @@ spec:
                         rate(
                           thanos_store_selects_dropped_total{
                             app="thanos",
-                            namespace=~"$thanosNamespace"
+                            namespace=~"$thanosNamespace",
+                            container=~"$thanosComponent"
                           }
                           [$__rate_interval]
                         )
@@ -1882,7 +1929,8 @@ spec:
                         rate(
                           thanos_store_selects_dropped_total{
                             app="thanos",
-                            namespace=~"$thanosNamespace"
+                            namespace=~"$thanosNamespace",
+                            container=~"$thanosComponent"
                           }
                           [$__rate_interval]
                         )
@@ -2316,6 +2364,7 @@ spec:
                             grpc_server_handling_seconds_bucket{
                               app="thanos",
                               namespace=~"$thanosNamespace",
+                              container=~"$thanosComponent",
                               grpc_service="thanos.Store",
                               grpc_method="Series"
                             }
@@ -2333,6 +2382,7 @@ spec:
                             grpc_server_handling_seconds_bucket{
                               app="thanos",
                               namespace=~"$thanosNamespace",
+                              container=~"$thanosComponent",
                               grpc_service="thanos.Store",
                               grpc_method="Series"
                             }
@@ -2399,6 +2449,7 @@ spec:
                             grpc_server_handled_total{
                               app="thanos",
                               namespace=~"$thanosNamespace",
+                              container=~"$thanosComponent",
                               grpc_service="thanos.Store",
                               grpc_code=~"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"
                             }
@@ -2411,6 +2462,7 @@ spec:
                             grpc_server_handled_total{
                               app="thanos",
                               namespace=~"$thanosNamespace",
+                              container=~"$thanosComponent",
                               grpc_service="thanos.Store"
                             }
                             [$__rate_interval]
@@ -2422,6 +2474,7 @@ spec:
                           grpc_server_handled_total{
                             app="thanos",
                             namespace=~"$thanosNamespace",
+                            container=~"$thanosComponent",
                             grpc_service="thanos.Store"
                           }
                           [$__rate_interval]
@@ -2436,6 +2489,7 @@ spec:
                             grpc_server_handled_total{
                               app="thanos",
                               namespace=~"$thanosNamespace",
+                              container=~"$thanosComponent",
                               grpc_service="thanos.Store",
                               grpc_code=~"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"
                             }
@@ -2448,6 +2502,7 @@ spec:
                             grpc_server_handled_total{
                               app="thanos",
                               namespace=~"$thanosNamespace",
+                              container=~"$thanosComponent",
                               grpc_service="thanos.Store"
                             }
                             [$__rate_interval]
@@ -2459,6 +2514,7 @@ spec:
                           grpc_server_handled_total{
                             app="thanos",
                             namespace=~"$thanosNamespace",
+                            container=~"$thanosComponent",
                             grpc_service="thanos.Store"
                           }
                           [$__rate_interval]
@@ -5802,22 +5858,22 @@ spec:
                   spec:
                     expr: |
                       time()
-                      - max by (container, pod) (
+                      - max by (pod) (
                         thanos_objstore_bucket_last_successful_upload_time{
                           app="thanos",
                           namespace=~"$thanosNamespace",
-                          container=~"$thanosComponent"
+                          container="receive"
                         } > 0
                       )
                     legendFormat: '{{pod}}'
                     qryType: 1
                     query: |
                       time()
-                      - max by (container, pod) (
+                      - max by (pod) (
                         thanos_objstore_bucket_last_successful_upload_time{
                           app="thanos",
                           namespace=~"$thanosNamespace",
-                          container=~"$thanosComponent"
+                          container="receive"
                         } > 0
                       )
                   version: v0
@@ -5825,13 +5881,13 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Time since each pod last uploaded to object storage.**
+          **Time since each receiver last uploaded a block to object storage.**
 
-          **Nominal:** Under about two hours for each receiver, which uploads a block every two hours. The compactor uploads after each compaction.
+          **Nominal:** Under about two hours. Each receiver uploads a block every two hours.
 
-          **Unhealthy:** A receiver well over two hours. Its recent data exists only on its own disk. The upstream alert `ThanosReceiveNoUpload` fires on this.
+          **Unhealthy:** Well over two hours. That receiver's recent data exists only on its own disk. The upstream alert `ThanosReceiveNoUpload` fires on this.
 
-          Only pods that have uploaded at least once since they started appear. The store gateway and the ruler never upload.
+          Only receivers that have uploaded at least once since they started appear.
         id: 1022
         links: []
         title: Time Since Last Upload
@@ -5842,7 +5898,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: No process has uploaded to object storage since it started
+                noValue: No receiver has uploaded a block since it started
                 unit: s
               overrides: []
             options:

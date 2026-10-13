@@ -58,7 +58,7 @@ fn replication(q: &Queries) -> Row {
 fn uploads(q: &Queries) -> Row {
     Row::new("Uploads and Configuration").grid(
         AutoGrid::new(3)
-            .panel("writes-upload-age", super::storage::upload_age(q))
+            .panel("writes-upload-age", upload_age(q))
             .panel("writes-upload-failures", upload_failures(q))
             .panel("writes-config-failed", config_failed(q)),
     )
@@ -166,6 +166,20 @@ fn pending(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
+/// The receivers' own reading, rather than the Storage tab's panel, which honours
+/// the component picker: every panel on this tab reads the receivers whatever
+/// the picker says.
+fn upload_age(q: &Queries) -> dashboardv2::PanelKind {
+    Panel::timeseries("Time Since Last Upload")
+        .query(q.get("infra.thanos.write.upload_age").legend("{{pod}}"))
+        .unit("s")
+        .min(0.0)
+        .no_value(NoValue::Custom(
+            "No receiver has uploaded a block since it started".to_string(),
+        ))
+        .build(0)
+}
+
 fn upload_failures(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Block Upload Failures")
         .query(
@@ -204,5 +218,17 @@ mod tests {
             .expect("assemble");
         assert_eq!(assembled.elements.len(), 12);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
+    }
+
+    #[test]
+    fn no_panel_honours_the_component_picker() {
+        // Every panel here is about the receivers. One that honoured the picker
+        // would empty itself whenever another process was selected.
+        let q = &test_queries();
+        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
+            .assemble()
+            .expect("assemble");
+        let json = serde_json::to_string(&assembled.elements).expect("serialize");
+        assert!(!json.contains("$thanosComponent"), "{json}");
     }
 }
