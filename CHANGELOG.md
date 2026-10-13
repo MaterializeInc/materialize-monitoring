@@ -8,13 +8,85 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v1.3.0 (Unreleased)
+
+_Changes Pending_
+
 ## mzmon-lib (shared library) v0.14.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v1.2.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.2.0
 
-_Changes Pending_
+* Update alloy Helm Chart to v1.13.1
+    * [materialize-monitoring#517](https://github.com/MaterializeInc/materialize-monitoring/pull/517)
+    * [`v1.13.1`](https://redirect.github.com/grafana/helm-charts/releases/tag/alloy-1.13.1)
+* Port the Terraform render check to Rust
+    * [materialize-monitoring#506](https://github.com/MaterializeInc/materialize-monitoring/pull/506)
+* Update thanos Helm Chart to v0.47.2
+    * [materialize-monitoring#508](https://github.com/MaterializeInc/materialize-monitoring/pull/508)
+    * [`v0.47.2`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.47.2)
+    * [`v0.47.1`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.47.1)
+    * [`v0.47.0`](https://redirect.github.com/thanos-community/helm-charts/releases/tag/thanos-0.47.0)
+* Update docker.io/kiwigrid/k8s-sidecar Docker tag to v2.14.1
+    * [materialize-monitoring#519](https://github.com/MaterializeInc/materialize-monitoring/pull/519)
+    * [`v2.14.1`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.14.1)
+    * [`v2.14.0`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.14.0)
+    * [`v2.13.4`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.13.4)
+* Update docker.io/kiwigrid/k8s-sidecar Docker tag to v2.13.3
+    * [materialize-monitoring#515](https://github.com/MaterializeInc/materialize-monitoring/pull/515)
+    * [`v2.13.3`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.13.3)
+    * [`v2.13.2`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.13.2)
+    * [`v2.13.1`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.13.1)
+    * [`v2.13.0`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.13.0)
+    * [`v2.12.0`](https://redirect.github.com/kiwigrid/k8s-sidecar/releases/tag/2.12.0)
+* Update grafana Helm Chart to v13.5.0
+    * [materialize-monitoring#511](https://github.com/MaterializeInc/materialize-monitoring/pull/511)
+* Update grafana Helm Chart to v13.4.0
+    * [materialize-monitoring#501](https://github.com/MaterializeInc/materialize-monitoring/pull/501)
+* Update grafana Helm Chart to v13
+    * [materialize-monitoring#468](https://github.com/MaterializeInc/materialize-monitoring/pull/468)
+    * The Grafana subchart now mounts its own `emptyDir` at `/tmp`, and the chart no longer sets `grafana.extraEmptyDirMounts`. A values file that sets `grafana.extraEmptyDirMounts` must drop its `/tmp` entry; the render fails until it does. `grafana.containerSecurityContext` and `grafana.image` are unchanged: Grafana still runs the pinned full image, not the subchart's new `-distroless` default.
+    * [`v13.2.3`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1323-2026-09-29)
+    * [`v13.2.2`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1322-2026-09-15)
+    * [`v13.2.1`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1321-2026-09-02)
+    * [`v13.2.0`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1320-2026-08-18)
+    * [`v13.1.0`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1310-2026-06-23)
+* Rename docs reference/internal to reference/development
+    * [materialize-monitoring#498](https://github.com/MaterializeInc/materialize-monitoring/pull/498)
+
+### Dependencies
+
+* <details><summary>Included Pipelines @ v0.12.0..v0.13.0</summary>
+
+    * Add a Thanos meta-monitoring dashboard, with firing alerts on its Overview
+        * [materialize-monitoring#525](https://github.com/MaterializeInc/materialize-monitoring/pull/525)
+    * Replace serde_yaml_ng with serde-saphyr
+        * [materialize-monitoring#529](https://github.com/MaterializeInc/materialize-monitoring/pull/529)
+        * Pre-rendered dashboards and the rules `_index.yaml` now use double quotes where a string needs quoting. The parsed content is unchanged, but a byte-level diff of vendored files will show the requoting.
+    * Add CNPG and Rook Ceph tabs to the Consensus and Persist dashboards
+        * [materialize-monitoring#509](https://github.com/MaterializeInc/materialize-monitoring/pull/509)
+        * Materialize Consensus has a new Database Internals tab for metadata databases on CloudNativePG, and Materialize Persist a new Object Store Internals tab for persist buckets on Ceph run by Rook. Each appears only when the dependency is scraped — a `PodMonitor` for the CNPG cluster, or Rook's manager and `rook-ceph-exporter` `ServiceMonitor`s — and has a picker, shown only inside that tab's section, for which cluster serves the environment.
+
+  </details>
+
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Release mzmon-lib (shared library) v0.13.0
+        * [materialize-monitoring#484](https://github.com/MaterializeInc/materialize-monitoring/pull/484)
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#520](https://github.com/MaterializeInc/materialize-monitoring/pull/520)
+    * Lock file maintenance (pep621)
+        * [materialize-monitoring#521](https://github.com/MaterializeInc/materialize-monitoring/pull/521)
+    * Update Rust crate hyper to v1.12.0
+        * [materialize-monitoring#507](https://github.com/MaterializeInc/materialize-monitoring/pull/507)
+        * [`v1.12.0`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1120-2026-10-06)
+    * Update Rust crate jsonschema to v0.58.6
+        * [materialize-monitoring#505](https://github.com/MaterializeInc/materialize-monitoring/pull/505)
+        * [`v0.58.6`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0586---2026-10-06)
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.1.0
 
