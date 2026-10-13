@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.14.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.2.0 (Unreleased)
 
 _Changes Pending_
@@ -87,9 +91,46 @@ An install on an older 0.x release should read [Upgrading](https://materializein
         * [materialize-monitoring#486](https://github.com/MaterializeInc/materialize-monitoring/pull/486)
         * [`v0.58.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0585---2026-10-02)
 
-## mzmon-lib (shared library) v0.13.0 (Unreleased)
+## mzmon-lib (shared library) v0.13.0
 
-_Changes Pending_
+* Replace serde_yaml_ng with serde-saphyr
+    * [materialize-monitoring#529](https://github.com/MaterializeInc/materialize-monitoring/pull/529)
+    * Pre-rendered dashboards and the rules `_index.yaml` now use double quotes where a string needs quoting. The parsed content is unchanged, but a byte-level diff of vendored files will show the requoting.
+* Port the Terraform render check to Rust
+    * [materialize-monitoring#506](https://github.com/MaterializeInc/materialize-monitoring/pull/506)
+* Add CNPG and Rook Ceph tabs to the Consensus and Persist dashboards
+    * [materialize-monitoring#509](https://github.com/MaterializeInc/materialize-monitoring/pull/509)
+    * Materialize Consensus has a new Database Internals tab for metadata databases on CloudNativePG, and Materialize Persist a new Object Store Internals tab for persist buckets on Ceph run by Rook. Each appears only when the dependency is scraped — a `PodMonitor` for the CNPG cluster, or Rook's manager and `rook-ceph-exporter` `ServiceMonitor`s — and has a picker, shown only inside that tab's section, for which cluster serves the environment.
+* Lock file maintenance (cargo)
+    * [materialize-monitoring#520](https://github.com/MaterializeInc/materialize-monitoring/pull/520)
+* Lock file maintenance (pep621)
+    * [materialize-monitoring#521](https://github.com/MaterializeInc/materialize-monitoring/pull/521)
+* Update Rust crate hyper to v1.12.0
+    * [materialize-monitoring#507](https://github.com/MaterializeInc/materialize-monitoring/pull/507)
+    * [`v1.12.0`](https://redirect.github.com/hyperium/hyper/blob/HEAD/CHANGELOG.md#v1120-2026-10-06)
+* Update Rust crate jsonschema to v0.58.6
+    * [materialize-monitoring#505](https://github.com/MaterializeInc/materialize-monitoring/pull/505)
+    * [`v0.58.6`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0586---2026-10-06)
+* Rename docs reference/internal to reference/development
+    * [materialize-monitoring#498](https://github.com/MaterializeInc/materialize-monitoring/pull/498)
+* Update Rust crate tokio to v1.53.2
+    * [materialize-monitoring#490](https://github.com/MaterializeInc/materialize-monitoring/pull/490)
+    * [`v1.53.2`](https://redirect.github.com/tokio-rs/tokio/releases/tag/tokio-1.53.2): Tokio v1.53.2
+* Write the chart README badge in release PRs, and collapse dependency rollups
+    * [materialize-monitoring#489](https://github.com/MaterializeInc/materialize-monitoring/pull/489)
+    * Dependency rollups in `CHANGELOG.md` (`Included <component> @ vPREV..vNEW`) collapse the PRs nested under them in a `<details>`.
+* Update Rust crate jsonschema to v0.58.5
+    * [materialize-monitoring#486](https://github.com/MaterializeInc/materialize-monitoring/pull/486)
+    * [`v0.58.5`](https://redirect.github.com/Stranger6667/jsonschema/blob/HEAD/CHANGELOG.md#0585---2026-10-02)
+* Let alerts read recorded series, and split persist-failures by dependency
+    * [materialize-monitoring#483](https://github.com/MaterializeInc/materialize-monitoring/pull/483)
+    * Alerts can read the normalized `ext:*` recorded series. Such an alert installs wherever any recording rule producing what it reads installs, and Common Alerts lists what each one reads.
+    * **`persist-failures` is split.** Three new alerts join the default set:
+        * `consensus-unreachable` (critical) fires when no call to the metadata database has succeeded for five minutes, or a cloud provider reports it down.
+        * `consensus-failures` (warning) fires on ten minutes of indeterminate metadata-database failures.
+        * `blob-failures` (warning) fires on ten minutes of failed object-storage calls, by operation.
+    * `persist-failures` now covers only persist's own failures: compaction, read leases, state updates, columnar validation and statistics. It no longer fires on a failing metadata database or object store, or on `mz_persist_cmd_failed_count`. It remains outside the default set.
+    * A metric destination filtering by `minMetricImportance` now receives `ext:consensus_up`, and no longer receives `mz_persist_blob_failures` or `mz_persist_cmd_failed_count`, which no bundled rule reads any more.
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.32.0
 
