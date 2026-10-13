@@ -462,14 +462,64 @@ The root route's `receiver`, `routes` and `matchers` belong to the chart, and se
 
 ## Notification templates
 
+The chart ships notification templates of its own, and by default they replace Alertmanager's built-in ones.
+A receiver that sets no `title`, `text` or link of its own uses them, so a receiver needs nothing beyond its destination and credentials.
+Alertmanager's built-ins send Slack an empty body, and link every notification to the pod's own address.
+
+| Field | Integrations | The chart's default |
+|---|---|---|
+| Subject or title | Slack, email, PagerDuty, Opsgenie, Microsoft Teams, Discord, Jira and the rest | `[FIRING:2] env-uptime-sla — prod-us-east/materialize-environment (critical)`: the status and count, the alert, `cluster/namespace`, and the severity |
+| Link | Slack's title, PagerDuty's client link, Opsgenie's source, the email button | The alert group in Grafana; see [Links in notifications](#links) |
+| Body | Slack | The summary, the description while firing, one line per alert when there are several, and links to the runbook, the group in Grafana, and a pre-filled silence |
+| Colour | Slack | Red for `critical`, amber for `warning`, blue for anything milder, green once resolved |
+| Footer | Slack | The labels the alerts share that the subject does not already carry |
+
+A firing Slack notification for two alerts reads:
+
+```text
+[FIRING:2] ThanosCompactHalted — prod-us-east/monitoring (warning)
+Thanos Compact has failed to run and is now halted.
+Thanos Compact thanos-compactor has failed to run and now is halted.
+• instance=10.0.0.0:10902 pod=thanos-compactor-0 · since Today 3:11 PM
+• instance=10.0.0.1:10902 pod=thanos-compactor-1 · since Today 3:10 PM
+Runbook · Grafana · Silence
+app=thanos  container=compactor  job=thanos-compactor  service=thanos-compactor
+```
+
+Times are shown in each reader's own time zone.
+The per-alert lines stop at ten firing and ten resolved alerts, and the Grafana link shows the rest.
+A description's hard-wrapped lines are rejoined, because Slack shows every newline; a blank line still separates paragraphs.
+
+`alerting.defaultTemplates: false` restores Alertmanager's built-ins.
+The chart's templates are still loaded, so a receiver can reference them by name.
+
+### The chart's templates
+
+The chart's templates live in `mzmon.gotmpl`, beside the configuration.
+They are defined under the `mzmon.` prefix, which is reserved for them.
+
+| Template | Renders |
+|---|---|
+| `mzmon.subject` | The one-line subject above |
+| `mzmon.slack.text` | The Slack body |
+| `mzmon.slack.links` | The body's last line: runbook, Grafana, silence |
+| `mzmon.url.group` | The notification's alert group in Grafana, or in Alertmanager's own UI |
+| `mzmon.url.silence` | A new silence, pre-filled with every label the notification's alerts share |
+
+### A deployment's own templates
+
 `alerting.templates` adds Go-template files that every receiver can reference.
 Each key is a file name ending in `.tmpl`.
+They load after `mzmon.gotmpl`, so a file that defines a name the chart also defines replaces the chart's definition.
+That covers Alertmanager's built-in names as well, such as `slack.default.text`.
+
+A template of a deployment's own can build on the chart's:
 
 ```yaml
 alerting:
   templates:
     materialize.tmpl: |
-      {{ define "materialize.title" }}[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}{{ end }}
+      {{ define "materialize.title" }}{{ .CommonLabels.severity | toUpper }}: {{ .CommonAnnotations.summary }}{{ end }}
   receivers:
     chat:
       class: [high, normal, low]
@@ -477,62 +527,62 @@ alerting:
         slack_configs:
           - channel: "#materialize"
             api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
+            send_resolved: true
             title: '{{ template "materialize.title" . }}'
+            actions:
+              - type: button
+                text: Silence
+                url: '{{ template "mzmon.url.silence" . }}'
 ```
 
 ## Links in notifications {#links}
 
-Alertmanager's default notification templates link to two pages of its own UI: the alert list (`/#/alerts`) and a
-pre-filled silence (`/#/silences/new`).
-It builds both from `alertmanager.baseURL`.
+Notifications link to Grafana's alerting pages, which show the bundled Alertmanager's alerts and silences through the Alertmanager datasource (`connections.datasources.alertmanager`).
+The chart takes Grafana's address from the setting Grafana already builds its own links from.
+
+| `connections.grafana.mode` | Grafana's address comes from |
+|---|---|
+| `bundled` (default) | `grafana.grafana.ini.server.root_url` |
+| `operator` | `connections.grafana.operator.spec.config.server.root_url` |
+| `external` | `connections.grafana.external.url` |
+
+`alerting.grafanaURL` overrides all three.
+It SHOULD be set wherever the derived address is not the one people open Grafana at.
+
+| Deployment | Set |
+|---|---|
+| The bundled Grafana, exposed through `grafana.ingress` | `grafana.grafana.ini.server.root_url`, which Grafana's own share links need too |
+| A Grafana this chart does not deploy, addressed in-cluster | `alerting.grafanaURL`, to its browser-facing address |
+| A `root_url` written with Grafana's `%(domain)s` placeholders | `alerting.grafanaURL`; the chart cannot resolve the placeholders |
+| Grafana reached only through `kubectl port-forward` | `alerting.grafanaURL: http://localhost:3000`, or nothing |
+| Alertmanager exposed, and Grafana not | `alertmanager.baseURL`, below |
+
+With no Grafana address, the links fall back to Alertmanager's own UI when `alertmanager.baseURL` is set, and are left out otherwise.
+A link nobody can open is worse than none.
+The render warns when a receiver exists and notifications would carry no links, and when they would link to an in-cluster address.
+
+The group link opens Grafana's active-notifications view, filtered to the notification's group labels and receiver.
+The silence link opens Grafana's silence editor with every label the alerts share as a matcher, which is the narrowest silence covering everything in the notification.
+The editor shows the matchers before anything is saved.
+Silences created from it live in Alertmanager like any other; see [Maintenance Windows](../maintenance/).
+
+### `alertmanager.baseURL`
+
+`alertmanager.baseURL` is the address of Alertmanager's own UI, and is empty by default.
+Alertmanager's built-in templates link to its alert list (`/#/alerts`) from it.
 
 | Deployment | `alertmanager.baseURL` |
 |---|---|
-| Alertmanager is not exposed (default) | Empty. The links name the pod's own address, which is unreachable from outside the cluster and otherwise harmless |
+| Alertmanager is not exposed (default) | Empty |
 | Alertmanager is exposed, behind authentication | The address operators reach it at. A sub-path is fine, provided the ingress strips it |
-| Operators work from Grafana | Still empty. Build Grafana links in a template instead, as below |
 
 **`alertmanager.baseURL` MUST NOT point at Grafana.**
-Grafana serves neither of Alertmanager's paths, so every link lands on Grafana's home page, and the render warns when the two share a host.
+Grafana serves none of Alertmanager's paths, so every link lands on Grafana's home page, and the render warns when the two share a host.
 
 The chart pins `alertmanager.extraArgs.web.route-prefix` to `/`.
 Without that pin, Alertmanager takes its route prefix from the path of `baseURL`, which would move the API both rulers
 post to, its probes, the reloader and the Grafana datasource.
 The render fails on a `baseURL` with a path once the pin is removed.
-
-### Linking to Grafana instead
-
-Grafana's alerting pages name an Alertmanager by its datasource **name** — `Alertmanager` by default, set by
-`connections.datasources.alertmanager.name` — and take each silence matcher as a `matcher=<label>=<value>` parameter.
-A template builds both links, and a receiver references them.
-
-```yaml
-alerting:
-  templates:
-    grafana-links.tmpl: |
-      {{ define "grafana.alerts.url" -}}
-      https://grafana.example.com/alerting/groups?alertmanager=Alertmanager
-      {{- end }}
-      {{ define "grafana.silence.url" -}}
-      https://grafana.example.com/alerting/silence/new?alertmanager=Alertmanager
-      {{- range .CommonLabels.SortedPairs }}&matcher={{ .Name }}%3D{{ .Value | urlquery }}{{ end }}
-      {{- end }}
-  receivers:
-    chat:
-      class: [high, normal, low]
-      config:
-        slack_configs:
-          - channel: "#materialize"
-            api_url_file: /etc/alertmanager/secrets/alertmanager-receivers/slack-url
-            title_link: '{{ template "grafana.alerts.url" . }}'
-            actions:
-              - type: button
-                text: Silence
-                url: '{{ template "grafana.silence.url" . }}'
-```
-
-The host is the one in `grafana.ini.server.root_url`.
-Silences created from that link live in Alertmanager like any other; see [Maintenance Windows](../maintenance/).
 
 ## Checking a configuration
 
@@ -546,6 +596,7 @@ The render checks the structure it can see, and fails the install rather than th
 | An inline credential | Accept it, and the credential would be published with the values |
 | A `*_file` path under no mounted volume | Fail every notification through that receiver, at send time |
 | A template whose name does not end in `.tmpl` | Never load it |
+| An `alerting.grafanaURL` that is not an absolute `http://` or `https://` URL | Send every notification with links nobody can open |
 
 Anything inside a receiver body passes through unchecked, and Alertmanager validates it on reload.
 A rejected configuration leaves the previous one running, and `alertmanager_config_last_reload_successful` drops to 0.

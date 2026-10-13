@@ -3043,6 +3043,330 @@ Every node and autoscaler event, newest first.
   </div>
 </div>
 
+## infra-ceph
+
+<p>What a Ceph cluster run by Rook publishes about itself, for the deployments
+whose persist bucket is on Ceph&rsquo;s S3-compatible object gateway (RGW) rather
+than on a cloud provider&rsquo;s object store.</p>
+<p>Two sources, both of which Rook can scrape for you:</p>
+<ul>
+<li><strong>The active manager</strong> (<code>rook-ceph-mgr</code> Service, port <code>http-metrics</code>,
+9283) reports the cluster as a whole: overall health and each active
+health check, capacity, pools, placement groups, and whether each disk
+daemon (OSD) is up and in.</li>
+<li><strong><code>rook-ceph-exporter</code></strong>, a DaemonSet with one pod per node (port
+<code>ceph-exporter-http-metrics</code>, 9926), reports the performance counters of
+every Ceph daemon on its node. The <code>ceph_rgw_*</code> request counters and
+latencies — the server side of every call persist makes — and per-OSD
+utilization come only from here.</li>
+</ul>
+<p>Rook creates a <code>ServiceMonitor</code> for each when the <code>CephCluster</code> sets
+<code>monitoring.enabled: true</code>, and ships both as examples under
+<code>deploy/examples/monitoring/</code>.</p>
+<p>Unlike a cloud bucket, an on-premise store can fill up and can lose a disk,
+and this is the only vantage point that says so. Whether persist&rsquo;s calls are
+failing is persist&rsquo;s own measurement, on the other tabs of Materialize
+Persist; this is why.</p>
+<h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
+<p>The series carry the <code>namespace</code> of the Rook cluster and no Materialize
+identity. <code>$cephNamespace</code> picks the Ceph cluster, from the dashboard
+section these rows sit in, and every query here matches it. It is
+single-select, because an environment&rsquo;s bucket is in one store and daemon
+names such as <code>osd.0</code> repeat across clusters; nothing can say which object store holds which environment&rsquo;s
+bucket, so the RGW panels sum every gateway in that cluster.</p>
+<h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
+<p><code>ceph_daemon</code> names a daemon (<code>osd.0</code>, <code>mon.a</code>). Pool series carry only
+<code>pool_id</code>; <code>ceph_pool_metadata</code> maps it to <code>name</code>, and each RGW object store
+<code>&lt;store&gt;</code> keeps its object data in the pool <code>&lt;store&gt;.rgw.buckets.data</code>. The
+RGW counters carry <code>instance_id</code>, the gateway&rsquo;s own suffix (<code>a</code> for
+<code>rgw.my.store.a</code>).</p>
+<p>The RGW latency families are a <code>_sum</code> and <code>_count</code> pair, so every latency
+here is a mean, never a percentile.</p>
+<p>Ceph&rsquo;s counters do not end in <code>_total</code>, so Grafana marks every <code>rate()</code> over
+one with Prometheus&rsquo;s &ldquo;metric might not be a counter&rdquo; notice. They are
+counters — the exporter types them so — and the notice is harmless.</p>
+
+<h4 id="infra.ceph.health.status">infra.ceph.health.status
+  <a class="anchor" href="#infra.ceph.health.status">#</a>
+</h4>
+Ceph&rsquo;s own verdict on the cluster: <code>HEALTH_OK</code>, <code>HEALTH_WARN</code> or
+<code>HEALTH_ERR</code>.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.status-tabs" id="infra.ceph.health.status-tab-0" checked>
+  <label for="infra.ceph.health.status-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>ceph_health_status{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.osds_down">infra.ceph.health.osds_down
+  <a class="anchor" href="#infra.ceph.health.osds_down">#</a>
+</h4>
+Disk daemons (OSDs) that are down.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.osds_down-tabs" id="infra.ceph.health.osds_down-tab-0" checked>
+  <label for="infra.ceph.health.osds_down-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>ceph_osd_up{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.raw_used">infra.ceph.health.raw_used
+  <a class="anchor" href="#infra.ceph.health.raw_used">#</a>
+</h4>
+Raw disk capacity used across the cluster, replication included.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.raw_used-tabs" id="infra.ceph.health.raw_used-tab-0" checked>
+  <label for="infra.ceph.health.raw_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_cluster_total_used_raw_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_cluster_total_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.bucket_pool_available">infra.ceph.health.bucket_pool_available
+  <a class="anchor" href="#infra.ceph.health.bucket_pool_available">#</a>
+</h4>
+Space still writable in each object store&rsquo;s bucket data pool, after
+replication.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.bucket_pool_available-tabs" id="infra.ceph.health.bucket_pool_available-tab-0" checked>
+  <label for="infra.ceph.health.bucket_pool_available-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  ceph_pool_max_avail{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pool_id<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pool_id, name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ceph_pool_metadata{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;, name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.+\\.rgw\\.buckets\\.data</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.objects_degraded">infra.ceph.health.objects_degraded
+  <a class="anchor" href="#infra.ceph.health.objects_degraded">#</a>
+</h4>
+Object copies Ceph is missing and has not yet re-created.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.objects_degraded-tabs" id="infra.ceph.health.objects_degraded-tab-0" checked>
+  <label for="infra.ceph.health.objects_degraded-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_num_objects_degraded{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.rgw_failure_ratio">infra.ceph.health.rgw_failure_ratio
+  <a class="anchor" href="#infra.ceph.health.rgw_failure_ratio">#</a>
+</h4>
+The fraction of object gateway requests that failed.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.rgw_failure_ratio-tabs" id="infra.ceph.health.rgw_failure_ratio-tab-0" checked>
+  <label for="infra.ceph.health.rgw_failure_ratio-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_failed_req{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_req{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.version">infra.ceph.health.version
+  <a class="anchor" href="#infra.ceph.health.version">#</a>
+</h4>
+The Ceph version the cluster&rsquo;s disk daemons run.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.version-tabs" id="infra.ceph.health.version-tab-0" checked>
+  <label for="infra.ceph.health.version-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>ceph_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ceph_osd_metadata{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;},
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">ceph_version</span>&#34;, &#34;<span style="color:#e6db74">$1 $2</span>&#34;, &#34;<span style="color:#e6db74">ceph_version</span>&#34;, &#34;<span style="color:#e6db74">ceph version ([^ ]+) \\([0-9a-f]+\\) ([a-z]+).*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.health.checks">infra.ceph.health.checks
+  <a class="anchor" href="#infra.ceph.health.checks">#</a>
+</h4>
+Every health check Ceph has raised and not cleared, with its severity.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.health.checks-tabs" id="infra.ceph.health.checks-tab-0" checked>
+  <label for="infra.ceph.health.checks-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name, severity<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ceph_health_detail{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.rgw.requests">infra.ceph.rgw.requests
+  <a class="anchor" href="#infra.ceph.rgw.requests">#</a>
+</h4>
+Object gateway requests per second, by operation, and how many failed.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.rgw.requests-tabs" id="infra.ceph.rgw.requests-tab-0" checked>
+  <label for="infra.ceph.rgw.requests-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_put_obj_ops{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_get_obj_ops{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_del_obj_ops{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_failed_req{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.rgw.latency">infra.ceph.rgw.latency
+  <a class="anchor" href="#infra.ceph.rgw.latency">#</a>
+</h4>
+Mean time the object gateway takes to serve each operation.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.rgw.latency-tabs" id="infra.ceph.rgw.latency-tab-0" checked>
+  <label for="infra.ceph.rgw.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_put_obj_lat_sum{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_put_obj_lat_count{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_get_obj_lat_sum{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_get_obj_lat_count{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_del_obj_lat_sum{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_del_obj_lat_count{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.rgw.throughput">infra.ceph.rgw.throughput
+  <a class="anchor" href="#infra.ceph.rgw.throughput">#</a>
+</h4>
+Bytes written to and read from the object gateway per second.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.rgw.throughput-tabs" id="infra.ceph.rgw.throughput-tab-0" checked>
+  <label for="infra.ceph.rgw.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_put_obj_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>ceph_rgw_op_get_obj_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.rgw.queue">infra.ceph.rgw.queue
+  <a class="anchor" href="#infra.ceph.rgw.queue">#</a>
+</h4>
+Requests each gateway is working on, and requests queued behind them.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.rgw.queue-tabs" id="infra.ceph.rgw.queue-tab-0" checked>
+  <label for="infra.ceph.rgw.queue-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ceph_rgw_qactive{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>instance_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ceph_rgw_qlen{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.capacity.raw">infra.ceph.capacity.raw
+  <a class="anchor" href="#infra.ceph.capacity.raw">#</a>
+</h4>
+Raw disk capacity used, and the cluster&rsquo;s total.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.capacity.raw-tabs" id="infra.ceph.capacity.raw-tab-0" checked>
+  <label for="infra.ceph.capacity.raw-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_cluster_total_used_raw_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_cluster_total_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.capacity.pools">infra.ceph.capacity.pools
+  <a class="anchor" href="#infra.ceph.capacity.pools">#</a>
+</h4>
+Data stored in each pool, before replication.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.capacity.pools-tabs" id="infra.ceph.capacity.pools-tab-0" checked>
+  <label for="infra.ceph.capacity.pools-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  ceph_pool_stored{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>namespace, pool_id<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_left</span> <span style="color:#f92672">(</span>name<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pool_id, name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ceph_pool_metadata{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.osd.utilization">infra.ceph.osd.utilization
+  <a class="anchor" href="#infra.ceph.osd.utilization">#</a>
+</h4>
+How full each disk daemon (OSD) is.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.osd.utilization-tabs" id="infra.ceph.osd.utilization-tab-0" checked>
+  <label for="infra.ceph.osd.utilization-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>ceph_daemon<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  ceph_osd_stat_bytes_used{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> ceph_osd_stat_bytes{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.osd.latency">infra.ceph.osd.latency
+  <a class="anchor" href="#infra.ceph.osd.latency">#</a>
+</h4>
+How long each OSD takes to commit a write to its disk.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.osd.latency-tabs" id="infra.ceph.osd.latency-tab-0" checked>
+  <label for="infra.ceph.osd.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>ceph_daemon<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ceph_osd_commit_latency_ms{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">1000</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.ceph.osd.placement_groups">infra.ceph.osd.placement_groups
+  <a class="anchor" href="#infra.ceph.osd.placement_groups">#</a>
+</h4>
+Placement groups that are not fully healthy, by the state that is
+wrong.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.ceph.osd.placement_groups-tabs" id="infra.ceph.osd.placement_groups-tab-0" checked>
+  <label for="infra.ceph.osd.placement_groups-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_pg_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_pg_active{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_pg_degraded{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_pg_undersized{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_pg_total{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>ceph_pg_clean{namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$cephNamespace</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
 ## infra-cloud
 
 <p>What the cloud provider publishes about the managed services a Materialize
@@ -3715,6 +4039,340 @@ count against the subscription&rsquo;s API limits.
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>,
 </span></span><span style="display:flex;"><span>  &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;<span style="color:#e6db74">other</span>&#34;, &#34;<span style="color:#e6db74">resourceProvider</span>&#34;, &#34;&#34;
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
+## infra-cnpg
+
+<p>What a CloudNativePG (CNPG) cluster publishes about itself, for the
+deployments whose metadata database runs in Kubernetes rather than on a
+cloud provider&rsquo;s managed service.</p>
+<p>CNPG runs a metrics exporter inside every PostgreSQL instance pod, on the
+container port named <code>metrics</code> (9187). It reports the operator&rsquo;s view —
+which instance is primary, replication, WAL archiving and backups — beside
+the ordinary PostgreSQL statistics from <code>pg_stat_activity</code>,
+<code>pg_stat_database</code> and <code>pg_settings</code>. Nothing has to be deployed to collect
+it, only a <code>PodMonitor</code> per cluster, which CNPG&rsquo;s documentation asks the
+operator to own now that <code>spec.monitoring.enablePodMonitor</code> is deprecated.</p>
+<p>This is the database&rsquo;s own view, which is the diagnosis: it can say <em>why</em>
+Materialize&rsquo;s commits are slow or its connections refused. Whether they are
+is Materialize&rsquo;s own measurement, on the other tabs of Materialize
+Consensus. The external dependency design doc calls this the exporter
+vantage point.</p>
+<h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
+<p>The series carry the instance&rsquo;s <code>pod</code> and <code>namespace</code> and no Materialize
+identity, so nothing can say which CNPG cluster serves which environment.
+<code>$cnpgClusterList</code> is that mapping, chosen by the reader, and is declared on
+the dashboard section these rows sit in rather than on the dashboard. It
+holds one CNPG cluster name, discovered from instance pod names
+(<code>&lt;cluster&gt;-&lt;n&gt;</code>), and every query here matches
+<code>pod=~&quot;($cnpgClusterList)-[0-9]+&quot;</code>. Single-select, because an environment
+has one metadata database, and the instance-level numbers here would mix
+two clusters&rsquo; instances into one. Two CNPG clusters of the same name in
+different namespaces are still read as one.</p>
+<h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
+<p><code>datname</code> is the database, and a CNPG cluster serving Materialize usually
+holds three: the one Materialize uses (<code>materialize</code> in the self-managed
+examples), <code>postgres</code>, and <code>template1</code>. Anything else is something else
+sharing the instance — which is the attribution the per-database panels
+exist for. <code>state</code> on <code>cnpg_backends_*</code> is <code>pg_stat_activity.state</code>.</p>
+<p>The <code>pg_stat_*</code> counters do not end in <code>_total</code>, so Grafana marks every
+<code>rate()</code> over one with Prometheus&rsquo;s &ldquo;metric might not be a counter&rdquo; notice.
+They are counters, and the notice is harmless. CNPG caches each query&rsquo;s
+result for 30 seconds by default (<code>metricsQueriesTTL</code>), so at a 30-second
+scrape every other sample repeats; rates are unaffected.</p>
+<h2 id="what-it-does-not-publish">What it does not publish<a class="anchor" href="#what-it-does-not-publish">#</a></h2>
+<p>The size of the instance&rsquo;s volume, so there is no &ldquo;disk full&rdquo; ratio here:
+CNPG&rsquo;s own WAL volume gauges read <code>NaN</code> unless WAL has a volume of its own,
+and kubelet volume statistics are not collected by this stack.</p>
+
+<h4 id="infra.cnpg.health.not_serving">infra.cnpg.health.not_serving
+  <a class="anchor" href="#infra.cnpg.health.not_serving">#</a>
+</h4>
+PostgreSQL instances in the selected CNPG clusters that are not
+serving: the exporter cannot reach PostgreSQL, or cannot be scraped.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.not_serving-tabs" id="infra.cnpg.health.not_serving-tab-0" checked>
+  <label for="infra.cnpg.health.not_serving-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>cnpg_collector_up{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>up{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.health.primary">infra.cnpg.health.primary
+  <a class="anchor" href="#infra.cnpg.health.primary">#</a>
+</h4>
+The instance currently serving as primary — the only one that accepts
+Materialize&rsquo;s writes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.primary-tabs" id="infra.cnpg.health.primary-tab-0" checked>
+  <label for="infra.cnpg.health.primary-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_replication_in_recovery{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.health.connections_used">infra.cnpg.health.connections_used
+  <a class="anchor" href="#infra.cnpg.health.connections_used">#</a>
+</h4>
+Client connections open on the primary, as a fraction of the
+connections an ordinary role may open.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.connections_used-tabs" id="infra.cnpg.health.connections_used-tab-0" checked>
+  <label for="infra.cnpg.health.connections_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_backends_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">max_connections</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">superuser_reserved_connections|reserved_connections</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.health.oldest_transaction">infra.cnpg.health.oldest_transaction
+  <a class="anchor" href="#infra.cnpg.health.oldest_transaction">#</a>
+</h4>
+How long the oldest open transaction on any instance has been running.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.oldest_transaction-tabs" id="infra.cnpg.health.oldest_transaction-tab-0" checked>
+  <label for="infra.cnpg.health.oldest_transaction-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>cnpg_backends_max_tx_duration_seconds{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.health.xid_used">infra.cnpg.health.xid_used
+  <a class="anchor" href="#infra.cnpg.health.xid_used">#</a>
+</h4>
+How much of the transaction-ID space the most at-risk database has
+consumed since it was last fully frozen by vacuum.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.xid_used-tabs" id="infra.cnpg.health.xid_used-tab-0" checked>
+  <label for="infra.cnpg.health.xid_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>cnpg_pg_database_xid_age{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.health.version">infra.cnpg.health.version
+  <a class="anchor" href="#infra.cnpg.health.version">#</a>
+</h4>
+The PostgreSQL version each selected CNPG cluster runs.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.version-tabs" id="infra.cnpg.health.version-tab-0" checked>
+  <label for="infra.cnpg.health.version-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>full<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_collector_postgres_version{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.health.backup_age">infra.cnpg.health.backup_age
+  <a class="anchor" href="#infra.cnpg.health.backup_age">#</a>
+</h4>
+Time since the most recent backup CNPG can restore from.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.health.backup_age-tabs" id="infra.cnpg.health.backup_age-tab-0" checked>
+  <label for="infra.cnpg.health.backup_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>cnpg_collector_last_available_backup_timestamp{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.connections.by_database">infra.cnpg.connections.by_database
+  <a class="anchor" href="#infra.cnpg.connections.by_database">#</a>
+</h4>
+Client connections open on the primary, by database and role, beside
+the ceiling an ordinary role is refused at.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.connections.by_database-tabs" id="infra.cnpg.connections.by_database-tab-0" checked>
+  <label for="infra.cnpg.connections.by_database-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, usename<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  cnpg_backends_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_replication_in_recovery{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">max_connections</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_settings_setting{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, name<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">superuser_reserved_connections|reserved_connections</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_replication_in_recovery{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;} <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.connections.by_state">infra.cnpg.connections.by_state
+  <a class="anchor" href="#infra.cnpg.connections.by_state">#</a>
+</h4>
+Client connections by what they are doing — running a statement
+(<code>active</code>), waiting for the next one (<code>idle</code>), or holding a
+transaction open between statements (<code>idle in transaction</code>) — and how
+many are waiting on a lock.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.connections.by_state-tabs" id="infra.cnpg.connections.by_state-tab-0" checked>
+  <label for="infra.cnpg.connections.by_state-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_backends_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>cnpg_backends_waiting_total{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.connections.oldest_transaction">infra.cnpg.connections.oldest_transaction
+  <a class="anchor" href="#infra.cnpg.connections.oldest_transaction">#</a>
+</h4>
+The oldest open transaction, by database and connection state.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.connections.oldest_transaction-tabs" id="infra.cnpg.connections.oldest_transaction-tab-0" checked>
+  <label for="infra.cnpg.connections.oldest_transaction-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_backends_max_tx_duration_seconds{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.activity.transactions">infra.cnpg.activity.transactions
+  <a class="anchor" href="#infra.cnpg.activity.transactions">#</a>
+</h4>
+Transactions committed and rolled back per second, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.activity.transactions-tabs" id="infra.cnpg.activity.transactions-tab-0" checked>
+  <label for="infra.cnpg.activity.transactions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_xact_commit{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_xact_rollback{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.activity.rows">infra.cnpg.activity.rows
+  <a class="anchor" href="#infra.cnpg.activity.rows">#</a>
+</h4>
+Rows inserted, updated and deleted per second, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.activity.rows-tabs" id="infra.cnpg.activity.rows-tab-0" checked>
+  <label for="infra.cnpg.activity.rows-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_tup_inserted{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_tup_updated{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_tup_deleted{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.activity.cache_hit">infra.cnpg.activity.cache_hit
+  <a class="anchor" href="#infra.cnpg.activity.cache_hit">#</a>
+</h4>
+The fraction of block reads served from PostgreSQL&rsquo;s shared buffers
+rather than from disk, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.activity.cache_hit-tabs" id="infra.cnpg.activity.cache_hit-tab-0" checked>
+  <label for="infra.cnpg.activity.cache_hit-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_blks_hit{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_blks_hit{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_database_blks_read{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.storage.database_size">infra.cnpg.storage.database_size
+  <a class="anchor" href="#infra.cnpg.storage.database_size">#</a>
+</h4>
+The size of each database on the instance.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.storage.database_size-tabs" id="infra.cnpg.storage.database_size-tab-0" checked>
+  <label for="infra.cnpg.storage.database_size-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_database_size_bytes{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.storage.wal">infra.cnpg.storage.wal
+  <a class="anchor" href="#infra.cnpg.storage.wal">#</a>
+</h4>
+Write-ahead log kept on each instance&rsquo;s disk, and the part of it still
+waiting to be archived.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.storage.wal-tabs" id="infra.cnpg.storage.wal-tab-0" checked>
+  <label for="infra.cnpg.storage.wal-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_collector_pg_wal{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, value<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">size</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_collector_pg_wal_archive_status{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, value<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ready</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">*</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_collector_pg_wal{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, value<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">size</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_collector_pg_wal{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;, value<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">count</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.storage.xid_age">infra.cnpg.storage.xid_age
+  <a class="anchor" href="#infra.cnpg.storage.xid_age">#</a>
+</h4>
+Transaction-ID space consumed by each database since it was last fully
+frozen, as a fraction of the wraparound limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.storage.xid_age-tabs" id="infra.cnpg.storage.xid_age-tab-0" checked>
+  <label for="infra.cnpg.storage.xid_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_database_xid_age{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.replication.lag">infra.cnpg.replication.lag
+  <a class="anchor" href="#infra.cnpg.replication.lag">#</a>
+</h4>
+How far each replica is behind the primary, in seconds.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.replication.lag-tabs" id="infra.cnpg.replication.lag-tab-0" checked>
+  <label for="infra.cnpg.replication.lag-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>cnpg_pg_replication_lag{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.cnpg.replication.archive_failures">infra.cnpg.replication.archive_failures
+  <a class="anchor" href="#infra.cnpg.replication.archive_failures">#</a>
+</h4>
+WAL segments that failed to archive, per second.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.cnpg.replication.archive_failures-tabs" id="infra.cnpg.replication.archive_failures-tab-0" checked>
+  <label for="infra.cnpg.replication.archive_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>cnpg_pg_stat_archiver_failed_count{pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">($cnpgClusterList)-[0-9]+</span>&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">))</span>
 </span></span></code></pre></div>
   </div>
 </div>

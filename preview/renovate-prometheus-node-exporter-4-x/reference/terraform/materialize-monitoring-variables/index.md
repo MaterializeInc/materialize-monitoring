@@ -123,6 +123,10 @@ Channels in the docs for worked examples.
   `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
+- `default_templates` — make the chart's notification templates every receiver's default (the
+  chart's default is on): a readable subject and Slack body, and links into Grafana.
+- `grafana_url` — the address people open Grafana at, for those links. Null derives it from
+  Grafana's `root_url`, which is unset unless `additional_values` exposes Grafana.
 
 The Alertmanager-native parts are typed `any` and passed through as written, so every
 integration Alertmanager documents works without a module release.
@@ -133,15 +137,17 @@ integration Alertmanager documents works without a module release.
 `alerting_receiver_secrets`. The chart fails the render on an inline credential.
 </td>
         <td class="tf-var-schema"><pre><code>object({
-    preset           = optional(string)
-    presets          = optional(map(map(string)))
-    unknown_severity = optional(string)
-    receivers        = optional(any)
-    routes           = optional(object({ root = optional(any), extra = optional(any) }))
-    inhibit_rules    = optional(any)
-    time_intervals   = optional(any)
-    templates        = optional(map(string))
-    global           = optional(any)
+    preset            = optional(string)
+    presets           = optional(map(map(string)))
+    unknown_severity  = optional(string)
+    receivers         = optional(any)
+    routes            = optional(object({ root = optional(any), extra = optional(any) }))
+    inhibit_rules     = optional(any)
+    time_intervals    = optional(any)
+    templates         = optional(map(string))
+    default_templates = optional(bool)
+    grafana_url       = optional(string)
+    global            = optional(any)
   })</code></pre></td>
     </tr>
     <tr>
@@ -391,17 +397,21 @@ Merged with any annotations `object_storage` contributes, so both can be present
     <tr>
       <td class="tf-var-name"><a name="google_cloud_metrics" href="#google_cloud_metrics">google_<wbr>cloud_<wbr>metrics</a></td>
         <td class="tf-var-type"><em>schema</em></td>
-      <td class="tf-var-desc">Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
-is unaffected either way.
+      <td class="tf-var-desc">Also export metrics to Google Cloud Managed Service for Prometheus from the Alloy gateway, over
+OTLP to the Telemetry API. Null disables it; Thanos is unaffected either way.
 
 `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
-`all` — and each tier includes the ones below it. This is a cost control: GCM bills per custom
-metric and `all` sends the entire surface.
+`all` — and each tier includes the ones below it. This is a cost control: the series land as
+`prometheus.googleapis.com/` metrics, billed per sample ingested, and `all` sends the entire
+surface.
 
-Authentication is ADC only. Bind the gateway ServiceAccount to a Google service account holding
-`roles/monitoring.metricWriter` through `object_storage.gateway_service_account_annotations`;
-failing that it falls back to the node's service account, which works only if that account has
-the role.
+The project needs the `telemetry.googleapis.com` API enabled. Authentication is ADC only. Bind
+the gateway ServiceAccount to a Google service account holding `roles/monitoring.metricWriter`
+through `object_storage.gateway_service_account_annotations`; failing that it falls back to the
+node's service account, which works only if that account has the role.
+
+`prefix` is deprecated and ignored. The Telemetry API names every metric
+`prometheus.googleapis.com/<name>/<kind>`, so there is no prefix to choose.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     min_importance = optional(string, "recommended")
@@ -638,6 +648,23 @@ the cluster reduces that to "has any certificate".
     # Terraform even though the chart has always taken the field.
     group = optional(string, "cert-manager.io")
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="kube_state_metrics_pod_labels" href="#kube_state_metrics_pod_labels">kube_<wbr>state_<wbr>metrics_<wbr>pod_<wbr>labels</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Pod labels to publish on `kube_pod_labels`, in addition to the Materialize ones the chart names.
+
+An ownership label for cost-center allocation is the expected use. Each arrives as
+`label_<key>`, with every character outside `[a-zA-Z0-9_]` mapped to `_`, and joins to any
+`kube_pod_*` family on `namespace` and `pod`.
+
+Appended to the chart's `pods` allowlist entry rather than replacing it. Setting
+`kube-state-metrics.metricLabelsAllowlist` through `additional_values` instead replaces the
+whole list, node labels included.
+
+Name each label. `*` copies every label on every pod, and is refused.
+</td>
+        <td class="tf-var-default"><code>[]</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="materialize_instance_namespace" href="#materialize_instance_namespace">materialize_<wbr>instance_<wbr>namespace</a></td>

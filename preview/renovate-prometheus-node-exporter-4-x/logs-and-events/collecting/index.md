@@ -27,7 +27,7 @@ It then normalizes log levels, routes high-cardinality fields into [structured m
 
 > [!INFO]
 >   The gateway is the single place where label-family and [cardinality](../../o11y-glossary/#observability-foundations) decisions are made.
->   Keeping that logic in one component is what keeps the log store stable and cheap — see the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) for the authoritative stage-by-stage definition.
+>   Keeping that logic in one component is what keeps the log store stable and cheap — see the [logging pipeline reference](../../reference/development/pipelines/logging/) for the authoritative stage-by-stage definition.
 
 ## Sending your own logs to the gateway
 
@@ -59,12 +59,12 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 > [!WARNING]
 >   What becomes a Loki **label** versus what stays in the body or [structured metadata](../architecture/#storage) is the single biggest cost-and-stability lever.
 >   Keep volatile attributes (request IDs, trace IDs) out of labels.
->   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/internal/pipelines/logging/) (internal).
+>   See [Log stream](../../o11y-glossary/#logs-and-events) and the [logging pipeline reference](../../reference/development/pipelines/logging/).
 
 ## See more
 
 - [Logging Architecture](../architecture/) — collection in the context of the full pipeline.
-- [Logging pipeline reference](../../reference/internal/pipelines/logging/) (internal) — the authoritative agent/gateway pipeline definition.
+- [Logging pipeline reference](../../reference/development/pipelines/logging/) — the authoritative agent/gateway pipeline definition.
 - [Storing](../storing/) — where collected logs go next.
 - [Loki components](https://grafana.com/docs/loki/latest/get-started/components/) (official).
 
