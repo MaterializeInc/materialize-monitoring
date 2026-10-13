@@ -94,7 +94,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     logs-rate-by-component:
       kind: Panel
       spec:
@@ -124,7 +124,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{component}}'
+                    legendFormat: "{{component}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -160,7 +160,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-warning-feed:
       kind: Panel
       spec:
@@ -231,7 +231,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     logs-warning-rate:
       kind: Panel
       spec:
@@ -285,7 +285,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No warnings in this time range
@@ -303,7 +303,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-alert-history:
       kind: Panel
       spec:
@@ -326,7 +326,7 @@ spec:
                           ALERTS{alertname=~"Thanos.*", alertstate="firing"}
                         )
                       )
-                    legendFormat: '{{alertname}}'
+                    legendFormat: "{{alertname}}"
                     qryType: 1
                     query: |
                       count by (alertname) (
@@ -370,7 +370,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-alerts:
       kind: Panel
       spec:
@@ -468,7 +468,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-alerts-firing:
       kind: Panel
       spec:
@@ -596,17 +596,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.5
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 2
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 2.5
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 3
                 unit: short
               overrides: []
@@ -622,7 +622,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-compactor:
       kind: Panel
       spec:
@@ -678,14 +678,14 @@ spec:
               defaults:
                 mappings:
                 - options:
-                    '0':
-                      color: '#A2F49B'
+                    "0":
+                      color: "#A2F49B"
                       index: 1
                       text: Running
                   type: value
                 - options:
-                    '1':
-                      color: '#AB0003'
+                    "1":
+                      color: "#AB0003"
                       index: 2
                       text: Halted
                   type: value
@@ -693,9 +693,9 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
               overrides: []
             options:
@@ -710,7 +710,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-components-down:
       kind: Panel
       spec:
@@ -786,17 +786,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -812,7 +812,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-query-errors:
       kind: Panel
       spec:
@@ -933,17 +933,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.001
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.013250000000000001
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.025500000000000002
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.037750000000000006
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 0.05
                 unit: percentunit
               overrides: []
@@ -959,7 +959,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-query-rate:
       kind: Panel
       spec:
@@ -988,7 +988,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{handler}}'
+                    legendFormat: "{{handler}}"
                     qryType: 1
                     query: |
                       sum by (handler) (
@@ -1037,7 +1037,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-restarts:
       kind: Panel
       spec:
@@ -1146,7 +1146,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-rule-failures:
       kind: Panel
       spec:
@@ -1211,17 +1211,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.001
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.025750000000000002
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.0505
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.07525000000000001
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 0.1
                 unit: suffix:/s
               overrides: []
@@ -1237,7 +1237,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-samples-ingested:
       kind: Panel
       spec:
@@ -1302,7 +1302,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: No remote writes reached the receivers
@@ -1320,7 +1320,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-scrape:
       kind: Panel
       spec:
@@ -1403,7 +1403,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-versions:
       kind: Panel
       spec:
@@ -1486,7 +1486,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-write-errors:
       kind: Panel
       spec:
@@ -1605,17 +1605,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.001
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.013250000000000001
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.025500000000000002
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.037750000000000006
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 0.05
                 unit: percentunit
               overrides: []
@@ -1631,7 +1631,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     reads-block-failures:
       kind: Panel
       spec:
@@ -1668,7 +1668,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -1725,7 +1725,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-blocks-loaded:
       kind: Panel
       spec:
@@ -1750,7 +1750,7 @@ spec:
                           container="storegateway"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -1795,7 +1795,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-concurrency:
       kind: Panel
       spec:
@@ -1894,7 +1894,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-dropped:
       kind: Panel
       spec:
@@ -1922,7 +1922,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{container}} selects'
+                    legendFormat: "{{container}} selects"
                     qryType: 1
                     query: |
                       sum by (container) (
@@ -1957,7 +1957,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{container}} series'
+                    legendFormat: "{{container}} series"
                     qryType: 1
                     query: |
                       sum by (container) (
@@ -2005,7 +2005,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-endpoints:
       kind: Panel
       spec:
@@ -2032,7 +2032,7 @@ spec:
                           }
                         )
                       )
-                    legendFormat: '{{store_type}}'
+                    legendFormat: "{{store_type}}"
                     qryType: 1
                     query: |
                       min by (store_type) (
@@ -2082,7 +2082,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-index-cache:
       kind: Panel
       spec:
@@ -2120,7 +2120,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{item_type}}'
+                    legendFormat: "{{item_type}}"
                     qryType: 1
                     query: |
                       sum by (item_type) (
@@ -2179,7 +2179,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-latency:
       kind: Panel
       spec:
@@ -2211,7 +2211,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{handler}}'
+                    legendFormat: "{{handler}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -2263,7 +2263,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-requests:
       kind: Panel
       spec:
@@ -2291,7 +2291,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{handler}} {{code}}'
+                    legendFormat: "{{handler}} {{code}}"
                     qryType: 1
                     query: |
                       sum by (handler, code) (
@@ -2339,7 +2339,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-series-latency:
       kind: Panel
       spec:
@@ -2372,7 +2372,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -2425,7 +2425,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-store-errors:
       kind: Panel
       spec:
@@ -2480,7 +2480,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       (
@@ -2556,7 +2556,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-cpu:
       kind: Panel
       spec:
@@ -2590,7 +2590,7 @@ spec:
                           namespace=~"$thanosNamespace"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (container, pod) (
@@ -2629,7 +2629,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: short
               overrides: []
             options:
@@ -2644,7 +2644,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-goroutines:
       kind: Panel
       spec:
@@ -2669,7 +2669,7 @@ spec:
                           container=~"$thanosComponent"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (container, pod) (
@@ -2714,7 +2714,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-memory:
       kind: Panel
       spec:
@@ -2745,7 +2745,7 @@ spec:
                           namespace=~"$thanosNamespace"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (container, pod) (
@@ -2783,7 +2783,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: bytes
               overrides: []
             options:
@@ -2798,7 +2798,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-terminations:
       kind: Panel
       spec:
@@ -2891,7 +2891,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     ruler-alerts-dropped:
       kind: Panel
       spec:
@@ -3002,7 +3002,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-alerts-sent:
       kind: Panel
       spec:
@@ -3030,7 +3030,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{alertmanager}}'
+                    legendFormat: "{{alertmanager}}"
                     qryType: 1
                     query: |
                       sum by (alertmanager) (
@@ -3078,7 +3078,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-config-failed:
       kind: Panel
       spec:
@@ -3154,17 +3154,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -3180,7 +3180,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ruler-evaluations:
       kind: Panel
       spec:
@@ -3208,7 +3208,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3256,7 +3256,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-failures:
       kind: Panel
       spec:
@@ -3287,7 +3287,7 @@ spec:
                           "group", "$1", "rule_group", ".*;(.*)"
                         )
                       ) > 0
-                    legendFormat: '{{group}}'
+                    legendFormat: "{{group}}"
                     qryType: 1
                     query: |
                       sum by (group) (
@@ -3338,7 +3338,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-loaded:
       kind: Panel
       spec:
@@ -3363,7 +3363,7 @@ spec:
                           container="ruler"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3409,7 +3409,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-missed:
       kind: Panel
       spec:
@@ -3440,7 +3440,7 @@ spec:
                           "group", "$1", "rule_group", ".*;(.*)"
                         )
                       ) > 0
-                    legendFormat: '{{group}}'
+                    legendFormat: "{{group}}"
                     qryType: 1
                     query: |
                       sum by (group) (
@@ -3491,7 +3491,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-queue:
       kind: Panel
       spec:
@@ -3590,7 +3590,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-remote-write-failures:
       kind: Panel
       spec:
@@ -3618,7 +3618,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3666,7 +3666,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-remote-write-lag:
       kind: Panel
       spec:
@@ -3699,7 +3699,7 @@ spec:
                           container="ruler"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -3752,7 +3752,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-sender-latency:
       kind: Panel
       spec:
@@ -3783,7 +3783,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{alertmanager}}'
+                    legendFormat: "{{alertmanager}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -3834,7 +3834,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ruler-slowest:
       kind: Panel
       spec:
@@ -3946,7 +3946,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     storage-backlog:
       kind: Panel
       spec:
@@ -4103,7 +4103,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-blocks:
       kind: Panel
       spec:
@@ -4128,7 +4128,7 @@ spec:
                           container="compactor"
                         }
                       ) > 0
-                    legendFormat: '{{state}}'
+                    legendFormat: "{{state}}"
                     qryType: 1
                     query: |
                       max by (state) (
@@ -4175,7 +4175,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-compactions:
       kind: Panel
       spec:
@@ -4203,7 +4203,7 @@ spec:
                           [1h]
                         )
                       )
-                    legendFormat: '{{resolution}} ms'
+                    legendFormat: "{{resolution}} ms"
                     qryType: 1
                     query: |
                       sum by (resolution) (
@@ -4253,7 +4253,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-compactor-failures:
       kind: Panel
       spec:
@@ -4434,7 +4434,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-failures:
       kind: Panel
       spec:
@@ -4472,7 +4472,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       sum by (container) (
@@ -4531,7 +4531,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-latency:
       kind: Panel
       spec:
@@ -4562,7 +4562,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{container}} {{operation}}'
+                    legendFormat: "{{container}} {{operation}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -4613,7 +4613,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-operations:
       kind: Panel
       spec:
@@ -4641,7 +4641,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{container}} {{operation}}'
+                    legendFormat: "{{container}} {{operation}}"
                     qryType: 1
                     query: |
                       sum by (container, operation) (
@@ -4687,7 +4687,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-upload-age:
       kind: Panel
       spec:
@@ -4713,7 +4713,7 @@ spec:
                           container=~"$thanosComponent"
                         } > 0
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       time()
@@ -4761,7 +4761,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     thanos-volume-hidden-note:
       kind: Panel
       spec:
@@ -4794,7 +4794,7 @@ spec:
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
-          version: ''
+          version: ""
     writes-config-failed:
       kind: Panel
       spec:
@@ -4870,17 +4870,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -4896,7 +4896,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     writes-database-failures:
       kind: Panel
       spec:
@@ -5119,7 +5119,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-forward:
       kind: Panel
       spec:
@@ -5147,7 +5147,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{result}}'
+                    legendFormat: "{{result}}"
                     qryType: 1
                     query: |
                       sum by (result) (
@@ -5195,7 +5195,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-hashring:
       kind: Panel
       spec:
@@ -5220,7 +5220,7 @@ spec:
                           container="receive"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -5266,7 +5266,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-head-series:
       kind: Panel
       spec:
@@ -5291,7 +5291,7 @@ spec:
                           container="receive"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -5338,7 +5338,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-latency:
       kind: Panel
       spec:
@@ -5465,7 +5465,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-pending:
       kind: Panel
       spec:
@@ -5490,7 +5490,7 @@ spec:
                           container="receive"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -5535,7 +5535,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-rejected:
       kind: Panel
       spec:
@@ -5683,7 +5683,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-replication:
       kind: Panel
       spec:
@@ -5711,7 +5711,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{result}}'
+                    legendFormat: "{{result}}"
                     qryType: 1
                     query: |
                       sum by (result) (
@@ -5759,7 +5759,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-requests:
       kind: Panel
       spec:
@@ -5788,7 +5788,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{code}}'
+                    legendFormat: "{{code}}"
                     qryType: 1
                     query: |
                       sum by (code) (
@@ -5839,7 +5839,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-upload-age:
       kind: Panel
       spec:
@@ -5865,7 +5865,7 @@ spec:
                           container="receive"
                         } > 0
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       time()
@@ -5913,7 +5913,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-upload-failures:
       kind: Panel
       spec:
@@ -5941,7 +5941,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -5989,7 +5989,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -6701,7 +6701,7 @@ spec:
   - mzmon
   - meta-monitoring
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -6724,8 +6724,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -6735,14 +6735,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -6752,15 +6752,15 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app="thanos"}, namespace)
       description: Namespace(s) the metrics store runs in
       hide: dontHide
@@ -6780,7 +6780,7 @@ spec:
           query: label_values(up{app="thanos"}, namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -6789,8 +6789,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app="thanos", namespace=~"$thanosNamespace"}, container)
       description: Which Thanos processes to read, on the panels that span several
       hide: dontHide
@@ -6810,7 +6810,7 @@ spec:
           query: label_values(up{app="thanos", namespace=~"$thanosNamespace"}, container)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -6819,8 +6819,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(level)
       description: The severity level(s) to include
       hide: dontHide
@@ -6837,28 +6837,28 @@ spec:
         spec:
           label: level
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{app="thanos", namespace=~"$thanosNamespace"}'
+          stream: "{app=\"thanos\", namespace=~\"$thanosNamespace\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
   - kind: TextVariable
     spec:
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Case-insensitive text to match anywhere in the log line
       hide: dontHide
       label: Search
       name: logSearch
-      query: ''
+      query: ""
       skipUrlSync: false
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
@@ -6877,7 +6877,7 @@ spec:
       skipUrlSync: false
   - datasource:
       name: $logsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
