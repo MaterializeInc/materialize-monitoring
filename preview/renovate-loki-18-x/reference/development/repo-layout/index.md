@@ -37,13 +37,26 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter — `node-*.yaml` for node-exporter, and `ext-*.yaml` for the normalized `ext:*` recording rules, one adapter per rule group) — the metric/log/alert query definitions and recording rules, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`; `tests/` holds the `promtool test rules` cases for the rendered rules
+    * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
+      validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+      * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
+        persist's own view of object storage and the metadata database
+      * `infra-*.yaml`: the platform, including `infra-loki.yaml` and `infra-alloy.yaml` (the log store and the collectors watching themselves),
+        `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
+        and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
+      * `node-*.yaml`: node-exporter
+      * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
+      * `tests/`: the `promtool test rules` cases for the rendered rules
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
     * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
-    * `mz-monitoring-check/`: Rust schema/consistency checks
+    * `mz-monitoring-check/`: Rust schema and consistency checks, one subcommand each.
+      `check-queries` validates the query registry against its schema.
+      `terraform-render` is the tier-0 Terraform render check behind `make terraform-render`.
+      It plans each module example, renders the chart against the composed values, and runs the assertions under `src/terraform_render/checks/`.
+      Each assertion runs as one libtest-style trial per example
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
     * `materialize-monitoring/`: umbrella chart
@@ -68,7 +81,8 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       * `charts/`: the vendored `prometheus-operator-crds` tarball, plus `grafana-operator-crds/` deflated from the upstream operator chart, which publishes no CRDs chart of its own — generated by `bin/extract-grafana-operator-crds.sh` (`make grafana-operator-crds`)
   * `terraform/` (see [Terraform Modules](../design-docs/20260803-terraform-modules/)): the cloud-agnostic module that installs the released charts. Versioned as part of the `materialize-monitoring` component rather than on a stream of its own; per-cloud wrappers live in `materialize-terraform-self-managed`
     * `modules/materialize-monitoring/`: the module. Concern per file — `values.tf` (composition order), `scheduling.tf`, `storage_class.tf` and `kube_state_metrics.tf` (subchart fan-outs), `destinations.tf` (extra metric destinations), `config_hash.tf` (the pod-template hash that rolls Alloy)
-      * `examples/{aws,gcp}/`: not deployable roots — plan targets for the tier-0 render check. Both clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
+      * `examples/{aws,gcp,azure,s3-static-credentials}/`: not deployable roots — plan targets for the tier-0 render check.
+        Several clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
   * `docs/`: Hugo docsite (the source of this page)
@@ -84,6 +98,6 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `chartlib/`: helm-docs templates
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
-  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
+  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs), `zizmor.yaml` (workflow security scan, uploaded to code scanning); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
     `design-doc-notify.yaml` is the exception, filtering on the trigger because it reports no status anyone gates on
 
