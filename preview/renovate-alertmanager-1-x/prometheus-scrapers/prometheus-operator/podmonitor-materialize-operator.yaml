@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1
+# FIXME: switch to ServiceMonitor (can't distinguish by gen vs non-gen)
+kind: PodMonitor
+metadata:
+  name: materialize-operator
+  labels:
+    app.kubernetes.io/part-of: materialize
+    app.kubernetes.io/name: materialize-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: materialize-operator
+  # Pod labels copied onto scraped metrics (consumed by the dashboards).
+  # Harmless on pods lacking a given label. Node-level labels (zone, instance
+  # type, nodepool) are intentionally excluded — they are not pod labels.
+  podTargetLabels:
+    - materialize.cloud/organization-name
+    - materialize.cloud/organization-namespace
+    - materialize.cloud/organization-id
+    - cluster.environmentd.materialize.cloud/cluster-id
+    - cluster.environmentd.materialize.cloud/replica-id
+  # https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.PodMetricsEndpoint
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      relabelings: []
