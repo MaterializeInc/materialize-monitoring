@@ -1633,6 +1633,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+                <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag</a></li>
             </ul>
         </details>
@@ -1645,6 +1646,7 @@ like our bundled Thanos provider.
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+                <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag</a></li>
             </ul>
         </details>
@@ -4589,6 +4591,7 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.thanos.storage.upload_age">infra.thanos.storage.upload_age</a></li>
+                <li><a href="../common-queries#infra.thanos.write.upload_age">infra.thanos.write.upload_age</a></li>
             </ul>
         </details>
     </li>
@@ -4755,7 +4758,7 @@ like our bundled Thanos provider.
     </li>
     <li id="thanos_store_selects_dropped_total">thanos_store_selects_dropped_total
         <details>
-            Used labels: app, namespace
+            Used labels: app, container, namespace
             <br />
             Example queries:
             <ul>

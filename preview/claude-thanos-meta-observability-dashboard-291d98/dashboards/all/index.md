@@ -649,7 +649,7 @@ The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-thanos-meta-observability-dashboard-291d98/dashboards/grafana/infra-thanos.json?xxhash=512bd21da1905f82" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-thanos-meta-observability-dashboard-291d98/dashboards/grafana/infra-thanos.json?xxhash=b9f52ef81c6dfa94" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
         <br /><small>UID <code>mz-mon-infra-thanos</code></small>
       </td>
       <td>

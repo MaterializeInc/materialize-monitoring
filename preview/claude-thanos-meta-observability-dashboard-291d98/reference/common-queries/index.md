@@ -7422,15 +7422,38 @@ Thanos alerts firing now.
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
 </span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    prometheus_rule_group_last_evaluation_timestamp_seconds{
-</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
-</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
-</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
-</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
@@ -7968,6 +7991,26 @@ configuration failed.
 </span></span></code></pre></div>
   </div>
 </div>
+<h4 id="infra.thanos.write.upload_age">infra.thanos.write.upload_age
+  <a class="anchor" href="#infra.thanos.write.upload_age">#</a>
+</h4>
+Time since each receiver last uploaded a block to object storage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.upload_age-tabs" id="infra.thanos.write.upload_age-tab-0" checked>
+  <label for="infra.thanos.write.upload_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_objstore_bucket_last_successful_upload_time{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
 <h4 id="infra.thanos.write.upload_failures">infra.thanos.write.upload_failures
   <a class="anchor" href="#infra.thanos.write.upload_failures">#</a>
 </h4>
@@ -8184,6 +8227,7 @@ The share of store requests each process failed with a server error.
 </span></span><span style="display:flex;"><span>      grpc_server_handled_total{
 </span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
 </span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
 </span></span><span style="display:flex;"><span>        grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;,
 </span></span><span style="display:flex;"><span>        grpc_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded</span>&#34;
 </span></span><span style="display:flex;"><span>      }
@@ -8196,6 +8240,7 @@ The share of store requests each process failed with a server error.
 </span></span><span style="display:flex;"><span>      grpc_server_handled_total{
 </span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
 </span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
 </span></span><span style="display:flex;"><span>        grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;
 </span></span><span style="display:flex;"><span>      }
 </span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
@@ -8207,6 +8252,7 @@ The share of store requests each process failed with a server error.
 </span></span><span style="display:flex;"><span>    grpc_server_handled_total{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
 </span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
 </span></span><span style="display:flex;"><span>      grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;
 </span></span><span style="display:flex;"><span>    }
 </span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
@@ -8232,6 +8278,7 @@ How long each kind of store took to answer a request for series, at the
 </span></span><span style="display:flex;"><span>      grpc_server_handling_seconds_bucket{
 </span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
 </span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
 </span></span><span style="display:flex;"><span>        grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;,
 </span></span><span style="display:flex;"><span>        grpc_method<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Series</span>&#34;
 </span></span><span style="display:flex;"><span>      }
@@ -8338,7 +8385,8 @@ Store requests per second refused for exceeding a limit, by process.
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    thanos_store_selects_dropped_total{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
-</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
 </span></span><span style="display:flex;"><span>    }
 </span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
