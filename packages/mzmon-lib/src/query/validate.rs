@@ -35,8 +35,7 @@ pub(crate) const SCHEMA: &str = include_str!("../../schemas/query/mzmon-query.sc
 /// Compile the embedded schema into a validator. Panics on failure since the
 /// schema is a compile-time constant — a failure here is a bug, not user error.
 static VALIDATOR: LazyLock<Validator> = LazyLock::new(|| {
-    let schema: Value =
-        serde_yaml_ng::from_str(SCHEMA).expect("embedded query schema is valid YAML");
+    let schema: Value = crate::yaml::from_str(SCHEMA).expect("embedded query schema is valid YAML");
     jsonschema::options()
         .build(&schema)
         .expect("embedded query schema compiles into a validator")
@@ -48,7 +47,7 @@ static VALIDATOR: LazyLock<Validator> = LazyLock::new(|| {
 pub fn known_parameters() -> &'static BTreeSet<String> {
     static KNOWN: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
         let schema: Value =
-            serde_yaml_ng::from_str(SCHEMA).expect("embedded query schema is valid YAML");
+            crate::yaml::from_str(SCHEMA).expect("embedded query schema is valid YAML");
         schema["$defs"]["knownParameter"]["enum"]
             .as_array()
             .expect("knownParameter is an enum")
@@ -120,7 +119,7 @@ pub fn validate(instance: &Value) -> Result<()> {
 
 /// Parse `yaml` and validate it against the schema.
 pub fn validate_yaml_str(yaml: &str) -> Result<()> {
-    let instance: Value = serde_yaml_ng::from_str(yaml)?;
+    let instance: Value = crate::yaml::from_str(yaml)?;
     validate(&instance)
 }
 

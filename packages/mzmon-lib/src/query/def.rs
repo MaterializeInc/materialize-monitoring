@@ -72,7 +72,7 @@ pub struct MetricOverrideDef {
 impl RegistryDoc {
     /// Parse a registry file's YAML text.
     pub fn from_yaml_str(yaml: &str) -> Result<Self> {
-        Ok(serde_yaml_ng::from_str(yaml)?)
+        Ok(crate::yaml::from_str(yaml)?)
     }
 }
 

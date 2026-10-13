@@ -300,7 +300,7 @@ mod tests {
             attributes:
               forward_to: ["loki.write.example.receiver"]
         "#;
-        let block: Block = serde_yaml_ng::from_str(yaml).unwrap();
+        let block: Block = crate::yaml::from_str(yaml).unwrap();
         assert_eq!(block.component, "loki.echo");
         assert_eq!(block.label.as_deref(), Some("stub"));
     }

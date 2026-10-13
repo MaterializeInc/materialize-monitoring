@@ -110,7 +110,7 @@ pub struct ReleaseArgs {
 pub(crate) fn load_components(path: &Path) -> anyhow::Result<IndexMap<String, Component>> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(serde_yaml_ng::from_str::<ComponentsFile>(&text)
+    Ok(mzmon_lib::yaml::from_str::<ComponentsFile>(&text)
         .with_context(|| format!("parsing {}", path.display()))?
         .components)
 }

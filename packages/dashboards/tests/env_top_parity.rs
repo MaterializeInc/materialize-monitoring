@@ -151,7 +151,7 @@ fn baseline() -> serde_json::Value {
         .join("../mzmon-lib/tests/fixtures/env-top.python-baseline.yaml");
     let raw = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read the frozen Python baseline at {}: {e}", path.display()));
-    serde_yaml_ng::from_str(&raw).expect("parse the baseline")
+    mzmon_lib::yaml::from_str(&raw).expect("parse the baseline")
 }
 
 /// Baseline panels, keyed by element name, with the tab they sit on.

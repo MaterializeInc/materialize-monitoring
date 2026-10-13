@@ -194,7 +194,7 @@ mod tests {
         let produced: Value =
             serde_json::to_value(&outcome.metrics).expect("serialize produced metrics");
         let expected: Value =
-            serde_yaml_ng::from_str(GOLDEN_METRICS).expect("parse metrics.yaml.snap");
+            crate::yaml::from_str(GOLDEN_METRICS).expect("parse metrics.yaml.snap");
 
         assert_eq!(
             produced,

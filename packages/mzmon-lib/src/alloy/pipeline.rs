@@ -215,7 +215,7 @@ impl Pipeline {
 
     pub fn from_yaml_str(yaml: &str) -> Result<Self> {
         // 1. YAML → generic JSON value (structure only; no enum dispatch happens here)
-        let value: serde_json::Value = serde_yaml_ng::from_str(yaml)?;
+        let value: serde_json::Value = crate::yaml::from_str(yaml)?;
         // 2. Validate against the embedded JSONSchema, collecting *all* violations
         //    with their instance paths before we attempt to deserialize.
         crate::alloy::validate::validate(&value)?;
@@ -307,7 +307,7 @@ mod tests {
     /// Schema-only check (Rust sugar deserialization is Phase 3b): parse the YAML
     /// into a generic value tree and assert the validator accepts it.
     fn assert_schema_ok(yaml: &str) {
-        let value: serde_json::Value = serde_yaml_ng::from_str(yaml).unwrap();
+        let value: serde_json::Value = crate::yaml::from_str(yaml).unwrap();
         if let Err(e) = crate::alloy::validate::validate(&value) {
             panic!("expected schema to accept the YAML, got {e:?}");
         }

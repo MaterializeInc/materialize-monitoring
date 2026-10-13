@@ -43,7 +43,7 @@ pub enum MonitorKind {
 
 /// Parse an embedded schema (authored as YAML) into a JSON value.
 fn parse_schema(src: &str) -> Value {
-    serde_yaml_ng::from_str(src).expect("embedded CRD schema is valid YAML")
+    crate::yaml::from_str(src).expect("embedded CRD schema is valid YAML")
 }
 
 /// Compile one embedded CRD schema into a validator. Panics on failure since

@@ -63,7 +63,7 @@ pub struct DocgenOutcome {
 impl DocgenOutcome {
     /// Serialize the metrics to YAML (the `metrics.yaml` artifact body).
     pub fn to_yaml(&self) -> Result<String> {
-        Ok(serde_yaml_ng::to_string(&self.metrics)?)
+        Ok(crate::yaml::to_string(&self.metrics)?)
     }
 }
 
@@ -146,7 +146,7 @@ mod tests {
     fn load_docs(docs: &[&str]) -> QueryRegistry {
         let mut registry = QueryRegistry::new();
         for doc in docs {
-            let parsed: crate::query::def::RegistryDoc = serde_yaml_ng::from_str(doc).unwrap();
+            let parsed: crate::query::def::RegistryDoc = crate::yaml::from_str(doc).unwrap();
             registry.load(parsed).unwrap();
         }
         registry

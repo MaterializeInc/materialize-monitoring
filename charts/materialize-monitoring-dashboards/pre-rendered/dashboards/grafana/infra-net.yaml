@@ -69,7 +69,7 @@ spec:
 
                 Until then, _Node Networking -> Conntrack Table_ is the nearest in-cluster signal: a node whose connection table is full fails in much the same way and for a similar reason.
               mode: markdown
-          version: ''
+          version: ""
     cloud-load-balancers:
       kind: Panel
       spec:
@@ -144,7 +144,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     cloud-provider-stub:
       kind: Panel
       spec:
@@ -183,7 +183,7 @@ spec:
 
                 Until then: an unreachable endpoint whose Service *does* appear above is usually a target health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster substitute — a Service with no endpoints has nothing for the load balancer to send to.
               mode: markdown
-          version: ''
+          version: ""
     cni-aws-addresses:
       kind: Panel
       spec:
@@ -270,7 +270,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-aws-api-latency:
       kind: Panel
       spec:
@@ -291,7 +291,7 @@ spec:
                       sum by (api) (rate(awscni_aws_api_latency_ms_sum[$__rate_interval]))
                       /
                       sum by (api) (rate(awscni_aws_api_latency_ms_count[$__rate_interval]))
-                    legendFormat: '{{api}}'
+                    legendFormat: "{{api}}"
                     qryType: 1
                     query: |
                       sum by (api) (rate(awscni_aws_api_latency_ms_sum[$__rate_interval]))
@@ -334,7 +334,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-aws-enis:
       kind: Panel
       spec:
@@ -406,7 +406,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-aws-exhausted:
       kind: Panel
       spec:
@@ -449,7 +449,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: Every node still has addresses to give out.
@@ -467,7 +467,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cni-aws-ip-utilization:
       kind: Panel
       spec:
@@ -488,7 +488,7 @@ spec:
                       max by (node) (awscni_assigned_ip_addresses)
                       /
                       max by (node) (awscni_ip_max)
-                    legendFormat: '{{node}}'
+                    legendFormat: "{{node}}"
                     qryType: 1
                     query: |
                       max by (node) (awscni_assigned_ip_addresses)
@@ -520,17 +520,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -546,7 +546,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-cilium-bpf-pressure:
       kind: Panel
       spec:
@@ -565,7 +565,7 @@ spec:
                   spec:
                     expr: |
                       max by (node, map_name) (cilium_bpf_map_pressure)
-                    legendFormat: '{{node}} {{map_name}}'
+                    legendFormat: "{{node}} {{map_name}}"
                     qryType: 1
                     query: |
                       max by (node, map_name) (cilium_bpf_map_pressure)
@@ -595,17 +595,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -621,7 +621,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-cilium-drops:
       kind: Panel
       spec:
@@ -640,7 +640,7 @@ spec:
                   spec:
                     expr: |
                       sum by (reason) (rate(cilium_drop_count_total[$__rate_interval]))
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                     qryType: 1
                     query: |
                       sum by (reason) (rate(cilium_drop_count_total[$__rate_interval]))
@@ -681,7 +681,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-cilium-endpoints:
       kind: Panel
       spec:
@@ -700,7 +700,7 @@ spec:
                   spec:
                     expr: |
                       sum by (node, endpoint_state) (cilium_endpoint_state)
-                    legendFormat: '{{endpoint_state}}'
+                    legendFormat: "{{endpoint_state}}"
                     qryType: 1
                     query: |
                       sum by (node, endpoint_state) (cilium_endpoint_state)
@@ -738,7 +738,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-cilium-regeneration:
       kind: Panel
       spec:
@@ -761,7 +761,7 @@ spec:
                           rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[$__rate_interval])
                         )
                       )
-                    legendFormat: '{{scope}}'
+                    legendFormat: "{{scope}}"
                     qryType: 1
                     query: |
                       histogram_quantile(0.99,
@@ -805,7 +805,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-cilium-unreachable:
       kind: Panel
       spec:
@@ -879,7 +879,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-cilium-verdicts:
       kind: Panel
       spec:
@@ -898,7 +898,7 @@ spec:
                   spec:
                     expr: |
                       sum by (action) (rate(cilium_policy_verdict_total[$__rate_interval]))
-                    legendFormat: '{{action}}'
+                    legendFormat: "{{action}}"
                     qryType: 1
                     query: |
                       sum by (action) (rate(cilium_policy_verdict_total[$__rate_interval]))
@@ -936,7 +936,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-hubble-flows:
       kind: Panel
       spec:
@@ -955,7 +955,7 @@ spec:
                   spec:
                     expr: |
                       sum by (verdict) (rate(hubble_flows_processed_total[$__rate_interval]))
-                    legendFormat: '{{verdict}}'
+                    legendFormat: "{{verdict}}"
                     qryType: 1
                     query: |
                       sum by (verdict) (rate(hubble_flows_processed_total[$__rate_interval]))
@@ -996,7 +996,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cni-none-detected:
       kind: Panel
       spec:
@@ -1033,7 +1033,7 @@ spec:
 
                 Everything not specific to a dataplane still works: _Kubernetes_ for pods and Services, _Node Networking_ for interfaces and the kernel, and _Security_ for the NetworkPolicy objects themselves — though what a policy actually *dropped* can only come from the CNI, so that half is empty too.
               mode: markdown
-          version: ''
+          version: ""
     k8s-endpoints-by-namespace:
       kind: Panel
       spec:
@@ -1055,7 +1055,7 @@ spec:
                         sum by (instance, namespace) (kube_endpointslice_endpoints{namespace=~"$namespaceList"})
                       )
                     instant: true
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       max by (namespace) (
@@ -1083,7 +1083,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -1105,7 +1105,7 @@ spec:
               xTickLabelMaxLength: 0
               xTickLabelRotation: 0
               xTickLabelSpacing: 100
-          version: ''
+          version: ""
     k8s-errors-by-namespace:
       kind: Panel
       spec:
@@ -1131,7 +1131,7 @@ spec:
                           + rate(container_network_transmit_packets_dropped_total{namespace=~"$namespaceList"}[$__rate_interval])
                         ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})
                       )
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       sum by (namespace) (
@@ -1177,7 +1177,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     k8s-proxy-programming:
       kind: Panel
       spec:
@@ -1245,7 +1245,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     k8s-proxy-sync:
       kind: Panel
       spec:
@@ -1313,7 +1313,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     k8s-services-by-type:
       kind: Panel
       spec:
@@ -1335,7 +1335,7 @@ spec:
                         sum by (instance, type) (kube_service_spec_type)
                       )
                     instant: true
-                    legendFormat: '{{type}}'
+                    legendFormat: "{{type}}"
                     qryType: 1
                     query: |
                       max by (type) (
@@ -1360,7 +1360,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -1384,7 +1384,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     k8s-throughput-by-namespace:
       kind: Panel
       spec:
@@ -1460,7 +1460,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: Bps
               overrides: []
             options:
@@ -1475,7 +1475,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-conntrack:
       kind: Panel
       spec:
@@ -1496,7 +1496,7 @@ spec:
                       max by (instance) (node_nf_conntrack_entries{instance=~"$nodeList"})
                       /
                       max by (instance) (node_nf_conntrack_entries_limit{instance=~"$nodeList"})
-                    legendFormat: '{{instance}}'
+                    legendFormat: "{{instance}}"
                     qryType: 1
                     query: |
                       max by (instance) (node_nf_conntrack_entries{instance=~"$nodeList"})
@@ -1528,17 +1528,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -1554,7 +1554,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-drops:
       kind: Panel
       spec:
@@ -1637,7 +1637,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-errors:
       kind: Panel
       spec:
@@ -1722,7 +1722,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-rx:
       kind: Panel
       spec:
@@ -1745,7 +1745,7 @@ spec:
                           rate(node_network_receive_bytes_total{instance=~"$nodeList"}[$__rate_interval])
                         )
                       )
-                    legendFormat: '{{instance}}'
+                    legendFormat: "{{instance}}"
                     qryType: 1
                     query: |
                       sum by (instance) (
@@ -1791,7 +1791,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-softnet-dropped:
       kind: Panel
       spec:
@@ -1812,7 +1812,7 @@ spec:
                       max by (instance, cpu) (
                         rate(node_softnet_dropped_total{instance=~"$nodeList"}[$__rate_interval])
                       )
-                    legendFormat: '{{instance}} core {{cpu}}'
+                    legendFormat: "{{instance}} core {{cpu}}"
                     qryType: 1
                     query: |
                       max by (instance, cpu) (
@@ -1851,7 +1851,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-softnet-squeezed:
       kind: Panel
       spec:
@@ -1872,7 +1872,7 @@ spec:
                       max by (instance, cpu) (
                         rate(node_softnet_times_squeezed_total{instance=~"$nodeList"}[$__rate_interval])
                       )
-                    legendFormat: '{{instance}} core {{cpu}}'
+                    legendFormat: "{{instance}} core {{cpu}}"
                     qryType: 1
                     query: |
                       max by (instance, cpu) (
@@ -1910,7 +1910,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-tcp-retransmits:
       kind: Panel
       spec:
@@ -2011,7 +2011,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-tcp-sockets:
       kind: Panel
       spec:
@@ -2117,7 +2117,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     nodes-tx:
       kind: Panel
       spec:
@@ -2140,7 +2140,7 @@ spec:
                           rate(node_network_transmit_bytes_total{instance=~"$nodeList"}[$__rate_interval])
                         )
                       )
-                    legendFormat: '{{instance}}'
+                    legendFormat: "{{instance}}"
                     qryType: 1
                     query: |
                       sum by (instance) (
@@ -2184,7 +2184,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-dataplane:
       kind: Panel
       spec:
@@ -2204,7 +2204,7 @@ spec:
                     expr: |
                       max by (network_component) (up{network_component=~".+"})
                     instant: true
-                    legendFormat: '{{network_component}}'
+                    legendFormat: "{{network_component}}"
                     qryType: 1
                     query: |
                       max by (network_component) (up{network_component=~".+"})
@@ -2230,7 +2230,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No networking exporter detected — see the CNI tab.
               overrides: []
@@ -2246,7 +2246,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     overview-errors:
       kind: Panel
       spec:
@@ -2343,7 +2343,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-load-balancers:
       kind: Panel
       spec:
@@ -2363,7 +2363,7 @@ spec:
                     expr: |
                       max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)
                     instant: true
-                    legendFormat: '{{service}}'
+                    legendFormat: "{{service}}"
                     qryType: 1
                     query: |
                       max by (namespace, service, ip, hostname) (kube_service_status_load_balancer_ingress)
@@ -2391,7 +2391,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: No LoadBalancer Services have been given an address.
@@ -2408,7 +2408,7 @@ spec:
               showPercentChange: false
               textMode: name
               wideLayout: true
-          version: ''
+          version: ""
     overview-services:
       kind: Panel
       spec:
@@ -2430,7 +2430,7 @@ spec:
                         sum by (instance, type) (kube_service_spec_type)
                       )
                     instant: true
-                    legendFormat: '{{type}}'
+                    legendFormat: "{{type}}"
                     qryType: 1
                     query: |
                       max by (type) (
@@ -2455,7 +2455,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -2479,7 +2479,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-throughput:
       kind: Panel
       spec:
@@ -2559,7 +2559,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: Bps
               overrides: []
             options:
@@ -2574,7 +2574,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-top-talkers:
       kind: Panel
       spec:
@@ -2598,7 +2598,7 @@ spec:
                           + rate(container_network_transmit_bytes_total{namespace=~"$namespaceList", interface!="lo"}[$__rate_interval])
                         ) unless on (namespace, pod) count by (namespace, pod) (container_network_receive_bytes_total{interface!~"eth0|lo"})
                       )
-                    legendFormat: '{{namespace}}/{{pod}}'
+                    legendFormat: "{{namespace}}/{{pod}}"
                     qryType: 1
                     query: |
                       topk(10,
@@ -2629,7 +2629,7 @@ spec:
             fieldConfig:
               defaults:
                 min: 0
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: Bps
               overrides: []
             options:
@@ -2644,7 +2644,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     security-drops-aws:
       kind: Panel
       spec:
@@ -2663,7 +2663,7 @@ spec:
                   spec:
                     expr: |
                       sum by (node) (rate(network_policy_drop_count_total[$__rate_interval]))
-                    legendFormat: '{{node}}'
+                    legendFormat: "{{node}}"
                     qryType: 1
                     query: |
                       sum by (node) (rate(network_policy_drop_count_total[$__rate_interval]))
@@ -2704,7 +2704,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     security-drops-cilium:
       kind: Panel
       spec:
@@ -2723,7 +2723,7 @@ spec:
                   spec:
                     expr: |
                       sum by (node) (rate(cilium_drop_count_total{reason=~"Policy denied.*"}[$__rate_interval]))
-                    legendFormat: '{{node}}'
+                    legendFormat: "{{node}}"
                     qryType: 1
                     query: |
                       sum by (node) (rate(cilium_drop_count_total{reason=~"Policy denied.*"}[$__rate_interval]))
@@ -2764,7 +2764,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     security-policies-by-namespace:
       kind: Panel
       spec:
@@ -2786,7 +2786,7 @@ spec:
                         count by (instance, namespace) (kube_networkpolicy_spec_ingress_rules{namespace=~"$namespaceList"})
                       )
                     instant: true
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       max by (namespace) (
@@ -2836,7 +2836,7 @@ spec:
               xTickLabelMaxLength: 0
               xTickLabelRotation: 0
               xTickLabelSpacing: 100
-          version: ''
+          version: ""
     security-policy-rules:
       kind: Panel
       spec:
@@ -2897,8 +2897,8 @@ spec:
                     namespace: 0
                     networkpolicy: 1
                   renameByName:
-                    'Value #query-0': Ingress Rules
-                    'Value #query-1': Egress Rules
+                    "Value #query-0": Ingress Rules
+                    "Value #query-1": Egress Rules
             - group: groupToNestedTable
               kind: Transformation
               spec:
@@ -2939,7 +2939,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     security-uncovered:
       kind: Panel
       spec:
@@ -3013,7 +3013,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -3219,7 +3219,7 @@ spec:
                             name: cni-aws-enis
                       maxColumnCount: 2
                       rowHeightMode: standard
-                  title: 'VPC CNI: Addresses and Interfaces'
+                  title: "VPC CNI: Addresses and Interfaces"
               - kind: RowsLayoutRow
                 spec:
                   collapse: true
@@ -3248,7 +3248,7 @@ spec:
                             name: cni-aws-api-latency
                       maxColumnCount: 1
                       rowHeightMode: standard
-                  title: 'VPC CNI: AWS API'
+                  title: "VPC CNI: AWS API"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3297,7 +3297,7 @@ spec:
                             name: cni-cilium-verdicts
                       maxColumnCount: 3
                       rowHeightMode: standard
-                  title: 'Cilium: Datapath'
+                  title: "Cilium: Datapath"
               - kind: RowsLayoutRow
                 spec:
                   collapse: true
@@ -3326,7 +3326,7 @@ spec:
                             name: cni-cilium-bpf-pressure
                       maxColumnCount: 1
                       rowHeightMode: standard
-                  title: 'Cilium: BPF Maps'
+                  title: "Cilium: BPF Maps"
               - kind: RowsLayoutRow
                 spec:
                   collapse: true
@@ -3355,7 +3355,7 @@ spec:
                             name: cni-hubble-flows
                       maxColumnCount: 1
                       rowHeightMode: standard
-                  title: 'Hubble: Flows'
+                  title: "Hubble: Flows"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3626,7 +3626,7 @@ spec:
                             name: security-drops-aws
                       maxColumnCount: 1
                       rowHeightMode: standard
-                  title: 'Enforcement: AWS VPC CNI'
+                  title: "Enforcement: AWS VPC CNI"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3655,7 +3655,7 @@ spec:
                             name: security-drops-cilium
                       maxColumnCount: 1
                       rowHeightMode: standard
-                  title: 'Enforcement: Cilium'
+                  title: "Enforcement: Cilium"
           title: Security
   links: []
   liveNow: false
@@ -3665,7 +3665,7 @@ spec:
   - mzmon
   - network
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -3688,8 +3688,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -3699,14 +3699,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{network_component=~".+"}, network_component)
       description: Networking components found to be collecting on this cluster
       hide: dontHide
@@ -3726,7 +3726,7 @@ spec:
           query: label_values(up{network_component=~".+"}, network_component)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -3735,8 +3735,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(kube_pod_info, namespace)
       description: Kubernetes namespaces to include
       hide: dontHide
@@ -3756,7 +3756,7 @@ spec:
           query: label_values(kube_pod_info, namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -3765,8 +3765,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(node_uname_info, instance)
       description: Nodes to include, by node-exporter address
       hide: inControlsMenu
@@ -3786,13 +3786,13 @@ spec:
           query: label_values(node_uname_info, instance)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true

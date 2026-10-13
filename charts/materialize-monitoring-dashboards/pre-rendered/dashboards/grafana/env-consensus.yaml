@@ -49,7 +49,7 @@ spec:
                   spec:
                     expr: |
                       sum by (pod) (rate(cnpg_pg_stat_archiver_failed_count{pod=~"($cnpgClusterList)-[0-9]+"}[$__rate_interval]))
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (rate(cnpg_pg_stat_archiver_failed_count{pod=~"($cnpgClusterList)-[0-9]+"}[$__rate_interval]))
@@ -88,7 +88,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-backup-age:
       kind: Panel
       spec:
@@ -133,7 +133,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No completed backup. CNPG reports none when backups are not configured.
@@ -151,7 +151,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cnpg-cache-hit:
       kind: Panel
       spec:
@@ -176,7 +176,7 @@ spec:
                           + sum by (datname) (rate(cnpg_pg_stat_database_blks_read{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval]))
                         )
                       ) >= 0
-                    legendFormat: '{{datname}}'
+                    legendFormat: "{{datname}}"
                     qryType: 1
                     query: |
                       (
@@ -221,7 +221,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-connections-by-database:
       kind: Panel
       spec:
@@ -243,7 +243,7 @@ spec:
                         cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"}
                         and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
                       )
-                    legendFormat: '{{datname}} ({{usename}})'
+                    legendFormat: "{{datname}} ({{usename}})"
                     qryType: 1
                     query: |
                       sum by (datname, usename) (
@@ -317,7 +317,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-connections-by-state:
       kind: Panel
       spec:
@@ -336,7 +336,7 @@ spec:
                   spec:
                     expr: |
                       sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
-                    legendFormat: '{{state}}'
+                    legendFormat: "{{state}}"
                     qryType: 1
                     query: |
                       sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
@@ -395,7 +395,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-connections-used:
       kind: Panel
       spec:
@@ -459,11 +459,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.8
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.95
                 unit: percentunit
               overrides: []
@@ -479,7 +479,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cnpg-database-size:
       kind: Panel
       spec:
@@ -498,7 +498,7 @@ spec:
                   spec:
                     expr: |
                       max by (datname) (cnpg_pg_database_size_bytes{pod=~"($cnpgClusterList)-[0-9]+"})
-                    legendFormat: '{{datname}}'
+                    legendFormat: "{{datname}}"
                     qryType: 1
                     query: |
                       max by (datname) (cnpg_pg_database_size_bytes{pod=~"($cnpgClusterList)-[0-9]+"})
@@ -537,7 +537,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-not-serving:
       kind: Panel
       spec:
@@ -589,17 +589,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: short
               overrides: []
@@ -615,7 +615,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cnpg-oldest-transaction:
       kind: Panel
       spec:
@@ -664,11 +664,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 60
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 900
                 unit: s
               overrides: []
@@ -684,7 +684,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cnpg-primary:
       kind: Panel
       spec:
@@ -704,7 +704,7 @@ spec:
                     expr: |
                       max by (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
                     instant: true
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
@@ -734,7 +734,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 noValue: No instance reports itself as primary.
               overrides: []
@@ -753,7 +753,7 @@ spec:
                 valueSize: 20
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cnpg-replication-lag:
       kind: Panel
       spec:
@@ -772,7 +772,7 @@ spec:
                   spec:
                     expr: |
                       max by (pod) (cnpg_pg_replication_lag{pod=~"($cnpgClusterList)-[0-9]+"})
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (cnpg_pg_replication_lag{pod=~"($cnpgClusterList)-[0-9]+"})
@@ -813,7 +813,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-rows:
       kind: Panel
       spec:
@@ -832,7 +832,7 @@ spec:
                   spec:
                     expr: |
                       sum by (datname) (rate(cnpg_pg_stat_database_tup_inserted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
-                    legendFormat: '{{datname}} inserted'
+                    legendFormat: "{{datname}} inserted"
                     qryType: 1
                     query: |
                       sum by (datname) (rate(cnpg_pg_stat_database_tup_inserted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
@@ -849,7 +849,7 @@ spec:
                   spec:
                     expr: |
                       sum by (datname) (rate(cnpg_pg_stat_database_tup_updated{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
-                    legendFormat: '{{datname}} updated'
+                    legendFormat: "{{datname}} updated"
                     qryType: 1
                     query: |
                       sum by (datname) (rate(cnpg_pg_stat_database_tup_updated{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
@@ -866,7 +866,7 @@ spec:
                   spec:
                     expr: |
                       sum by (datname) (rate(cnpg_pg_stat_database_tup_deleted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
-                    legendFormat: '{{datname}} deleted'
+                    legendFormat: "{{datname}} deleted"
                     qryType: 1
                     query: |
                       sum by (datname) (rate(cnpg_pg_stat_database_tup_deleted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
@@ -905,7 +905,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-transactions:
       kind: Panel
       spec:
@@ -924,7 +924,7 @@ spec:
                   spec:
                     expr: |
                       sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
-                    legendFormat: '{{datname}} committed'
+                    legendFormat: "{{datname}} committed"
                     qryType: 1
                     query: |
                       sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
@@ -941,7 +941,7 @@ spec:
                   spec:
                     expr: |
                       sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
-                    legendFormat: '{{datname}} rolled back'
+                    legendFormat: "{{datname}} rolled back"
                     qryType: 1
                     query: |
                       sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}[$__rate_interval])) > 0
@@ -982,7 +982,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-transactions-held:
       kind: Panel
       spec:
@@ -1001,7 +1001,7 @@ spec:
                   spec:
                     expr: |
                       max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
-                    legendFormat: '{{datname}} ({{state}})'
+                    legendFormat: "{{datname}} ({{state}})"
                     qryType: 1
                     query: |
                       max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
@@ -1040,7 +1040,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-version:
       kind: Panel
       spec:
@@ -1060,7 +1060,7 @@ spec:
                     expr: |
                       max by (full) (cnpg_collector_postgres_version{pod=~"($cnpgClusterList)-[0-9]+"})
                     instant: true
-                    legendFormat: '{{full}}'
+                    legendFormat: "{{full}}"
                     qryType: 1
                     query: |
                       max by (full) (cnpg_collector_postgres_version{pod=~"($cnpgClusterList)-[0-9]+"})
@@ -1088,7 +1088,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 noValue: The selected CNPG cluster has not reported this. Check the CNPG Cluster picker.
               overrides: []
@@ -1107,7 +1107,7 @@ spec:
                 valueSize: 20
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cnpg-wal:
       kind: Panel
       spec:
@@ -1126,7 +1126,7 @@ spec:
                   spec:
                     expr: |
                       max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="size"})
-                    legendFormat: '{{pod}} on disk'
+                    legendFormat: "{{pod}} on disk"
                     qryType: 1
                     query: |
                       max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="size"})
@@ -1147,7 +1147,7 @@ spec:
                           max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="size"})
                         / on (pod) max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="count"})
                       )
-                    legendFormat: '{{pod}} waiting to archive'
+                    legendFormat: "{{pod}} waiting to archive"
                     qryType: 1
                     query: |
                       max by (pod) (cnpg_collector_pg_wal_archive_status{pod=~"($cnpgClusterList)-[0-9]+", value="ready"})
@@ -1192,7 +1192,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-xid-age:
       kind: Panel
       spec:
@@ -1211,7 +1211,7 @@ spec:
                   spec:
                     expr: |
                       max by (datname) (cnpg_pg_database_xid_age{pod=~"($cnpgClusterList)-[0-9]+"}) / 2147483648
-                    legendFormat: '{{datname}}'
+                    legendFormat: "{{datname}}"
                     qryType: 1
                     query: |
                       max by (datname) (cnpg_pg_database_xid_age{pod=~"($cnpgClusterList)-[0-9]+"}) / 2147483648
@@ -1239,11 +1239,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.25
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.5
                 unit: percentunit
               overrides: []
@@ -1259,7 +1259,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cnpg-xid-used:
       kind: Panel
       spec:
@@ -1311,11 +1311,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.25
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.5
                 unit: percentunit
               overrides: []
@@ -1331,7 +1331,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     database-none-detected:
       kind: Panel
       spec:
@@ -1367,7 +1367,7 @@ spec:
 
                 The other tabs here need none of this: they are Materialize's own measurement of the database, and work on every flavor.
               mode: markdown
-          version: ''
+          version: ""
     ops-by-type:
       kind: Panel
       spec:
@@ -1388,7 +1388,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_external_started_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"consensus_.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -1429,7 +1429,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-bytes:
       kind: Panel
       spec:
@@ -1450,7 +1450,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_external_bytes_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"consensus_.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -1491,7 +1491,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-commit-latency-by-process:
       kind: Panel
       spec:
@@ -1540,7 +1540,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -1609,7 +1609,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-commits-by-process:
       kind: Panel
       spec:
@@ -1654,7 +1654,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -1719,7 +1719,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-conflicts:
       kind: Panel
       spec:
@@ -1764,7 +1764,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -1829,7 +1829,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-mean-latency:
       kind: Panel
       spec:
@@ -1856,7 +1856,7 @@ spec:
                           rate(mz_persist_external_started_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"consensus_.*"}[$__rate_interval])
                         )
                       ) >= 0
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       (
@@ -1905,7 +1905,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-oracle-latency:
       kind: Panel
       spec:
@@ -1932,7 +1932,7 @@ spec:
                           rate(mz_ts_oracle_started_count{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])
                         )
                       ) >= 0
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       (
@@ -1979,7 +1979,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-oracle-ops:
       kind: Panel
       spec:
@@ -2000,7 +2000,7 @@ spec:
                       sum by (op) (
                         rate(mz_ts_oracle_started_count{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2041,7 +2041,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-retries:
       kind: Panel
       spec:
@@ -2062,7 +2062,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_retry_retries_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"fetch_state::scan|apply_unbatched_cmd::cas|gc::truncate|maybe_init::cas|consensus::open"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2126,7 +2126,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-collections:
       kind: Panel
       spec:
@@ -2171,7 +2171,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 decimals: 0
                 min: 0
@@ -2190,7 +2190,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-commit-latency:
       kind: Panel
       spec:
@@ -2281,7 +2281,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-commit-p99:
       kind: Panel
       spec:
@@ -2338,11 +2338,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: s
               overrides: []
@@ -2358,7 +2358,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-commits:
       kind: Panel
       spec:
@@ -2401,7 +2401,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: No metrics from this environment. Check the environment picker, and that Materialize is running.
@@ -2419,7 +2419,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-connection-errors:
       kind: Panel
       spec:
@@ -2470,17 +2470,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.2575
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.505
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.7525
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: cps
               overrides: []
@@ -2496,7 +2496,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-connection-errors-by-process:
       kind: Panel
       spec:
@@ -2541,7 +2541,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -2623,7 +2623,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-connections-held:
       kind: Panel
       spec:
@@ -2670,7 +2670,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 decimals: 0
                 min: 0
@@ -2689,7 +2689,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-failed-ops:
       kind: Panel
       spec:
@@ -2738,17 +2738,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.2575
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.505
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.7525
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: ops
               overrides: []
@@ -2764,7 +2764,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-failures-by-op:
       kind: Panel
       spec:
@@ -2785,7 +2785,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_external_failed_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"consensus_.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2847,7 +2847,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-retry-logs:
       kind: Panel
       spec:
@@ -2913,7 +2913,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     overview-round-trip:
       kind: Panel
       spec:
@@ -2958,7 +2958,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -3025,7 +3025,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-waiting:
       kind: Panel
       spec:
@@ -3077,17 +3077,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 3.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: short
               overrides: []
@@ -3103,7 +3103,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     pool-acquire-wait:
       kind: Panel
       spec:
@@ -3160,7 +3160,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -3262,7 +3262,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pool-churn:
       kind: Panel
       spec:
@@ -3341,7 +3341,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pool-held:
       kind: Panel
       spec:
@@ -3386,7 +3386,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -3469,7 +3469,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pool-in-use:
       kind: Panel
       spec:
@@ -3516,7 +3516,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -3607,7 +3607,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pool-waiting:
       kind: Panel
       spec:
@@ -3652,7 +3652,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -3737,7 +3737,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     state-gc-runs:
       kind: Panel
       spec:
@@ -3829,7 +3829,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     state-held:
       kind: Panel
       spec:
@@ -3848,7 +3848,7 @@ spec:
                   spec:
                     expr: |
                       topk(10, max by (shard) (mz_persist_shard_seqnos_held{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: '{{shard}}'
+                    legendFormat: "{{shard}}"
                     qryType: 1
                     query: |
                       topk(10, max by (shard) (mz_persist_shard_seqnos_held{materialize_cloud_organization_name=~"$environmentNameList"}))
@@ -3890,7 +3890,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     state-lease-timeouts:
       kind: Panel
       spec:
@@ -3948,7 +3948,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     state-live:
       kind: Panel
       spec:
@@ -3993,7 +3993,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE3377'
+                  fixedColor: "#EE3377"
                   mode: shades
                 decimals: 0
                 min: 0
@@ -4012,7 +4012,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     state-written-deleted:
       kind: Panel
       spec:
@@ -4087,7 +4087,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -4617,8 +4617,8 @@ spec:
                     spec:
                       allowCustomValue: true
                       current:
-                        text: ''
-                        value: ''
+                        text: ""
+                        value: ""
                       definition: label_values(cnpg_collector_up, pod)
                       description: The CloudNativePG cluster serving as this environment's metadata database
                       hide: dontHide
@@ -4680,7 +4680,7 @@ spec:
   - mzmon
   - external-dependencies
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -4703,8 +4703,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -4714,14 +4714,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -4731,15 +4731,15 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
       description: The current environment to view
       hide: dontHide
@@ -4759,7 +4759,7 @@ spec:
           query: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -4767,8 +4767,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
       description: The current materialize namespace where environments live
       hide: hideVariable
@@ -4788,13 +4788,13 @@ spec:
           query: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: true
       sort: alphabeticalAsc
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
@@ -4815,8 +4815,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(cnpg_collector_up, __name__)
       description: Whether a CloudNativePG instance is being scraped; empty when none is
       hide: hideVariable
@@ -4836,7 +4836,7 @@ spec:
           query: label_values(cnpg_collector_up, __name__)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: true
       sort: alphabeticalAsc
