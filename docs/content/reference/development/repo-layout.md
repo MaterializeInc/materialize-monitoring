@@ -43,7 +43,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
         persist's own view of object storage and the metadata database
-      * `infra-*.yaml`: the platform, including `infra-loki.yaml` and `infra-alloy.yaml` (the log store and the collectors watching themselves),
+      * `infra-*.yaml`: the platform, including `infra-loki.yaml`, `infra-alloy.yaml` and `infra-thanos.yaml` (the log store, the collectors and the metrics store watching themselves),
         `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
         and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
       * `node-*.yaml`: node-exporter

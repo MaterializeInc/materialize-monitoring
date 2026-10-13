@@ -5,8 +5,8 @@ weight: 1
 
 # Available Dashboards
 
-Thirteen dashboards ship today: five scoped to a Materialize environment (`env-*`), and eight to the platform underneath it (`infra-*`).
-Two of the eight watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+The dashboards come in two families: those scoped to a Materialize environment (`env-*`), and those scoped to the platform underneath it (`infra-*`).
+The `infra-*` dashboards that watch the monitoring stack itself, rather than anything it collects, are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -166,9 +166,9 @@ It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpe
 
 ## Meta monitoring (`infra-*`)
 
-These two dashboards watch the monitoring stack rather than anything it collects.
-Their subject can take its own instrumentation down with it, so an empty panel on either can mean the component that would have reported a problem is the one that failed.
-Every panel on both states its own empty-state text for that reason.
+These dashboards watch the monitoring stack rather than anything it collects.
+Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
+Every panel states its own empty-state text for that reason.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
@@ -191,6 +191,24 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
 `kubectl get pods -l app.kubernetes.io/name=alloy-gateway` in the monitoring namespace is the check that does not depend on it.
 
 {{< download-dashboards name="infra-alloy" >}}
+
+### Thanos Meta Monitoring (`infra-thanos`)
+
+Whether the metrics store is healthy, and which part of it broke if not.
+Its tabs are Overview, Writes, Reads, Ruler, Storage, Resources, and Logs.
+The Overview tab leads with any Thanos alert firing or pending now, then with scrape health.
+The alerts are the upstream Thanos mixin's, which the Thanos subchart installs and the Thanos ruler evaluates.
+Writes follows a sample through the receivers to object storage.
+Reads covers Thanos Query and the stores it fans out to, including whether every store is connected.
+Ruler covers rule evaluation, notifications to Alertmanager, and the results written back.
+Storage covers the compactor, and object storage as each Thanos process sees it.
+It needs both a metrics and a logs datasource.
+
+**Thanos answers every metrics panel on this dashboard, including the ones about Thanos Query.**
+A dashboard that is empty throughout most likely means Thanos Query is down.
+The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where a halted compactor says why it halted.
+
+{{< download-dashboards name="infra-thanos" >}}
 
 ## What the annotations mean
 

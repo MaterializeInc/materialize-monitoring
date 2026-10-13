@@ -1,5 +1,14 @@
 - importance: essential
   labels:
+  - alertname
+  - alertstate
+  name: ALERTS
+  usage:
+  - infra.thanos.health.alert_history
+  - infra.thanos.health.alerts
+  - infra.thanos.health.alerts_firing
+- importance: essential
+  labels:
   - app
   - namespace
   - pod
@@ -73,6 +82,7 @@
   - infra.karpenter.controller.cpu
   - infra.kubernetes.pods_high_cpu_ratio
   - infra.kubernetes.vector_high_cpu_ratio
+  - infra.thanos.resources.cpu
   - materialize.clusters.cpu_high
   - materialize.environmentd.high_cpu
   - materialize.generations.cpu
@@ -119,6 +129,7 @@
   - infra.karpenter.controller.memory
   - infra.kubernetes.memory_elevated
   - infra.kubernetes.memory_high
+  - infra.thanos.resources.memory
   - materialize.environmentd.high_memory
   - materialize.environmentd.memory_elevated
   - materialize.generations.memory
@@ -486,6 +497,7 @@
   - infra.kubernetes.oomkill_core_systems
   - infra.kubernetes.oomkill_important_systems
   - infra.kubernetes.oomkill_nonessential_systems
+  - infra.thanos.resources.terminations
   - materialize.clusterd.swap_cluster_oom
   - materialize.clusters.replica_oomkilled
 - importance: essential
@@ -503,6 +515,7 @@
   - infra.kubernetes.pod_restart_rate_high_nonessential
   - infra.loki.health.restarts
   - infra.nodes.pods.restarts
+  - infra.thanos.health.restarts
   - materialize.clusterd.error_kill
   - materialize.clusterd.new_restarts_during_release
   - materialize.clusterd.not_receiving_commands
@@ -1104,24 +1117,31 @@
 - importance: essential
   labels:
   - app
+  - container
   - namespace
   - pod
   name: prometheus_remote_storage_highest_timestamp_in_seconds
   usage:
   - infra.alloy.metric_pipeline.send_delay
   - infra.alloy.metric_pipeline.send_delay.worst
+  - infra.thanos.health.alerts_firing
+  - infra.thanos.rule.remote_write_lag
 - importance: essential
   labels:
   - app
+  - container
   - namespace
   - pod
   name: prometheus_remote_storage_queue_highest_sent_timestamp_seconds
   usage:
   - infra.alloy.metric_pipeline.send_delay
   - infra.alloy.metric_pipeline.send_delay.worst
+  - infra.thanos.health.alerts_firing
+  - infra.thanos.rule.remote_write_lag
 - importance: essential
   labels:
   - app
+  - container
   - namespace
   - pod
   - url
@@ -1130,6 +1150,7 @@
   - infra.alloy.health.samples_lost
   - infra.alloy.ingest.remote_write.senders
   - infra.alloy.metric_pipeline.remote_write
+  - infra.thanos.rule.remote_write_failures
 - importance: essential
   labels:
   - app
@@ -1143,6 +1164,39 @@
   - infra.alloy.ingest.remote_write.senders
   - infra.alloy.metric_pipeline.remote_write
   - infra.alloy.metric_pipeline.samples_sent
+- importance: essential
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_rule_evaluation_failures_total
+  usage:
+  - infra.thanos.health.rule_failures
+  - infra.thanos.rule.failures
+- importance: essential
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_rule_group_last_evaluation_timestamp_seconds
+  usage:
+  - infra.thanos.health.alerts_firing
+- importance: essential
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_build_info
+  usage:
+  - infra.thanos.health.versions
+- importance: essential
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_halted
+  usage:
+  - infra.thanos.health.compactor_halted
 - importance: essential
   labels:
   - app
@@ -1170,6 +1224,12 @@
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
   - infra.net.overview.dataplane
+  - infra.thanos.health.components_down
+  - infra.thanos.health.restarts
+  - infra.thanos.health.up
+  - infra.thanos.resources.cpu
+  - infra.thanos.resources.memory
+  - infra.thanos.resources.terminations
   - materialize.environmentd.down
   - materialize.environmentd.not_scraped
   - materialize.scraper.mzmon.clusterd
@@ -2903,6 +2963,70 @@
 - importance: recommended
   labels:
   - app
+  - container
+  - namespace
+  name: prometheus_tsdb_checkpoint_creations_failed_total
+  usage:
+  - infra.thanos.write.database_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_compactions_failed_total
+  usage:
+  - infra.thanos.write.database_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_head_truncations_failed_total
+  usage:
+  - infra.thanos.write.database_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_out_of_bound_samples_total
+  usage:
+  - infra.thanos.write.samples_rejected
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_out_of_order_samples_total
+  usage:
+  - infra.thanos.write.samples_rejected
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_reloads_failures_total
+  usage:
+  - infra.thanos.write.database_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_too_old_samples_total
+  usage:
+  - infra.thanos.write.samples_rejected
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_wal_corruptions_total
+  usage:
+  - infra.thanos.write.database_failures
+- importance: recommended
+  labels:
+  - app
   - namespace
   - pod
   name: prometheus_tsdb_wal_storage_size_bytes
@@ -2911,11 +3035,13 @@
 - importance: recommended
   labels:
   - app
+  - container
   - namespace
   - pod
   name: prometheus_tsdb_wal_truncations_failed_total
   usage:
   - infra.alloy.metric_pipeline.wal_errors
+  - infra.thanos.write.database_failures
 - importance: recommended
   labels:
   - app
@@ -2934,6 +3060,305 @@
   name: scrape_samples_post_metric_relabeling
   usage:
   - infra.alloy.metric_pipeline.largest_scrapes
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_alert_queue_alerts_dropped_total
+  usage:
+  - infra.thanos.rule.alerts_dropped
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_alert_queue_capacity
+  usage:
+  - infra.thanos.rule.queue
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_alert_queue_length
+  usage:
+  - infra.thanos.rule.queue
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_alert_sender_alerts_dropped_total
+  usage:
+  - infra.thanos.rule.alerts_dropped
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_alert_sender_alerts_sent_total
+  usage:
+  - infra.thanos.rule.alerts_sent
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_blocks_meta_synced
+  usage:
+  - infra.thanos.storage.blocks
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_bucket_store_block_drop_failures_total
+  usage:
+  - infra.thanos.read.block_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_bucket_store_block_load_failures_total
+  usage:
+  - infra.thanos.read.block_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_bucket_store_blocks_loaded
+  usage:
+  - infra.thanos.read.blocks_loaded
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_bucket_store_queries_dropped_total
+  usage:
+  - infra.thanos.read.queries_dropped
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_block_cleanup_failures_total
+  usage:
+  - infra.thanos.storage.compactor_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_downsample_failures_total
+  usage:
+  - infra.thanos.storage.compactor_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_garbage_collection_failures_total
+  usage:
+  - infra.thanos.storage.compactor_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_group_compactions_failures_total
+  usage:
+  - infra.thanos.storage.compactor_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_group_compactions_total
+  usage:
+  - infra.thanos.storage.compactions
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_todo_compaction_blocks
+  usage:
+  - infra.thanos.storage.backlog
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_todo_compactions
+  usage:
+  - infra.thanos.storage.backlog
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_todo_deletion_blocks
+  usage:
+  - infra.thanos.storage.backlog
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_compact_todo_downsample_blocks
+  usage:
+  - infra.thanos.storage.backlog
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_objstore_bucket_last_successful_upload_time
+  usage:
+  - infra.thanos.storage.upload_age
+  - infra.thanos.write.upload_age
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_objstore_bucket_operation_failures_total
+  usage:
+  - infra.thanos.storage.failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_objstore_bucket_operations_total
+  usage:
+  - infra.thanos.storage.failures
+  - infra.thanos.storage.operations
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_query_concurrent_gate_queries_in_flight
+  usage:
+  - infra.thanos.read.concurrency
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_query_concurrent_gate_queries_max
+  usage:
+  - infra.thanos.read.concurrency
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_receive_config_last_reload_successful
+  usage:
+  - infra.thanos.write.config_failed
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_receive_forward_requests_total
+  usage:
+  - infra.thanos.write.forward
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_receive_hashring_nodes
+  usage:
+  - infra.thanos.write.hashring
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_receive_pending_write_requests
+  usage:
+  - infra.thanos.write.pending
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_receive_replications_total
+  usage:
+  - infra.thanos.write.replication
+- importance: recommended
+  labels:
+  - app
+  - code
+  - container
+  - namespace
+  name: thanos_receive_write_samples_sum
+  usage:
+  - infra.thanos.health.samples_ingested
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_rule_config_last_reload_successful
+  usage:
+  - infra.thanos.rule.config_failed
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_rule_loaded_rules
+  usage:
+  - infra.thanos.rule.loaded
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_shipper_upload_failures_total
+  usage:
+  - infra.thanos.write.upload_failures
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_store_index_cache_hits_total
+  usage:
+  - infra.thanos.read.index_cache_hits
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_store_index_cache_requests_total
+  usage:
+  - infra.thanos.read.index_cache_hits
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_store_nodes_grpc_connections
+  usage:
+  - infra.thanos.read.endpoints
+- importance: recommended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_store_selects_dropped_total
+  usage:
+  - infra.thanos.read.queries_dropped
 - importance: extended
   labels:
   - app
@@ -3318,11 +3743,13 @@
 - importance: extended
   labels:
   - app
+  - container
   - namespace
   - pod
   name: go_goroutines
   usage:
   - infra.alloy.resources.goroutines
+  - infra.thanos.resources.goroutines
 - importance: extended
   labels:
   - app
@@ -3339,6 +3766,50 @@
   name: go_memstats_sys_bytes
   usage:
   - infra.alloy.resources.gomemlimit
+- importance: extended
+  labels:
+  - app
+  - container
+  - grpc_code
+  - grpc_service
+  - namespace
+  name: grpc_server_handled_total
+  usage:
+  - infra.thanos.read.store_errors
+- importance: extended
+  labels:
+  - app
+  - container
+  - grpc_method
+  - grpc_service
+  - namespace
+  name: grpc_server_handling_seconds_bucket
+  usage:
+  - infra.thanos.read.series_latency
+- importance: extended
+  labels:
+  - app
+  - container
+  - handler
+  - namespace
+  name: http_request_duration_seconds_bucket
+  usage:
+  - infra.thanos.read.latency
+  - infra.thanos.write.latency
+- importance: extended
+  labels:
+  - app
+  - code
+  - container
+  - handler
+  - namespace
+  name: http_requests_total
+  usage:
+  - infra.thanos.health.query_errors
+  - infra.thanos.health.query_rate
+  - infra.thanos.health.write_errors
+  - infra.thanos.read.requests
+  - infra.thanos.write.requests
 - importance: extended
   labels: []
   name: karpenter_build_info
@@ -3679,6 +4150,62 @@
   name: prometheus_remote_storage_sent_batch_duration_seconds_bucket
   usage:
   - infra.alloy.metric_pipeline.send_latency
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_rule_evaluations_total
+  usage:
+  - infra.thanos.rule.evaluations
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_rule_group_interval_seconds
+  usage:
+  - infra.thanos.rule.slowest_groups
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_rule_group_iterations_missed_total
+  usage:
+  - infra.thanos.rule.missed
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_rule_group_last_duration_seconds
+  usage:
+  - infra.thanos.rule.slowest_groups
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: prometheus_tsdb_head_series
+  usage:
+  - infra.thanos.write.head_series
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_alert_sender_latency_seconds_bucket
+  usage:
+  - infra.thanos.rule.sender_latency
+- importance: extended
+  labels:
+  - app
+  - container
+  - namespace
+  name: thanos_objstore_bucket_operation_duration_seconds_bucket
+  usage:
+  - infra.thanos.storage.latency
 - importance: extended
   labels:
   - app

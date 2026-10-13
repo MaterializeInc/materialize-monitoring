@@ -30,6 +30,7 @@ pub mod infra_logs;
 pub mod infra_loki;
 pub mod infra_networking;
 pub mod infra_nodes;
+pub mod infra_thanos;
 pub mod queries;
 pub mod render;
 #[cfg(test)]
@@ -92,6 +93,11 @@ pub const ALL: &[Renderable] = &[
         name: infra_alloy::NAME_STEM,
         summary: "Meta monitoring for the collectors every other dashboard depends on",
         render: infra_alloy::render,
+    },
+    Renderable {
+        name: infra_thanos::NAME_STEM,
+        summary: "Meta monitoring for the metrics store every other dashboard reads",
+        render: infra_thanos::render,
     },
     Renderable {
         name: infra_networking::NAME_STEM,

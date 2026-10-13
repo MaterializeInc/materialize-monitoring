@@ -1,0 +1,1923 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Meta-monitoring queries for the metrics store itself.
+
+description: |
+  Is the metrics store healthy, and if not, which part of it broke.
+
+  Every other metrics query in this repository reads Thanos. These watch it, and
+  the same caveat applies as on the log store's own dashboard: a blank panel can
+  mean that the thing that would have reported a problem is the thing that is
+  down. Thanos answers every query on these dashboards, including these ones, so
+  a Thanos Query outage empties the whole dashboard rather than only its Reads
+  tab.
+
+  The audience is whoever operates the monitoring stack. Thanos runs as five
+  processes, and each panel says which one it reads:
+
+  * **Receive** takes remote writes from the gateway, replicates each sample to
+    its peers, and holds the last two hours in a local database before uploading
+    it to object storage as a *block*.
+  * **Query** answers PromQL by fanning out to every *store*: each receiver for
+    recent data, the store gateway for older data, and the rulers.
+  * **Store gateway** serves the blocks in object storage.
+  * **Compactor** merges small blocks into larger ones, downsamples old data, and
+    deletes blocks past retention. It is the only process that changes what is
+    in the bucket.
+  * **Ruler** evaluates the alerting and recording rules by querying Thanos
+    Query, notifies Alertmanager, and remote-writes what it records back through
+    the gateway.
+
+  ## Scoping
+
+  Two variables, written literally on the precedent `infra-loki.yaml` sets:
+
+  * **`$thanosNamespace`**: where Thanos runs. Every query carries it, so two
+    releases sharing a cluster do not read as one store.
+  * **`$thanosComponent`**: which Thanos process. Matched against `container`
+    on a metric and `component` on a log line, which are the same name. Only the
+    panels that span processes honor it. A panel about one process names that
+    process's container instead, because narrowing it to a different process
+    could only empty it.
+
+  `app="thanos"` anchors every selector. The Thanos subchart stamps it on every
+  pod, and `prometheus_remote_storage_*`, `prometheus_tsdb_*`, and the gRPC and
+  HTTP families are published by other processes in this stack too.
+
+  ## Alerts
+
+  The Thanos subchart installs the upstream mixin's alerting rules as
+  `PrometheusRule/thanos-rules` (`thanos.thanosRules`), and the Thanos ruler
+  evaluates them. Their `ALERTS` series reach Thanos through the gateway like
+  any other recorded series. They are selected here by name, `Thanos.*`,
+  because the mixin labels them with nothing but `severity`. The mixin's own
+  selectors are cluster-wide, so `$thanosNamespace` cannot narrow them either.
+
+metricImportanceHint: recommended
+
+queries:
+  # --- overview: the verdict ---------------------------------------------------
+  - id: infra.thanos.health.components_down
+    stability: experimental
+    description:
+      summary: |
+        Thanos processes whose metrics endpoint the gateway cannot scrape.
+      nominal: Zero.
+      unhealthy: |
+        Any. Every panel about that process is then empty, and an empty panel
+        reads the same as a quiet one. _Collection Health_ below names it.
+    promQL: |
+      count(
+        up{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        } == 0
+      )
+      or
+      0 * count(
+        up{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        }
+      )
+
+  - id: infra.thanos.health.alerts_firing
+    stability: experimental
+    description:
+      summary: |
+        Thanos alerts firing now.
+      nominal: Zero.
+      unhealthy: |
+        Any. _Alerts_ below names each one. The upstream Thanos mixin's runbook,
+        <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a
+        section for each alert name.
+      notes: |
+        Reads zero only while a ruler has evaluated a rule in the last five
+        minutes and written its results back within five minutes. A ruler that
+        has stopped evaluating fires nothing, and one whose write-back has
+        stalled fires alerts that never reach Thanos, so either reads as no
+        alerts. An empty reading means the alert path itself needs checking:
+        _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.
+    promQL: |
+      count(
+        max by (alertname, job, pod) (
+          ALERTS{alertname=~"Thanos.*", alertstate="firing"}
+        )
+      )
+      or
+      0 * (
+        (
+          time()
+          - max(
+            prometheus_rule_group_last_evaluation_timestamp_seconds{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+          )
+          < 300
+        )
+        and on ()
+        (
+          min(
+            max by (pod) (
+              prometheus_remote_storage_highest_timestamp_in_seconds{
+                app="thanos",
+                namespace=~"$thanosNamespace",
+                container="ruler"
+              }
+            )
+            - on (pod)
+            max by (pod) (
+              prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                app="thanos",
+                namespace=~"$thanosNamespace",
+                container="ruler"
+              }
+            )
+          )
+          < 300
+        )
+      )
+
+  - id: infra.thanos.health.write_errors
+    stability: experimental
+    description:
+      summary: |
+        The share of remote writes the receivers answered with a server error.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. The gateway retries a server error, so a short burst
+        costs nothing, but a sustained one fills the gateway's queue and it
+        starts dropping samples. _Writes_ says whether replication or the local
+        database is the cause.
+    promQL: |
+      (
+        sum(
+          rate(
+            http_requests_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive",
+              handler="receive",
+              code=~"5.."
+            }
+            %%{interval}
+          )
+        )
+        or
+        0 * sum(
+          rate(
+            http_requests_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive",
+              handler="receive"
+            }
+            %%{interval}
+          )
+        )
+      )
+      / sum(
+        rate(
+          http_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="receive",
+            handler="receive"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.health.query_errors
+    stability: experimental
+    description:
+      summary: |
+        The share of PromQL queries Thanos Query answered with a server error.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. Every dashboard and every rule evaluation goes
+        through Thanos Query, so its errors show up as empty panels everywhere
+        and as alerts that do not fire.
+      notes: |
+        A client error, such as a query that does not parse, is a 4xx and is not
+        counted.
+    promQL: |
+      (
+        sum(
+          rate(
+            http_requests_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="query",
+              handler=~"query|query_range",
+              code=~"5.."
+            }
+            %%{interval}
+          )
+        )
+        or
+        0 * sum(
+          rate(
+            http_requests_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="query",
+              handler=~"query|query_range"
+            }
+            %%{interval}
+          )
+        )
+      )
+      / sum(
+        rate(
+          http_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="query",
+            handler=~"query|query_range"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.health.rule_failures
+    stability: experimental
+    description:
+      summary: |
+        Alerting and recording rules the rulers failed to evaluate, per second.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. A rule that fails to evaluate cannot fire, so its
+        alert stays silent whatever the condition it watches.
+        _Ruler -> Evaluation_ names the rule group.
+    promQL: |
+      sum(
+        rate(
+          prometheus_rule_evaluation_failures_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="ruler"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.health.compactor_halted
+    stability: experimental
+    description:
+      summary: |
+        Whether the compactor has halted.
+      nominal: Running.
+      unhealthy: |
+        Halted. The compactor stops for good on an error it does not risk
+        repeating, most often overlapping blocks in the bucket. While it is
+        halted, retention is not enforced and the bucket grows, and queries over
+        long ranges read ever more small blocks. Its log names the cause, and a
+        restart is needed after the cause is fixed.
+    promQL: |
+      max(
+        thanos_compact_halted{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="compactor"
+        }
+      )
+
+  # --- overview: alerts --------------------------------------------------------
+  - id: infra.thanos.health.alerts
+    stability: experimental
+    description:
+      summary: |
+        Every Thanos alert that is firing or pending now, with the process it
+        is about.
+      nominal: Empty.
+      unhealthy: |
+        Any firing row. A pending row has met its condition and is waiting out
+        its `for` duration; it fires if the condition holds.
+      notes: |
+        The rules are the upstream Thanos mixin's, installed by the Thanos
+        subchart. `ALERTS` carries a rule's labels and not its annotations, so
+        the table has no runbook link. The mixin's runbook,
+        <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a
+        section for each alert name. Rows without a pod
+        are about a whole component, such as a compactor that has not run.
+    instant: true
+    promQL: |
+      max by (alertname, alertstate, severity, job, pod) (
+        ALERTS{alertname=~"Thanos.*"}
+      )
+
+  - id: infra.thanos.health.alert_history
+    stability: experimental
+    description:
+      summary: |
+        Which Thanos alerts were firing over the selected time range.
+      nominal: Empty.
+      notes: |
+        A line is the number of firing instances of that alert. Read it beside
+        the tab that alert is about to see what changed when it started.
+    promQL: |
+      count by (alertname) (
+        max by (alertname, job, pod) (
+          ALERTS{alertname=~"Thanos.*", alertstate="firing"}
+        )
+      )
+
+  # --- overview: collection ----------------------------------------------------
+  - id: infra.thanos.health.up
+    stability: experimental
+    description:
+      summary: |
+        Whether the gateway can scrape each Thanos process's own metrics
+        endpoint.
+      nominal: 1 for every process.
+      unhealthy: |
+        0 for any of them. Every other panel about that process is then empty.
+      notes: |
+        A process missing from the table entirely is not being discovered. If
+        every row is missing, either Thanos is not running in the selected
+        namespace or Thanos Query cannot answer, and the check is
+        `kubectl get pods` in that namespace.
+    instant: true
+    promQL: |
+      max by (container, pod) (
+        up{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        }
+      )
+
+  - id: infra.thanos.health.restarts
+    stability: experimental
+    description:
+      summary: |
+        Container restarts per Thanos pod over the selected time range.
+      nominal: None.
+      unhealthy: |
+        Any restart of a receiver. A receiver replays its write-ahead log on the
+        way back up, which can take minutes, and its peers carry its share of
+        writes until it rejoins. _Resources_ says whether memory was the cause.
+      notes: |
+        Only pods that were running at some point in the range appear.
+    instant: true
+    promQL: |
+      sum by (container, pod) (
+        increase(
+          kube_pod_container_status_restarts_total{
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent"
+          }
+          %%{range}
+        )
+      ) > 0
+      and on (pod)
+      max by (pod) (
+        max_over_time(
+          up{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent"
+          }
+          %%{range}
+        )
+      )
+
+  - id: infra.thanos.health.versions
+    stability: experimental
+    description:
+      summary: |
+        The Thanos version each process is running, and how many pods run it.
+      nominal: One version throughout.
+      degraded: |
+        Two versions outside a rollout. Part of the deployment did not restart
+        onto the new image.
+    instant: true
+    promQL: |
+      count by (container, version) (
+        thanos_build_info{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        }
+      )
+
+  # --- overview: throughput ----------------------------------------------------
+  - id: infra.thanos.health.samples_ingested
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the receivers accepted from remote writes.
+      nominal: |
+        A steady line, close to what the gateway reports sending. It moves with
+        the number of scrape targets, not with traffic.
+      unhealthy: |
+        A drop while the gateway is running. Either the gateway has stopped
+        sending or the receivers have stopped accepting, and _Writes_ says
+        which.
+      notes: |
+        Counts each sample once, on the receiver that took the request. Each
+        receiver then stores a copy for every replica, which is why the
+        receivers' own databases append more than this.
+    promQL: |
+      sum(
+        rate(
+          thanos_receive_write_samples_sum{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="receive",
+            code=~"2.."
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.health.query_rate
+    stability: experimental
+    description:
+      summary: |
+        PromQL queries per second Thanos Query answered, split by instant and
+        range queries.
+      nominal: |
+        A steady floor from the rulers' instant queries, with range queries on
+        top whenever someone has a dashboard open.
+      unhealthy: |
+        Instant queries falling to zero. The rulers evaluate every rule as an
+        instant query, so no instant queries means no rule is being evaluated.
+    promQL: |
+      sum by (handler) (
+        rate(
+          http_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="query",
+            handler=~"query|query_range"
+          }
+          %%{interval}
+        )
+      )
+
+  # --- writes: receive ---------------------------------------------------------
+  - id: infra.thanos.write.requests
+    stability: experimental
+    description:
+      summary: |
+        Remote-write requests per second the receivers answered, by status code.
+      nominal: Almost all 200.
+      degraded: |
+        A steady 409. The receiver refused samples it already had or that
+        arrived out of order, which happens when the gateway retries a request
+        that had partly succeeded. A trickle is harmless; a steady share means
+        samples are being lost, and _Samples Rejected by the Database_ says why.
+      unhealthy: |
+        5xx. The gateway retries those, and its queue grows until it drops.
+    promQL: |
+      sum by (code) (
+        rate(
+          http_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="receive",
+            handler="receive"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.write.latency
+    stability: experimental
+    description:
+      summary: |
+        How long the receivers took to answer a remote write, at the median and
+        the 99th percentile.
+      nominal: Tens of milliseconds at p99.
+      degraded: |
+        A p99 in seconds. A write is answered only after enough replicas have it,
+        so one slow receiver slows every write it is a replica for.
+    promQL:
+      - |
+        histogram_quantile(
+          0.50,
+          sum by (le) (
+            rate(
+              http_request_duration_seconds_bucket{
+                app="thanos",
+                namespace=~"$thanosNamespace",
+                container="receive",
+                handler="receive"
+              }
+              %%{interval}
+            )
+          )
+        )
+      - |
+        histogram_quantile(
+          0.99,
+          sum by (le) (
+            rate(
+              http_request_duration_seconds_bucket{
+                app="thanos",
+                namespace=~"$thanosNamespace",
+                container="receive",
+                handler="receive"
+              }
+              %%{interval}
+            )
+          )
+        )
+
+  - id: infra.thanos.write.samples_rejected
+    stability: experimental
+    description:
+      summary: |
+        Samples per second the receivers' databases refused, by reason.
+      nominal: Zero.
+      degraded: |
+        A steady rate of out-of-order samples. Two senders are writing the same
+        series, or the gateway is retrying writes that had already landed.
+      unhealthy: |
+        Out-of-bounds or too-old samples. The sender's clock is wrong, or it is
+        replaying data older than the receiver still accepts, and those samples
+        are lost.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_out_of_order_samples_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_out_of_bound_samples_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_too_old_samples_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.thanos.write.head_series
+    stability: experimental
+    description:
+      summary: |
+        Series each receiver holds in memory, for the last two hours of data.
+      nominal: |
+        The same on every receiver, when each one is a replica for everything,
+        and changing only as targets come and go.
+      degraded: |
+        A step up that does not come back down. A new label value is creating
+        series faster than they expire, and receiver memory grows with it.
+      notes: |
+        This is the number that sizes a receiver's memory. With the replication
+        factor equal to the number of receivers, each one holds every series.
+    promQL: |
+      sum by (pod) (
+        prometheus_tsdb_head_series{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="receive"
+        }
+      )
+
+  - id: infra.thanos.write.pending
+    stability: experimental
+    description:
+      summary: |
+        Remote-write requests each receiver is handling at once.
+      nominal: A handful.
+      degraded: |
+        Climbing steadily. The receiver is taking requests faster than it
+        finishes them, usually because a peer it replicates to is slow.
+    promQL: |
+      max by (pod) (
+        thanos_receive_pending_write_requests{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="receive"
+        }
+      )
+
+  - id: infra.thanos.write.replication
+    stability: experimental
+    description:
+      summary: |
+        Replication requests per second between receivers, by outcome.
+      nominal: All success.
+      unhealthy: |
+        Errors. A receiver could not hand a sample to a peer it is a replica
+        for. Writes still succeed while enough replicas have the sample, so
+        this degrades before anything fails.
+    promQL: |
+      sum by (result) (
+        rate(
+          thanos_receive_replications_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="receive"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.write.forward
+    stability: experimental
+    description:
+      summary: |
+        Requests per second each receiver forwarded to the peer that owns the
+        series, by outcome.
+      nominal: All success.
+      unhealthy: |
+        Errors. Usually one peer is down or restarting; _Hashring Members_ says
+        which receivers the others can see.
+    promQL: |
+      sum by (result) (
+        rate(
+          thanos_receive_forward_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="receive"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.write.hashring
+    stability: experimental
+    description:
+      summary: |
+        How many receivers each receiver counts in the hashring, the table that
+        assigns each series to its replicas.
+      nominal: The same number on every receiver, equal to the receivers running.
+      unhealthy: |
+        Receivers disagreeing. Each one routes writes by its own copy of the
+        hashring, so a disagreement sends writes to a peer that is not expecting
+        them.
+    promQL: |
+      max by (pod) (
+        thanos_receive_hashring_nodes{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="receive"
+        }
+      )
+
+  - id: infra.thanos.write.config_failed
+    stability: experimental
+    description:
+      summary: |
+        Receivers whose most recent attempt to reload the hashring
+        configuration failed.
+      nominal: Zero.
+      unhealthy: |
+        Any. The receiver keeps routing by the last configuration that loaded,
+        so nothing stops, but a change to the receivers is not in effect on it.
+    promQL: |
+      count(
+        thanos_receive_config_last_reload_successful{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="receive"
+        } == 0
+      )
+      or
+      0 * count(
+        thanos_receive_config_last_reload_successful{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="receive"
+        }
+      )
+
+  - id: infra.thanos.write.upload_age
+    stability: experimental
+    description:
+      summary: |
+        Time since each receiver last uploaded a block to object storage.
+      nominal: Under about two hours. Each receiver uploads a block every two hours.
+      unhealthy: |
+        Well over two hours. That receiver's recent data exists only on its own
+        disk. The upstream alert `ThanosReceiveNoUpload` fires on this.
+      notes: |
+        Only receivers that have uploaded at least once since they started
+        appear.
+    promQL: |
+      time()
+      - max by (pod) (
+        thanos_objstore_bucket_last_successful_upload_time{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="receive"
+        } > 0
+      )
+
+  - id: infra.thanos.write.upload_failures
+    stability: experimental
+    description:
+      summary: |
+        Failed block uploads to object storage per second, per receiver.
+      nominal: Zero.
+      unhealthy: |
+        Any. The block stays on the receiver's disk and is retried, but until it
+        uploads, the receiver is the only place that data exists. A receiver
+        that keeps failing fills its volume. _Storage -> Object Storage_ says
+        whether the bucket is refusing everyone.
+    promQL: |
+      sum by (pod) (
+        rate(
+          thanos_shipper_upload_failures_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="receive"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.write.database_failures
+    stability: experimental
+    description:
+      summary: |
+        Failures per second in the receivers' local databases, by kind:
+        compactions, truncations, reloads and checkpoints, and write-ahead log
+        corruptions.
+      nominal: Zero.
+      unhealthy: |
+        Any. Each one means data in memory is not reaching disk or a block,
+        and the receiver's log has the error.
+      notes: |
+        One expression per kind rather than one over a name pattern: a rate
+        over several metric names loses the names, and the series collide.
+    promQL:
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_compactions_failed_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_head_truncations_failed_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+        + sum(
+          rate(
+            prometheus_tsdb_wal_truncations_failed_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_reloads_failures_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+        + sum(
+          rate(
+            prometheus_tsdb_checkpoint_creations_failed_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            prometheus_tsdb_wal_corruptions_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="receive"
+            }
+            %%{interval}
+          )
+        )
+
+  # --- reads: query and store gateway -----------------------------------------
+  - id: infra.thanos.read.requests
+    stability: experimental
+    description:
+      summary: |
+        Requests per second Thanos Query answered, by endpoint and status code.
+      nominal: |
+        Mostly `query` from the rulers, `query_range` from dashboards, and the
+        label endpoints from variable pickers.
+      unhealthy: |
+        5xx on any endpoint. A 422 is a query Thanos could not evaluate, such
+        as one that matched too much data, and is the caller's to fix.
+    promQL: |
+      sum by (handler, code) (
+        rate(
+          http_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="query"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.read.latency
+    stability: experimental
+    description:
+      summary: |
+        How long Thanos Query took to answer instant and range queries, at the
+        99th percentile.
+      nominal: |
+        Under a second for instant queries. Range queries depend on the range
+        and on how much has to come from object storage.
+      degraded: |
+        Instant queries in seconds. Every rule evaluation is an instant query,
+        so slow instant queries delay every alert.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (handler, le) (
+          rate(
+            http_request_duration_seconds_bucket{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="query",
+              handler=~"query|query_range"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.thanos.read.concurrency
+    stability: experimental
+    description:
+      summary: |
+        Queries Thanos Query is evaluating at once, against the most it allows.
+      nominal: Well below the limit.
+      degraded: |
+        At the limit. Further queries wait their turn, which shows up as slow
+        dashboards and late rule evaluations rather than as errors.
+    promQL:
+      - |
+        sum(
+          thanos_query_concurrent_gate_queries_in_flight{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="query"
+          }
+        )
+      - |
+        sum(
+          thanos_query_concurrent_gate_queries_max{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="query"
+          }
+        )
+
+  - id: infra.thanos.read.endpoints
+    stability: experimental
+    description:
+      summary: |
+        Stores each Thanos Query instance is connected to, by kind, taking the
+        worst-connected instance.
+      nominal: |
+        One per receiver, at least one store gateway, and one per ruler.
+      unhealthy: |
+        Fewer receivers than are running. Thanos Query answers without the
+        missing store and says nothing, so recent data from it is absent from
+        every panel. The receivers replicate, so one missing receiver loses
+        nothing while the others hold its series.
+      notes: |
+        The store gateway is reached through its Service, so it counts once
+        however many replicas run.
+    promQL: |
+      min by (store_type) (
+        sum by (pod, store_type) (
+          thanos_store_nodes_grpc_connections{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="query"
+          }
+        )
+      )
+
+  - id: infra.thanos.read.store_errors
+    stability: experimental
+    description:
+      summary: |
+        The share of store requests each process failed with a server error.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. Thanos Query treats a failed store as a partial
+        response, so the query succeeds with that store's data missing.
+    promQL: |
+      (
+        sum by (container) (
+          rate(
+            grpc_server_handled_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container=~"$thanosComponent",
+              grpc_service="thanos.Store",
+              grpc_code=~"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded"
+            }
+            %%{interval}
+          )
+        )
+        or
+        0 * sum by (container) (
+          rate(
+            grpc_server_handled_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container=~"$thanosComponent",
+              grpc_service="thanos.Store"
+            }
+            %%{interval}
+          )
+        )
+      )
+      / sum by (container) (
+        rate(
+          grpc_server_handled_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent",
+            grpc_service="thanos.Store"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.read.series_latency
+    stability: experimental
+    description:
+      summary: |
+        How long each kind of store took to answer a request for series, at the
+        99th percentile.
+      nominal: |
+        Receivers fastest, because they answer from memory. The store gateway is
+        slower, because it can fetch from object storage.
+      degraded: |
+        The store gateway in seconds. Its index cache is too small, or the
+        bucket is slow; _Store Gateway_ below and _Storage -> Object Storage_
+        tell those apart.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (container, le) (
+          rate(
+            grpc_server_handling_seconds_bucket{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container=~"$thanosComponent",
+              grpc_service="thanos.Store",
+              grpc_method="Series"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.thanos.read.blocks_loaded
+    stability: experimental
+    description:
+      summary: |
+        Blocks each store gateway has loaded from object storage and can serve.
+      nominal: |
+        The same on every store gateway, rising each time a receiver uploads
+        and falling each time the compactor merges or deletes.
+      unhealthy: |
+        One store gateway well below the others. It cannot see part of the
+        bucket, and queries it answers are missing that data.
+    promQL: |
+      sum by (pod) (
+        thanos_bucket_store_blocks_loaded{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="storegateway"
+        }
+      )
+
+  - id: infra.thanos.read.block_failures
+    stability: experimental
+    description:
+      summary: |
+        Blocks per second each store gateway failed to load or to drop.
+      nominal: Zero.
+      unhealthy: |
+        Any. A block that fails to load is not served. Its log names the block,
+        and a block the compactor has since deleted clears on its own.
+    promQL: |
+      sum by (pod) (
+        rate(
+          thanos_bucket_store_block_load_failures_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="storegateway"
+          }
+          %%{interval}
+        )
+        + ignoring (operation)
+        rate(
+          thanos_bucket_store_block_drop_failures_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="storegateway"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.read.index_cache_hits
+    stability: experimental
+    description:
+      summary: |
+        The share of index lookups the store gateways answered from their cache,
+        by kind of index entry.
+      nominal: High, after the store gateways have been running a while.
+      degraded: |
+        Low and staying low. The cache is too small for the working set, so
+        each query fetches index data from object storage again.
+    promQL: |
+      sum by (item_type) (
+        rate(
+          thanos_store_index_cache_hits_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="storegateway"
+          }
+          %%{interval}
+        )
+      )
+      / sum by (item_type) (
+        rate(
+          thanos_store_index_cache_requests_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="storegateway"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.read.queries_dropped
+    stability: experimental
+    description:
+      summary: |
+        Store requests per second refused for exceeding a limit, by process.
+      nominal: Zero.
+      unhealthy: |
+        Any. The query that sent it gets a partial or failed response. A single
+        query asking for too many series is the usual cause.
+    promQL:
+      - |
+        sum by (container) (
+          rate(
+            thanos_store_selects_dropped_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container=~"$thanosComponent"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum by (container) (
+          rate(
+            thanos_bucket_store_queries_dropped_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="storegateway"
+            }
+            %%{interval}
+          )
+        )
+
+  # --- ruler -------------------------------------------------------------------
+  - id: infra.thanos.rule.evaluations
+    stability: experimental
+    description:
+      summary: |
+        Rules evaluated per second, per ruler.
+      nominal: |
+        A flat line on each ruler. The rule groups run on fixed intervals, so
+        this changes only when rules are added or removed.
+      unhealthy: |
+        A ruler at zero. Nothing it holds is being evaluated, and its alerts
+        cannot fire.
+    promQL: |
+      sum by (pod) (
+        rate(
+          prometheus_rule_evaluations_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="ruler"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.rule.failures
+    stability: experimental
+    description:
+      summary: |
+        Rule evaluations per second that failed, by rule group.
+      nominal: Zero.
+      unhealthy: |
+        Any. Every rule in the group is affected. Thanos Query being down or
+        slow fails every group at once; a single group failing on its own has a
+        rule that no longer evaluates, and the ruler's log has the error.
+    promQL: |
+      sum by (group) (
+        label_replace(
+          rate(
+            prometheus_rule_evaluation_failures_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+            %%{interval}
+          ),
+          "group", "$1", "rule_group", ".*;(.*)"
+        )
+      ) > 0
+
+  - id: infra.thanos.rule.missed
+    stability: experimental
+    description:
+      summary: |
+        Evaluations skipped because the previous one was still running, by rule
+        group.
+      nominal: Zero.
+      unhealthy: |
+        Any. The group takes longer than its interval, so its rules run less
+        often than they claim to and their alerts fire late.
+    promQL: |
+      sum by (group) (
+        label_replace(
+          increase(
+            prometheus_rule_group_iterations_missed_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+            %%{interval}
+          ),
+          "group", "$1", "rule_group", ".*;(.*)"
+        )
+      ) > 0
+
+  - id: infra.thanos.rule.slowest_groups
+    stability: experimental
+    description:
+      summary: |
+        The ten rule groups whose last evaluation took the largest share of
+        their interval.
+      nominal: Small fractions.
+      degraded: |
+        Any group near 1. It is about to start missing evaluations.
+    instant: true
+    promQL: |
+      topk(
+        10,
+        max by (group) (
+          label_replace(
+            prometheus_rule_group_last_duration_seconds{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+            / prometheus_rule_group_interval_seconds{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            },
+            "group", "$1", "rule_group", ".*;(.*)"
+          )
+        )
+      )
+
+  - id: infra.thanos.rule.loaded
+    stability: experimental
+    description:
+      summary: |
+        Rules each ruler has loaded.
+      nominal: The same number on every ruler.
+      unhealthy: |
+        Rulers disagreeing, or a drop to zero. A ruler that rejected its rule
+        files keeps the last set that loaded, so a rule added since is not
+        running there. _Config Reload Failures_ beside this says whether that
+        happened.
+    promQL: |
+      sum by (pod) (
+        thanos_rule_loaded_rules{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="ruler"
+        }
+      )
+
+  - id: infra.thanos.rule.config_failed
+    stability: experimental
+    description:
+      summary: |
+        Rulers whose most recent attempt to reload their rule files failed.
+      nominal: Zero.
+      unhealthy: |
+        Any. One bad rule rejects the whole set, so a ruler in this state is
+        running stale rules. Its log names the file and the rule.
+    promQL: |
+      count(
+        thanos_rule_config_last_reload_successful{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="ruler"
+        } == 0
+      )
+      or
+      0 * count(
+        thanos_rule_config_last_reload_successful{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="ruler"
+        }
+      )
+
+  - id: infra.thanos.rule.alerts_sent
+    stability: experimental
+    description:
+      summary: |
+        Alert notifications per second the rulers sent, per Alertmanager.
+      nominal: |
+        Zero when nothing is firing, and otherwise steady: a ruler resends every
+        firing alert on each evaluation.
+      notes: |
+        Each ruler sends to every Alertmanager replica, and the replicas agree
+        among themselves on who notifies, so every line should match.
+    promQL: |
+      sum by (alertmanager) (
+        rate(
+          thanos_alert_sender_alerts_sent_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="ruler"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.rule.alerts_dropped
+    stability: experimental
+    description:
+      summary: |
+        Alerts per second the rulers dropped, before sending and while sending.
+      nominal: Zero.
+      unhealthy: |
+        Any. A dropped alert is a notification nobody receives. Dropped before
+        sending means the queue was full; dropped while sending means no
+        Alertmanager accepted it.
+    promQL:
+      - |
+        sum(
+          rate(
+            thanos_alert_queue_alerts_dropped_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            thanos_alert_sender_alerts_dropped_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.thanos.rule.queue
+    stability: experimental
+    description:
+      summary: |
+        Alerts waiting to be sent, against the queue's capacity.
+      nominal: Close to zero.
+      degraded: |
+        Climbing toward capacity. Alertmanager is slow to accept, and after the
+        queue is full alerts are dropped.
+    promQL:
+      - |
+        sum(
+          thanos_alert_queue_length{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="ruler"
+          }
+        )
+      - |
+        sum(
+          thanos_alert_queue_capacity{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="ruler"
+          }
+        )
+
+  - id: infra.thanos.rule.sender_latency
+    stability: experimental
+    description:
+      summary: |
+        How long each Alertmanager took to accept a batch of alerts, at the 99th
+        percentile.
+      nominal: Milliseconds.
+      degraded: |
+        Seconds. Notifications arrive late, and the queue starts to fill.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (alertmanager, le) (
+          rate(
+            thanos_alert_sender_latency_seconds_bucket{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="ruler"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.thanos.rule.remote_write_lag
+    stability: experimental
+    description:
+      summary: |
+        How far behind each ruler is in writing its results back, in seconds.
+      nominal: A few seconds.
+      unhealthy: |
+        Climbing. Recorded series and the `ALERTS` series reach Thanos late, so
+        panels built on them, including the alert panels on this dashboard,
+        show stale values. The rulers write through the gateway, so
+        _Alloy Meta Monitoring_ is where to look next.
+    promQL: |
+      max by (pod) (
+        prometheus_remote_storage_highest_timestamp_in_seconds{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="ruler"
+        }
+      )
+      - ignoring (remote_name, url) group_right ()
+      max by (pod, remote_name, url) (
+        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="ruler"
+        }
+      )
+
+  - id: infra.thanos.rule.remote_write_failures
+    stability: experimental
+    description:
+      summary: |
+        Samples per second each ruler failed to write back, after retries.
+      nominal: Zero.
+      unhealthy: |
+        Any. Those recorded samples and alert states are lost.
+    promQL: |
+      sum by (pod) (
+        rate(
+          prometheus_remote_storage_samples_failed_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="ruler"
+          }
+          %%{interval}
+        )
+      )
+
+  # --- storage: compactor ------------------------------------------------------
+  - id: infra.thanos.storage.backlog
+    stability: experimental
+    description:
+      summary: |
+        Work the compactor has planned and not yet done: compactions, the blocks
+        they would merge, blocks waiting to be downsampled, and blocks waiting
+        to be deleted.
+      nominal: |
+        Close to zero between runs, with a brief rise each time receivers
+        upload.
+      unhealthy: |
+        Climbing and staying up. The compactor is halted or cannot keep up, and
+        long-range queries read ever more small blocks.
+    promQL:
+      - |
+        sum(
+          thanos_compact_todo_compactions{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="compactor"
+          }
+        )
+      - |
+        sum(
+          thanos_compact_todo_compaction_blocks{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="compactor"
+          }
+        )
+      - |
+        sum(
+          thanos_compact_todo_downsample_blocks{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="compactor"
+          }
+        )
+      - |
+        sum(
+          thanos_compact_todo_deletion_blocks{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="compactor"
+          }
+        )
+
+  - id: infra.thanos.storage.compactions
+    stability: experimental
+    description:
+      summary: |
+        Compactions per hour, by the resolution of the blocks merged.
+      nominal: |
+        Raw-resolution compactions every couple of hours, as receivers upload.
+        The downsampled resolutions appear only after data is old enough to
+        downsample.
+      unhealthy: |
+        None at all over several hours while receivers are uploading. Read
+        _Compactor_ on the Overview tab first.
+      notes: |
+        Resolution is in milliseconds: 0 is raw data, 300000 is five-minute
+        downsampling and 3600000 is one-hour.
+    promQL: |
+      sum by (resolution) (
+        increase(
+          thanos_compact_group_compactions_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container="compactor"
+          }
+          [1h]
+        )
+      )
+
+  - id: infra.thanos.storage.compactor_failures
+    stability: experimental
+    description:
+      summary: |
+        Compactor operations per second that failed, by kind: compaction,
+        downsampling, garbage collection, and deleting blocks.
+      nominal: Zero.
+      unhealthy: |
+        Any. A failed compaction is retried, and repeated failures halt the
+        compactor. The compactor's log names the block.
+    promQL:
+      - |
+        sum(
+          rate(
+            thanos_compact_group_compactions_failures_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="compactor"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            thanos_compact_downsample_failures_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="compactor"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            thanos_compact_garbage_collection_failures_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="compactor"
+            }
+            %%{interval}
+          )
+        )
+      - |
+        sum(
+          rate(
+            thanos_compact_block_cleanup_failures_total{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container="compactor"
+            }
+            %%{interval}
+          )
+        )
+
+  - id: infra.thanos.storage.blocks
+    stability: experimental
+    description:
+      summary: |
+        Blocks the compactor found in the bucket on its last pass, by state.
+      nominal: |
+        `loaded` growing slowly, with `marked-for-deletion` and `duplicate`
+        rising and falling as compactions replace blocks.
+      unhealthy: |
+        `loaded` climbing without end. Blocks are not being merged; read the
+        backlog beside this.
+      notes: |
+        States with no blocks are left out.
+    promQL: |
+      max by (state) (
+        thanos_blocks_meta_synced{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container="compactor"
+        }
+      ) > 0
+
+  # --- storage: object storage -------------------------------------------------
+  - id: infra.thanos.storage.operations
+    stability: experimental
+    description:
+      summary: |
+        Object-storage requests per second, by process and operation.
+      nominal: |
+        Mostly reads from the store gateway and the compactor. Uploads are
+        bursts, every two hours from each receiver and after each compaction.
+    promQL: |
+      sum by (container, operation) (
+        rate(
+          thanos_objstore_bucket_operations_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.storage.failures
+    stability: experimental
+    description:
+      summary: |
+        The share of object-storage requests that failed, by process.
+      nominal: Zero.
+      unhealthy: |
+        Anything sustained. Every process failing at once is the bucket, its
+        credentials, or the network to it. One process alone is that process's
+        configuration.
+    promQL: |
+      sum by (container) (
+        rate(
+          thanos_objstore_bucket_operation_failures_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent"
+          }
+          %%{interval}
+        )
+      )
+      / sum by (container) (
+        rate(
+          thanos_objstore_bucket_operations_total{
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent"
+          }
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.storage.latency
+    stability: experimental
+    description:
+      summary: |
+        How long object-storage requests took, at the 99th percentile, by
+        process and operation.
+      nominal: |
+        Tens of milliseconds for small reads, longer for uploads, which carry
+        whole blocks.
+      degraded: |
+        Reads in seconds. The store gateway answers slowly, and so does every
+        query over older data.
+    promQL: |
+      histogram_quantile(
+        0.99,
+        sum by (container, operation, le) (
+          rate(
+            thanos_objstore_bucket_operation_duration_seconds_bucket{
+              app="thanos",
+              namespace=~"$thanosNamespace",
+              container=~"$thanosComponent"
+            }
+            %%{interval}
+          )
+        )
+      )
+
+  - id: infra.thanos.storage.upload_age
+    stability: experimental
+    description:
+      summary: |
+        Time since each pod last uploaded to object storage.
+      nominal: |
+        Under about two hours for each receiver, which uploads a block every two
+        hours. The compactor uploads after each compaction.
+      unhealthy: |
+        A receiver well over two hours. Its recent data exists only on its own
+        disk. The upstream alert `ThanosReceiveNoUpload` fires on this.
+      notes: |
+        Only pods that have uploaded at least once since they started appear.
+        The store gateway and the ruler never upload.
+    promQL: |
+      time()
+      - max by (container, pod) (
+        thanos_objstore_bucket_last_successful_upload_time{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        } > 0
+      )
+
+  # --- resources ---------------------------------------------------------------
+  - id: infra.thanos.resources.memory
+    stability: experimental
+    description:
+      summary: |
+        Memory each Thanos pod is using, by working set.
+      nominal: |
+        Receivers well above everything else, because they hold the last two hours
+        in memory, and flat between uploads.
+      unhealthy: |
+        A receiver climbing toward its node's capacity. A receiver that runs
+        out of memory is killed and replays its write-ahead log on restart,
+        which takes longer the larger it has grown.
+      notes: |
+        The working set is what the kernel's memory limit is enforced against.
+        The chart sets no memory limit on Thanos by default, so the ceiling is
+        the node's.
+    promQL: |
+      max by (container, pod) (
+        container_memory_working_set_bytes{
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        }
+      )
+      and on (pod)
+      max by (pod) (
+        up{
+          app="thanos",
+          namespace=~"$thanosNamespace"
+        }
+      )
+
+  - id: infra.thanos.resources.cpu
+    stability: experimental
+    description:
+      summary: |
+        CPU each Thanos pod is using, in cores.
+      nominal: |
+        Steady for receivers and rulers, bursty for the compactor and the store
+        gateway.
+      degraded: |
+        A receiver pinned high. Writes slow down, and the gateway's queue
+        grows.
+    promQL: |
+      sum by (container, pod) (
+        rate(
+          container_cpu_usage_seconds_total{
+            namespace=~"$thanosNamespace",
+            container=~"$thanosComponent"
+          }
+          %%{interval}
+        )
+      )
+      and on (pod)
+      max by (pod) (
+        up{
+          app="thanos",
+          namespace=~"$thanosNamespace"
+        }
+      )
+
+  - id: infra.thanos.resources.goroutines
+    stability: experimental
+    description:
+      summary: |
+        Goroutines in each Thanos process.
+      nominal: Flat.
+      degraded: |
+        Climbing without end. Requests are piling up inside the process, most
+        often in Thanos Query or a store waiting on something slow.
+    promQL: |
+      max by (container, pod) (
+        go_goroutines{
+          app="thanos",
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        }
+      )
+
+  - id: infra.thanos.resources.terminations
+    stability: experimental
+    description:
+      summary: |
+        Why each Thanos container last stopped, for those that have stopped
+        since their pod started.
+      nominal: Empty.
+      unhealthy: |
+        `OOMKilled`. The container ran out of memory, and _Memory_ beside this
+        shows what it was holding.
+    instant: true
+    promQL: |
+      max by (container, pod, reason) (
+        kube_pod_container_status_last_terminated_reason{
+          namespace=~"$thanosNamespace",
+          container=~"$thanosComponent"
+        }
+      )
+      and on (pod)
+      max by (pod) (
+        up{
+          app="thanos",
+          namespace=~"$thanosNamespace"
+        }
+      )
+
+  # --- logs --------------------------------------------------------------------
+  - id: infra.thanos.logs.stream
+    stability: experimental
+    description:
+      summary: |
+        Thanos's own log feed, newest first, for the selected components and
+        levels.
+      notes: |
+        These logs are stored in Loki, not Thanos, so this feed keeps working
+        when Thanos does not. That makes it the place to start when every other
+        panel is empty.
+    logQL: |
+      {
+        app="thanos",
+        namespace=~"$thanosNamespace",
+        component=~"$thanosComponent",
+        %%{mzLogLevelFilter}
+      }
+        %%{mzLogSearchFilter}
+
+  - id: infra.thanos.logs.warnings.stream
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines from Thanos, newest first.
+      nominal: |
+        Quiet, apart from occasional retries.
+      unhealthy: |
+        A steady stream from one component. A compactor that halted logs the
+        reason here once and then goes quiet, so look back to when it stopped.
+      notes: |
+        Independent of the level picker, like the other warning feeds in this
+        repository.
+
+        Leaves out the ruler's `PromQL info:` lines. The ruler logs PromQL's
+        informational annotations at WARN, such as `rate()` over a counter whose
+        name lacks `_total`, once per evaluation. On a reference install that is
+        four lines a minute about rules that are working.
+    logQL: |
+      {
+        app="thanos",
+        namespace=~"$thanosNamespace",
+        component=~"$thanosComponent",
+        level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+      }
+        != "PromQL info:"
+        %%{mzLogSearchFilter}
+
+  - id: infra.thanos.logs.rate.by_component
+    stability: experimental
+    description:
+      summary: |
+        Thanos's own log lines per second, split by component.
+      nominal: A steady, low baseline.
+      unhealthy: |
+        A sharp step up confined to one component. That is a single process in
+        a retry loop.
+    logQL: |
+      sum by (component) (
+        rate(
+          {
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            component=~"$thanosComponent",
+            %%{mzLogLevelFilter}
+          }
+            %%{mzLogSearchFilter}
+          %%{interval}
+        )
+      )
+
+  - id: infra.thanos.logs.warnings.rate
+    stability: experimental
+    description:
+      summary: |
+        Warning-and-worse lines per minute from Thanos, across the selected
+        components.
+      nominal: Zero, or close to it.
+      unhealthy: |
+        A sustained non-zero rate. The feed below says which component and why.
+      notes: |
+        Leaves out the ruler's `PromQL info:` lines, for the reason the warning
+        feed gives.
+    logQL: |
+      sum(
+        rate(
+          {
+            app="thanos",
+            namespace=~"$thanosNamespace",
+            component=~"$thanosComponent",
+            level=~"WARN|WARNING|ERROR|CRITICAL|FATAL"
+          }
+            != "PromQL info:"
+            %%{mzLogSearchFilter}
+          [1m]
+        )
+      ) * 60
+
+metricOverrides:
+  # The verdict row. A deployment trimmed to `essential` should still be able to
+  # say whether the metrics store is working.
+  - metricPattern: "ALERTS|thanos_compact_halted|thanos_build_info|prometheus_rule_evaluation_failures_total|prometheus_rule_group_last_evaluation_timestamp_seconds"
+    importance: essential
+    priority: 10
+
+  # The histograms carry a series per bucket per label set. Worth having for a
+  # diagnosis, not worth paying for on a metered destination by default.
+  - metricPattern: "(http_request_duration|grpc_server_handling|thanos_objstore_bucket_operation_duration|thanos_alert_sender_latency)_seconds_(bucket|sum)"
+    importance: extended
+    priority: 5
+
+  # Generic families. Tiers select by metric name, and every Go process and
+  # every gRPC or HTTP server in the stack can publish these, not only Thanos,
+  # with a series per handler, method or rule group. A metered destination does
+  # not receive every target's copy by default. The `prometheus_tsdb_*` failure
+  # counters stay where they are: one series per process, and `infra-alloy`
+  # reads some of them too.
+  - metricPattern: "go_goroutines|http_requests_total|grpc_server_handled_total|prometheus_tsdb_head_series|prometheus_rule_(evaluations_total|group_.*)"
+    importance: extended
+    priority: 5

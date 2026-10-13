@@ -1096,9 +1096,12 @@ and long enough to overflow the column.
 Leave it unset on any table that joins several queries.
 Blank is the honest rendering of "this row has none", and a genuinely empty panel
 still falls back to Grafana's own "No data".
-Single-query tables are unaffected: their columns come from one result, so a row
-exists in full or not at all, and `noValue` only fires when the whole panel is
-empty — which is exactly what it is for.
+A single-query table is unaffected only when every series carries every label it shows.
+Then its columns come from one result, a row exists in full or not at all, and `noValue` only fires when the whole
+panel is empty, which is what it is for.
+A label some series lack is a sparse column all the same: `ThanosCompactHasNotRun` carries no `pod`, so on
+`infra-thanos`'s alert table the cell beside it read "No Thanos alert is firing or pending" next to a firing alert.
+Keep the panel's `noValue` and override it on the sparse columns with a dash.
 
 ## Shade single-series panels, never graphs with several lines
 
@@ -1334,6 +1337,54 @@ against the pass it belongs to.
 `test_queries()` uses `DashboardScope::default()`, where the operator namespace is the pinned literal rather than
 `$operatorNamespace` — an assertion about a rendered selector under the default scope is about a rendering that never
 ships.
+
+## Firing alerts lead an Overview tab
+
+When a dashboard's subject has alerting rules, its Overview tab shows what is firing before any measurement.
+A reader who arrived from a notification lands on the alert, and a reader who arrived cold learns that someone's rule already reached a conclusion.
+The rest of the tab is evidence for or against it.
+
+The shape, as `infra-thanos` draws it:
+
+1. A count of firing alerts in the verdict row, with health colors.
+2. An **Alerts** row directly below the verdict, above Collection Health: a table of every alert firing or pending now, beside a timeseries of firing alerts over the range.
+
+The rules that keep those panels honest:
+
+- **Select by a label the rules carry, not by alert names written into the dashboard.**
+  The registry's rules carry `component`, so a new rule appears without a dashboard change.
+  Fall back to a name prefix only where the rules carry nothing else; the upstream Thanos mixin's carry only `severity`, so `infra-thanos` selects `alertname=~"Thanos.*"`.
+- **Deduplicate across rulers** with `max by (alertname, job, pod)` before counting.
+  Two ruler replicas evaluate the same rule.
+- **Draw the count's zero from a ruler that is evaluating and delivering**, never from `or vector(0)`.
+  A ruler that has stopped evaluating fires nothing.
+  A ruler whose write-back has stalled keeps evaluating, but its `ALERTS` series go stale in Thanos while its own metrics stay fresh.
+  "No alerts" from either is the reading most worth avoiding:
+
+  ```promql
+  count(max by (alertname, job, pod) (ALERTS{alertname=~"Thanos.*", alertstate="firing"}))
+  or
+  0 * (
+    (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{container="ruler"}) < 300)
+    and on ()
+    (
+      min(
+        max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{container="ruler"})
+        - on (pod)
+        max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{container="ruler"})
+      ) < 300
+    )
+  )
+  ```
+
+- **The table is a table of current facts**, so it is an instant query with `table_format`; see
+  [A table of current facts is an instant query](#a-table-of-current-facts-is-an-instant-query).
+  Drop `Value`, which is always 1 on an `ALERTS` series.
+- **Know which ruler wrote the series.**
+  `ALERTS` reaches Thanos from the Thanos ruler, through the gateway, so a gateway outage delays it.
+  Check that a log-derived rule's alerts reach Thanos before drawing them; the Loki ruler evaluates those.
+- **Exempt the alert panels from namespace-scoping tests by name**, and assert the exemption in both directions, as `infra-thanos` does.
+  An alert's labels come from its rule, and a rule's selector may span every namespace.
 
 ## PromQL recipes
 
