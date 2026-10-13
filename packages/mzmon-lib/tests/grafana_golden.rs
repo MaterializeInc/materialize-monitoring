@@ -30,7 +30,7 @@ struct DashboardResource {
 fn golden_env_top_deserializes() {
     let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
     let res: DashboardResource =
-        serde_yaml_ng::from_str(&raw).expect("deserialize golden dashboard");
+        mzmon_lib::yaml::from_str(&raw).expect("deserialize golden dashboard");
 
     assert_eq!(res.api_version, "dashboard.grafana.app/v2");
     assert_eq!(res.kind, "Dashboard");
@@ -49,7 +49,7 @@ fn golden_env_top_deserializes() {
 fn golden_panel_plugins_are_all_generated() {
     let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
     let res: DashboardResource =
-        serde_yaml_ng::from_str(&raw).expect("deserialize golden dashboard");
+        mzmon_lib::yaml::from_str(&raw).expect("deserialize golden dashboard");
 
     let known = [
         dashboardv2_plugin_ids::TIMESERIES,
@@ -96,9 +96,10 @@ mod dashboardv2_plugin_ids {
 #[test]
 fn golden_env_top_round_trips_without_loss() {
     let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
-    let original: serde_json::Value = serde_yaml_ng::from_str(&raw).expect("parse golden as yaml");
+    let original: serde_json::Value =
+        mzmon_lib::yaml::from_str(&raw).expect("parse golden as yaml");
 
-    let parsed: DashboardResource = serde_yaml_ng::from_str(&raw).expect("deserialize golden");
+    let parsed: DashboardResource = mzmon_lib::yaml::from_str(&raw).expect("deserialize golden");
     let round_tripped = serde_json::json!({
         "apiVersion": parsed.api_version,
         "kind": parsed.kind,
@@ -180,7 +181,7 @@ fn panel_presets_reproduce_the_golden_options_blocks() {
     use mzmon_lib::grafana::panel::Panel;
 
     let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
-    let value: serde_json::Value = serde_yaml_ng::from_str(&raw).expect("parse golden");
+    let value: serde_json::Value = mzmon_lib::yaml::from_str(&raw).expect("parse golden");
 
     let mut mismatches = Vec::new();
     let mut compared = 0usize;
@@ -337,7 +338,7 @@ fn the_layout_api_reproduces_the_golden_tree() {
     use mzmon_lib::grafana::panel::Panel;
 
     let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
-    let value: serde_json::Value = serde_yaml_ng::from_str(&raw).expect("parse golden");
+    let value: serde_json::Value = mzmon_lib::yaml::from_str(&raw).expect("parse golden");
     let want = &value["spec"]["layout"];
 
     // Walk the golden tree and rebuild it, taking every knob from the golden so
@@ -470,7 +471,7 @@ fn threshold_generators_reproduce_the_golden_ladders() {
     const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 
     let raw = std::fs::read_to_string(golden_path()).expect("read golden dashboard");
-    let value: serde_json::Value = serde_yaml_ng::from_str(&raw).expect("parse golden");
+    let value: serde_json::Value = mzmon_lib::yaml::from_str(&raw).expect("parse golden");
 
     // Every generator call the Python dashboards make, per `grep threshold\.`.
     let candidates = vec![

@@ -53,7 +53,7 @@ spec:
                         * on (namespace, pool_id) group_left (name)
                           max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~"$cephNamespace", name=~".+\\.rgw\\.buckets\\.data"})
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |
                       max by (name) (
@@ -83,7 +83,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE3377'
+                  fixedColor: "#EE3377"
                   mode: shades
                 min: 0
                 noValue: No RGW bucket data pool in the selected Ceph cluster.
@@ -101,7 +101,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ceph-capacity-pools:
       kind: Panel
       spec:
@@ -124,7 +124,7 @@ spec:
                         * on (namespace, pool_id) group_left (name)
                           max by (namespace, pool_id, name) (ceph_pool_metadata{namespace=~"$cephNamespace"})
                       ) > 0
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |
                       max by (name) (
@@ -167,7 +167,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-capacity-raw:
       kind: Panel
       spec:
@@ -242,7 +242,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-health:
       kind: Panel
       spec:
@@ -288,20 +288,20 @@ spec:
               defaults:
                 mappings:
                 - options:
-                    '0':
-                      color: '#A2F49B'
+                    "0":
+                      color: "#A2F49B"
                       index: 1
                       text: HEALTH_OK
                   type: value
                 - options:
-                    '1':
-                      color: '#F19903'
+                    "1":
+                      color: "#F19903"
                       index: 2
                       text: HEALTH_WARN
                   type: value
                 - options:
-                    '2':
-                      color: '#AB0003'
+                    "2":
+                      color: "#AB0003"
                       index: 3
                       text: HEALTH_ERR
                   type: value
@@ -309,11 +309,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 1
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 2
               overrides: []
             options:
@@ -328,7 +328,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ceph-health-checks:
       kind: Panel
       spec:
@@ -396,7 +396,7 @@ spec:
                   align: auto
                   filterable: true
                   inspect: false
-                noValue: 'No health checks raised: Ceph reports HEALTH_OK.'
+                noValue: "No health checks raised: Ceph reports HEALTH_OK."
               overrides: []
             options:
               cellHeight: sm
@@ -407,7 +407,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     ceph-objects-degraded:
       kind: Panel
       spec:
@@ -457,17 +457,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 250.75
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 500.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 750.25
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1000
                 unit: short
               overrides: []
@@ -483,7 +483,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ceph-osd-latency:
       kind: Panel
       spec:
@@ -502,7 +502,7 @@ spec:
                   spec:
                     expr: |
                       max by (ceph_daemon) (ceph_osd_commit_latency_ms{namespace=~"$cephNamespace"}) / 1000
-                    legendFormat: '{{ceph_daemon}}'
+                    legendFormat: "{{ceph_daemon}}"
                     qryType: 1
                     query: |
                       max by (ceph_daemon) (ceph_osd_commit_latency_ms{namespace=~"$cephNamespace"}) / 1000
@@ -543,7 +543,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-osd-utilization:
       kind: Panel
       spec:
@@ -565,7 +565,7 @@ spec:
                         ceph_osd_stat_bytes_used{namespace=~"$cephNamespace"}
                         / ceph_osd_stat_bytes{namespace=~"$cephNamespace"}
                       )
-                    legendFormat: '{{ceph_daemon}}'
+                    legendFormat: "{{ceph_daemon}}"
                     qryType: 1
                     query: |
                       max by (ceph_daemon) (
@@ -599,11 +599,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.75
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.85
                 unit: percentunit
               overrides: []
@@ -619,7 +619,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-osds-down:
       kind: Panel
       spec:
@@ -669,17 +669,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -695,7 +695,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ceph-placement-groups:
       kind: Panel
       spec:
@@ -807,7 +807,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-raw-used:
       kind: Panel
       spec:
@@ -861,11 +861,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.75
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.85
                 unit: percentunit
               overrides: []
@@ -881,7 +881,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ceph-rgw-failure-ratio:
       kind: Panel
       spec:
@@ -935,11 +935,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.05
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.25
                 unit: percentunit
               overrides: []
@@ -955,7 +955,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ceph-rgw-latency:
       kind: Panel
       spec:
@@ -1044,11 +1044,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: s
               overrides: []
@@ -1064,7 +1064,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-rgw-queue:
       kind: Panel
       spec:
@@ -1140,7 +1140,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-rgw-requests:
       kind: Panel
       spec:
@@ -1251,7 +1251,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-rgw-throughput:
       kind: Panel
       spec:
@@ -1324,7 +1324,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ceph-version:
       kind: Panel
       spec:
@@ -1349,7 +1349,7 @@ spec:
                         )
                       )
                     instant: true
-                    legendFormat: '{{ceph_version}}'
+                    legendFormat: "{{ceph_version}}"
                     qryType: 1
                     query: |
                       count by (ceph_version) (
@@ -1384,7 +1384,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE3377'
+                  fixedColor: "#EE3377"
                   mode: shades
                 noValue: Ceph has not reported this. The gateway and disk counters need rook-ceph-exporter scraped as well as the manager.
               overrides: []
@@ -1403,7 +1403,7 @@ spec:
                 valueSize: 20
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     compaction-busy:
       kind: Panel
       spec:
@@ -1448,7 +1448,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -1515,7 +1515,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     compaction-outcomes:
       kind: Panel
       spec:
@@ -1660,7 +1660,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     compaction-queue-wait:
       kind: Panel
       spec:
@@ -1726,7 +1726,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     object-store-none-detected:
       kind: Panel
       spec:
@@ -1762,7 +1762,7 @@ spec:
 
                 The other tabs here need none of this: they are persist's own measurement of the store, and work on every one.
               mode: markdown
-          version: ''
+          version: ""
     ops-by-type:
       kind: Panel
       spec:
@@ -1783,7 +1783,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_external_started_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"blob_.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -1824,7 +1824,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-cache:
       kind: Panel
       spec:
@@ -1883,7 +1883,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 max: 1
                 min: 0
@@ -1902,7 +1902,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-hedging:
       kind: Panel
       spec:
@@ -1977,7 +1977,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-mean-latency:
       kind: Panel
       spec:
@@ -2004,7 +2004,7 @@ spec:
                           rate(mz_persist_external_started_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"blob_.*"}[$__rate_interval])
                         )
                       ) >= 0
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       (
@@ -2053,7 +2053,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-read-latency-by-process:
       kind: Panel
       spec:
@@ -2102,7 +2102,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -2171,7 +2171,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-requests:
       kind: Panel
       spec:
@@ -2193,7 +2193,7 @@ spec:
                         rate(mz_persist_s3_operations{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])
                       )
                         and on () (sum(rate(mz_persist_s3_operations{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])) > 0)
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2237,7 +2237,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-retries:
       kind: Panel
       spec:
@@ -2258,7 +2258,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_retry_retries_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"batch::set|batch::delete|fetch_batch::get|rollup::get|rollup::set|rollup::delete|hollow_run::get|hollow_run::set|blob::open|compaction_noop::delete|storage_usage::shard_size"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2301,7 +2301,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ops-throughput:
       kind: Panel
       spec:
@@ -2322,7 +2322,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_external_bytes_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"blob_.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2363,7 +2363,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-compaction-failures:
       kind: Panel
       spec:
@@ -2412,17 +2412,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.2575
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.505
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.7525
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: ops
               overrides: []
@@ -2438,7 +2438,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-failed-ops:
       kind: Panel
       spec:
@@ -2485,17 +2485,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.2575
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.505
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.7525
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: ops
               overrides: []
@@ -2511,7 +2511,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-failures-by-op:
       kind: Panel
       spec:
@@ -2532,7 +2532,7 @@ spec:
                       sum by (op) (
                         rate(mz_persist_external_failed_count{materialize_cloud_organization_name=~"$environmentNameList", op=~"blob_.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}}'
+                    legendFormat: "{{op}}"
                     qryType: 1
                     query: |
                       sum by (op) (
@@ -2573,7 +2573,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-read-p99:
       kind: Panel
       spec:
@@ -2628,11 +2628,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.5
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 2
                 unit: s
               overrides: []
@@ -2648,7 +2648,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-read-write-latency:
       kind: Panel
       spec:
@@ -2791,7 +2791,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-retry-logs:
       kind: Panel
       spec:
@@ -2855,7 +2855,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     overview-round-trip:
       kind: Panel
       spec:
@@ -2900,7 +2900,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -2965,7 +2965,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-store-errors:
       kind: Panel
       spec:
@@ -2986,7 +2986,7 @@ spec:
                       sum by (op, code) (
                         rate(mz_persist_s3_errors{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])
                       )
-                    legendFormat: '{{op}} {{code}}'
+                    legendFormat: "{{op}} {{code}}"
                     qryType: 1
                     query: |
                       sum by (op, code) (
@@ -3029,7 +3029,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-stored:
       kind: Panel
       spec:
@@ -3074,7 +3074,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: No metrics from this environment. Check the environment picker, and that Materialize is running.
@@ -3092,7 +3092,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-timeouts:
       kind: Panel
       spec:
@@ -3211,7 +3211,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-write-p99:
       kind: Panel
       spec:
@@ -3266,11 +3266,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.5
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 2
                 unit: s
               overrides: []
@@ -3286,7 +3286,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-write-stalls:
       kind: Panel
       spec:
@@ -3337,17 +3337,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 0.2575
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 0.505
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 0.7525
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: ops
               overrides: []
@@ -3363,7 +3363,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     storage-by-state:
       kind: Panel
       spec:
@@ -3491,7 +3491,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-current:
       kind: Panel
       spec:
@@ -3536,7 +3536,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 noValue: No metrics from this environment. Check the environment picker, and that Materialize is running.
@@ -3554,7 +3554,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     storage-held:
       kind: Panel
       spec:
@@ -3573,7 +3573,7 @@ spec:
                   spec:
                     expr: |
                       topk(10, max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
-                    legendFormat: '{{shard}}'
+                    legendFormat: "{{shard}}"
                     qryType: 1
                     query: |
                       topk(10, max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{materialize_cloud_organization_name=~"$environmentNameList"}))
@@ -3614,7 +3614,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-largest:
       kind: Panel
       spec:
@@ -3690,7 +3690,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     storage-leaked:
       kind: Panel
       spec:
@@ -3737,17 +3737,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1000000
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 250750000
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 500500000
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 750250000
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1000000000
                 unit: bytes
               overrides: []
@@ -3763,7 +3763,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     writes-amplification:
       kind: Panel
       spec:
@@ -3838,7 +3838,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-stalls:
       kind: Panel
       spec:
@@ -3885,7 +3885,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{app}} {{cluster_name}}'
+                    legendFormat: "{{app}} {{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -3952,7 +3952,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -4472,8 +4472,8 @@ spec:
                     spec:
                       allowCustomValue: true
                       current:
-                        text: ''
-                        value: ''
+                        text: ""
+                        value: ""
                       definition: label_values(ceph_health_status, namespace)
                       description: Namespace of the Rook Ceph cluster holding this environment's bucket
                       hide: dontHide
@@ -4493,7 +4493,7 @@ spec:
                           query: label_values(ceph_health_status, namespace)
                         version: v0
                       refresh: never
-                      regex: ''
+                      regex: ""
                       regexApplyTo: value
                       skipUrlSync: false
                       sort: alphabeticalAsc
@@ -4535,7 +4535,7 @@ spec:
   - mzmon
   - external-dependencies
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -4558,8 +4558,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -4569,14 +4569,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -4586,15 +4586,15 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
       description: The current environment to view
       hide: dontHide
@@ -4614,7 +4614,7 @@ spec:
           query: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -4622,8 +4622,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
       description: The current materialize namespace where environments live
       hide: hideVariable
@@ -4643,13 +4643,13 @@ spec:
           query: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: true
       sort: alphabeticalAsc
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
@@ -4670,8 +4670,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app="ceph-mgr"}, app)
       description: Whether a Ceph manager is being scraped; empty when none is
       hide: hideVariable
@@ -4691,7 +4691,7 @@ spec:
           query: label_values(up{app="ceph-mgr"}, app)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: true
       sort: alphabeticalAsc

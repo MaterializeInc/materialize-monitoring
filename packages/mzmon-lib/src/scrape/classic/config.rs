@@ -36,7 +36,7 @@ pub struct ScrapeConfigDocument {
 impl ScrapeConfigDocument {
     /// Serialize the document to classic-Prometheus YAML.
     pub fn to_yaml(&self) -> Result<String> {
-        Ok(serde_yaml_ng::to_string(self)?)
+        Ok(crate::yaml::to_string(self)?)
     }
 }
 

@@ -99,7 +99,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: true
               wrapLogMessage: false
-          version: ''
+          version: ""
     alloy-event-rate-by-kind:
       kind: Panel
       spec:
@@ -129,7 +129,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{kind}}'
+                    legendFormat: "{{kind}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -164,7 +164,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     alloy-event-rate-by-reason:
       kind: Panel
       spec:
@@ -194,7 +194,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -231,7 +231,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     alloy-logs-errors-by-component:
       kind: Panel
       spec:
@@ -262,7 +262,7 @@ spec:
                           [$__auto]
                         )
                       ) * 60
-                    legendFormat: '{{component_id}}'
+                    legendFormat: "{{component_id}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -300,7 +300,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     alloy-logs-feed:
       kind: Panel
       spec:
@@ -366,7 +366,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     alloy-logs-rate:
       kind: Panel
       spec:
@@ -396,7 +396,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{app}} {{level}}'
+                    legendFormat: "{{app}} {{level}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -432,7 +432,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     alloy-logs-warning-feed:
       kind: Panel
       spec:
@@ -500,7 +500,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     alloy-logs-warning-rate:
       kind: Panel
       spec:
@@ -551,7 +551,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No warnings in this time range
@@ -569,7 +569,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     alloy-volume-hidden-note:
       kind: Panel
       spec:
@@ -602,7 +602,7 @@ spec:
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
-          version: ''
+          version: ""
     alloy-warning-event-feed:
       kind: Panel
       spec:
@@ -674,7 +674,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: true
               wrapLogMessage: false
-          version: ''
+          version: ""
     cluster-health-score:
       kind: Panel
       spec:
@@ -699,7 +699,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -744,7 +744,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cluster-members:
       kind: Panel
       spec:
@@ -841,7 +841,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     cluster-peers:
       kind: Panel
       spec:
@@ -866,7 +866,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}} sees'
+                    legendFormat: "{{pod}} sees"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -943,7 +943,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cluster-targets:
       kind: Panel
       spec:
@@ -968,7 +968,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -1013,7 +1013,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cluster-transport-failures:
       kind: Panel
       spec:
@@ -1051,7 +1051,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -1109,7 +1109,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-config-by-pod:
       kind: Panel
       spec:
@@ -1206,16 +1206,16 @@ spec:
                   excludeByName:
                     Time: true
                   indexByName:
-                    'Value #query-0': 5
-                    'Value #query-1': 6
+                    "Value #query-0": 5
+                    "Value #query-1": 6
                     app: 0
                     last load succeeded: 3
                     pod: 1
                     sha256: 2
                     uptime: 4
                   renameByName:
-                    'Value #query-0': last load succeeded
-                    'Value #query-1': uptime
+                    "Value #query-0": last load succeeded
+                    "Value #query-1": uptime
                     sha256: config hash
         description: |-
           **The configuration each collector is running, by content hash, whether its last load succeeded, and how long the collector has been up.**
@@ -1263,7 +1263,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     components-distinct-configs:
       kind: Panel
       spec:
@@ -1290,7 +1290,7 @@ spec:
                           }
                         )
                       )
-                    legendFormat: '{{app}}'
+                    legendFormat: "{{app}}"
                     qryType: 1
                     query: |
                       count by (app) (
@@ -1338,7 +1338,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-eval-latency:
       kind: Panel
       spec:
@@ -1369,7 +1369,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{app}}'
+                    legendFormat: "{{app}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -1420,7 +1420,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-eval-queue:
       kind: Panel
       spec:
@@ -1445,7 +1445,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -1490,7 +1490,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-eval-rate:
       kind: Panel
       spec:
@@ -1518,7 +1518,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{app}}'
+                    legendFormat: "{{app}}"
                     qryType: 1
                     query: |
                       sum by (app) (
@@ -1566,7 +1566,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-eval-slow:
       kind: Panel
       spec:
@@ -1605,7 +1605,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{app}} {{component_id}}'
+                    legendFormat: "{{app}} {{component_id}}"
                     qryType: 1
                     query: |
                       sum by (app, component_id) (
@@ -1668,7 +1668,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-not-healthy:
       kind: Panel
       spec:
@@ -1702,7 +1702,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}} {{health_type}}'
+                    legendFormat: "{{pod}} {{health_type}}"
                     qryType: 1
                     query: |
                       sum by (pod, health_type) (
@@ -1760,7 +1760,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     components-running:
       kind: Panel
       spec:
@@ -1785,7 +1785,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -1830,7 +1830,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-flow-lines:
       kind: Panel
       spec:
@@ -1891,7 +1891,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#BBBBBB'
+                  fixedColor: "#BBBBBB"
                   mode: shades
                 min: 0
                 noValue: Nothing is pushing logs to the gateway
@@ -1909,7 +1909,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ingest-flow-refused:
       kind: Panel
       spec:
@@ -2068,17 +2068,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2.5075
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.005
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.5024999999999995
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: reqps
               overrides: []
@@ -2094,7 +2094,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ingest-flow-samples:
       kind: Panel
       spec:
@@ -2157,7 +2157,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#BBBBBB'
+                  fixedColor: "#BBBBBB"
                   mode: shades
                 min: 0
                 noValue: Nothing is remote-writing to the gateway
@@ -2175,7 +2175,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     ingest-log-latency:
       kind: Panel
       spec:
@@ -2257,7 +2257,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-log-requests:
       kind: Panel
       spec:
@@ -2285,7 +2285,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{route}} {{status_code}}'
+                    legendFormat: "{{route}} {{status_code}}"
                     qryType: 1
                     query: |
                       sum by (route, status_code) (
@@ -2335,7 +2335,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-otlp-logs:
       kind: Panel
       spec:
@@ -2446,7 +2446,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-otlp-metrics:
       kind: Panel
       spec:
@@ -2557,7 +2557,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-rw-latency:
       kind: Panel
       spec:
@@ -2639,7 +2639,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-rw-requests:
       kind: Panel
       spec:
@@ -2667,7 +2667,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{route}} {{status_code}}'
+                    legendFormat: "{{route}} {{status_code}}"
                     qryType: 1
                     query: |
                       sum by (route, status_code) (
@@ -2717,7 +2717,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-rw-samples:
       kind: Panel
       spec:
@@ -2782,7 +2782,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: 'dropped: invalid labels'
+                    legendFormat: "dropped: invalid labels"
                     qryType: 1
                     query: |
                       sum(
@@ -2830,7 +2830,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-rw-senders:
       kind: Panel
       spec:
@@ -2856,7 +2856,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{job}} sent'
+                    legendFormat: "{{job}} sent"
                     qryType: 1
                     query: |
                       sum by (job) (
@@ -2887,7 +2887,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{job}} failed'
+                    legendFormat: "{{job}} failed"
                     qryType: 1
                     query: |
                       sum by (job) (
@@ -2918,7 +2918,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{job}} retried'
+                    legendFormat: "{{job}} retried"
                     qryType: 1
                     query: |
                       sum by (job) (
@@ -2966,7 +2966,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ingest-tls-rejections:
       kind: Panel
       spec:
@@ -2995,7 +2995,7 @@ spec:
                           [$__auto]
                         )
                       ) * 60
-                    legendFormat: '{{app}}'
+                    legendFormat: "{{app}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -3033,7 +3033,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-agents-file-lines:
       kind: Panel
       spec:
@@ -3061,7 +3061,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3109,7 +3109,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-agents-files:
       kind: Panel
       spec:
@@ -3134,7 +3134,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3179,7 +3179,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-agents-journal-lines:
       kind: Panel
       spec:
@@ -3207,7 +3207,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3255,7 +3255,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-delivery-dropped:
       kind: Panel
       spec:
@@ -3294,7 +3294,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{app}} {{reason}}'
+                    legendFormat: "{{app}} {{reason}}"
                     qryType: 1
                     query: |
                       sum by (app, reason) (
@@ -3357,7 +3357,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-delivery-latency:
       kind: Panel
       spec:
@@ -3388,7 +3388,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{host}}'
+                    legendFormat: "{{host}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -3439,7 +3439,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-delivery-requests:
       kind: Panel
       spec:
@@ -3467,7 +3467,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{host}} {{status_code}}'
+                    legendFormat: "{{host}} {{status_code}}"
                     qryType: 1
                     query: |
                       sum by (host, status_code) (
@@ -3517,7 +3517,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-delivery-retries:
       kind: Panel
       spec:
@@ -3545,7 +3545,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{app}} to {{host}}'
+                    legendFormat: "{{app}} to {{host}}"
                     qryType: 1
                     query: |
                       sum by (app, host) (
@@ -3593,7 +3593,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-flow-lost:
       kind: Panel
       spec:
@@ -3660,17 +3660,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2.5075
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.005
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.5024999999999995
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: suffix:lines/s
               overrides: []
@@ -3686,7 +3686,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     logs-flow-propagation:
       kind: Panel
       spec:
@@ -3717,7 +3717,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{app}}'
+                    legendFormat: "{{app}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -3755,7 +3755,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
@@ -3773,7 +3773,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     logs-flow-read:
       kind: Panel
       spec:
@@ -3860,7 +3860,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No agent is reporting what it reads
@@ -3878,7 +3878,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     logs-flow-stored:
       kind: Panel
       spec:
@@ -3943,7 +3943,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
@@ -3961,7 +3961,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     logs-processing-guards:
       kind: Panel
       spec:
@@ -4001,7 +4001,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{app}} {{reason}}'
+                    legendFormat: "{{app}} {{reason}}"
                     qryType: 1
                     query: |
                       sum by (app, reason) (
@@ -4065,7 +4065,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-processing-truncated:
       kind: Panel
       spec:
@@ -4093,7 +4093,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -4141,7 +4141,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-flow-delay:
       kind: Panel
       spec:
@@ -4216,7 +4216,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
@@ -4234,7 +4234,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     metrics-flow-lost:
       kind: Panel
       spec:
@@ -4387,17 +4387,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 25.0075
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 50.004999999999995
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 75.0025
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 100
                 unit: suffix:samples/s
               overrides: []
@@ -4413,7 +4413,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     metrics-flow-samples:
       kind: Panel
       spec:
@@ -4474,7 +4474,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
@@ -4492,7 +4492,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     metrics-flow-targets:
       kind: Panel
       spec:
@@ -4547,7 +4547,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No data from the collectors. Check that the gateway is running.
@@ -4565,7 +4565,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     metrics-flow-targets-down:
       kind: Panel
       spec:
@@ -4619,17 +4619,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 3
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 4
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 5
                 unit: short
               overrides: []
@@ -4645,7 +4645,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     metrics-heavy-largest:
       kind: Panel
       spec:
@@ -4669,7 +4669,7 @@ spec:
                           scrape_samples_post_metric_relabeling
                         )
                       )
-                    legendFormat: '{{job}}'
+                    legendFormat: "{{job}}"
                     qryType: 1
                     query: |
                       topk(
@@ -4715,7 +4715,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-heavy-slowest:
       kind: Panel
       spec:
@@ -4739,7 +4739,7 @@ spec:
                           scrape_duration_seconds
                         )
                       )
-                    legendFormat: '{{job}}'
+                    legendFormat: "{{job}}"
                     qryType: 1
                     query: |
                       topk(
@@ -4785,7 +4785,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-otel-failed:
       kind: Panel
       spec:
@@ -4813,7 +4813,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} metrics'
+                    legendFormat: "{{component_id}} metrics"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -4848,7 +4848,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} logs'
+                    legendFormat: "{{component_id}} logs"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -4896,7 +4896,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-otel-filtered:
       kind: Panel
       spec:
@@ -4924,7 +4924,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}}'
+                    legendFormat: "{{component_id}}"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -4972,7 +4972,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-otel-queue:
       kind: Panel
       spec:
@@ -5002,7 +5002,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{component_id}} {{data_type}}'
+                    legendFormat: "{{component_id}} {{data_type}}"
                     qryType: 1
                     query: |
                       max by (component_id, data_type) (
@@ -5053,7 +5053,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-otel-sent:
       kind: Panel
       spec:
@@ -5081,7 +5081,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} metrics'
+                    legendFormat: "{{component_id}} metrics"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -5116,7 +5116,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} logs'
+                    legendFormat: "{{component_id}} logs"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -5164,7 +5164,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-rw-delay:
       kind: Panel
       spec:
@@ -5198,7 +5198,7 @@ spec:
                         ),
                         0
                       ) < 31536000
-                    legendFormat: '{{pod}} {{component_id}}'
+                    legendFormat: "{{pod}} {{component_id}}"
                     qryType: 1
                     query: |
                       clamp_min(
@@ -5254,7 +5254,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-rw-latency:
       kind: Panel
       spec:
@@ -5285,7 +5285,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{component_id}}'
+                    legendFormat: "{{component_id}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -5336,7 +5336,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-rw-samples:
       kind: Panel
       spec:
@@ -5364,7 +5364,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} sent'
+                    legendFormat: "{{component_id}} sent"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -5399,7 +5399,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} failed'
+                    legendFormat: "{{component_id}} failed"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -5434,7 +5434,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}} retried'
+                    legendFormat: "{{component_id}} retried"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -5484,7 +5484,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-rw-shards:
       kind: Panel
       spec:
@@ -5509,7 +5509,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{component_id}} running'
+                    legendFormat: "{{component_id}} running"
                     qryType: 1
                     query: |
                       max by (component_id) (
@@ -5538,7 +5538,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{component_id}} desired'
+                    legendFormat: "{{component_id}} desired"
                     qryType: 1
                     query: |
                       max by (component_id) (
@@ -5567,7 +5567,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{component_id}} max'
+                    legendFormat: "{{component_id}} max"
                     qryType: 1
                     query: |
                       max by (component_id) (
@@ -5612,7 +5612,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-scrape-by-monitor:
       kind: Panel
       spec:
@@ -5704,7 +5704,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     metrics-scrape-down:
       kind: Panel
       spec:
@@ -5778,7 +5778,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     metrics-scrape-rejected:
       kind: Panel
       spec:
@@ -5959,7 +5959,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-scrape-rejected-samples:
       kind: Panel
       spec:
@@ -6105,7 +6105,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-scrape-samples:
       kind: Panel
       spec:
@@ -6134,7 +6134,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}}'
+                    legendFormat: "{{component_id}}"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -6185,7 +6185,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-wal-errors:
       kind: Panel
       spec:
@@ -6366,7 +6366,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-wal-series:
       kind: Panel
       spec:
@@ -6391,7 +6391,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -6436,7 +6436,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     metrics-wal-size:
       kind: Panel
       spec:
@@ -6461,7 +6461,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -6506,7 +6506,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-agents-missing:
       kind: Panel
       spec:
@@ -6588,21 +6588,21 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.5
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 2
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 2.5
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 3
                 unit: short
               overrides: []
@@ -6618,7 +6618,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-config-failed:
       kind: Panel
       spec:
@@ -6696,17 +6696,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.5
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 2
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 2.5
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 3
                 unit: short
               overrides: []
@@ -6722,7 +6722,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-lines-delivered:
       kind: Panel
       spec:
@@ -6750,7 +6750,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{app}} to {{host}}'
+                    legendFormat: "{{app}} to {{host}}"
                     qryType: 1
                     query: |
                       sum by (app, host) (
@@ -6798,7 +6798,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-log-lines-lost:
       kind: Panel
       spec:
@@ -6865,17 +6865,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2.5075
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.005
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.5024999999999995
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: suffix:lines/s
               overrides: []
@@ -6891,7 +6891,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-pushes-refused:
       kind: Panel
       spec:
@@ -7050,17 +7050,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2.5075
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.005
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.5024999999999995
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: reqps
               overrides: []
@@ -7076,7 +7076,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-restarts:
       kind: Panel
       spec:
@@ -7181,7 +7181,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-samples-delivered:
       kind: Panel
       spec:
@@ -7209,7 +7209,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}}'
+                    legendFormat: "{{component_id}}"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -7244,7 +7244,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{component_id}}'
+                    legendFormat: "{{component_id}}"
                     qryType: 1
                     query: |
                       sum by (component_id) (
@@ -7292,7 +7292,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-samples-lost:
       kind: Panel
       spec:
@@ -7445,17 +7445,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 0.01
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 25.0075
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 50.004999999999995
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 75.0025
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 100
                 unit: suffix:samples/s
               overrides: []
@@ -7471,7 +7471,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-scrape:
       kind: Panel
       spec:
@@ -7554,7 +7554,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-unhealthy-components:
       kind: Panel
       spec:
@@ -7634,17 +7634,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 3
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 4
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 5
                 unit: short
               overrides: []
@@ -7660,7 +7660,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-versions:
       kind: Panel
       spec:
@@ -7743,7 +7743,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     resources-cpu:
       kind: Panel
       spec:
@@ -7783,7 +7783,7 @@ spec:
                         namespace=~"$alloyNamespace",
                         pod=~"$alloyPod"
                       }
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (namespace, pod) (
@@ -7831,7 +7831,7 @@ spec:
               defaults:
                 max: 1
                 min: 0
-                noValue: 'No metrics: cadvisor and kube-state-metrics are required'
+                noValue: "No metrics: cadvisor and kube-state-metrics are required"
                 unit: percentunit
               overrides: []
             options:
@@ -7846,7 +7846,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-fds:
       kind: Panel
       spec:
@@ -7876,7 +7876,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -7927,7 +7927,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-gomemlimit:
       kind: Panel
       spec:
@@ -7964,7 +7964,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -8024,7 +8024,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-goroutines:
       kind: Panel
       spec:
@@ -8049,7 +8049,7 @@ spec:
                           pod=~"$alloyPod"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -8094,7 +8094,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-memory:
       kind: Panel
       spec:
@@ -8131,7 +8131,7 @@ spec:
                         namespace=~"$alloyNamespace",
                         pod=~"$alloyPod"
                       }
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (namespace, pod) (
@@ -8176,7 +8176,7 @@ spec:
               defaults:
                 max: 1
                 min: 0
-                noValue: 'No metrics: cadvisor and kube-state-metrics are required'
+                noValue: "No metrics: cadvisor and kube-state-metrics are required"
                 unit: percentunit
               overrides: []
             options:
@@ -8191,7 +8191,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-memory-limiter:
       kind: Panel
       spec:
@@ -8230,7 +8230,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -8295,7 +8295,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resources-terminations:
       kind: Panel
       spec:
@@ -8386,7 +8386,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     resources-throttling:
       kind: Panel
       spec:
@@ -8428,7 +8428,7 @@ spec:
                         namespace=~"$alloyNamespace",
                         pod=~"$alloyPod"
                       }
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -8476,7 +8476,7 @@ spec:
               defaults:
                 max: 1
                 min: 0
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: percentunit
               overrides: []
             options:
@@ -8491,7 +8491,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -9444,7 +9444,7 @@ spec:
   - mzmon
   - meta-monitoring
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -9467,8 +9467,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -9478,14 +9478,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -9495,15 +9495,15 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app=~"alloy-agent|alloy-gateway"}, namespace)
       description: Namespace(s) the collectors run in
       hide: dontHide
@@ -9523,7 +9523,7 @@ spec:
           query: label_values(up{app=~"alloy-agent|alloy-gateway"}, namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -9532,10 +9532,10 @@ spec:
       allValue: alloy-agent|alloy-gateway
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app=~"alloy-agent|alloy-gateway", namespace=~"$alloyNamespace"}, app)
-      description: 'Which collectors to read: the per-node agents, the gateway, or both'
+      description: "Which collectors to read: the per-node agents, the gateway, or both"
       hide: dontHide
       includeAll: true
       label: Role
@@ -9553,7 +9553,7 @@ spec:
           query: label_values(up{app=~"alloy-agent|alloy-gateway", namespace=~"$alloyNamespace"}, app)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -9562,8 +9562,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app=~"$alloyRole", namespace=~"$alloyNamespace"}, pod)
       description: Which collector pods to read
       hide: dontHide
@@ -9583,7 +9583,7 @@ spec:
           query: label_values(up{app=~"$alloyRole", namespace=~"$alloyNamespace"}, pod)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -9592,8 +9592,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(level)
       description: The severity level(s) to include
       hide: dontHide
@@ -9610,28 +9610,28 @@ spec:
         spec:
           label: level
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{app=~"$alloyRole", namespace=~"$alloyNamespace"}'
+          stream: "{app=~\"$alloyRole\", namespace=~\"$alloyNamespace\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
   - kind: TextVariable
     spec:
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Case-insensitive text to match anywhere in the log line
       hide: dontHide
       label: Search
       name: logSearch
-      query: ''
+      query: ""
       skipUrlSync: false
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
@@ -9650,7 +9650,7 @@ spec:
       skipUrlSync: false
   - datasource:
       name: $logsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true

@@ -103,7 +103,7 @@ pub fn serialize(name: &'static str, resource: &Resource, format: Format) -> Res
                 source: Box::new(source),
             })?
         }
-        Format::Yaml => serde_yaml_ng::to_string(&value).map_err(|source| Error::Serialize {
+        Format::Yaml => mzmon_lib::yaml::to_string(&value).map_err(|source| Error::Serialize {
             name,
             format,
             source: Box::new(source),
@@ -375,7 +375,7 @@ mod tests {
         // Two consumers, one dashboard: the formats must not drift.
         let options = Options::default();
         let dashboard = &grafana::ALL[0];
-        let yaml: serde_json::Value = serde_yaml_ng::from_str(
+        let yaml: serde_json::Value = mzmon_lib::yaml::from_str(
             &render(
                 dashboard,
                 &options,

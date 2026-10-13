@@ -18,7 +18,10 @@ pub type EngineName = String;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("YAML error: {0}")]
-    Yaml(#[from] serde_yaml_ng::Error),
+    Yaml(#[from] crate::yaml::Error),
+
+    #[error("YAML serialization error: {0}")]
+    YamlSerialize(#[from] crate::yaml::SerializeError),
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),

@@ -10,8 +10,4 @@ repository.workspace = true
 [dependencies]
 mzmon-lib = { path = "../mzmon-lib" }
 serde_json = { version = "1", features = ["preserve_order"] }
-serde_yaml_ng = "0.10.0"
 thiserror = "2"
-
-[dev-dependencies]
-serde_yaml_ng = "0.10.0"

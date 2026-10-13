@@ -51,7 +51,7 @@ spec:
                       min by (resourceName) (
                         last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_cluster_safe_to_autoscale_minimum_count[15m])
                       )
-                    legendFormat: '{{resourceName}} safe to scale'
+                    legendFormat: "{{resourceName}} safe to scale"
                     qryType: 1
                     query: |
                       min by (resourceName) (
@@ -72,7 +72,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_scale_down_in_cooldown_maximum_count[15m])
                       )
-                    legendFormat: '{{resourceName}} scale-down cooling down'
+                    legendFormat: "{{resourceName}} scale-down cooling down"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -93,7 +93,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unneeded_nodes_count_maximum_count[15m])
                       )
-                    legendFormat: '{{resourceName}} unneeded nodes'
+                    legendFormat: "{{resourceName}} unneeded nodes"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -135,7 +135,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     aks-unschedulable:
       kind: Panel
       spec:
@@ -156,7 +156,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_containerservice_managedclusters_cluster_autoscaler_unschedulable_pods_count_maximum_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -200,7 +200,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     aks-vms-down:
       kind: Panel
       spec:
@@ -223,7 +223,7 @@ spec:
                           last_over_time(azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count[15m])
                         )
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       sum by (resourceName) (
@@ -258,17 +258,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -284,7 +284,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     capacity-none-detected:
       kind: Panel
       spec:
@@ -321,7 +321,7 @@ spec:
 
                 Without them, the other tabs still answer whether pods are waiting and what the autoscaler did; this one says whether the cloud was the reason.
               mode: markdown
-          version: ''
+          version: ""
     ec2-node-groups:
       kind: Panel
       spec:
@@ -340,7 +340,7 @@ spec:
                   spec:
                     expr: |
                       max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_desired_capacity_average[15m]))
-                    legendFormat: '{{tag_eks_nodegroup_name}} desired'
+                    legendFormat: "{{tag_eks_nodegroup_name}} desired"
                     qryType: 1
                     query: |
                       max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_desired_capacity_average[15m]))
@@ -357,7 +357,7 @@ spec:
                   spec:
                     expr: |
                       max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_in_service_instances_average[15m]))
-                    legendFormat: '{{tag_eks_nodegroup_name}} in service'
+                    legendFormat: "{{tag_eks_nodegroup_name}} in service"
                     qryType: 1
                     query: |
                       max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_in_service_instances_average[15m]))
@@ -374,7 +374,7 @@ spec:
                   spec:
                     expr: |
                       max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_max_size_average[15m]))
-                    legendFormat: '{{tag_eks_nodegroup_name}} maximum'
+                    legendFormat: "{{tag_eks_nodegroup_name}} maximum"
                     qryType: 1
                     query: |
                       max by (tag_eks_nodegroup_name) (last_over_time(aws_autoscaling_group_max_size_average[15m]))
@@ -416,7 +416,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ec2-status-checks:
       kind: Panel
       spec:
@@ -500,17 +500,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -526,7 +526,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     ec2-vcpus:
       kind: Panel
       spec:
@@ -585,7 +585,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     events-all:
       kind: Panel
       spec:
@@ -646,7 +646,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     events-by-reason:
       kind: Panel
       spec:
@@ -671,7 +671,7 @@ spec:
                             | reason!~"DisruptionBlocked|Unconsolidatable"
                         [1m])
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -705,7 +705,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     events-warnings:
       kind: Panel
       spec:
@@ -767,7 +767,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     gce-cpu-quota:
       kind: Panel
       spec:
@@ -792,7 +792,7 @@ spec:
                       max by (vm_family, location) (
                         last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_limit{limit_name=~".*per-project-region"}[15m])
                       )
-                    legendFormat: '{{vm_family}} {{location}}'
+                    legendFormat: "{{vm_family}} {{location}}"
                     qryType: 1
                     query: |
                       max by (vm_family, location) (
@@ -829,11 +829,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.8
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.95
                 unit: percentunit
               overrides: []
@@ -849,7 +849,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     gce-refusals:
       kind: Panel
       spec:
@@ -934,7 +934,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     gce-ssd-quota:
       kind: Panel
       spec:
@@ -959,7 +959,7 @@ spec:
                       max by (vm_family, location) (
                         last_over_time(stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_local_ssd_total_storage_per_vm_family_limit{limit_name=~".*per-project-region"}[15m])
                       )
-                    legendFormat: '{{vm_family}} {{location}}'
+                    legendFormat: "{{vm_family}} {{location}}"
                     qryType: 1
                     query: |
                       max by (vm_family, location) (
@@ -994,11 +994,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.8
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.95
                 unit: percentunit
               overrides: []
@@ -1014,7 +1014,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     hpa-events:
       kind: Panel
       spec:
@@ -1039,7 +1039,7 @@ spec:
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: '**HorizontalPodAutoscaler events, newest first.**'
+        description: "**HorizontalPodAutoscaler events, newest first.**"
         id: 1030
         links: []
         title: Autoscaler Events
@@ -1071,7 +1071,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     hpa-events-by-reason:
       kind: Panel
       spec:
@@ -1094,7 +1094,7 @@ spec:
                           {job="loki.source.kubernetes_events"} | reportingcontroller="horizontal-pod-autoscaler"
                         [1m])
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -1128,7 +1128,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     hpa-share-of-max:
       kind: Panel
       spec:
@@ -1149,7 +1149,7 @@ spec:
                       max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas)
                       /
                       max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_spec_max_replicas)
-                    legendFormat: '{{namespace}}/{{horizontalpodautoscaler}}'
+                    legendFormat: "{{namespace}}/{{horizontalpodautoscaler}}"
                     qryType: 1
                     query: |
                       max by (namespace, horizontalpodautoscaler) (kube_horizontalpodautoscaler_status_current_replicas)
@@ -1191,7 +1191,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     hpa-table:
       kind: Panel
       spec:
@@ -1292,17 +1292,17 @@ spec:
                     Desired: 3
                     Max: 5
                     Min: 4
-                    'Value #query-0': 6
-                    'Value #query-1': 7
-                    'Value #query-2': 8
-                    'Value #query-3': 9
+                    "Value #query-0": 6
+                    "Value #query-1": 7
+                    "Value #query-2": 8
+                    "Value #query-3": 9
                     horizontalpodautoscaler: 1
                     namespace: 0
                   renameByName:
-                    'Value #query-0': Current
-                    'Value #query-1': Desired
-                    'Value #query-2': Min
-                    'Value #query-3': Max
+                    "Value #query-0": Current
+                    "Value #query-1": Desired
+                    "Value #query-2": Min
+                    "Value #query-3": Max
                     horizontalpodautoscaler: Autoscaler
                     namespace: Namespace
         description: |-
@@ -1335,7 +1335,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     hpa-unable:
       kind: Panel
       spec:
@@ -1358,7 +1358,7 @@ spec:
                           kube_horizontalpodautoscaler_status_condition{condition=~"AbleToScale|ScalingActive", status="false"}
                         )
                       )
-                    legendFormat: '{{condition}} false'
+                    legendFormat: "{{condition}} false"
                     qryType: 1
                     query: |
                       sum by (condition) (
@@ -1402,7 +1402,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-added:
       kind: Panel
       spec:
@@ -1452,11 +1452,11 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -1471,7 +1471,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-events-by-reason:
       kind: Panel
       spec:
@@ -1496,7 +1496,7 @@ spec:
                             | reason!~"DisruptionBlocked|Unconsolidatable"
                         [1m])
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -1530,7 +1530,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-hpa-at-max:
       kind: Panel
       spec:
@@ -1586,17 +1586,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.5
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 2
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 2.5
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 3
                 unit: short
               overrides: []
@@ -1612,7 +1612,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-nodes:
       kind: Panel
       spec:
@@ -1653,11 +1653,11 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -1672,7 +1672,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-nodes-by-pool:
       kind: Panel
       spec:
@@ -1691,7 +1691,7 @@ spec:
                   spec:
                     expr: |
                       count by (pool) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
-                    legendFormat: '{{pool}}'
+                    legendFormat: "{{pool}}"
                     qryType: 1
                     query: |
                       count by (pool) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
@@ -1729,7 +1729,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-not-ready:
       kind: Panel
       spec:
@@ -1773,21 +1773,21 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 2
                 unit: short
               overrides: []
@@ -1803,7 +1803,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-pending:
       kind: Panel
       spec:
@@ -1847,21 +1847,21 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 3.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: short
               overrides: []
@@ -1877,7 +1877,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-removed:
       kind: Panel
       spec:
@@ -1922,7 +1922,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 decimals: 0
                 min: 0
@@ -1941,7 +1941,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-requested:
       kind: Panel
       spec:
@@ -2024,7 +2024,7 @@ spec:
               defaults:
                 max: 1
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: percentunit
               overrides: []
             options:
@@ -2039,7 +2039,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-unscheduled:
       kind: Panel
       spec:
@@ -2085,21 +2085,21 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 2
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 3
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 4
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 5
                 unit: short
               overrides: []
@@ -2115,7 +2115,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-unscheduled-by-namespace:
       kind: Panel
       spec:
@@ -2134,7 +2134,7 @@ spec:
                   spec:
                     expr: |
                       sum by (namespace) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"})) > 0
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       sum by (namespace) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"})) > 0
@@ -2174,7 +2174,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-warnings:
       kind: Panel
       spec:
@@ -2236,7 +2236,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     pending-failure-rate:
       kind: Panel
       spec:
@@ -2259,7 +2259,7 @@ spec:
                           {job="loki.source.kubernetes_events"} | reason="FailedScheduling"
                         [1m])
                       )
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -2293,7 +2293,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pending-list:
       kind: Panel
       spec:
@@ -2377,7 +2377,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     pending-pending:
       kind: Panel
       spec:
@@ -2396,7 +2396,7 @@ spec:
                   spec:
                     expr: |
                       sum by (namespace) (max by (namespace, pod) (kube_pod_status_phase{phase="Pending"})) > 0
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       sum by (namespace) (max by (namespace, pod) (kube_pod_status_phase{phase="Pending"})) > 0
@@ -2434,7 +2434,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pending-scale-up-decisions:
       kind: Panel
       spec:
@@ -2494,7 +2494,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     pending-scheduling-failures:
       kind: Panel
       spec:
@@ -2554,7 +2554,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     pending-unscheduled:
       kind: Panel
       spec:
@@ -2573,7 +2573,7 @@ spec:
                   spec:
                     expr: |
                       sum by (namespace) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"})) > 0
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       sum by (namespace) (max by (namespace, pod) (kube_pod_status_scheduled{condition="false"})) > 0
@@ -2613,7 +2613,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-cordoned:
       kind: Panel
       spec:
@@ -2635,7 +2635,7 @@ spec:
                         max by (node) (kube_node_spec_unschedulable)
                         * on (node) group_left (pool) max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)"))
                       )
-                    legendFormat: '{{pool}}'
+                    legendFormat: "{{pool}}"
                     qryType: 1
                     query: |
                       sum by (pool) (
@@ -2678,7 +2678,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-cpu-requested:
       kind: Panel
       spec:
@@ -2708,7 +2708,7 @@ spec:
                         max by (node) (kube_node_status_allocatable{resource="cpu"})
                         * on (node) group_left (pool) max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)"))
                       )
-                    legendFormat: '{{pool}}'
+                    legendFormat: "{{pool}}"
                     qryType: 1
                     query: |
                       sum by (pool) (
@@ -2759,7 +2759,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-memory-requested:
       kind: Panel
       spec:
@@ -2789,7 +2789,7 @@ spec:
                         max by (node) (kube_node_status_allocatable{resource="memory"})
                         * on (node) group_left (pool) max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)"))
                       )
-                    legendFormat: '{{pool}}'
+                    legendFormat: "{{pool}}"
                     qryType: 1
                     query: |
                       sum by (pool) (
@@ -2840,7 +2840,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-node-age:
       kind: Panel
       spec:
@@ -2925,7 +2925,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     pools-nodes-by-pool:
       kind: Panel
       spec:
@@ -2944,7 +2944,7 @@ spec:
                   spec:
                     expr: |
                       count by (pool) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
-                    legendFormat: '{{pool}}'
+                    legendFormat: "{{pool}}"
                     qryType: 1
                     query: |
                       count by (pool) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
@@ -2982,7 +2982,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-nodes-by-type:
       kind: Panel
       spec:
@@ -3001,7 +3001,7 @@ spec:
                   spec:
                     expr: |
                       count by (instance_type) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
-                    legendFormat: '{{instance_type}}'
+                    legendFormat: "{{instance_type}}"
                     qryType: 1
                     query: |
                       count by (instance_type) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
@@ -3009,7 +3009,7 @@ spec:
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: '**Nodes of each instance type over time.**'
+        description: "**Nodes of each instance type over time.**"
         id: 1013
         links: []
         title: Nodes by Instance Type
@@ -3036,7 +3036,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-nodes-by-zone:
       kind: Panel
       spec:
@@ -3055,7 +3055,7 @@ spec:
                   spec:
                     expr: |
                       count by (zone) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
-                    legendFormat: '{{zone}}'
+                    legendFormat: "{{zone}}"
                     qryType: 1
                     query: |
                       count by (zone) (max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)")))
@@ -3093,7 +3093,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pools-not-ready:
       kind: Panel
       spec:
@@ -3115,7 +3115,7 @@ spec:
                         (1 - max by (node) (kube_node_status_condition{condition="Ready", status="true"}))
                         * on (node) group_left (pool) max by (node, pool, instance_type, zone) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_labels, "pool", "$1", "label_karpenter_sh_nodepool", "(.+)"), "pool", "$1", "label_eks_amazonaws_com_nodegroup", "(.+)"), "pool", "$1", "label_cloud_google_com_gke_nodepool", "(.+)"), "pool", "$1", "label_kubernetes_azure_com_agentpool", "(.+)"), "pool", "unpooled", "pool", ""), "instance_type", "$1", "label_node_kubernetes_io_instance_type", "(.+)"), "zone", "$1", "label_topology_kubernetes_io_zone", "(.+)"))
                       )
-                    legendFormat: '{{pool}}'
+                    legendFormat: "{{pool}}"
                     qryType: 1
                     query: |
                       sum by (pool) (
@@ -3158,7 +3158,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -3749,7 +3749,7 @@ spec:
   - infrastructure
   - mzmon
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -3772,8 +3772,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -3783,14 +3783,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -3800,14 +3800,14 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
       description: Cloud providers the gateway was found to be pulling metrics from
       hide: dontHide
@@ -3827,7 +3827,7 @@ spec:
           query: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc

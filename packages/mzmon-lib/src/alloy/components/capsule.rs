@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn logs_receiver_deserializes_from_plain_yaml_string() {
-        let r: LogsReceiver = serde_yaml_ng::from_str("loki.write.gateway.receiver").unwrap();
+        let r: LogsReceiver = crate::yaml::from_str("loki.write.gateway.receiver").unwrap();
         assert_eq!(r, LogsReceiver("loki.write.gateway.receiver".into()));
     }
 
@@ -248,7 +248,7 @@ mod tests {
         // The YAML shape is a bare string, not a wrapper map — the newtype
         // must stay invisible in the document.
         let yaml =
-            serde_yaml_ng::to_string(&LogsReceiver("loki.write.gateway.receiver".into())).unwrap();
+            crate::yaml::to_string(&LogsReceiver("loki.write.gateway.receiver".into())).unwrap();
         assert_eq!(yaml.trim(), "loki.write.gateway.receiver");
     }
 
@@ -306,7 +306,7 @@ mod tests {
     #[test]
     fn metrics_receiver_deserializes_from_plain_yaml_string() {
         let r: MetricsReceiver =
-            serde_yaml_ng::from_str("prometheus.remote_write.default.receiver").unwrap();
+            crate::yaml::from_str("prometheus.remote_write.default.receiver").unwrap();
         assert_eq!(
             r,
             MetricsReceiver("prometheus.remote_write.default.receiver".into())
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn otelcol_consumer_deserializes_from_plain_yaml_string() {
         let c: OtelcolConsumer =
-            serde_yaml_ng::from_str("otelcol.exporter.prometheus.bridge.input").unwrap();
+            crate::yaml::from_str("otelcol.exporter.prometheus.bridge.input").unwrap();
         assert_eq!(
             c,
             OtelcolConsumer("otelcol.exporter.prometheus.bridge.input".into())
@@ -395,14 +395,13 @@ mod tests {
 
     #[test]
     fn target_entry_plain_string_deserializes_as_ref() {
-        let e: TargetEntry = serde_yaml_ng::from_str("discovery.relabel.pods.output").unwrap();
+        let e: TargetEntry = crate::yaml::from_str("discovery.relabel.pods.output").unwrap();
         assert_eq!(e, TargetEntry::Ref("discovery.relabel.pods.output".into()));
     }
 
     #[test]
     fn target_entry_map_deserializes_as_literal() {
-        let e: TargetEntry =
-            serde_yaml_ng::from_str("__path__: /var/log/app.log\njob: app").unwrap();
+        let e: TargetEntry = crate::yaml::from_str("__path__: /var/log/app.log\njob: app").unwrap();
         match e {
             TargetEntry::Literal(m) => {
                 assert_eq!(

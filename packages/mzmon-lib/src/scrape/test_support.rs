@@ -63,12 +63,12 @@ pub(crate) fn assert_jobs(produced: Result<Vec<ScrapeJob>>, expected_yaml: &str)
     let produced = produced.expect("transpile should succeed");
     let produced_val = serde_json::to_value(&produced).expect("serialize produced jobs");
     let expected_val: Value =
-        serde_yaml_ng::from_str(expected_yaml).expect("parse expected jobs YAML");
+        crate::yaml::from_str(expected_yaml).expect("parse expected jobs YAML");
     assert_eq!(
         produced_val,
         expected_val,
         "transpiled jobs mismatch\n--- produced ---\n{}",
-        serde_yaml_ng::to_string(&produced).unwrap()
+        crate::yaml::to_string(&produced).unwrap()
     );
 }
 
@@ -76,12 +76,12 @@ pub(crate) fn assert_jobs(produced: Result<Vec<ScrapeJob>>, expected_yaml: &str)
 /// (order- and quoting-independent). Used for the GMP output goldens.
 pub(crate) fn assert_serializes_to<T: serde::Serialize>(value: &T, expected_yaml: &str) {
     let produced_val = serde_json::to_value(value).expect("serialize value");
-    let expected_val: Value = serde_yaml_ng::from_str(expected_yaml).expect("parse expected YAML");
+    let expected_val: Value = crate::yaml::from_str(expected_yaml).expect("parse expected YAML");
     assert_eq!(
         produced_val,
         expected_val,
         "serialized value mismatch\n--- produced ---\n{}",
-        serde_yaml_ng::to_string(value).unwrap()
+        crate::yaml::to_string(value).unwrap()
     );
 }
 

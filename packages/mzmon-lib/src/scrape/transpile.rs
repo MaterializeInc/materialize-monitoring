@@ -52,7 +52,7 @@ impl Monitor {
     ///
     /// Mirrors `alloy::pipeline::Pipeline::from_yaml_str`.
     pub fn from_yaml_str(yaml: &str) -> Result<Self> {
-        let value: Value = serde_yaml_ng::from_str(yaml)?;
+        let value: Value = crate::yaml::from_str(yaml)?;
         let kind = value
             .get("kind")
             .and_then(Value::as_str)

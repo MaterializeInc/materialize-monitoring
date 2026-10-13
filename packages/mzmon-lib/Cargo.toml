@@ -23,7 +23,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 # Without it, raw-block attributes and any map alphabetize, and sugar like
 # replace_map can't render in source order.
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
-serde_yaml_ng = "0.10.0"
+serde-saphyr = "1.3.0"
 thiserror = "2.0.18"
 
 [dev-dependencies]
