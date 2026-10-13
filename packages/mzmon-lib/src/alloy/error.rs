@@ -18,7 +18,7 @@ pub enum Error {
     Fmt(#[from] fmt::Error),
 
     #[error("YAML error: {0}")]
-    YamlError(#[from] serde_yaml_ng::Error),
+    YamlError(#[from] crate::yaml::Error),
 
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),

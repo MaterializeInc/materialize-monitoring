@@ -134,7 +134,7 @@ pub fn str_at<'a>(value: &'a Value, path: &str) -> Option<&'a str> {
 }
 
 pub fn parse_yaml(text: &str) -> Result<Value> {
-    serde_yaml_ng::from_str(text).context("parsing YAML")
+    mzmon_lib::yaml::from_str(text).context("parsing YAML")
 }
 
 /// Helm's coalescing of one values document over another: maps merge key by

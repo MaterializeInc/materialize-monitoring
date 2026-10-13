@@ -1200,7 +1200,7 @@ rules:
     enabledByDefault: false
     minImportance: essential
 records:
-  ext_consensus_persist/ext:consensus_up:
+  "ext_consensus_persist/ext:consensus_up":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_persist
     record: ext:consensus_up
@@ -1209,7 +1209,7 @@ records:
     requires:
     - materialize
     minImportance: recommended
-  ext_consensus_persist/ext:consensus_commit_latency_seconds:p99:
+  "ext_consensus_persist/ext:consensus_commit_latency_seconds:p99":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_persist
     record: ext:consensus_commit_latency_seconds:p99
@@ -1218,7 +1218,7 @@ records:
     requires:
     - materialize
     minImportance: extended
-  ext_consensus_rds/ext:consensus_xid_used_ratio:
+  "ext_consensus_rds/ext:consensus_xid_used_ratio":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_rds
     record: ext:consensus_xid_used_ratio
@@ -1226,7 +1226,7 @@ records:
       flavor: rds
     requires:
     - cloudwatch
-  ext_consensus_cloudsql/ext:consensus_up:
+  "ext_consensus_cloudsql/ext:consensus_up":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_cloudsql
     record: ext:consensus_up
@@ -1234,7 +1234,7 @@ records:
       flavor: cloudsql
     requires:
     - cloud-monitoring
-  ext_consensus_cloudsql/ext:consensus_storage_used_ratio:
+  "ext_consensus_cloudsql/ext:consensus_storage_used_ratio":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_cloudsql
     record: ext:consensus_storage_used_ratio
@@ -1242,7 +1242,7 @@ records:
       flavor: cloudsql
     requires:
     - cloud-monitoring
-  ext_consensus_cloudsql/ext:consensus_xid_used_ratio:
+  "ext_consensus_cloudsql/ext:consensus_xid_used_ratio":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_cloudsql
     record: ext:consensus_xid_used_ratio
@@ -1250,7 +1250,7 @@ records:
       flavor: cloudsql
     requires:
     - cloud-monitoring
-  ext_consensus_azure_postgres/ext:consensus_up:
+  "ext_consensus_azure_postgres/ext:consensus_up":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_azure_postgres
     record: ext:consensus_up
@@ -1258,7 +1258,7 @@ records:
       flavor: azure-postgres
     requires:
     - azure-monitor
-  ext_consensus_azure_postgres/ext:consensus_storage_used_ratio:
+  "ext_consensus_azure_postgres/ext:consensus_storage_used_ratio":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_azure_postgres
     record: ext:consensus_storage_used_ratio
@@ -1266,7 +1266,7 @@ records:
       flavor: azure-postgres
     requires:
     - azure-monitor
-  ext_consensus_azure_postgres/ext:consensus_xid_used_ratio:
+  "ext_consensus_azure_postgres/ext:consensus_xid_used_ratio":
     file: prometheus/ext-consensus.yaml
     group: ext_consensus_azure_postgres
     record: ext:consensus_xid_used_ratio

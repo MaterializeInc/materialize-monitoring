@@ -363,7 +363,7 @@ mod tests {
     /// one the chart cannot select.
     #[test]
     fn schema_vocabulary_matches() {
-        let schema: serde_json::Value = serde_yaml_ng::from_str(SCHEMA).unwrap();
+        let schema: serde_json::Value = crate::yaml::from_str(SCHEMA).unwrap();
         let mut from_schema: Vec<String> = schema["$defs"]["capability"]["oneOf"]
             .as_array()
             .expect("capability is a oneOf of consts")

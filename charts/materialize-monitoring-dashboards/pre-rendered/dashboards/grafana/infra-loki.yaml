@@ -96,7 +96,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     logs-rate-by-component:
       kind: Panel
       spec:
@@ -126,7 +126,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{component}}'
+                    legendFormat: "{{component}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -162,7 +162,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     logs-warning-feed:
       kind: Panel
       spec:
@@ -230,7 +230,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     logs-warning-rate:
       kind: Panel
       spec:
@@ -281,7 +281,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No warnings in this time range
@@ -299,7 +299,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     loki-volume-hidden-note:
       kind: Panel
       spec:
@@ -332,7 +332,7 @@ spec:
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
-          version: ''
+          version: ""
     overview-canary-latency:
       kind: Panel
       spec:
@@ -436,7 +436,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: Canary not collected — check Collection Health below
@@ -455,7 +455,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-canary-losses:
       kind: Panel
       spec:
@@ -570,7 +570,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-canary-missing:
       kind: Panel
       spec:
@@ -646,7 +646,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-canary-roundtrip:
       kind: Panel
       spec:
@@ -765,7 +765,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-client-error-rate:
       kind: Panel
       spec:
@@ -854,7 +854,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: No requests in this range
@@ -872,7 +872,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-error-rate:
       kind: Panel
       spec:
@@ -974,7 +974,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-failures:
       kind: Panel
       spec:
@@ -1003,7 +1003,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       sum by (container) (
@@ -1052,7 +1052,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-ingest:
       kind: Panel
       spec:
@@ -1111,7 +1111,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 min: 0
                 noValue: Nothing is reaching the distributor
@@ -1129,7 +1129,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     overview-latency-by-route:
       kind: Panel
       spec:
@@ -1161,7 +1161,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{route}}'
+                    legendFormat: "{{route}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -1215,7 +1215,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     overview-restarts:
       kind: Panel
       spec:
@@ -1243,7 +1243,7 @@ spec:
                         )
                       ) > 0
                     instant: true
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -1290,7 +1290,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     overview-scrape:
       kind: Panel
       spec:
@@ -1375,7 +1375,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     reads-bytes:
       kind: Panel
       spec:
@@ -1434,7 +1434,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No queries ran in this range
@@ -1452,7 +1452,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-cache-hit-rate:
       kind: Panel
       spec:
@@ -1489,7 +1489,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |
                       sum by (name) (
@@ -1547,7 +1547,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-cache-memory:
       kind: Panel
       spec:
@@ -1578,7 +1578,7 @@ spec:
                           namespace=~"$lokiNamespace"
                         }
                       )
-                    legendFormat: '{{service}}'
+                    legendFormat: "{{service}}"
                     qryType: 1
                     query: |
                       sum by (service) (
@@ -1632,7 +1632,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-cache-requests:
       kind: Panel
       spec:
@@ -1659,7 +1659,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |
                       sum by (name) (
@@ -1706,7 +1706,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-in-flight:
       kind: Panel
       spec:
@@ -1759,7 +1759,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: Nothing is querying the store
@@ -1777,7 +1777,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     reads-latency:
       kind: Panel
       spec:
@@ -1953,7 +1953,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-queue:
       kind: Panel
       spec:
@@ -2072,7 +2072,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     reads-rate:
       kind: Panel
       spec:
@@ -2101,7 +2101,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{route}}'
+                    legendFormat: "{{route}}"
                     qryType: 1
                     query: |
                       sum by (route) (
@@ -2150,7 +2150,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-compaction-age:
       kind: Panel
       spec:
@@ -2208,7 +2208,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 noValue: Compaction has never completed — expected on a new install, a finding on an old one
@@ -2226,7 +2226,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     storage-compaction-runs:
       kind: Panel
       spec:
@@ -2253,7 +2253,7 @@ spec:
                           [$__range]
                         )
                       )
-                    legendFormat: '{{status}}'
+                    legendFormat: "{{status}}"
                     qryType: 1
                     query: |
                       sum by (status) (
@@ -2300,7 +2300,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-deletes:
       kind: Panel
       spec:
@@ -2397,7 +2397,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-failures:
       kind: Panel
       spec:
@@ -2424,7 +2424,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{operation}}'
+                    legendFormat: "{{operation}}"
                     qryType: 1
                     query: |
                       sum by (operation) (
@@ -2473,7 +2473,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-index-sync:
       kind: Panel
       spec:
@@ -2580,7 +2580,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-index-wait:
       kind: Panel
       spec:
@@ -2660,7 +2660,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-latency:
       kind: Panel
       spec:
@@ -2690,7 +2690,7 @@ spec:
                           )
                         )
                       )
-                    legendFormat: '{{operation}}'
+                    legendFormat: "{{operation}}"
                     qryType: 1
                     query: |
                       histogram_quantile(
@@ -2740,7 +2740,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-operations:
       kind: Panel
       spec:
@@ -2767,7 +2767,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{operation}}'
+                    legendFormat: "{{operation}}"
                     qryType: 1
                     query: |
                       sum by (operation) (
@@ -2814,7 +2814,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-retention-age:
       kind: Panel
       spec:
@@ -2874,7 +2874,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 noValue: Retention has never completed — expected on a new install, a finding on an old one
@@ -2892,7 +2892,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     writes-bytes:
       kind: Panel
       spec:
@@ -2951,7 +2951,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: Nothing is reaching the distributor
@@ -2969,7 +2969,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     writes-chunk-age:
       kind: Panel
       spec:
@@ -3088,7 +3088,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-chunk-utilization:
       kind: Panel
       spec:
@@ -3208,7 +3208,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-chunks-flushed:
       kind: Panel
       spec:
@@ -3282,7 +3282,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-chunks-memory:
       kind: Panel
       spec:
@@ -3306,7 +3306,7 @@ spec:
                           namespace=~"$lokiNamespace"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3350,7 +3350,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-discarded-bytes:
       kind: Panel
       spec:
@@ -3377,7 +3377,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                     qryType: 1
                     query: |
                       sum by (reason) (
@@ -3424,7 +3424,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-discarded-lines:
       kind: Panel
       spec:
@@ -3451,7 +3451,7 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                     qryType: 1
                     query: |
                       sum by (reason) (
@@ -3500,7 +3500,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-lines:
       kind: Panel
       spec:
@@ -3559,7 +3559,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: Nothing is reaching the distributor
@@ -3577,7 +3577,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     writes-push-latency:
       kind: Panel
       spec:
@@ -3685,7 +3685,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No pushes in this range
@@ -3704,7 +3704,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     writes-streams:
       kind: Panel
       spec:
@@ -3728,7 +3728,7 @@ spec:
                           namespace=~"$lokiNamespace"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3774,7 +3774,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-wal-disk:
       kind: Panel
       spec:
@@ -3798,7 +3798,7 @@ spec:
                           namespace=~"$lokiNamespace"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -3843,7 +3843,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-wal-full:
       kind: Panel
       spec:
@@ -3870,7 +3870,7 @@ spec:
                           [$__range]
                         )
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (pod) (
@@ -3917,7 +3917,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     writes-wal-replay:
       kind: Panel
       spec:
@@ -3941,7 +3941,7 @@ spec:
                           namespace=~"$lokiNamespace"
                         }
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       max by (pod) (
@@ -3986,7 +3986,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -4543,7 +4543,7 @@ spec:
   - meta-monitoring
   - logs
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -4566,8 +4566,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -4577,14 +4577,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -4594,15 +4594,15 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app_instance="loki"}, namespace)
       description: Namespace(s) the log store runs in
       hide: dontHide
@@ -4622,7 +4622,7 @@ spec:
           query: label_values(up{app_instance="loki"}, namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -4631,8 +4631,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{app_instance="loki"}, container)
       description: Which of the log store's processes to read
       hide: dontHide
@@ -4652,7 +4652,7 @@ spec:
           query: label_values(up{app_instance="loki"}, container)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -4661,8 +4661,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(level)
       description: The severity level(s) to include
       hide: dontHide
@@ -4679,28 +4679,28 @@ spec:
         spec:
           label: level
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{app="loki", namespace=~"$lokiNamespace"}'
+          stream: "{app=\"loki\", namespace=~\"$lokiNamespace\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
   - kind: TextVariable
     spec:
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Case-insensitive text to match anywhere in the log line
       hide: dontHide
       label: Search
       name: logSearch
-      query: ''
+      query: ""
       skipUrlSync: false
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
@@ -4719,7 +4719,7 @@ spec:
       skipUrlSync: false
   - datasource:
       name: $logsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true

@@ -1100,7 +1100,7 @@ impl RuleSet {
         &self,
         engine: RuleEngine,
         source: &str,
-    ) -> serde_yaml_ng::Result<String> {
+    ) -> Result<String, crate::yaml::SerializeError> {
         let mut groups: IndexMap<&str, Vec<EntryDoc>> = IndexMap::new();
         for rule in self
             .rules
@@ -1142,12 +1142,12 @@ impl RuleSet {
         Ok(format!(
             "{}{}",
             rule_file_header(engine),
-            serde_yaml_ng::to_string(&doc)?
+            crate::yaml::to_string(&doc)?
         ))
     }
 
     /// The index the chart selects from.
-    pub fn index_yaml(&self) -> serde_yaml_ng::Result<String> {
+    pub fn index_yaml(&self) -> Result<String, crate::yaml::SerializeError> {
         let doc = IndexDoc {
             placeholders: Placeholder::ALL.iter().map(|p| p.token()).collect(),
             capabilities: Capability::ALL
@@ -1209,7 +1209,7 @@ impl RuleSet {
 # default set; each recording rule's capabilities, keyed `<group>/<record>`; and
 # the vocabularies the chart validates values against.
 ";
-        Ok(format!("{header}{}", serde_yaml_ng::to_string(&doc)?))
+        Ok(format!("{header}{}", crate::yaml::to_string(&doc)?))
     }
 }
 
@@ -1905,7 +1905,7 @@ mod tests {
 
         let index = set.index_yaml().unwrap();
         assert!(
-            index.contains("ext_consensus_rds/ext:consensus_xid_used_ratio:"),
+            index.contains("\"ext_consensus_rds/ext:consensus_xid_used_ratio\":"),
             "{index}"
         );
         assert!(

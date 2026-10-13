@@ -51,7 +51,7 @@ spec:
                       max by (instance, device) (
                         node_arp_entries{instance=~"$nodeList"}
                       )
-                    legendFormat: '{{device}}'
+                    legendFormat: "{{device}}"
                     qryType: 1
                     query: |
                       max by (instance, device) (
@@ -89,7 +89,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     conntrack:
       kind: Panel
       spec:
@@ -138,24 +138,24 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -171,7 +171,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-by-mode:
       kind: Panel
       spec:
@@ -338,7 +338,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-context-switches:
       kind: Panel
       spec:
@@ -418,7 +418,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-load:
       kind: Panel
       spec:
@@ -473,7 +473,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 unit: short
@@ -490,7 +490,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-per-core:
       kind: Panel
       spec:
@@ -550,7 +550,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-pressure:
       kind: Panel
       spec:
@@ -599,7 +599,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 max: 1
                 min: 0
@@ -617,7 +617,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-runqueue:
       kind: Panel
       spec:
@@ -678,7 +678,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cpu-utilization:
       kind: Panel
       spec:
@@ -731,24 +731,24 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -764,7 +764,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     disk-iops:
       kind: Panel
       spec:
@@ -844,7 +844,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     disk-latency:
       kind: Panel
       spec:
@@ -944,7 +944,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     disk-queue-depth:
       kind: Panel
       spec:
@@ -965,7 +965,7 @@ spec:
                       max by (instance, device) (
                         rate(node_disk_io_time_weighted_seconds_total{instance=~"$nodeList"}[$__rate_interval])
                       )
-                    legendFormat: '{{device}}'
+                    legendFormat: "{{device}}"
                     qryType: 1
                     query: |
                       max by (instance, device) (
@@ -1003,7 +1003,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     disk-throughput:
       kind: Panel
       spec:
@@ -1083,7 +1083,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     disk-utilization:
       kind: Panel
       spec:
@@ -1104,7 +1104,7 @@ spec:
                       max by (instance, device) (
                         rate(node_disk_io_time_seconds_total{instance=~"$nodeList"}[$__rate_interval])
                       )
-                    legendFormat: '{{device}}'
+                    legendFormat: "{{device}}"
                     qryType: 1
                     query: |
                       max by (instance, device) (
@@ -1136,17 +1136,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -1162,7 +1162,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     filefd:
       kind: Panel
       spec:
@@ -1209,24 +1209,24 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#BBBBBB'
+                  fixedColor: "#BBBBBB"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -1242,7 +1242,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     fs-available:
       kind: Panel
       spec:
@@ -1267,7 +1267,7 @@ spec:
                       max by (instance, mountpoint) (
                         node_filesystem_size_bytes{instance=~"$nodeList", fstype!="rootfs"}
                       )
-                    legendFormat: '{{mountpoint}}'
+                    legendFormat: "{{mountpoint}}"
                     qryType: 1
                     query: |
                       min by (instance, mountpoint) (
@@ -1303,11 +1303,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.2
                 unit: percentunit
               overrides: []
@@ -1323,7 +1323,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     fs-inodes:
       kind: Panel
       spec:
@@ -1348,7 +1348,7 @@ spec:
                       max by (instance, mountpoint) (
                         node_filesystem_files{instance=~"$nodeList", fstype!="rootfs"}
                       )
-                    legendFormat: '{{mountpoint}}'
+                    legendFormat: "{{mountpoint}}"
                     qryType: 1
                     query: |
                       min by (instance, mountpoint) (
@@ -1380,11 +1380,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.2
                 unit: percentunit
               overrides: []
@@ -1400,7 +1400,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     fs-readonly:
       kind: Panel
       spec:
@@ -1421,7 +1421,7 @@ spec:
                       max by (instance, mountpoint) (
                         node_filesystem_readonly{instance=~"$nodeList", fstype!="rootfs"}
                       )
-                    legendFormat: '{{mountpoint}}'
+                    legendFormat: "{{mountpoint}}"
                     qryType: 1
                     query: |
                       max by (instance, mountpoint) (
@@ -1463,7 +1463,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-available:
       kind: Panel
       spec:
@@ -1520,18 +1520,18 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.2
                 unit: percentunit
               overrides: []
@@ -1547,7 +1547,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-breakdown:
       kind: Panel
       spec:
@@ -1673,7 +1673,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-kernel:
       kind: Panel
       spec:
@@ -1779,7 +1779,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-oom-kills:
       kind: Panel
       spec:
@@ -1826,7 +1826,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No OOM kills — nothing has been terminated for memory.
@@ -1844,7 +1844,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-page-faults:
       kind: Panel
       spec:
@@ -1924,7 +1924,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-pressure:
       kind: Panel
       spec:
@@ -2009,7 +2009,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     memory-reclaim:
       kind: Panel
       spec:
@@ -2133,7 +2133,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     network-drops:
       kind: Panel
       spec:
@@ -2216,7 +2216,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     network-errors:
       kind: Panel
       spec:
@@ -2301,7 +2301,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     network-operstate:
       kind: Panel
       spec:
@@ -2384,7 +2384,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     network-saturation:
       kind: Panel
       spec:
@@ -2474,17 +2474,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -2500,7 +2500,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     network-throughput:
       kind: Panel
       spec:
@@ -2580,7 +2580,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     node-event-feed:
       kind: Panel
       spec:
@@ -2648,7 +2648,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: true
               wrapLogMessage: false
-          version: ''
+          version: ""
     node-event-rate:
       kind: Panel
       spec:
@@ -2675,7 +2675,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -2713,7 +2713,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     node-journal-feed:
       kind: Panel
       spec:
@@ -2778,7 +2778,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     node-journal-rate:
       kind: Panel
       spec:
@@ -2804,7 +2804,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{unit}}'
+                    legendFormat: "{{unit}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -2842,7 +2842,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     node-journal-warnings:
       kind: Panel
       spec:
@@ -2909,7 +2909,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     pods-budgets:
       kind: Panel
       spec:
@@ -3042,17 +3042,17 @@ spec:
                     CPU Requested: 2
                     Memory Limit: 5
                     Memory Requested: 4
-                    'Value #query-0': 6
-                    'Value #query-1': 7
-                    'Value #query-2': 8
-                    'Value #query-3': 9
+                    "Value #query-0": 6
+                    "Value #query-1": 7
+                    "Value #query-2": 8
+                    "Value #query-3": 9
                     namespace: 0
                     pod: 1
                   renameByName:
-                    'Value #query-0': CPU Requested
-                    'Value #query-1': CPU Limit
-                    'Value #query-2': Memory Requested
-                    'Value #query-3': Memory Limit
+                    "Value #query-0": CPU Requested
+                    "Value #query-1": CPU Limit
+                    "Value #query-2": Memory Requested
+                    "Value #query-3": Memory Limit
         description: |-
           **What each pod on this node reserved and what it is capped at — CPU and memory, requests beside limits.**
 
@@ -3112,7 +3112,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     pods-by-phase:
       kind: Panel
       spec:
@@ -3137,7 +3137,7 @@ spec:
                         )
                       )
                     instant: true
-                    legendFormat: '{{phase}}'
+                    legendFormat: "{{phase}}"
                     qryType: 1
                     query: |
                       max by (phase) (
@@ -3165,7 +3165,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -3189,7 +3189,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pods-not-ready:
       kind: Panel
       spec:
@@ -3268,7 +3268,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     pods-restarts:
       kind: Panel
       spec:
@@ -3292,7 +3292,7 @@ spec:
                           and on (namespace, pod) kube_pod_info{node="$node"}
                         )
                       )
-                    legendFormat: '{{namespace}}/{{pod}}'
+                    legendFormat: "{{namespace}}/{{pod}}"
                     qryType: 1
                     query: |
                       max by (namespace, pod) (
@@ -3324,7 +3324,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -3339,7 +3339,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     socket-memory:
       kind: Panel
       spec:
@@ -3411,7 +3411,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     softnet-dropped:
       kind: Panel
       spec:
@@ -3471,7 +3471,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     softnet-processed:
       kind: Panel
       spec:
@@ -3530,7 +3530,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     softnet-squeezed:
       kind: Panel
       spec:
@@ -3589,7 +3589,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     summary-container-runtime:
       kind: Panel
       spec:
@@ -3609,7 +3609,7 @@ spec:
                     expr: |
                       max by (node, container_runtime_version) (kube_node_info{node="$node"})
                     instant: true
-                    legendFormat: '{{container_runtime_version}}'
+                    legendFormat: "{{container_runtime_version}}"
                     qryType: 1
                     query: |
                       max by (node, container_runtime_version) (kube_node_info{node="$node"})
@@ -3637,7 +3637,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
               overrides: []
@@ -3656,7 +3656,7 @@ spec:
                 valueSize: 16
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-cpu-allocation:
       kind: Panel
       spec:
@@ -3712,25 +3712,25 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 max: 1
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -3744,7 +3744,7 @@ spec:
               showThresholdLabels: false
               showThresholdMarkers: true
               sizing: auto
-          version: ''
+          version: ""
     summary-cpu-capacity:
       kind: Panel
       spec:
@@ -3784,7 +3784,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
                 unit: cores
@@ -3801,7 +3801,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-cpu-usage:
       kind: Panel
       spec:
@@ -3853,24 +3853,24 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -3886,7 +3886,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-internal-ip:
       kind: Panel
       spec:
@@ -3906,7 +3906,7 @@ spec:
                     expr: |
                       max by (node, internal_ip) (kube_node_info{node="$node"})
                     instant: true
-                    legendFormat: '{{internal_ip}}'
+                    legendFormat: "{{internal_ip}}"
                     qryType: 1
                     query: |
                       max by (node, internal_ip) (kube_node_info{node="$node"})
@@ -3934,7 +3934,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
               overrides: []
@@ -3953,7 +3953,7 @@ spec:
                 valueSize: 16
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-kernel-version:
       kind: Panel
       spec:
@@ -3973,7 +3973,7 @@ spec:
                     expr: |
                       max by (node, kernel_version) (kube_node_info{node="$node"})
                     instant: true
-                    legendFormat: '{{kernel_version}}'
+                    legendFormat: "{{kernel_version}}"
                     qryType: 1
                     query: |
                       max by (node, kernel_version) (kube_node_info{node="$node"})
@@ -4001,7 +4001,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
               overrides: []
@@ -4020,7 +4020,7 @@ spec:
                 valueSize: 16
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-kubelet-version:
       kind: Panel
       spec:
@@ -4040,7 +4040,7 @@ spec:
                     expr: |
                       max by (node, kubelet_version) (kube_node_info{node="$node"})
                     instant: true
-                    legendFormat: '{{kubelet_version}}'
+                    legendFormat: "{{kubelet_version}}"
                     qryType: 1
                     query: |
                       max by (node, kubelet_version) (kube_node_info{node="$node"})
@@ -4068,7 +4068,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
               overrides: []
@@ -4087,7 +4087,7 @@ spec:
                 valueSize: 16
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-memory-allocation:
       kind: Panel
       spec:
@@ -4143,25 +4143,25 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 max: 1
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -4175,7 +4175,7 @@ spec:
               showThresholdLabels: false
               showThresholdMarkers: true
               sizing: auto
-          version: ''
+          version: ""
     summary-memory-available:
       kind: Panel
       spec:
@@ -4231,18 +4231,18 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.2
                 unit: percentunit
               overrides: []
@@ -4258,7 +4258,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-memory-capacity:
       kind: Panel
       spec:
@@ -4298,7 +4298,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
                 unit: bytes
@@ -4315,7 +4315,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-network-rx:
       kind: Panel
       spec:
@@ -4369,7 +4369,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 unit: Bps
@@ -4386,7 +4386,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-network-tx:
       kind: Panel
       spec:
@@ -4438,7 +4438,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 unit: Bps
@@ -4455,7 +4455,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-node-conditions:
       kind: Panel
       spec:
@@ -4480,7 +4480,7 @@ spec:
                           status="true"
                         }
                       )
-                    legendFormat: '{{condition}}'
+                    legendFormat: "{{condition}}"
                     qryType: 1
                     query: |
                       max by (node, condition) (
@@ -4530,7 +4530,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     summary-node-created:
       kind: Panel
       spec:
@@ -4576,7 +4576,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
                 unit: dateTimeAsIso
@@ -4595,7 +4595,7 @@ spec:
                 valueSize: 16
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-node-ready:
       kind: Panel
       spec:
@@ -4642,7 +4642,7 @@ spec:
                 - options:
                     from: 1
                     result:
-                      color: '#A2F49B'
+                      color: "#A2F49B"
                       index: 1
                       text: Healthy
                     to: 2147483647
@@ -4650,7 +4650,7 @@ spec:
                 - options:
                     from: 1
                     result:
-                      color: '#F19903'
+                      color: "#F19903"
                       index: 2
                       text: Degraded
                     to: 1
@@ -4658,7 +4658,7 @@ spec:
                 - options:
                     from: -2147483647
                     result:
-                      color: '#AB0003'
+                      color: "#AB0003"
                       index: 3
                       text: Unhealthy
                     to: 1
@@ -4666,19 +4666,19 @@ spec:
                 - options:
                     match: null+nan
                     result:
-                      color: '#888888'
+                      color: "#888888"
                       index: 4
                       text: Missing Data
                   type: special
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 1
               overrides: []
             options:
@@ -4693,7 +4693,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-node-taints:
       kind: Panel
       spec:
@@ -4766,7 +4766,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     summary-node-unschedulable:
       kind: Panel
       spec:
@@ -4811,24 +4811,24 @@ spec:
               defaults:
                 mappings:
                 - options:
-                    '0':
-                      color: '#A2F49B'
+                    "0":
+                      color: "#A2F49B"
                       index: 1
                       text: Schedulable
                   type: value
                 - options:
-                    '1':
-                      color: '#F19903'
+                    "1":
+                      color: "#F19903"
                       index: 2
                       text: Cordoned
                   type: value
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 1
               overrides: []
             options:
@@ -4843,7 +4843,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-os-image:
       kind: Panel
       spec:
@@ -4863,7 +4863,7 @@ spec:
                     expr: |
                       max by (node, os_image) (kube_node_info{node="$node"})
                     instant: true
-                    legendFormat: '{{os_image}}'
+                    legendFormat: "{{os_image}}"
                     qryType: 1
                     query: |
                       max by (node, os_image) (kube_node_info{node="$node"})
@@ -4891,7 +4891,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
               overrides: []
@@ -4910,7 +4910,7 @@ spec:
                 valueSize: 16
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-pod-allocation:
       kind: Panel
       spec:
@@ -4968,25 +4968,25 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 max: 1
                 min: 0
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8500000000000001
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9000000000000001
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9500000000000002
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -5000,7 +5000,7 @@ spec:
               showThresholdLabels: false
               showThresholdMarkers: true
               sizing: auto
-          version: ''
+          version: ""
     summary-pod-capacity:
       kind: Panel
       spec:
@@ -5040,7 +5040,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
                 unit: short
@@ -5057,7 +5057,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-pods-by-namespace:
       kind: Panel
       spec:
@@ -5081,7 +5081,7 @@ spec:
                           unless on (namespace, pod) (kube_pod_status_phase{phase=~"Succeeded|Failed"} == 1)
                         )
                       )
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                     qryType: 1
                     query: |
                       max by (namespace) (
@@ -5109,7 +5109,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
                 unit: short
               overrides: []
             options:
@@ -5133,7 +5133,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     summary-storage-capacity:
       kind: Panel
       spec:
@@ -5173,7 +5173,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
                 noValue: No such node — has it been removed from the cluster?
                 unit: bytes
@@ -5190,7 +5190,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-swap-used:
       kind: Panel
       spec:
@@ -5254,7 +5254,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 max: 1
                 min: 0
@@ -5262,19 +5262,19 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 0.1
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 0.30000000000000004
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 0.5
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 0.7
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8999999999999999
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -5290,7 +5290,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     swap-activity:
       kind: Panel
       spec:
@@ -5375,7 +5375,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     swap-used:
       kind: Panel
       spec:
@@ -5440,26 +5440,26 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 max: 1
                 min: 0
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 0.1
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 0.30000000000000004
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 0.5
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 0.7
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.8999999999999999
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -5475,7 +5475,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     tcp-errors:
       kind: Panel
       spec:
@@ -5598,7 +5598,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     tcp-retransmits:
       kind: Panel
       spec:
@@ -5699,7 +5699,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     tcp-sockets:
       kind: Panel
       spec:
@@ -5805,7 +5805,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     udp-errors:
       kind: Panel
       spec:
@@ -5907,7 +5907,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     udp-queues:
       kind: Panel
       spec:
@@ -5987,7 +5987,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -6713,7 +6713,7 @@ spec:
   - mzmon
   - nodes
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -6736,8 +6736,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -6747,14 +6747,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: DatasourceVariable
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -6764,14 +6764,14 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(kube_node_info, node)
       description: The node this dashboard describes
       hide: dontHide
@@ -6791,7 +6791,7 @@ spec:
           query: label_values(kube_node_info, node)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -6799,8 +6799,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(node_uname_info{nodename="$node"}, instance)
       description: node-exporter address of the selected node (derived)
       hide: hideVariable
@@ -6820,7 +6820,7 @@ spec:
           query: label_values(node_uname_info{nodename="$node"}, instance)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -6829,8 +6829,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(unit)
       description: The systemd unit(s) to read node journal logs from
       hide: dontHide
@@ -6847,11 +6847,11 @@ spec:
         spec:
           label: unit
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: ''
+          stream: ""
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -6860,8 +6860,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(level)
       description: The severity level(s) to include
       hide: dontHide
@@ -6878,28 +6878,28 @@ spec:
         spec:
           label: level
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{namespace=~"$logNamespaceList"}'
+          stream: "{namespace=~\"$logNamespaceList\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
   - kind: TextVariable
     spec:
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Case-insensitive text to match anywhere in the log line
       hide: dontHide
       label: Search
       name: logSearch
-      query: ''
+      query: ""
       skipUrlSync: false
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
@@ -6918,7 +6918,7 @@ spec:
       skipUrlSync: false
   - datasource:
       name: $logsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true

@@ -96,7 +96,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: true
               wrapLogMessage: false
-          version: ''
+          version: ""
     event-rate-by-namespace:
       kind: Panel
       spec:
@@ -121,7 +121,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{namespace}}'
+                    legendFormat: "{{namespace}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -154,7 +154,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     event-rate-by-reason:
       kind: Panel
       spec:
@@ -179,7 +179,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{reason}}'
+                    legendFormat: "{{reason}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -216,7 +216,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     log-feed:
       kind: Panel
       spec:
@@ -282,7 +282,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     log-rate-by-app:
       kind: Panel
       spec:
@@ -312,7 +312,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{app}}'
+                    legendFormat: "{{app}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -352,7 +352,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     log-rate-by-level:
       kind: Panel
       spec:
@@ -382,7 +382,7 @@ spec:
                           [$__auto]
                         )
                       )
-                    legendFormat: '{{level}}'
+                    legendFormat: "{{level}}"
                   version: v0
                 refId: query-0
             queryOptions: {}
@@ -422,7 +422,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     log-rate-total:
       kind: Panel
       spec:
@@ -475,7 +475,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No logs match the current filters
@@ -493,7 +493,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     volume-hidden-note:
       kind: Panel
       spec:
@@ -526,7 +526,7 @@ spec:
 
                 Shorten the time range, or narrow the namespace and app pickers, and they come back. The feeds below are unaffected at any range: they stop at the first page of matches. For counting over longer spans, [Explore](/explore) is the better tool.
               mode: markdown
-          version: ''
+          version: ""
     warning-event-feed:
       kind: Panel
       spec:
@@ -592,7 +592,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: true
               wrapLogMessage: false
-          version: ''
+          version: ""
     warning-feed:
       kind: Panel
       spec:
@@ -660,7 +660,7 @@ spec:
               timestampResolution: ms
               unwrappedColumns: false
               wrapLogMessage: true
-          version: ''
+          version: ""
     warning-rate:
       kind: Panel
       spec:
@@ -717,7 +717,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No warnings in this time range
@@ -735,7 +735,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -926,7 +926,7 @@ spec:
   - mzmon
   - logs
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -949,8 +949,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for log and event queries
       hide: dontHide
       includeAll: false
@@ -960,7 +960,7 @@ spec:
       options: []
       pluginId: loki
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
@@ -988,11 +988,11 @@ spec:
         spec:
           label: namespace
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: ''
+          stream: ""
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -1001,8 +1001,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(app)
       description: The application(s) to read logs from
       hide: dontHide
@@ -1019,11 +1019,11 @@ spec:
         spec:
           label: app
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{namespace=~"$logNamespaceList"}'
+          stream: "{namespace=~\"$logNamespaceList\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -1032,8 +1032,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(level)
       description: The severity level(s) to include
       hide: dontHide
@@ -1050,11 +1050,11 @@ spec:
         spec:
           label: level
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{namespace=~"$logNamespaceList"}'
+          stream: "{namespace=~\"$logNamespaceList\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -1063,8 +1063,8 @@ spec:
       allValue: .+
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(job)
       description: The collection job(s) to read logs from
       hide: inControlsMenu
@@ -1081,28 +1081,28 @@ spec:
         spec:
           label: job
           refId: LokiVariableQueryEditor-VariableQuery
-          stream: '{namespace=~"$logNamespaceList"}'
+          stream: "{namespace=~\"$logNamespaceList\"}"
           type: 1
         version: v0
       refresh: onTimeRangeChanged
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
   - kind: TextVariable
     spec:
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Case-insensitive text to match anywhere in the log line
       hide: dontHide
       label: Search
       name: logSearch
-      query: ''
+      query: ""
       skipUrlSync: false
   - datasource:
       name: $logsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true

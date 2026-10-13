@@ -51,7 +51,7 @@ spec:
                       min by (resourceName) (
                         last_over_time(azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent[15m])
                       ) / 100
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       min by (resourceName) (
@@ -92,7 +92,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     blob-latency:
       kind: Panel
       spec:
@@ -175,7 +175,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     bucket-bytes:
       kind: Panel
       spec:
@@ -196,7 +196,7 @@ spec:
                       max by (dimension_BucketName) (
                         last_over_time(aws_s3_bucket_size_bytes_average[15m])
                       )
-                    legendFormat: '{{dimension_BucketName}}'
+                    legendFormat: "{{dimension_BucketName}}"
                     qryType: 1
                     query: |
                       max by (dimension_BucketName) (
@@ -217,7 +217,7 @@ spec:
                       sum by (bucket_name) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
                       )
-                    legendFormat: '{{bucket_name}}'
+                    legendFormat: "{{bucket_name}}"
                     qryType: 1
                     query: |
                       sum by (bucket_name) (
@@ -238,7 +238,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -309,7 +309,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     bucket-none-detected:
       kind: Panel
       spec:
@@ -346,7 +346,7 @@ spec:
 
                 Without provider metrics, Materialize's own view of both dependencies still works on every deployment: **Materialize Consensus** for the metadata database and **Materialize Persist** for object storage. That view says whether a dependency is failing Materialize; this dashboard, once enabled, says why.
               mode: markdown
-          version: ''
+          version: ""
     bucket-objects:
       kind: Panel
       spec:
@@ -367,7 +367,7 @@ spec:
                       max by (dimension_BucketName) (
                         last_over_time(aws_s3_number_of_objects_average[15m])
                       )
-                    legendFormat: '{{dimension_BucketName}}'
+                    legendFormat: "{{dimension_BucketName}}"
                     qryType: 1
                     query: |
                       max by (dimension_BucketName) (
@@ -388,7 +388,7 @@ spec:
                       sum by (bucket_name) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
                       )
-                    legendFormat: '{{bucket_name}}'
+                    legendFormat: "{{bucket_name}}"
                     qryType: 1
                     query: |
                       sum by (bucket_name) (
@@ -409,7 +409,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -455,7 +455,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cloudsql-by-database:
       kind: Panel
       spec:
@@ -476,7 +476,7 @@ spec:
                       sum by (database_id, database) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
                       )
-                    legendFormat: '{{database_id}} {{database}}'
+                    legendFormat: "{{database_id}} {{database}}"
                     qryType: 1
                     query: |
                       sum by (database_id, database) (
@@ -518,7 +518,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cloudsql-by-state:
       kind: Panel
       spec:
@@ -539,7 +539,7 @@ spec:
                       sum by (database_id, state) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state[15m])
                       )
-                    legendFormat: '{{database_id}} {{state}}'
+                    legendFormat: "{{database_id}} {{state}}"
                     qryType: 1
                     query: |
                       sum by (database_id, state) (
@@ -581,7 +581,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cloudsql-disk:
       kind: Panel
       spec:
@@ -602,7 +602,7 @@ spec:
                       max by (database_id) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization[15m])
                       )
-                    legendFormat: '{{database_id}}'
+                    legendFormat: "{{database_id}}"
                     qryType: 1
                     query: |
                       max by (database_id) (
@@ -635,11 +635,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.8
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9
                 unit: percentunit
               overrides: []
@@ -655,7 +655,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cloudsql-memory:
       kind: Panel
       spec:
@@ -676,7 +676,7 @@ spec:
                       max by (database_id) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization[15m])
                       )
-                    legendFormat: '{{database_id}}'
+                    legendFormat: "{{database_id}}"
                     qryType: 1
                     query: |
                       max by (database_id) (
@@ -718,7 +718,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     cloudsql-up:
       kind: Panel
       spec:
@@ -739,7 +739,7 @@ spec:
                       min by (database_id) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m])
                       )
-                    legendFormat: '{{database_id}}'
+                    legendFormat: "{{database_id}}"
                     qryType: 1
                     query: |
                       min by (database_id) (
@@ -782,7 +782,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     collection-about:
       kind: Panel
       spec:
@@ -824,7 +824,7 @@ spec:
                 - **A pull that answers is not a pull that worked.** _Provider Pulls_ reads 1 for an exporter whose call to the provider failed; _Resources Returning Data_ is the check, and the Cloud Monitoring and Azure Monitor rows say why a pull failed.
                 - **Each pull is billed by the provider**, at a cost set by how many resources are listed and how often they are pulled, not by how often this dashboard is viewed.
               mode: markdown
-          version: ''
+          version: ""
     collection-azure-calls:
       kind: Panel
       spec:
@@ -851,7 +851,7 @@ spec:
                         ),
                         "resourceProvider", "other", "resourceProvider", ""
                       )
-                    legendFormat: '{{resourceProvider}}'
+                    legendFormat: "{{resourceProvider}}"
                     qryType: 1
                     query: |
                       label_replace(
@@ -898,7 +898,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     collection-azure-failures:
       kind: Panel
       spec:
@@ -962,7 +962,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     collection-gcp-calls:
       kind: Panel
       spec:
@@ -983,7 +983,7 @@ spec:
                       sum by (instance) (
                         rate(stackdriver_monitoring_api_calls_total[30m])
                       ) * 60
-                    legendFormat: '{{instance}}'
+                    legendFormat: "{{instance}}"
                     qryType: 1
                     query: |
                       sum by (instance) (
@@ -1026,7 +1026,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     collection-gcp-errors:
       kind: Panel
       spec:
@@ -1047,7 +1047,7 @@ spec:
                       max by (instance) (
                         last_over_time(stackdriver_monitoring_last_scrape_error[15m])
                       )
-                    legendFormat: '{{instance}}'
+                    legendFormat: "{{instance}}"
                     qryType: 1
                     query: |
                       max by (instance) (
@@ -1092,7 +1092,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     collection-pulls:
       kind: Panel
       spec:
@@ -1165,7 +1165,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     collection-resources:
       kind: Panel
       spec:
@@ -1293,7 +1293,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#BBBBBB'
+                  fixedColor: "#BBBBBB"
                   mode: shades
                 decimals: 0
                 min: 0
@@ -1312,7 +1312,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     db-connections:
       kind: Panel
       spec:
@@ -1333,7 +1333,7 @@ spec:
                       max by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_database_connections_maximum[15m])
                       )
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       max by (dimension_DBInstanceIdentifier) (
@@ -1354,7 +1354,7 @@ spec:
                       sum by (database_id) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
                       )
-                    legendFormat: '{{database_id}}'
+                    legendFormat: "{{database_id}}"
                     qryType: 1
                     query: |
                       sum by (database_id) (
@@ -1375,7 +1375,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -1412,7 +1412,7 @@ spec:
           Materialize's line sums every environment on this cluster, since the provider cannot say which environment a database belongs to. The instance's `max_connections` is not published by any provider; on PostgreSQL, `SHOW max_connections` gives it.
         id: 1001
         links: []
-        title: 'Connections: Database and Materialize'
+        title: "Connections: Database and Materialize"
         vizConfig:
           group: timeseries
           kind: VizConfig
@@ -1436,7 +1436,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     db-cpu:
       kind: Panel
       spec:
@@ -1457,7 +1457,7 @@ spec:
                       max by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_cpuutilization_average[15m])
                       ) / 100
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       max by (dimension_DBInstanceIdentifier) (
@@ -1478,7 +1478,7 @@ spec:
                       max by (database_id) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization[15m])
                       )
-                    legendFormat: '{{database_id}}'
+                    legendFormat: "{{database_id}}"
                     qryType: 1
                     query: |
                       max by (database_id) (
@@ -1499,7 +1499,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])
                       ) / 100
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -1534,11 +1534,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.6
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9
                 unit: percentunit
               overrides: []
@@ -1554,7 +1554,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     db-none-detected:
       kind: Panel
       spec:
@@ -1591,7 +1591,7 @@ spec:
 
                 Without provider metrics, Materialize's own view of both dependencies still works on every deployment: **Materialize Consensus** for the metadata database and **Materialize Persist** for object storage. That view says whether a dependency is failing Materialize; this dashboard, once enabled, says why.
               mode: markdown
-          version: ''
+          version: ""
     db-transaction-ids:
       kind: Panel
       spec:
@@ -1612,7 +1612,7 @@ spec:
                       max by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_maximum_used_transaction_ids_maximum[15m])
                       ) / 2147483648
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       max by (dimension_DBInstanceIdentifier) (
@@ -1633,7 +1633,7 @@ spec:
                       max by (database_id) (
                         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization[15m])
                       )
-                    legendFormat: '{{database_id}}'
+                    legendFormat: "{{database_id}}"
                     qryType: 1
                     query: |
                       max by (database_id) (
@@ -1654,7 +1654,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count[15m])
                       ) / 2147483648
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -1687,11 +1687,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.25
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.5
                 unit: percentunit
               overrides: []
@@ -1707,7 +1707,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-alive:
       kind: Panel
       spec:
@@ -1728,7 +1728,7 @@ spec:
                       min by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       min by (resourceName) (
@@ -1771,7 +1771,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-connections-failed:
       kind: Panel
       spec:
@@ -1792,7 +1792,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -1836,7 +1836,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-cpu-credits:
       kind: Panel
       spec:
@@ -1857,7 +1857,7 @@ spec:
                       min by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       min by (resourceName) (
@@ -1898,7 +1898,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-io-consumed:
       kind: Panel
       spec:
@@ -1971,11 +1971,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.8
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -1991,7 +1991,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-memory:
       kind: Panel
       spec:
@@ -2012,7 +2012,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent[15m])
                       ) / 100
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -2054,7 +2054,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-queue-depth:
       kind: Panel
       spec:
@@ -2075,7 +2075,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count[15m])
                       )
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -2116,7 +2116,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     flexible-storage:
       kind: Panel
       spec:
@@ -2137,7 +2137,7 @@ spec:
                       max by (resourceName) (
                         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent[15m])
                       ) / 100
-                    legendFormat: '{{resourceName}}'
+                    legendFormat: "{{resourceName}}"
                     qryType: 1
                     query: |
                       max by (resourceName) (
@@ -2170,11 +2170,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.8
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 0.9
                 unit: percentunit
               overrides: []
@@ -2190,7 +2190,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     gcs-bytes-by-type:
       kind: Panel
       spec:
@@ -2211,7 +2211,7 @@ spec:
                       sum by (bucket_name, type) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
                       )
-                    legendFormat: '{{bucket_name}} {{type}}'
+                    legendFormat: "{{bucket_name}} {{type}}"
                     qryType: 1
                     query: |
                       sum by (bucket_name, type) (
@@ -2255,7 +2255,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     gcs-objects-by-type:
       kind: Panel
       spec:
@@ -2276,7 +2276,7 @@ spec:
                       sum by (bucket_name, type) (
                         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
                       )
-                    legendFormat: '{{bucket_name}} {{type}}'
+                    legendFormat: "{{bucket_name}} {{type}}"
                     qryType: 1
                     query: |
                       sum by (bucket_name, type) (
@@ -2320,7 +2320,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     rds-balances:
       kind: Panel
       spec:
@@ -2414,11 +2414,11 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.5
                 unit: percentunit
               overrides: []
@@ -2434,7 +2434,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     rds-cpu-credits:
       kind: Panel
       spec:
@@ -2455,7 +2455,7 @@ spec:
                       min by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_cpucredit_balance_minimum[15m])
                       )
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       min by (dimension_DBInstanceIdentifier) (
@@ -2496,7 +2496,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     rds-free-storage:
       kind: Panel
       spec:
@@ -2517,7 +2517,7 @@ spec:
                       min by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_free_storage_space_minimum[15m])
                       )
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       min by (dimension_DBInstanceIdentifier) (
@@ -2562,7 +2562,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     rds-freeable-memory:
       kind: Panel
       spec:
@@ -2583,7 +2583,7 @@ spec:
                       min by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_freeable_memory_minimum[15m])
                       )
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       min by (dimension_DBInstanceIdentifier) (
@@ -2624,7 +2624,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     rds-io-latency:
       kind: Panel
       spec:
@@ -2707,7 +2707,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     rds-queue-depth:
       kind: Panel
       spec:
@@ -2728,7 +2728,7 @@ spec:
                       max by (dimension_DBInstanceIdentifier) (
                         last_over_time(aws_rds_disk_queue_depth_average[15m])
                       )
-                    legendFormat: '{{dimension_DBInstanceIdentifier}}'
+                    legendFormat: "{{dimension_DBInstanceIdentifier}}"
                     qryType: 1
                     query: |
                       max by (dimension_DBInstanceIdentifier) (
@@ -2769,7 +2769,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -2857,7 +2857,7 @@ spec:
                             name: rds-cpu-credits
                       maxColumnCount: 3
                       rowHeightMode: standard
-                  title: 'RDS: Storage and Memory'
+                  title: "RDS: Storage and Memory"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -2896,7 +2896,7 @@ spec:
                             name: rds-balances
                       maxColumnCount: 3
                       rowHeightMode: standard
-                  title: 'RDS: Disk I/O'
+                  title: "RDS: Disk I/O"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -2935,7 +2935,7 @@ spec:
                             name: cloudsql-up
                       maxColumnCount: 3
                       rowHeightMode: standard
-                  title: 'Cloud SQL: Storage and Memory'
+                  title: "Cloud SQL: Storage and Memory"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -2969,7 +2969,7 @@ spec:
                             name: cloudsql-by-state
                       maxColumnCount: 2
                       rowHeightMode: standard
-                  title: 'Cloud SQL: Connections'
+                  title: "Cloud SQL: Connections"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3013,7 +3013,7 @@ spec:
                             name: flexible-alive
                       maxColumnCount: 2
                       rowHeightMode: standard
-                  title: 'Flexible Server: Storage and Memory'
+                  title: "Flexible Server: Storage and Memory"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3052,7 +3052,7 @@ spec:
                             name: flexible-connections-failed
                       maxColumnCount: 3
                       rowHeightMode: standard
-                  title: 'Flexible Server: Disk I/O and Connections'
+                  title: "Flexible Server: Disk I/O and Connections"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3156,7 +3156,7 @@ spec:
                             name: gcs-objects-by-type
                       maxColumnCount: 2
                       rowHeightMode: standard
-                  title: 'GCS: Reclaimable Data'
+                  title: "GCS: Reclaimable Data"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3190,7 +3190,7 @@ spec:
                             name: blob-latency
                       maxColumnCount: 2
                       rowHeightMode: standard
-                  title: 'Azure Blob: Availability and Latency'
+                  title: "Azure Blob: Availability and Latency"
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
@@ -3345,7 +3345,7 @@ spec:
   - mzmon
   - external-dependencies
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -3368,8 +3368,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -3379,14 +3379,14 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
       description: Cloud providers the gateway was found to be pulling metrics from
       hide: dontHide
@@ -3406,7 +3406,7 @@ spec:
           query: label_values(up{job=~"integrations/(cloudwatch|gcp|azure)"}, job)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc

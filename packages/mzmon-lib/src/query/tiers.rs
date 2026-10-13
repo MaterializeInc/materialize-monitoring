@@ -81,7 +81,7 @@ impl MetricTiers {
 
     /// Serialize to the `metric-tiers.yaml` body (no header comment).
     pub fn to_yaml(&self) -> Result<String> {
-        Ok(serde_yaml_ng::to_string(self)?)
+        Ok(crate::yaml::to_string(self)?)
     }
 }
 

@@ -237,7 +237,7 @@ fn render_gmp(args: &GenScrapeConfigsArgs, parsed: &[ParsedMonitor]) -> anyhow::
                 .name
                 .clone()
                 .unwrap_or_else(|| p.stem.clone());
-            let rendered = serde_yaml_ng::to_string(resource)
+            let rendered = mzmon_lib::yaml::to_string(resource)
                 .with_context(|| format!("serializing GMP resource {name}"))?;
             let output = dir.join(format!("{name}.yaml"));
             std::fs::write(&output, rendered)

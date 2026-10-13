@@ -45,7 +45,7 @@ const ID_OTELCOL: &str = "https://materializeinc.github.io/materialize-monitorin
 
 /// Parse an embedded schema (authored as YAML) into a JSON value.
 fn parse_schema(src: &str) -> Value {
-    serde_yaml_ng::from_str(src).expect("embedded schema is valid YAML")
+    crate::yaml::from_str(src).expect("embedded schema is valid YAML")
 }
 
 /// Build the compiled validator from the embedded schemas. Panics on failure

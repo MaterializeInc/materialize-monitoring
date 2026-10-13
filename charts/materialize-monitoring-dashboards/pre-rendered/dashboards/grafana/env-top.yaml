@@ -74,7 +74,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -91,7 +91,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     active-mzd-views:
       kind: Panel
       spec:
@@ -132,7 +132,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -149,7 +149,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     active-subscribes:
       kind: Panel
       spec:
@@ -169,7 +169,7 @@ spec:
                     expr: |
                       sum by (session_type) (mz_active_subscribes{materialize_cloud_organization_name=~"$environmentNameList"})
                     instant: true
-                    legendFormat: '{{session_type}}'
+                    legendFormat: "{{session_type}}"
                     qryType: 1
                     query: |
                       sum by (session_type) (mz_active_subscribes{materialize_cloud_organization_name=~"$environmentNameList"})
@@ -191,7 +191,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 noValue: No matches for the current filters
               overrides: []
@@ -216,7 +216,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     active-views:
       kind: Panel
       spec:
@@ -257,7 +257,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -274,7 +274,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     adapter-commands-by-app:
       kind: Panel
       spec:
@@ -370,17 +370,17 @@ spec:
                   value:
                     mode: absolute
                     steps:
-                    - color: '#A2F49B'
+                    - color: "#A2F49B"
                       value: null
-                    - color: '#FEDA8B'
+                    - color: "#FEDA8B"
                       value: 1
-                    - color: '#FDB366'
+                    - color: "#FDB366"
                       value: 25.75
-                    - color: '#F67E4B'
+                    - color: "#F67E4B"
                       value: 50.5
-                    - color: '#DD3D2D'
+                    - color: "#DD3D2D"
                       value: 75.25
-                    - color: '#A50026'
+                    - color: "#A50026"
                       value: 100
                 - id: custom.cellOptions
                   value:
@@ -394,7 +394,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     arrangement-rate:
       kind: Panel
       spec:
@@ -443,7 +443,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}}'
+                    legendFormat: "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}}"
                     qryType: 1
                     query: |-
                       (
@@ -512,7 +512,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     arrangement-rate-by-worker:
       kind: Panel
       spec:
@@ -561,7 +561,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}'
+                    legendFormat: "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}"
                     qryType: 1
                     query: |-
                       (
@@ -626,7 +626,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     arrangement-records-system:
       kind: Panel
       spec:
@@ -672,7 +672,7 @@ spec:
                       "name", "$1", "collection_id", "(.*)"
                       )
                     instant: true
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -729,7 +729,7 @@ spec:
                   sort:
                   - desc: true
                     field: Last *
-        description: '**Row counts of arrangements for Materialize''s internal system objects (object id starts with `s`). These back the catalog and internal probes, not user data, so they shouldn''t grow with your workload — unexpected growth here can point at a Materialize bug.**'
+        description: "**Row counts of arrangements for Materialize's internal system objects (object id starts with `s`). These back the catalog and internal probes, not user data, so they shouldn't grow with your workload — unexpected growth here can point at a Materialize bug.**"
         id: 1050
         links: []
         title: System Objects — Record Counts
@@ -755,7 +755,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     arrangement-records-transient:
       kind: Panel
       spec:
@@ -777,7 +777,7 @@ spec:
                         mz_arrangement_record_count{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList", replica_id=~"$mzReplicaList", collection_id=~"t.*|none"}
                       )
                     instant: true
-                    legendFormat: '{{collection_id}}'
+                    legendFormat: "{{collection_id}}"
                     qryType: 1
                     query: |
                       max by (collection_id) (
@@ -839,7 +839,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     arrangement-records-user:
       kind: Panel
       spec:
@@ -885,7 +885,7 @@ spec:
                       "name", "$1", "collection_id", "(.*)"
                       )
                     instant: true
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -942,7 +942,7 @@ spec:
                   sort:
                   - desc: true
                     field: Last *
-        description: '**Row counts of arrangements for your compute objects (object id starts with `u`) — the row count of every user index and materialized view, and the primary driver of cluster memory. Growth on an object tracks the size of its underlying data.**'
+        description: "**Row counts of arrangements for your compute objects (object id starts with `u`) — the row count of every user index and materialized view, and the primary driver of cluster memory. Growth on an object tracks the size of its underlying data.**"
         id: 1051
         links: []
         title: User Objects — Record Counts
@@ -968,7 +968,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     availability-percent:
       kind: Panel
       spec:
@@ -1028,11 +1028,11 @@ spec:
                 thresholds:
                   mode: percentage
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 95
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 99
                 unit: percent
               overrides: []
@@ -1048,7 +1048,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cluster-count:
       kind: Panel
       spec:
@@ -1122,7 +1122,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -1139,7 +1139,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     cluster-table:
       kind: Panel
       spec:
@@ -1237,7 +1237,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     connections-active-queries:
       kind: Panel
       spec:
@@ -1256,7 +1256,7 @@ spec:
                   spec:
                     expr: |
                       sum by (session_type) (rate(mz_query_total{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval]))
-                    legendFormat: '{{session_type}}'
+                    legendFormat: "{{session_type}}"
                     qryType: 1
                     query: |
                       sum by (session_type) (rate(mz_query_total{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval]))
@@ -1278,7 +1278,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -1296,7 +1296,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     connections-active-sessions:
       kind: Panel
       spec:
@@ -1315,7 +1315,7 @@ spec:
                   spec:
                     expr: |
                       sum by (session_type) (mz_active_sessions{materialize_cloud_organization_name=~"$environmentNameList"})
-                    legendFormat: '{{session_type}}'
+                    legendFormat: "{{session_type}}"
                     qryType: 1
                     query: |
                       sum by (session_type) (mz_active_sessions{materialize_cloud_organization_name=~"$environmentNameList"})
@@ -1339,7 +1339,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -1356,7 +1356,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     connections-adapter-command-rate:
       kind: Panel
       spec:
@@ -1399,7 +1399,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#33BBEE'
+                  fixedColor: "#33BBEE"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -1417,7 +1417,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     cpu-usage-current:
       kind: Panel
       spec:
@@ -1441,7 +1441,7 @@ spec:
                         kube_pod_container_resource_limits{resource="cpu", namespace=~"$mzNamespaceList"}
                       )
                     instant: true
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       sum by (namespace, container) (
@@ -1470,33 +1470,33 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: 0
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.2
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 0.30000000000000004
-                  - color: '#D5CE04'
+                  - color: "#D5CE04"
                     value: 0.4
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 0.5
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.6000000000000001
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 0.7000000000000001
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -1510,7 +1510,7 @@ spec:
               showThresholdLabels: false
               showThresholdMarkers: true
               sizing: auto
-          version: ''
+          version: ""
     dataflow-count:
       kind: Panel
       spec:
@@ -1555,7 +1555,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}}'
+                    legendFormat: "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}}"
                     qryType: 1
                     query: |-
                       (
@@ -1619,7 +1619,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     dataflow-count-by-worker:
       kind: Panel
       spec:
@@ -1664,7 +1664,7 @@ spec:
                       ),
                       "cluster_name", "$1", "cluster_environmentd_materialize_cloud_cluster_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}'
+                    legendFormat: "{{cluster_name}} / {{cluster_environmentd_materialize_cloud_replica_id}} / w{{worker_id}}"
                     qryType: 1
                     query: |-
                       (
@@ -1726,7 +1726,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     dataflow-elapsed-rate:
       kind: Panel
       spec:
@@ -1775,7 +1775,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}}'
+                    legendFormat: "{{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -1848,7 +1848,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     freshness-lag-by-cluster:
       kind: Panel
       spec:
@@ -1893,7 +1893,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}}'
+                    legendFormat: "{{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -1964,7 +1964,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     freshness-lag-total-by-cluster:
       kind: Panel
       spec:
@@ -2013,7 +2013,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}}'
+                    legendFormat: "{{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -2088,7 +2088,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     freshness-top-collections:
       kind: Panel
       spec:
@@ -2188,7 +2188,7 @@ spec:
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
                     instant: true
-                    legendFormat: '{{cluster_name}} / {{name}}'
+                    legendFormat: "{{cluster_name}} / {{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -2290,7 +2290,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 custom:
                   fillOpacity: 80
@@ -2321,7 +2321,7 @@ spec:
               xTickLabelMaxLength: 0
               xTickLabelRotation: 0
               xTickLabelSpacing: 100
-          version: ''
+          version: ""
     hydration-queue-size:
       kind: Panel
       spec:
@@ -2366,7 +2366,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}} / r{{replica_id}}'
+                    legendFormat: "{{cluster_name}} / r{{replica_id}}"
                     qryType: 1
                     query: |-
                       (
@@ -2431,7 +2431,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     hydration-slowest-collections:
       kind: Panel
       spec:
@@ -2523,7 +2523,7 @@ spec:
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
                     instant: true
-                    legendFormat: '{{cluster_name}} / r{{replica_id}} / {{name}}'
+                    legendFormat: "{{cluster_name}} / r{{replica_id}} / {{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -2617,7 +2617,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 custom:
                   fillOpacity: 80
@@ -2632,29 +2632,29 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: 2
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 6
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 15
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 37
-                  - color: '#D5CE04'
+                  - color: "#D5CE04"
                     value: 93
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 231
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 573
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 1420
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 3518
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 8717
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 21599
                 unit: s
               overrides: []
@@ -2677,7 +2677,7 @@ spec:
               xTickLabelMaxLength: 0
               xTickLabelRotation: 0
               xTickLabelSpacing: 100
-          version: ''
+          version: ""
     hydration-unhydrated-count:
       kind: Panel
       spec:
@@ -2732,7 +2732,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -2749,7 +2749,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     index-types:
       kind: Panel
       spec:
@@ -2769,7 +2769,7 @@ spec:
                     expr: |
                       sum by (relation_type) (mz_indexes_count{materialize_cloud_organization_name=~"$environmentNameList"})
                     instant: true
-                    legendFormat: '{{relation_type}}'
+                    legendFormat: "{{relation_type}}"
                     qryType: 1
                     query: |
                       sum by (relation_type) (mz_indexes_count{materialize_cloud_organization_name=~"$environmentNameList"})
@@ -2791,7 +2791,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 noValue: No matches for the current filters
               overrides: []
@@ -2816,7 +2816,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     is-healthy:
       kind: Panel
       spec:
@@ -2881,7 +2881,7 @@ spec:
                 - options:
                     from: 100
                     result:
-                      color: '#A2F49B'
+                      color: "#A2F49B"
                       index: 1
                       text: Healthy
                     to: 2147483647
@@ -2889,7 +2889,7 @@ spec:
                 - options:
                     from: 80
                     result:
-                      color: '#F19903'
+                      color: "#F19903"
                       index: 2
                       text: Degraded
                     to: 100
@@ -2897,7 +2897,7 @@ spec:
                 - options:
                     from: -2147483647
                     result:
-                      color: '#AB0003'
+                      color: "#AB0003"
                       index: 3
                       text: Unhealthy
                     to: 80
@@ -2905,7 +2905,7 @@ spec:
                 - options:
                     match: null+nan
                     result:
-                      color: '#888888'
+                      color: "#888888"
                       index: 4
                       text: Missing Data
                   type: special
@@ -2923,7 +2923,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     k8s-res-cpu-total:
       kind: Panel
       spec:
@@ -2971,9 +2971,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: cores
               overrides: []
             options:
@@ -2988,7 +2988,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     k8s-res-memory-total:
       kind: Panel
       spec:
@@ -3034,9 +3034,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: bytes
               overrides: []
             options:
@@ -3051,7 +3051,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     last-restart:
       kind: Panel
       spec:
@@ -3074,7 +3074,7 @@ spec:
                           container_start_time_seconds{namespace=~"$mzNamespaceList",container!="",container!="POD", container!="new-promsql-exporter"}
                         )
                     instant: true
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       time()
@@ -3102,33 +3102,33 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: null
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 2
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 8
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 26
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 80
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 240
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 719
-                  - color: '#D5CE04'
+                  - color: "#D5CE04"
                     value: 2152
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 6443
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 19286
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 57730
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: 172800
                 unit: s
               overrides: []
@@ -3146,7 +3146,7 @@ spec:
                 valueSize: 25
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     materialize-version:
       kind: Panel
       spec:
@@ -3168,7 +3168,7 @@ spec:
                         mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentNameList"}
                       )
                     instant: true
-                    legendFormat: '{{mz_version}}'
+                    legendFormat: "{{mz_version}}"
                     qryType: 1
                     query: |
                       group by (mz_version) (
@@ -3223,7 +3223,7 @@ spec:
                 valueSize: 20
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     memory-usage-current:
       kind: Panel
       spec:
@@ -3251,7 +3251,7 @@ spec:
                         )
                       )
                     instant: true
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       sum by (namespace, container) (
@@ -3282,33 +3282,33 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: 0
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 0.1
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 0.2
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 0.30000000000000004
-                  - color: '#D5CE04'
+                  - color: "#D5CE04"
                     value: 0.4
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 0.5
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 0.6000000000000001
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 0.7000000000000001
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 0.8
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 0.9
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 1
                 unit: percentunit
               overrides: []
@@ -3322,7 +3322,7 @@ spec:
               showThresholdLabels: false
               showThresholdMarkers: true
               sizing: auto
-          version: ''
+          version: ""
     pod-cpu-percent:
       kind: Panel
       spec:
@@ -3345,7 +3345,7 @@ spec:
                       ) / sum by (namespace, pod, container) (
                         kube_pod_container_resource_limits{resource="cpu", namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}
                       )
-                    legendFormat: '{{pod}} / {{container}}'
+                    legendFormat: "{{pod}} / {{container}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod, container) (
@@ -3370,7 +3370,7 @@ spec:
                       ) / sum by (namespace, pod, container) (
                         kube_pod_container_resource_limits{resource="cpu", namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}
                       )
-                    legendFormat: '{{pod}} / {{container}}'
+                    legendFormat: "{{pod}} / {{container}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod, container) (
@@ -3397,7 +3397,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor and kube-state-metrics are required'
+                noValue: "No metrics: cadvisor and kube-state-metrics are required"
                 unit: percentunit
               overrides: []
             options:
@@ -3412,7 +3412,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pod-memory-percent:
       kind: Panel
       spec:
@@ -3435,7 +3435,7 @@ spec:
                       ) / avg by (namespace, pod, container) (
                         container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container!="new-promsql-exporter", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}
                       )
-                    legendFormat: '{{pod}} / {{container}}'
+                    legendFormat: "{{pod}} / {{container}}"
                     qryType: 1
                     query: |
                       avg by (namespace, pod, container) (
@@ -3460,7 +3460,7 @@ spec:
                       ) / avg by (namespace, pod, container) (
                         container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container!="new-promsql-exporter", pod!~".*-cluster-.*-replica-.*"}
                       )
-                    legendFormat: '{{pod}} / {{container}}'
+                    legendFormat: "{{pod}} / {{container}}"
                     qryType: 1
                     query: |
                       avg by (namespace, pod, container) (
@@ -3487,7 +3487,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: percentunit
               overrides: []
             options:
@@ -3502,7 +3502,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pod-network-drops:
       kind: Panel
       spec:
@@ -3523,7 +3523,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_receive_packets_dropped_total{namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} rx'
+                    legendFormat: "{{pod}} rx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3544,7 +3544,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_receive_packets_dropped_total{namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} rx'
+                    legendFormat: "{{pod}} rx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3565,7 +3565,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_transmit_packets_dropped_total{namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} tx'
+                    legendFormat: "{{pod}} tx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3586,7 +3586,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_transmit_packets_dropped_total{namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} tx'
+                    legendFormat: "{{pod}} tx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3613,7 +3613,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: pps
               overrides: []
             options:
@@ -3628,7 +3628,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pod-network-errors:
       kind: Panel
       spec:
@@ -3649,7 +3649,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_receive_errors_total{namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} rx'
+                    legendFormat: "{{pod}} rx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3670,7 +3670,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_receive_errors_total{namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} rx'
+                    legendFormat: "{{pod}} rx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3691,7 +3691,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_transmit_errors_total{namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} tx'
+                    legendFormat: "{{pod}} tx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3712,7 +3712,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_transmit_errors_total{namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}} tx'
+                    legendFormat: "{{pod}} tx"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3739,7 +3739,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: cps
               overrides: []
             options:
@@ -3754,7 +3754,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pod-network-rx:
       kind: Panel
       spec:
@@ -3775,7 +3775,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_receive_bytes_total{namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3796,7 +3796,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_receive_bytes_total{namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3819,7 +3819,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: Bps
               overrides: []
             options:
@@ -3834,7 +3834,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     pod-network-tx:
       kind: Panel
       spec:
@@ -3855,7 +3855,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_transmit_bytes_total{namespace=~"$mzNamespaceList", pod=~".*-cluster-${mzClusterList:regex}-replica-${mzReplicaList:regex}-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3876,7 +3876,7 @@ spec:
                       sum by (namespace, pod) (
                         rate(container_network_transmit_bytes_total{namespace=~"$mzNamespaceList", pod!~".*-cluster-.*-replica-.*"}[$__rate_interval])
                       )
-                    legendFormat: '{{pod}}'
+                    legendFormat: "{{pod}}"
                     qryType: 1
                     query: |
                       sum by (namespace, pod) (
@@ -3899,7 +3899,7 @@ spec:
           spec:
             fieldConfig:
               defaults:
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: Bps
               overrides: []
             options:
@@ -3914,7 +3914,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     queries-distribution:
       kind: Panel
       spec:
@@ -3934,7 +3934,7 @@ spec:
                     expr: |
                       sum by (statement_type) (increase(mz_query_total{materialize_cloud_organization_name=~"$environmentNameList"}[$__range])) > 0
                     instant: true
-                    legendFormat: '{{statement_type}}'
+                    legendFormat: "{{statement_type}}"
                     qryType: 1
                     query: |
                       sum by (statement_type) (increase(mz_query_total{materialize_cloud_organization_name=~"$environmentNameList"}[$__range])) > 0
@@ -3978,7 +3978,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     queries-peek-latency-p50:
       kind: Panel
       spec:
@@ -4027,7 +4027,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}}'
+                    legendFormat: "{{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -4100,7 +4100,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     queries-peek-latency-p90:
       kind: Panel
       spec:
@@ -4149,7 +4149,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}}'
+                    legendFormat: "{{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -4220,7 +4220,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     queries-peek-latency-p99:
       kind: Panel
       spec:
@@ -4269,7 +4269,7 @@ spec:
                       ),
                       "cluster_name", "$1", "instance_id", "(.*)"
                       )
-                    legendFormat: '{{cluster_name}}'
+                    legendFormat: "{{cluster_name}}"
                     qryType: 1
                     query: |-
                       (
@@ -4340,7 +4340,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     queries-rate-by-statement:
       kind: Panel
       spec:
@@ -4359,7 +4359,7 @@ spec:
                   spec:
                     expr: |
                       sum by (statement_type, session_type) (rate(mz_query_total{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])) > 0
-                    legendFormat: '{{statement_type}} / {{session_type}}'
+                    legendFormat: "{{statement_type}} / {{session_type}}"
                     qryType: 1
                     query: |
                       sum by (statement_type, session_type) (rate(mz_query_total{materialize_cloud_organization_name=~"$environmentNameList"}[$__rate_interval])) > 0
@@ -4395,7 +4395,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     replica-count:
       kind: Panel
       spec:
@@ -4471,7 +4471,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -4488,7 +4488,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     replica-sizes:
       kind: Panel
       spec:
@@ -4510,7 +4510,7 @@ spec:
                         mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentNameList", compute_cluster_id=~"$mzClusterList", compute_replica_id=~"$mzReplicaList"}
                       )
                     instant: true
-                    legendFormat: '{{size}}'
+                    legendFormat: "{{size}}"
                     qryType: 1
                     query: |
                       count by (size) (
@@ -4520,7 +4520,7 @@ spec:
                 refId: query-0
             queryOptions: {}
             transformations: []
-        description: '**The replica fleet grouped by configured size. Most deployments settle on a handful of sizes; a long tail of one-off sizes usually means an experiment or a half-finished migration. The total agrees with the replica count.**'
+        description: "**The replica fleet grouped by configured size. Most deployments settle on a handful of sizes; a long tail of one-off sizes usually means an experiment or a half-finished migration. The total agrees with the replica count.**"
         id: 1032
         links: []
         title: Replica Sizes
@@ -4531,7 +4531,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#009988'
+                  fixedColor: "#009988"
                   mode: shades
                 noValue: No matches for the current filters
               overrides: []
@@ -4556,7 +4556,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resource-deployment-status:
       kind: Panel
       spec:
@@ -4638,9 +4638,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
               overrides: []
             options:
               displayLabels:
@@ -4663,7 +4663,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resource-pod-status:
       kind: Panel
       spec:
@@ -4687,7 +4687,7 @@ spec:
                         )
                       )
                     instant: true
-                    legendFormat: '{{phase}}'
+                    legendFormat: "{{phase}}"
                     qryType: 1
                     query: |
                       max by (phase, namespace) (
@@ -4719,9 +4719,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
               overrides: []
             options:
               displayLabels:
@@ -4744,7 +4744,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     resource-statefulset-status:
       kind: Panel
       spec:
@@ -4800,9 +4800,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: kube-state-metrics is required'
+                noValue: "No metrics: kube-state-metrics is required"
               overrides: []
             options:
               displayLabels:
@@ -4825,7 +4825,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-iceberg-commit-latency:
       kind: Panel
       spec:
@@ -4921,7 +4921,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-iceberg-failures:
       kind: Panel
       spec:
@@ -4962,7 +4962,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} failures'
+                    legendFormat: "{{name}} failures"
                     qryType: 1
                     query: |-
                       (
@@ -5023,7 +5023,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} conflicts'
+                    legendFormat: "{{name}} conflicts"
                     qryType: 1
                     query: |-
                       (
@@ -5072,17 +5072,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 3.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: cps
               overrides: []
@@ -5098,7 +5098,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-iceberg-files:
       kind: Panel
       spec:
@@ -5139,7 +5139,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} data'
+                    legendFormat: "{{name}} data"
                     qryType: 1
                     query: |-
                       (
@@ -5200,7 +5200,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} deletes'
+                    legendFormat: "{{name}} deletes"
                     qryType: 1
                     query: |-
                       (
@@ -5261,7 +5261,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} snapshots'
+                    legendFormat: "{{name}} snapshots"
                     qryType: 1
                     query: |-
                       (
@@ -5319,7 +5319,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-kafka-connects:
       kind: Panel
       spec:
@@ -5360,7 +5360,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} connects'
+                    legendFormat: "{{name}} connects"
                     qryType: 1
                     query: |-
                       (
@@ -5421,7 +5421,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}} disconnects'
+                    legendFormat: "{{name}} disconnects"
                     qryType: 1
                     query: |-
                       (
@@ -5481,7 +5481,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-kafka-outbuf:
       kind: Panel
       spec:
@@ -5522,7 +5522,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -5582,7 +5582,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-kafka-tx-errors:
       kind: Panel
       spec:
@@ -5623,7 +5623,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -5672,17 +5672,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 3.25
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 5.5
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 7.75
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 10
                 unit: cps
               overrides: []
@@ -5698,7 +5698,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-lag:
       kind: Panel
       spec:
@@ -5747,7 +5747,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -5815,7 +5815,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-throughput:
       kind: Panel
       spec:
@@ -5860,7 +5860,7 @@ spec:
                       ),
                       "name", "$1", "sink_id", "(.*)"
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -5925,7 +5925,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sinks-types:
       kind: Panel
       spec:
@@ -5949,7 +5949,7 @@ spec:
                         )
                       ) > 0
                     instant: true
-                    legendFormat: '{{object_type}} / {{envelope_type}}'
+                    legendFormat: "{{object_type}} / {{envelope_type}}"
                     qryType: 1
                     query: |
                       count by (object_type, envelope_type) (
@@ -5975,7 +5975,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 noValue: No matches for the current filters
               overrides: []
@@ -6000,7 +6000,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sources-bytes-received-rate:
       kind: Panel
       spec:
@@ -6045,7 +6045,7 @@ spec:
                       ),
                       "name", "$1", "parent_source_id", "(.*)"
                       )
-                    legendFormat: '{{name}}'
+                    legendFormat: "{{name}}"
                     qryType: 1
                     query: |-
                       (
@@ -6110,7 +6110,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sources-errors:
       kind: Panel
       spec:
@@ -6131,7 +6131,7 @@ spec:
                       sum by (source_id) (
                         max without (job) (rate(mz_source_offset_commit_failures{materialize_cloud_organization_name=~"$environmentNameList", cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", cluster_environmentd_materialize_cloud_replica_id=~"$mzReplicaList"}[$__rate_interval]))
                       ) > 0
-                    legendFormat: '{{source_id}} commit failures'
+                    legendFormat: "{{source_id}} commit failures"
                     qryType: 1
                     query: |
                       sum by (source_id) (
@@ -6153,7 +6153,7 @@ spec:
                         max by (source_id) (mz_source_offset_committed{materialize_cloud_organization_name=~"$environmentNameList", cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", cluster_environmentd_materialize_cloud_replica_id=~"$mzReplicaList"})
                         > bool max by (source_id) (mz_source_offset_known{materialize_cloud_organization_name=~"$environmentNameList", cluster_environmentd_materialize_cloud_cluster_id=~"$mzClusterList", cluster_environmentd_materialize_cloud_replica_id=~"$mzReplicaList"})
                       ) > 0
-                    legendFormat: '{{source_id}} disconnected'
+                    legendFormat: "{{source_id}} disconnected"
                     qryType: 1
                     query: |
                       (
@@ -6184,17 +6184,17 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: null
-                  - color: '#FEDA8B'
+                  - color: "#FEDA8B"
                     value: 1
-                  - color: '#FDB366'
+                  - color: "#FDB366"
                     value: 1
-                  - color: '#F67E4B'
+                  - color: "#F67E4B"
                     value: 1
-                  - color: '#DD3D2D'
+                  - color: "#DD3D2D"
                     value: 1
-                  - color: '#A50026'
+                  - color: "#A50026"
                     value: 1
                 unit: short
               overrides: []
@@ -6210,7 +6210,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sources-ingestion-by-replica:
       kind: Panel
       spec:
@@ -6255,7 +6255,7 @@ spec:
                       ),
                       "name", "$1", "parent_source_id", "(.*)"
                       )
-                    legendFormat: '{{name}} / r{{cluster_environmentd_materialize_cloud_replica_id}}'
+                    legendFormat: "{{name}} / r{{cluster_environmentd_materialize_cloud_replica_id}}"
                     qryType: 1
                     query: |-
                       (
@@ -6320,7 +6320,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     sources-status-table:
       kind: Panel
       spec:
@@ -6470,7 +6470,7 @@ spec:
               frameIndex: 0
               showHeader: true
               showTypeIcons: false
-          version: ''
+          version: ""
     sources-types:
       kind: Panel
       spec:
@@ -6494,7 +6494,7 @@ spec:
                         )
                       ) > 0
                     instant: true
-                    legendFormat: '{{object_type}}'
+                    legendFormat: "{{object_type}}"
                     qryType: 1
                     query: |
                       count by (object_type) (
@@ -6520,7 +6520,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 noValue: No matches for the current filters
               overrides: []
@@ -6545,7 +6545,7 @@ spec:
               tooltip:
                 mode: single
                 sort: asc
-          version: ''
+          version: ""
     storage-active-sinks:
       kind: Panel
       spec:
@@ -6588,7 +6588,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -6605,7 +6605,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     storage-active-sources:
       kind: Panel
       spec:
@@ -6648,7 +6648,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -6665,7 +6665,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     storage-active-tables:
       kind: Panel
       spec:
@@ -6708,7 +6708,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#CCBB44'
+                  fixedColor: "#CCBB44"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -6725,7 +6725,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-cpu-total:
       kind: Panel
       spec:
@@ -6772,9 +6772,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: cores
               overrides: []
             options:
@@ -6789,7 +6789,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
     summary-currently-hydrating:
       kind: Panel
       spec:
@@ -6844,7 +6844,7 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#EE7733'
+                  fixedColor: "#EE7733"
                   mode: shades
                 min: 0
                 noValue: No matches for the current filters
@@ -6861,7 +6861,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-max-lag:
       kind: Panel
       spec:
@@ -6920,29 +6920,29 @@ spec:
                 thresholds:
                   mode: absolute
                   steps:
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: null
-                  - color: '#CEFFFF'
+                  - color: "#CEFFFF"
                     value: 2
-                  - color: '#C6F7D6'
+                  - color: "#C6F7D6"
                     value: 4
-                  - color: '#A2F49B'
+                  - color: "#A2F49B"
                     value: 9
-                  - color: '#BBE453'
+                  - color: "#BBE453"
                     value: 19
-                  - color: '#D5CE04'
+                  - color: "#D5CE04"
                     value: 41
-                  - color: '#E7B503'
+                  - color: "#E7B503"
                     value: 87
-                  - color: '#F19903'
+                  - color: "#F19903"
                     value: 183
-                  - color: '#F6790B'
+                  - color: "#F6790B"
                     value: 385
-                  - color: '#F94902'
+                  - color: "#F94902"
                     value: 812
-                  - color: '#E40515'
+                  - color: "#E40515"
                     value: 1710
-                  - color: '#AB0003'
+                  - color: "#AB0003"
                     value: 3600
                 unit: s
               overrides: []
@@ -6958,7 +6958,7 @@ spec:
               showPercentChange: false
               textMode: value
               wideLayout: true
-          version: ''
+          version: ""
     summary-memory-total:
       kind: Panel
       spec:
@@ -6979,7 +6979,7 @@ spec:
                       sum by (container) (
                         container_spec_memory_limit_bytes{namespace=~"$mzNamespaceList",container!="",container!="POD", container!="new-promsql-exporter"}
                       )
-                    legendFormat: '{{container}}'
+                    legendFormat: "{{container}}"
                     qryType: 1
                     query: |
                       sum by (container) (
@@ -7003,9 +7003,9 @@ spec:
             fieldConfig:
               defaults:
                 color:
-                  fixedColor: '#0077BB'
+                  fixedColor: "#0077BB"
                   mode: shades
-                noValue: 'No metrics: cadvisor metrics are required (via kubelet)'
+                noValue: "No metrics: cadvisor metrics are required (via kubelet)"
                 unit: bytes
               overrides: []
             options:
@@ -7020,7 +7020,7 @@ spec:
               showPercentChange: false
               textMode: value_and_name
               wideLayout: true
-          version: ''
+          version: ""
   layout:
     kind: TabsLayout
     spec:
@@ -7710,7 +7710,7 @@ spec:
   - materialize
   - mzmon
   timeSettings:
-    autoRefresh: ''
+    autoRefresh: ""
     autoRefreshIntervals:
     - 5s
     - 10s
@@ -7733,8 +7733,8 @@ spec:
     spec:
       allowCustomValue: false
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       description: Datasource for metrics queries
       hide: dontHide
       includeAll: false
@@ -7744,15 +7744,15 @@ spec:
       options: []
       pluginId: prometheus
       refresh: never
-      regex: ''
+      regex: ""
       skipUrlSync: false
   - kind: QueryVariable
     spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
       description: The current environment to view
       hide: dontHide
@@ -7772,7 +7772,7 @@ spec:
           query: label_values(mz_compute_commands_total, materialize_cloud_organization_name)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: alphabeticalAsc
@@ -7780,8 +7780,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
       description: The current materialize namespace where environments live
       hide: hideVariable
@@ -7801,7 +7801,7 @@ spec:
           query: label_values(mz_compute_commands_total{ materialize_cloud_organization_name=~"$environmentNameList" }, materialize_cloud_organization_namespace)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: true
       sort: alphabeticalAsc
@@ -7819,8 +7819,8 @@ spec:
     spec:
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: query_result(mz_compute_cluster_status{materialize_cloud_organization_name=~"$environmentNameList", compute_cluster_id=~"$includeSystemClusters" })
       description: The cluster within the current environment to filter to
       hide: inControlsMenu
@@ -7849,8 +7849,8 @@ spec:
       allValue: .*
       allowCustomValue: true
       current:
-        text: ''
-        value: ''
+        text: ""
+        value: ""
       definition: label_values(mz_compute_commands_total{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList"}, replica_id)
       description: The replica within the current cluster to filter to
       hide: inControlsMenu
@@ -7870,13 +7870,13 @@ spec:
           query: label_values(mz_compute_commands_total{materialize_cloud_organization_name=~"$environmentNameList", instance_id=~"$mzClusterList"}, replica_id)
         version: v0
       refresh: never
-      regex: ''
+      regex: ""
       regexApplyTo: value
       skipUrlSync: false
       sort: naturalAsc
   - datasource:
       name: $metricsDatasource
-    group: ''
+    group: ""
     kind: AdhocVariable
     spec:
       allowCustomValue: true
