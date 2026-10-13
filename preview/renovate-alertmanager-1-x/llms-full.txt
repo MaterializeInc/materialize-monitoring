@@ -4898,20 +4898,24 @@ It needs both a metrics and a logs datasource.
 
 ### Materialize Persist (Storage) (`env-persist`)
 
-Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
+Object storage, as a Materialize environment experiences it, across five tabs: Overview, Operations, Compaction, Storage, and Object Store Internals.
 Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
+The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
+Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-persist" >}}
 
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
-The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
+The metadata database, as a Materialize environment experiences it, across five tabs:
+Overview, Operations, Connections, State and Cleanup, and Database Internals.
 Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
@@ -4919,6 +4923,10 @@ The Overview tab's verdict row separates the common failures: connection errors,
 The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
 State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
 Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
+The Database Internals tab is the database's own account, for a CloudNativePG (CNPG) cluster:
+which instance is primary, connections against the ceiling PostgreSQL refuses them at, the oldest open transaction,
+transaction-ID headroom, the size of each database on the instance, and backups.
+It appears when you create a `PodMonitor` for the CNPG cluster; on a managed database, the tab points you to `infra-cloud` instead.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}
@@ -9500,6 +9508,8 @@ Ordered so the cheapest question that could explain everything comes first.
    stalls every collection at once and looks like a Materialize problem.
    Each Overview ends with the dependency's own error text from the logs, which separates a wrong URL or credential from
    a database at `max_connections`.
+   If the database runs on CloudNativePG or the bucket on Ceph, each dashboard's last tab is the dependency's own
+   account of why: Database Internals and Object Store Internals.
 5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that
@@ -11628,16 +11638,16 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.0 |
-| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.0 |
+| https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
+| https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.3.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.5.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.56.1 |
-| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.46.0 |
+| [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.2 |
 
 ## Values {#values}
 
@@ -17795,7 +17805,7 @@ https://grafana.com/docs/loki/latest/get-started/components/
 {
   "registry": "docker.io",
   "repository": "kiwigrid/k8s-sidecar",
-  "tag": "2.11.2"
+  "tag": "2.14.1"
 }</pre>
 </td>
       <td class="helm-value-desc">Rules sidecar image, pinned here rather than left at the subchart's default. It runs only in `SingleBinary` mode (`profiles/loki-test`), where it loads rule ConfigMaps into the single binary's ruler.
@@ -21397,13 +21407,26 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
   * `packages/`: hand-authored, contributor-facing inputs
     * `components.yaml`: the component manifest driving per-component versioning, changelog attribution, and release artifacts (see [Versioning](../versioning/))
     * `dashboards/`: dashboards-as-code in Rust (`mz-dashboards`) — one module per backend under `src/`, currently `grafana/`; each dashboard owns a `theme.rs` (per-tab colours) and a `selector.rs` (PromQL fragments that name dashboard variables), with `grafana/transform.rs` shared between them, `grafana/dependency.rs` shared by the two client-side external-dependency dashboards, and `grafana/test_support.rs` holding the assertions several dashboards' tests share; `grafana/render.rs` serializes deterministically, `grafana/mod.rs` is the dashboard registry, and `grafana/queries.rs` is the handle through which every panel takes its expression *and* its description from the query registry — panels write no PromQL and no prose; all driven by `mz-monitoring-build gen-dashboards`
-    * `queries/`: query-registry YAML inputs (`materialize-*.yaml` for the deployment — including `materialize-persist.yaml` and `materialize-consensus.yaml`, persist's own view of object storage and the metadata database — `infra-*.yaml` for the platform — including `infra-loki.yaml` and `infra-alloy.yaml`, the log store and the collectors watching themselves, `infra-cloud.yaml`, the cloud provider pull, and `infra-autoscaling.yaml` and `infra-karpenter.yaml`, node supply and Karpenter — `node-*.yaml` for node-exporter, and `ext-*.yaml` for the normalized `ext:*` recording rules, one adapter per rule group) — the metric/log/alert query definitions and recording rules, validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`; `tests/` holds the `promtool test rules` cases for the rendered rules
+    * `queries/`: query-registry YAML inputs — the metric, log, and alert query definitions and recording rules,
+      validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
+      * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
+        persist's own view of object storage and the metadata database
+      * `infra-*.yaml`: the platform, including `infra-loki.yaml` and `infra-alloy.yaml` (the log store and the collectors watching themselves),
+        `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
+        and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
+      * `node-*.yaml`: node-exporter
+      * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
+      * `tests/`: the `promtool test rules` cases for the rendered rules
     * `alloy-pipelines/`: Alloy pipeline YAML inputs (`agent.yaml`, `gateway.yaml`, `gateway-metrics.yaml`, `gateway-dest-stub.yaml`)
     * `prometheus-scrapers/`: hand-authored scrape sources (`podmonitor-*.yaml`, `scrapeconfig-*.yaml`, `servicemonitor-*.yaml`) that the `scrape` transpiler renders into the per-flavor outputs under `pre-rendered/scrapers/`. The `podmonitor-cni-*.yaml` monitors are deployed to every cluster and self-disable on the ones running another vendor
     * `alloy/`: build context for the distroless Alloy image (`Dockerfile`, `example-config.alloy`)
     * `mzmon-lib/`: Rust library — typed Alloy model, the `scrape` transpiler, and the `query` registry (model + rendering + metric extraction); embedded JSONSchemas under `schemas/{alloy,scrape,query}/`; vendored upstream Grafana JSON Schema documents plus the `packages.json` plugin-id manifest under `schemas/grafana/`, and the Rust models generated from them under `src/grafana/generated/`; `tests/fixtures/env-top.python-baseline.yaml` is the frozen final Python render, shared by the model round-trip and dashboard parity suites; not consumed by customers
     * `mz-monitoring-build/`: Rust CLI for artifact generation (`gen_pipelines.rs`, `gen_scrape_configs.rs`, `extract_metrics.rs`, `main.rs`) and for the release machinery (`versioning.rs`, `propose.rs`, `publish.rs`, `release_notes.rs`, `github.rs`)
-    * `mz-monitoring-check/`: Rust schema/consistency checks
+    * `mz-monitoring-check/`: Rust schema and consistency checks, one subcommand each.
+      `check-queries` validates the query registry against its schema.
+      `terraform-render` is the tier-0 Terraform render check behind `make terraform-render`.
+      It plans each module example, renders the chart against the composed values, and runs the assertions under `src/terraform_render/checks/`.
+      Each assertion runs as one libtest-style trial per example
     * `mz-monitoring-e2e/`: Rust assertion suite for a *running* stack — one binary for every kind and cloud tier, reading the release's coalesced Helm values to decide what applies (`make e2e-verify`). Asserts only; installs nothing
   * `charts/`
     * `materialize-monitoring/`: umbrella chart
@@ -21428,7 +21451,8 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       * `charts/`: the vendored `prometheus-operator-crds` tarball, plus `grafana-operator-crds/` deflated from the upstream operator chart, which publishes no CRDs chart of its own — generated by `bin/extract-grafana-operator-crds.sh` (`make grafana-operator-crds`)
   * `terraform/` (see [Terraform Modules](../design-docs/20260803-terraform-modules/)): the cloud-agnostic module that installs the released charts. Versioned as part of the `materialize-monitoring` component rather than on a stream of its own; per-cloud wrappers live in `materialize-terraform-self-managed`
     * `modules/materialize-monitoring/`: the module. Concern per file — `values.tf` (composition order), `scheduling.tf`, `storage_class.tf` and `kube_state_metrics.tf` (subchart fan-outs), `destinations.tf` (extra metric destinations), `config_hash.tf` (the pod-template hash that rolls Alloy)
-      * `examples/{aws,gcp}/`: not deployable roots — plan targets for the tier-0 render check. Both clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
+      * `examples/{aws,gcp,azure,s3-static-credentials}/`: not deployable roots — plan targets for the tier-0 render check.
+        Several clouds, because the chart's storage defaults are S3-shaped and an AWS-only example agrees with every default it fails to set
     * `test/generic-cloud/`: the tier-2 substrate — rustfs standing in for S3, CNPG for a managed Postgres. Provisions storage and credentials and stops there; it does not call the module
   * `test/e2e/`: kind cluster config and the failure-diagnostics collector (`make e2e-*`). The assertions themselves live in `packages/mz-monitoring-e2e`
   * `docs/`: Hugo docsite (the source of this page)
@@ -21444,7 +21468,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `chartlib/`: helm-docs templates
     * `shlib/`: shared bash helpers
   * `.claude/skills/`: authoring conventions consumed by both contributors and AI agents
-  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
+  * `.github/`: GitHub Actions workflows — `test.yaml` (cargo, helm-unittest, terraform), `e2e.yaml` (the kind tiers), `lint.yaml`, `pipelines.yaml`, `docs.yaml`, `auto-format.yaml`, `propose-bumps.yaml`, `publish-*.yaml`, `design-doc-notify.yaml` (Slack notification for new design docs), `zizmor.yaml` (workflow security scan, uploaded to code scanning); also `pull_request_template.md`, whose `### Release Notes` section is harvested into `CHANGELOG.md`. Each workflow that path-filters does so in a `changes` job rather than on the trigger, so its `*-gate` rollup still reports on unrelated PRs — a required check skipped at the trigger level stays pending forever.
     `design-doc-notify.yaml` is the exception, filtering on the trigger because it reports no status anyone gates on
 
 
@@ -24472,6 +24496,32 @@ Verified rendering, on Grafana 13.2.2 against a live EKS install: with "All" sel
 VPC CNI rows, and `infra-cloud` shows its RDS rows over a window in which CloudWatch was pulled and its fallback over one
 in which nothing was.
 
+### A picker that only means something where its rows render
+
+Sometimes the discovered rows need a picker of their own: which CNPG cluster, which Ceph cluster.
+Declare it on the rows, not on the dashboard.
+A dashboard-level picker sits in the controls of every install, including the ones where the rows never render,
+and asks a question there that has no answer.
+
+`Row::section(title, rows)` groups a flavor's rows under one header, and `Row::variables` declares the picker on that section.
+Put the discovery condition on the section, and leave the rows inside it unconditioned.
+Grafana renders a section variable under the section's header, resolves it for every panel inside the section, and hides it with the section.
+`env-consensus`'s CloudNativePG section and `env-persist`'s Ceph section are the first users.
+
+What to know about section variables:
+
+- **Scope is enforced here too.** Only panels inside the section can read the variable.
+  `Dashboard::build` rejects a panel elsewhere that names it,
+  and `test_support::assert_variables_defined` does the same, through `layout::section_variables`.
+- **The detection variable stays on the dashboard, hidden.**
+  A condition on the section has to read something that exists whether or not the section renders.
+- **The URL carries the picker only while the section is on screen.**
+  On any other tab it reads as an empty `var-…=`, and fills in when its tab is opened.
+
+Verified on Grafana 13.2.3 against the GCP reference install:
+with CNPG scraped, the picker renders under the CloudNativePG header and the panels read it.
+With detection forced to miss, the picker disappears with the rows and only the fallback renders.
+
 ## Cloud provider families
 
 What `infra-cloud` is built on: the metrics the gateway pulls from CloudWatch, Cloud Monitoring and Azure Monitor.
@@ -25879,17 +25929,18 @@ Each stateful component then gets a cutover of its own.
 | Milestone | What moves | Items |
 |---|---|---|
 | **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | 🔨 [CLO-182] · ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
-| **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. AMP keeps the `v2_mz_*` families, so what reads it today is unaffected; Thanos takes canonical `mz_*` only. AMP scales down as its consumers move | ⬜ [DEP-383] |
+| **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. Both take canonical `mz_*` once AMP's readers stop depending on `v2_mz_*`. AMP scales down as its consumers move | ⬜ [DEP-383] |
 | **Loki cutover** | Cloud's Loki moves onto the chart's Loki on its existing storage backend, so no log data is copied. Log tenancy moves to `tenantMap: byEnvironment`, which the read path needs | ⬜ [CLO-296] |
 | **Alerting** | Cloud's rules run on the chart's rulers and route through its Alertmanager to Cloud's receivers. The Loki rules Cloud clicked into Grafana are already ported by shape in `materialize-log-alerts.yaml` | ⬜ [DEP-125] |
 
 **Grafana is not migrated.**
 Cloud's Grafana lives elsewhere and stays there; it gains datasources for Thanos and Loki.
 
-The Thanos milestone has two chart gaps to close first, both in [DEP-383].
-The destination map filters by importance tier alone, so nothing can send `v2_mz_*` to AMP and keep it out of Thanos.
-`materialize.deploymentMode: cloud` also makes every rule read `v2_mz_`, which a Thanos holding only `mz_*` cannot answer.
-Separately, a destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
+The `v2_` prefix comes from one relabel rule in Cloud's scrape config, which prepends `v2_` to every name the SQL exporter emits.
+Dropping that rule sends canonical `mz_*` to AMP and Thanos alike, so the fan-out needs no per-destination name split.
+Before the rule goes, Cloud's dashboards and AMP rules move to queries that match either name, tracked in [DEP-383].
+Cloud's install then runs the chart's rules with `materialize.deploymentMode: self-managed`.
+A destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
 
 ## Metrics for Cloud
 
@@ -25941,8 +25992,9 @@ This repository's monitors first fill the canonical labels where they are empty,
 Tracked as [DEP-207].
 The metric and label contract is the public API for everything here.
 Several dashboards depend on instrumentation that lives in `MaterializeInc/materialize`.
-About 39 signal families exist only through the SQL-on-scrape exporter path, which Cloud names `v2_mz_*`.
-`v2_mz_` is not a newer variant; it names the exporter path, and the target is canonical `mz_`.
+About 39 signal families exist only through the SQL-on-scrape exporter path.
+Cloud's scrape config renames them to `v2_mz_*` until [DEP-383] lands.
+`v2_mz_` is not a newer variant, and the target is canonical `mz_`.
 environmentd has to emit those families natively before that path can retire.
 `mz_object_info` and the `_info` family are delivered, so name enrichment is unblocked everywhere.
 
@@ -26054,7 +26106,8 @@ Designed in [Monitoring Materialize's External Dependencies](../design-docs/2026
 **The client's measurement of a dependency is the SLI, and the dependency's own telemetry is the diagnosis.**
 Several pieces shipped with 1.0: the client vantage point, the provider pulls, and the client and provider dashboards.
 So did the `persist-failures` split and the `ext:consensus_*` recording rules.
-What remains is the flavor-specific half.
+Since then, the first flavor-native rows have shipped: CloudNativePG on `env-consensus` and Rook Ceph on `env-persist`.
+What remains of the flavor-specific half is the normalized rules those flavors feed, and the other flavors.
 It stays opt-in behind the normalized `ext:*` contract.
 That contract keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
@@ -26062,8 +26115,8 @@ That contract keeps seven database flavors and five object stores from multiplyi
 |---|---|
 | [DEP-295] The rest of the `ext:*` layer: `ext:consensus_connections_used_ratio` and the `ext:objstore_*` families | 🔨 |
 | [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ⬜ |
-| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter | ⬜ |
-| [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph | ⬜ |
+| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. CNPG's flavor-native rows are on `env-consensus`; the `ext:*` rules and the other flavors remain | 🔨 |
+| [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
 | [DEP-300] Version reporting (`ext:*_version_info`) across every adapter | ⬜ |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |
@@ -32586,6 +32639,39 @@ Three departures from the design, each for want of something the design assumed 
 - **No `ext:*` series are read.** None are recorded yet, so each client panel reads persist's families directly, and `infra-cloud` draws one expression per provider in place of a normalized one.
 - **Provider rows are discovered from the pull's `up`**, as `$cloudProviderList`, rather than from a `flavor` label on a recorded series.
 - **There is no exporter row.** No exporter is deployed, so there is nothing to discover and nothing to fall back from.
+
+### As built: self-hosted flavors on the client dashboards
+
+<!-- Agent note: recorded as a decision rather than rewriting "Dependency series are infra-*", which is the reasoning that was reviewed. -->
+
+The first exporter-vantage rows are the two flavors that need nothing deployed: **CloudNativePG** and **Ceph run by Rook**.
+Both publish their own metrics, and the operator owns the scrape:
+a `PodMonitor` per CNPG cluster, and Rook's two `ServiceMonitor`s for the Ceph manager and `rook-ceph-exporter`.
+They were built and checked against a Materialize whose metadata database is CNPG and whose bucket is on Ceph RGW, on a test install.
+
+| Decision | As built |
+|---|---|
+| Where they live | A last tab on each client dashboard, **Database Internals** on `env-consensus` and **Object Store Internals** on `env-persist`, not `infra-*` |
+| Scope | A reader-chosen picker, `$cnpgClusterList` and `$cephNamespace`, single-select because an environment has one database and one bucket. It stands in for the values-supplied mapping until [DEP-303](https://linear.app/materializeinc/issue/DEP-303). Each is a section variable on the row that holds its flavor's rows, so it appears only where that flavor is detected |
+| Discovery | `$cnpgDetected` and `$cephDetected`, hidden, with one negated fallback per tab that says which scrape to create |
+| Queries | Flavor-native, in `infra-cnpg.yaml` and `infra-ceph.yaml` at `extended`. No `ext:*` series yet |
+
+The departures, each with its reason.
+
+- **The client dashboards, not `infra-*`.**
+  A self-hosted dependency has no provider, so its own account is the only diagnosis there is,
+  and the reader comparing it with persist's measurement wants both on one dashboard.
+  The argument for `infra-*` was that nothing joins these series to an environment;
+  the picker makes that the reader's call, out loud, instead of the folder's.
+- **CNPG is discovered from `cnpg_collector_up`, not `up`.**
+  A CNPG instance's `up` carries `app="postgresql"`, which every PostgreSQL chart sets.
+  CNPG's exporter publishes `cnpg_collector_up` on every successful scrape, at 0 when PostgreSQL is down,
+  so it still separates "no CNPG" from "PostgreSQL mute"; only a failing scrape goes unseen, and the fallback names that case.
+  Ceph follows the rule, on `up{app="ceph-mgr"}`.
+- **Rook's `monitoring.enabled` is not the only route the fallback names.**
+  It also installs Rook's `PrometheusRule`s, which the Thanos ruler imports and evaluates,
+  so turning on a dashboard would turn on a second alert set.
+  The fallback names both routes.
 
 ## Deployment shapes
 

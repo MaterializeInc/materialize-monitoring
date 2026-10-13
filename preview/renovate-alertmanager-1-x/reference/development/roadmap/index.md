@@ -84,17 +84,18 @@ Each stateful component then gets a cutover of its own.
 | Milestone | What moves | Items |
 |---|---|---|
 | **Stateless services** | Alloy (agent and gateway), kube-state-metrics and node-exporter replace Cloud's own. Cloud parity needs generic scrape discovery and the OTLP agent→gateway transport with a node-local WAL | 🔨 [CLO-182] · ⬜ [DEP-193] · ⬜ [DEP-189] · ⬜ [DEP-223] |
-| **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. AMP keeps the `v2_mz_*` families, so what reads it today is unaffected; Thanos takes canonical `mz_*` only. AMP scales down as its consumers move | ⬜ [DEP-383] |
+| **Thanos beside AMP** | Thanos stands up beside AMP, and the gateway fans out to both as components move. Both take canonical `mz_*` once AMP's readers stop depending on `v2_mz_*`. AMP scales down as its consumers move | ⬜ [DEP-383] |
 | **Loki cutover** | Cloud's Loki moves onto the chart's Loki on its existing storage backend, so no log data is copied. Log tenancy moves to `tenantMap: byEnvironment`, which the read path needs | ⬜ [CLO-296] |
 | **Alerting** | Cloud's rules run on the chart's rulers and route through its Alertmanager to Cloud's receivers. The Loki rules Cloud clicked into Grafana are already ported by shape in `materialize-log-alerts.yaml` | ⬜ [DEP-125] |
 
 **Grafana is not migrated.**
 Cloud's Grafana lives elsewhere and stays there; it gains datasources for Thanos and Loki.
 
-The Thanos milestone has two chart gaps to close first, both in [DEP-383].
-The destination map filters by importance tier alone, so nothing can send `v2_mz_*` to AMP and keep it out of Thanos.
-`materialize.deploymentMode: cloud` also makes every rule read `v2_mz_`, which a Thanos holding only `mz_*` cannot answer.
-Separately, a destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
+The `v2_` prefix comes from one relabel rule in Cloud's scrape config, which prepends `v2_` to every name the SQL exporter emits.
+Dropping that rule sends canonical `mz_*` to AMP and Thanos alike, so the fan-out needs no per-destination name split.
+Before the rule goes, Cloud's dashboards and AMP rules move to queries that match either name, tracked in [DEP-383].
+Cloud's install then runs the chart's rules with `materialize.deploymentMode: self-managed`.
+A destination below the `all` tier drops every recorded series and `ALERTS` until [DEP-368] gives them a tier.
 
 ## Metrics for Cloud
 
@@ -146,8 +147,9 @@ This repository's monitors first fill the canonical labels where they are empty,
 Tracked as [DEP-207].
 The metric and label contract is the public API for everything here.
 Several dashboards depend on instrumentation that lives in `MaterializeInc/materialize`.
-About 39 signal families exist only through the SQL-on-scrape exporter path, which Cloud names `v2_mz_*`.
-`v2_mz_` is not a newer variant; it names the exporter path, and the target is canonical `mz_`.
+About 39 signal families exist only through the SQL-on-scrape exporter path.
+Cloud's scrape config renames them to `v2_mz_*` until [DEP-383] lands.
+`v2_mz_` is not a newer variant, and the target is canonical `mz_`.
 environmentd has to emit those families natively before that path can retire.
 `mz_object_info` and the `_info` family are delivered, so name enrichment is unblocked everywhere.
 
@@ -259,7 +261,8 @@ Designed in [Monitoring Materialize's External Dependencies](../design-docs/2026
 **The client's measurement of a dependency is the SLI, and the dependency's own telemetry is the diagnosis.**
 Several pieces shipped with 1.0: the client vantage point, the provider pulls, and the client and provider dashboards.
 So did the `persist-failures` split and the `ext:consensus_*` recording rules.
-What remains is the flavor-specific half.
+Since then, the first flavor-native rows have shipped: CloudNativePG on `env-consensus` and Rook Ceph on `env-persist`.
+What remains of the flavor-specific half is the normalized rules those flavors feed, and the other flavors.
 It stays opt-in behind the normalized `ext:*` contract.
 That contract keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
@@ -267,8 +270,8 @@ That contract keeps seven database flavors and five object stores from multiplyi
 |---|---|
 | [DEP-295] The rest of the `ext:*` layer: `ext:consensus_connections_used_ratio` and the `ext:objstore_*` families | 🔨 |
 | [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ⬜ |
-| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter | ⬜ |
-| [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph | ⬜ |
+| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. CNPG's flavor-native rows are on `env-consensus`; the `ext:*` rules and the other flavors remain | 🔨 |
+| [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
 | [DEP-300] Version reporting (`ext:*_version_info`) across every adapter | ⬜ |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |

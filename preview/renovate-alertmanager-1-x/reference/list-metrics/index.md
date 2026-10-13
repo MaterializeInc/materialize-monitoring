@@ -1673,6 +1673,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.alloy.resources.terminations">infra.alloy.resources.terminations</a></li>
                 <li><a href="../common-queries#infra.alloy.resources.throttling">infra.alloy.resources.throttling</a></li>
                 <li><a href="../common-queries#infra.cloud.collection.pulls">infra.cloud.collection.pulls</a></li>
+                <li><a href="../common-queries#infra.cnpg.health.not_serving">infra.cnpg.health.not_serving</a></li>
                 <li><a href="../common-queries#infra.loki.health.up">infra.loki.health.up</a></li>
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
