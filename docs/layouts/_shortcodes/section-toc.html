@@ -1,0 +1,50 @@
+{{/*
+  section-toc: List every page in another section with its headings, so a
+  reader can search one page for a topic that lives on another.
+
+  Unlike folder-toc, which lists the pages of the section it sits in, this
+  takes the section as a parameter and descends into each page's headings.
+  Each page's h1 is skipped, because the page title already stands for it.
+
+  Parameters:
+    section   The section's path, such as "/operating/runbooks". Required.
+    maxLevel  The deepest heading level to list. Defaults to 3.
+
+  Usage:
+    {{< section-toc section="/operating/runbooks" >}}
+*/}}
+{{- $section := .Get "section" -}}
+{{- $maxLevel := int (.Get "maxLevel" | default 3) -}}
+{{- with site.GetPage $section }}
+<ul>
+  {{- range .RegularPages }}
+    {{- $page := . }}
+  <li>
+    <a href="{{ $page.RelPermalink }}">{{ $page.Title }}</a>
+    {{- $headings := slice }}
+    {{- range $page.Fragments.Headings }}
+      {{- /* Step past the h1, which Fragments returns as the root. */}}
+      {{- if eq .Level 1 }}{{ $headings = $headings | append .Headings }}{{ else }}{{ $headings = $headings | append . }}{{ end }}
+    {{- end }}
+    {{- partial "inline/section-toc-headings.html" (dict "page" $page "headings" $headings "maxLevel" $maxLevel) }}
+  </li>
+  {{- end }}
+</ul>
+{{- else }}
+  {{- errorf "section-toc: no section at %q (from %s)" $section .Page.File.Path }}
+{{- end }}
+
+{{- define "_partials/inline/section-toc-headings.html" }}
+  {{- with .headings }}
+    {{- if le (index . 0).Level $.maxLevel }}
+<ul>
+      {{- range . }}
+  <li>
+    <a href="{{ $.page.RelPermalink }}#{{ .ID }}">{{ .Title | safeHTML }}</a>
+    {{- partial "inline/section-toc-headings.html" (dict "page" $.page "headings" .Headings "maxLevel" $.maxLevel) }}
+  </li>
+      {{- end }}
+</ul>
+    {{- end }}
+  {{- end }}
+{{- end }}
