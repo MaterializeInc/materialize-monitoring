@@ -217,7 +217,7 @@ The Store Gateway reads blocks directly from the bucket and keeps an index-heade
 
 *See more:* [Storing > Retention and downsampling](../storing/#retention-and-downsampling),
 [Production Best Practices > Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction),
-and [`ThanosCompactHalted`](../../operating/o11y-troubleshooting/#thanos-compact-halted).
+and [Thanos Compactor halted](../../operating/runbooks/thanos/#thanos-compactor-halted).
 
 ## Read path {#read-path}
 
