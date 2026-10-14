@@ -42,6 +42,45 @@ kubectl --namespace monitoring logs <pod> --all-containers --previous
 
 The genuine "it really is just slow" case exists but is narrow: a **known** ingester rollout, which is ordered and readiness-gated at roughly a minute per ingester. If you did not just change the ingester pod spec, that is not what you are looking at. See [Upgrading](../upgrading/).
 
+## Runbooks
+
+The runbooks hold the full procedure for an alert or a failure of one component.
+The following list holds every runbook page and its sections, so that you can search this page for them:
+
+
+<ul>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/thanos/">Thanos</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/thanos/#thanos-compactor">Thanos Compactor</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/thanos/#thanos-compactor-halted">Thanos Compactor halted</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/thanos/#compactor-out-of-space">Compactor out of space</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/kubernetes/">Kubernetes</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/kubernetes/#storage">Storage</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/operating/runbooks/kubernetes/#temporarily-increase-storage-of-working-pvcs">Temporarily increase storage of working PVCs</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+
+
 ## Install and storage
 
 ### `create bucket: no s3 endpoint in config file`
@@ -196,35 +235,11 @@ kubectl -n monitoring scale statefulset thanos-compactor --replicas=1
 >
 >  While the Compactor is down, **retention is not enforced** and the bucket grows. That is tolerable for minutes and worth watching over days — it is why compaction falling behind deserves an alert rather than a periodic look.
 
-### `ThanosCompactHalted`: `overlaps found while gathering blocks` {#thanos-compact-halted}
+### `ThanosCompactHalted` {#thanos-compact-halted}
 
-The Compactor pod is `Running` and healthy, but `thanos_compact_halted` is `1` and its log holds one error from shortly after startup:
-
-```text
-level=error msg="critical error detected; halting" err="compaction: group 0@...:
-pre compaction overlap check: overlaps found while gathering blocks.
-[mint: ..., maxt: ..., range: 8s, blocks: 2]: <ulid: ...>, <ulid: ...>"
-```
-
-**Cause.** Two blocks from the same Receive replica overlap by a few seconds.
-Receive writes such a pair across every restart, because it accepts replicated and retried samples older than the block it flushed on shutdown.
-Without vertical compaction the Compactor treats any overlap as corruption and stops.
-Nothing after the halt runs: no compaction, no downsampling, and no retention.
-
-**Fix.** Run the Compactor with `--compact.enable-vertical-compaction` and `--deduplication.replica-label=receive_replica`.
-Both are in the chart default `thanos.compactor.extraArgs`, so a halt means an `extraArgs` override dropped them or the release predates them.
-The Compactor merges the overlapping blocks on its next start, and the blocks need no manual repair.
-The first run after a long halt works through the whole backlog before downsampling catches up.
-
-Confirm the halt, and then the recovery, from the Compactor's own metrics.
-`thanos_compact_halted` returns to `0` on the first start with the flags, and `thanos_compact_todo_compactions` falls as the backlog drains:
-
-```bash
-kubectl -n monitoring port-forward pod/thanos-compactor-0 10902:10902 &
-curl -s localhost:10902/metrics | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
-```
-
-A port-forward works with any Thanos image, including the shell-less ones the Chainguard and Docker Hardened Images profiles select.
+The Compactor pod is `Running` and healthy, but `thanos_compact_halted` is `1` and its log holds a `critical error detected; halting` message.
+The error names the cause, such as `overlaps found while gathering blocks` or `no space left on device`.
+For each cause and its fix, see [Thanos Compactor halted](../runbooks/thanos/#thanos-compactor-halted).
 
 ### Everything suddenly fails, and it worked an hour ago
 
