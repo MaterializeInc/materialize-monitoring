@@ -3936,7 +3936,7 @@ loki:
       image:
         registry: ghcr.io
         repository: jkroepke/access-log-exporter
-        tag: "0.4.11"
+        tag: "0.4.22"
         pullPolicy: IfNotPresent
       # -- Scrape `stub_status` from the loopback-only listener the nginx.conf
       # serves on 8081, rather than from the client port.
@@ -6440,6 +6440,11 @@ node-exporter:
   # just because a NetworkPolicy exists.
   kubeRBACProxy:
     enabled: false
+
+  # The subchart's own switch for the Service's `prometheus.io/scrape`
+  # annotation. Off, so the annotation below is the only one; on, the two
+  # render as a duplicate key.
+  prometheusScrape: false
 
   service:
     annotations:

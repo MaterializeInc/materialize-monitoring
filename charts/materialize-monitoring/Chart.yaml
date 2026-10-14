@@ -120,7 +120,7 @@ dependencies:
       - bundled-backends
       - thanos
   - name: grafana
-    version: "13.5.0"
+    version: "13.6.0"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: grafana.enabled
     tags:
@@ -136,7 +136,7 @@ dependencies:
       - managed-grafana
       - grafana-operator
   - name: alertmanager
-    version: "1.42.0"
+    version: "1.43.3"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: alertmanager.enabled
     tags:
@@ -153,7 +153,7 @@ dependencies:
       - kube-state-metrics
   - name: prometheus-node-exporter
     alias: node-exporter
-    version: "4.56.1"
+    version: "4.60.0"
     repository: oci://ghcr.io/prometheus-community/charts
     condition: node-exporter.enabled
     tags:
