@@ -4391,12 +4391,9 @@ loki:
     # the incident that caused the pressure.
     priorityClassName: monitoring-scalable
 
-  # -- (h5) The subchart's `helm test` Pod, off.
-  # @raw
-  # It queries the canary's metrics endpoint, so it renders wherever the canary
-  # does. Its image is `grafana/loki-helm-test:latest`: unpinned, and outside
-  # what the profiles under `profiles/registry/` repoint. The canary's own
-  # metrics already carry the same write→read signal continuously.
+  # The subchart's `helm test` Pod renders wherever the canary does. Its image
+  # is an unpinned `grafana/loki-helm-test:latest` that the registry profiles do
+  # not repoint, and the canary's own metrics already carry its signal.
   test:
     enabled: false
 
