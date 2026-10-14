@@ -8,7 +8,7 @@ large services:
         app.kubernetes.io/component: memcached-chunks-cache
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         monitoring.materialize.cloud/scrape-scheme: plaintext
         prometheus.io/service-monitor: "false"
@@ -37,7 +37,7 @@ large services:
         app.kubernetes.io/component: compactor
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-compactor
       namespace: loki
@@ -70,7 +70,7 @@ large services:
         app.kubernetes.io/component: compactor
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -106,7 +106,7 @@ large services:
         app.kubernetes.io/component: distributor
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-distributor
       namespace: loki
@@ -139,7 +139,7 @@ large services:
         app.kubernetes.io/component: distributor
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -175,7 +175,7 @@ large services:
         app.kubernetes.io/component: index-gateway
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-index-gateway
       namespace: loki
@@ -208,7 +208,7 @@ large services:
         app.kubernetes.io/component: index-gateway
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -244,7 +244,7 @@ large services:
         app.kubernetes.io/component: ingester
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-ingester
       namespace: loki
@@ -277,7 +277,7 @@ large services:
         app.kubernetes.io/component: ingester
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -312,7 +312,7 @@ large services:
         app.kubernetes.io/component: canary
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         monitoring.materialize.cloud/scrape-scheme: plaintext
         prometheus.io/service-monitor: "false"
@@ -338,7 +338,7 @@ large services:
         app.kubernetes.io/component: querier
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-querier
       namespace: loki
@@ -371,7 +371,7 @@ large services:
         app.kubernetes.io/component: querier
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -407,7 +407,7 @@ large services:
         app.kubernetes.io/component: query-frontend
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-query-frontend
       namespace: loki
@@ -440,7 +440,7 @@ large services:
         app.kubernetes.io/component: query-frontend
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -476,7 +476,7 @@ large services:
         app.kubernetes.io/component: query-scheduler
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-query-scheduler
       namespace: loki
@@ -509,7 +509,7 @@ large services:
         app.kubernetes.io/component: query-scheduler
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -545,7 +545,7 @@ large services:
         app.kubernetes.io/component: memcached-results-cache
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         monitoring.materialize.cloud/scrape-scheme: plaintext
         prometheus.io/service-monitor: "false"
@@ -574,7 +574,7 @@ large services:
         app.kubernetes.io/component: ruler
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-ruler
       namespace: loki
@@ -607,7 +607,7 @@ large services:
         app.kubernetes.io/component: ruler
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         prometheus.io/service-monitor: "false"
         variant: headless
@@ -644,7 +644,7 @@ large workloads:
         app.kubernetes.io/component: memcached-chunks-cache
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         name: memcached-chunks-cache
       name: loki-chunks-cache
@@ -778,7 +778,7 @@ large workloads:
         app.kubernetes.io/component: compactor
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-compactor
       namespace: loki
@@ -802,7 +802,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -828,7 +828,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -916,7 +916,7 @@ large workloads:
         app.kubernetes.io/component: distributor
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-distributor
       namespace: loki
@@ -941,7 +941,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -967,7 +967,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -1052,7 +1052,7 @@ large workloads:
         app.kubernetes.io/component: index-gateway
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-index-gateway
       namespace: loki
@@ -1075,7 +1075,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -1101,7 +1101,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -1188,7 +1188,7 @@ large workloads:
         app.kubernetes.io/component: ingester
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-ingester
       namespace: loki
@@ -1212,7 +1212,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -1232,7 +1232,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -1342,7 +1342,7 @@ large workloads:
         app.kubernetes.io/component: canary
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-canary
       namespace: loki
@@ -1379,7 +1379,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.name
-              image: docker.io/grafana/loki-canary:3.7.6
+              image: docker.io/grafana/loki-canary:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 httpGet:
@@ -1424,7 +1424,7 @@ large workloads:
         app.kubernetes.io/component: querier
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-querier
       namespace: loki
@@ -1450,7 +1450,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -1476,7 +1476,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -1570,7 +1570,7 @@ large workloads:
         app.kubernetes.io/component: query-frontend
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-query-frontend
       namespace: loki
@@ -1596,7 +1596,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -1622,7 +1622,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -1707,7 +1707,7 @@ large workloads:
         app.kubernetes.io/component: query-scheduler
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-query-scheduler
       namespace: loki
@@ -1734,7 +1734,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -1760,7 +1760,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
@@ -1846,7 +1846,7 @@ large workloads:
         app.kubernetes.io/component: memcached-results-cache
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
         name: memcached-results-cache
       name: loki-results-cache
@@ -1977,7 +1977,7 @@ large workloads:
         app.kubernetes.io/component: ruler
         app.kubernetes.io/instance: t
         app.kubernetes.io/name: loki
-        app.kubernetes.io/version: 3.7.6
+        app.kubernetes.io/version: 3.7.8
         helm.sh/chart: loki-1.2.3
       name: loki-ruler
       namespace: loki
@@ -2000,7 +2000,7 @@ large workloads:
             app.kubernetes.io/instance: t
             app.kubernetes.io/name: loki
             app.kubernetes.io/part-of: memberlist
-            app.kubernetes.io/version: 3.7.6
+            app.kubernetes.io/version: 3.7.8
             helm.sh/chart: loki-1.2.3
         spec:
           affinity:
@@ -2031,7 +2031,7 @@ large workloads:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
-              image: docker.io/grafana/loki:3.7.6
+              image: docker.io/grafana/loki:3.7.8
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 10
