@@ -4246,7 +4246,7 @@ unmanaged here, both scopes fall back to the release.
   "pullSecrets": [],
   "registry": "registry.k8s.io",
   "repository": "kubectl",
-  "tag": "v1.35.6"
+  "tag": "v1.36.5"
 }</pre>
 </td>
       <td class="helm-value-desc">Image for the cleanup job. Upstream's own kubectl build: distroless, multi-arch, and published beside Kubernetes itself, so it tracks patch releases without a third-party rebuild. Its entrypoint is `/bin/kubectl` and there is no shell in the image — the hook runs one argv and needs nothing else. Keep `tag` within one minor of your API server, per Kubernetes' version-skew policy.
@@ -7264,7 +7264,7 @@ validator warns when the two disagree.
       "image": {
         "registry": "docker.io",
         "repository": "alpine/kubectl",
-        "tag": "1.35.4"
+        "tag": "1.36.4"
       },
       "resources": {
         "requests": {
@@ -7475,7 +7475,7 @@ resources, through the import sidecar below.
     "image": {
       "registry": "docker.io",
       "repository": "alpine/kubectl",
-      "tag": "1.35.4"
+      "tag": "1.36.4"
     },
     "resources": {
       "requests": {
