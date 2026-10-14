@@ -39,6 +39,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -107,7 +109,9 @@ jobs:
 
       - name: Build site
         working-directory: docs
-        run: hugo --gc --minify --baseURL "${{ steps.paths.outputs.base-url }}"
+        env:
+          BASE_URL: ${{ steps.paths.outputs.base-url }}
+        run: hugo --gc --minify --baseURL "${BASE_URL}"
 
       # Pages is served from the gh-pages *branch*, so GitHub runs its own
       # Jekyll build over whatever lands there. Since the llms-txt module makes
@@ -182,9 +186,12 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
+      # The credentials persist on purpose: the step below pushes gh-pages with
+      # them, and it is the only other step in this job, so no PR code ever
+      # runs alongside the token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: gh-pages
+          ref: gh-pages # zizmor: ignore[artipacked]
 
       - name: Remove PR preview directory
         env:

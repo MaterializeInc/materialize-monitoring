@@ -30,10 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.merge_commit_sha }}
       - name: build and push alloy image
         if: github.event.pull_request.head.ref == 'version-update/container-images'
-        uses: ./.github/actions/build-alloy-image
+        uses: $/.github/actions/build-alloy-image
         with:
           push: "true"
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -53,6 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           # The merged state on the default branch, whose CHANGELOG carries the
           # just-released section.
           ref: ${{ github.event.pull_request.merge_commit_sha }}

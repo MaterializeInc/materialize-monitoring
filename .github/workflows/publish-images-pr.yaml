@@ -27,11 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Compute dev suffix
         id: suffix
         run: echo "value=dev.0--pr.g$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: ./.github/actions/build-alloy-image
+      - uses: $/.github/actions/build-alloy-image
         with:
           push: "true"
           image-suffix: ${{ steps.suffix.outputs.value }}

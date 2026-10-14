@@ -54,6 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Skip the workflow's own auto-format commit
         id: guard
@@ -98,10 +99,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          # Persist this token (persist-credentials is on by default) so the
-          # `git push` below authenticates as the bot, making the commit trigger
-          # required checks. Falls back to GITHUB_TOKEN when the secret is unset.
-          token: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          # The steps below run the PR's own tooling (make, uv, cargo), so the
+          # bot token is not left in .git/config for them to read. The push step
+          # hands it to git itself.
+          persist-credentials: false
           lfs: true
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
@@ -170,6 +171,10 @@ jobs:
           uv run ruff format
           uv run ruff check --fix --exit-zero
       - name: Commit and push if anything changed
+        env:
+          # Pushing as the bot makes the commit trigger the PR's required
+          # checks. Falls back to GITHUB_TOKEN when the secret is unset.
+          PUSH_TOKEN: ${{ secrets.MATERIALIZE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "No formatting changes."
@@ -181,4 +186,8 @@ jobs:
           # The `check` job keys the loop guard on this subject — keep MARKER there
           # in sync if you change it.
           git commit -m "style: apply auto-formatters"
-          git push
+          # The same header actions/checkout persists, set only for this push.
+          # git-lfs reads it too, so the pre-push hook can upload LFS objects.
+          auth="$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" push
