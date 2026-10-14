@@ -13,8 +13,6 @@ This page is for you if you operate the Thanos metrics store that `materialize-m
 Each section starts from an alert or an error you can see, and ends when the component is healthy again.
 For a symptom that no section here matches, see [o11y Troubleshooting](../../o11y-troubleshooting/).
 
-The commands on this page assume the stack runs in the `monitoring` namespace.
-
 ## Thanos Compactor
 
 The Thanos Compactor merges the blocks that Receive uploads into larger ones, downsamples them, and deletes blocks that are past retention.
@@ -35,7 +33,11 @@ The bucket grows, and the Store Gateway serves long-range queries from many smal
 The Compactor logs the error that halted it once, when it halts:
 
 ```bash
-kubectl -n monitoring logs thanos-compactor-0 | grep 'critical error detected; halting'
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" logs thanos-compactor-0 \
+  | grep 'critical error detected; halting'
 ```
 
 If the pod has restarted since the halt, the line isn't in its log until the Compactor reaches the same failure again.
@@ -55,7 +57,10 @@ Receive uploads raw blocks at compaction level `1`, and a running Compactor merg
 The following command prints the start time of the oldest one:
 
 ```bash
-kubectl -n monitoring exec thanos-compactor-0 -- \
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" exec thanos-compactor-0 -- \
   thanos tools bucket inspect --objstore.config-file=/etc/thanos/objstore.yml --output=tsv \
   | awk -F'\t' '$9 == "1" {print $2}' | sort | head -1
 ```
@@ -91,13 +96,20 @@ If it halts on `no space left on device`, continue with [Compactor out of space]
 After you fix the cause, restart the Compactor:
 
 ```bash
-kubectl -n monitoring delete pod thanos-compactor-0
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pod thanos-compactor-0
 ```
 
 If the fix changed the Compactor's arguments, check that the pod started after the change before you assume that it picked the change up:
 
 ```bash
-kubectl -n monitoring get pod thanos-compactor-0 -o jsonpath='{.status.startTime}{"\n"}'
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pod thanos-compactor-0 \
+  -o jsonpath='{.status.startTime}{"\n"}'
 ```
 
 #### Confirm the recovery
@@ -105,7 +117,10 @@ kubectl -n monitoring get pod thanos-compactor-0 -o jsonpath='{.status.startTime
 `thanos_compact_halted` returns to `0`, and `thanos_compact_todo_compactions` falls as the backlog drains:
 
 ```bash
-kubectl -n monitoring port-forward pod/thanos-compactor-0 10902:10902 &
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" port-forward pod/thanos-compactor-0 10902:10902 &
 curl -s localhost:10902/metrics | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
 ```
 
@@ -136,8 +151,12 @@ To resolve it, follow these steps:
 1. Compare the volume's size with the size the StatefulSet requests:
 
    ```bash
-   kubectl -n monitoring get pvc data-thanos-compactor-0 -o jsonpath='{.status.capacity.storage}{"\n"}'
-   kubectl -n monitoring get statefulset thanos-compactor \
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc data-thanos-compactor-0 \
+     -o jsonpath='{.status.capacity.storage}{"\n"}'
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get statefulset thanos-compactor \
      -o jsonpath='{.spec.volumeClaimTemplates[0].spec.resources.requests.storage}{"\n"}'
    ```
 
@@ -152,4 +171,4 @@ To resolve it, follow these steps:
 
 After the backlog drains, decide whether to keep the larger volume.
 If you keep it, raise `thanos.compactor.persistence.size` to match, so that a recreated PVC has the same size.
-Otherwise, return the volume to the chart's size as the Kubernetes runbook describes.
+Otherwise, [return the PVC to the chart's size](../kubernetes/#return-the-pvc-to-the-charts-size).
