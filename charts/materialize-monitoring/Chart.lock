@@ -19,7 +19,7 @@ dependencies:
   version: 5.25.0
 - name: alertmanager
   repository: oci://ghcr.io/prometheus-community/charts
-  version: 1.43.3
+  version: 2.1.1
 - name: kube-state-metrics
   repository: oci://ghcr.io/prometheus-community/charts
   version: 8.6.0
@@ -29,5 +29,5 @@ dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
-digest: sha256:7e33b8245c66b26a66e8c5875b44d49dc03f25b1e80e09616673a9a4ee255630
-generated: "2026-10-14T16:46:04.612615-04:00"
+digest: sha256:7c6fbd4a6b00cb9dc8abefc5747c7c53333dd3a60c3385f70447e44d259db6d2
+generated: "2026-10-14T21:06:31.761855283Z"
