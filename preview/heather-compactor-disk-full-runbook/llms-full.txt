@@ -9442,8 +9442,6 @@ This page is for you if you operate the Thanos metrics store that `materialize-m
 Each section starts from an alert or an error you can see, and ends when the component is healthy again.
 For a symptom that no section here matches, see [o11y Troubleshooting](../../o11y-troubleshooting/).
 
-The commands on this page assume the stack runs in the `monitoring` namespace.
-
 ## Thanos Compactor
 
 The Thanos Compactor merges the blocks that Receive uploads into larger ones, downsamples them, and deletes blocks that are past retention.
@@ -9464,7 +9462,11 @@ The bucket grows, and the Store Gateway serves long-range queries from many smal
 The Compactor logs the error that halted it once, when it halts:
 
 ```bash
-kubectl -n monitoring logs thanos-compactor-0 | grep 'critical error detected; halting'
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" logs thanos-compactor-0 \
+  | grep 'critical error detected; halting'
 ```
 
 If the pod has restarted since the halt, the line isn't in its log until the Compactor reaches the same failure again.
@@ -9484,7 +9486,10 @@ Receive uploads raw blocks at compaction level `1`, and a running Compactor merg
 The following command prints the start time of the oldest one:
 
 ```bash
-kubectl -n monitoring exec thanos-compactor-0 -- \
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" exec thanos-compactor-0 -- \
   thanos tools bucket inspect --objstore.config-file=/etc/thanos/objstore.yml --output=tsv \
   | awk -F'\t' '$9 == "1" {print $2}' | sort | head -1
 ```
@@ -9520,13 +9525,20 @@ If it halts on `no space left on device`, continue with [Compactor out of space]
 After you fix the cause, restart the Compactor:
 
 ```bash
-kubectl -n monitoring delete pod thanos-compactor-0
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pod thanos-compactor-0
 ```
 
 If the fix changed the Compactor's arguments, check that the pod started after the change before you assume that it picked the change up:
 
 ```bash
-kubectl -n monitoring get pod thanos-compactor-0 -o jsonpath='{.status.startTime}{"\n"}'
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pod thanos-compactor-0 \
+  -o jsonpath='{.status.startTime}{"\n"}'
 ```
 
 #### Confirm the recovery
@@ -9534,7 +9546,10 @@ kubectl -n monitoring get pod thanos-compactor-0 -o jsonpath='{.status.startTime
 `thanos_compact_halted` returns to `0`, and `thanos_compact_todo_compactions` falls as the backlog drains:
 
 ```bash
-kubectl -n monitoring port-forward pod/thanos-compactor-0 10902:10902 &
+MONITORING_NAMESPACE=monitoring
+KUBECONTEXT=my-cluster
+
+kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" port-forward pod/thanos-compactor-0 10902:10902 &
 curl -s localhost:10902/metrics | grep -E '^thanos_compact_(halted|iterations_total|todo_compactions) '
 ```
 
@@ -9565,8 +9580,12 @@ To resolve it, follow these steps:
 1. Compare the volume's size with the size the StatefulSet requests:
 
    ```bash
-   kubectl -n monitoring get pvc data-thanos-compactor-0 -o jsonpath='{.status.capacity.storage}{"\n"}'
-   kubectl -n monitoring get statefulset thanos-compactor \
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc data-thanos-compactor-0 \
+     -o jsonpath='{.status.capacity.storage}{"\n"}'
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get statefulset thanos-compactor \
      -o jsonpath='{.spec.volumeClaimTemplates[0].spec.resources.requests.storage}{"\n"}'
    ```
 
@@ -9581,7 +9600,7 @@ To resolve it, follow these steps:
 
 After the backlog drains, decide whether to keep the larger volume.
 If you keep it, raise `thanos.compactor.persistence.size` to match, so that a recreated PVC has the same size.
-Otherwise, return the volume to the chart's size as the Kubernetes runbook describes.
+Otherwise, [return the PVC to the chart's size](../kubernetes/#return-the-pvc-to-the-charts-size).
 
 
 --------------------------------------------------------------------------------
@@ -10572,8 +10591,6 @@ This page is for you if you operate the Kubernetes cluster that `materialize-mon
 It holds the procedures that apply to more than one component.
 The component runbooks link here for those steps.
 
-The commands on this page assume the stack runs in the `monitoring` namespace.
-
 ## Storage
 
 These procedures change the PersistentVolumeClaims (PVCs) that the stack's StatefulSets create from their `volumeClaimTemplates`.
@@ -10604,8 +10621,12 @@ To grow a working PVC, follow these steps:
 1. Check that the PVC's StorageClass allows expansion:
 
    ```bash
-   kubectl get storageclass \
-     "$(kubectl -n monitoring get pvc PVC -o jsonpath='{.spec.storageClassName}')" \
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   STORAGE_CLASS=$(kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc PVC \
+     -o jsonpath='{.spec.storageClassName}')
+   kubectl --context "$KUBECONTEXT" get storageclass "$STORAGE_CLASS" \
      -o jsonpath='{.allowVolumeExpansion}{"\n"}'
    ```
 
@@ -10618,7 +10639,11 @@ To grow a working PVC, follow these steps:
 1. Request the new size:
 
    ```bash
-   kubectl -n monitoring patch pvc PVC -p '{"spec":{"resources":{"requests":{"storage":"SIZE"}}}}'
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" patch pvc PVC \
+     -p '{"spec":{"resources":{"requests":{"storage":"SIZE"}}}}'
    ```
 
    Replace the following:
@@ -10629,7 +10654,11 @@ To grow a working PVC, follow these steps:
 1. Wait until the PVC reports the new size:
 
    ```bash
-   kubectl -n monitoring get pvc PVC -o jsonpath='{.status.capacity.storage} {.status.conditions[*].type}{"\n"}'
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc PVC \
+     -o jsonpath='{.status.capacity.storage} {.status.conditions[*].type}{"\n"}'
    ```
 
    While the volume grows, the conditions show `Resizing` and then `FileSystemResizePending`.
@@ -10643,7 +10672,17 @@ Choose a size with room to spare, so that you don't need a second resize.
 #### Return the PVC to the chart's size
 
 After the job that needed the space finishes, you can return a working PVC to the size its StatefulSet requests by recreating it.
-Don't recreate a PVC that isn't a working PVC, because deleting it discards its contents.
+Recreate only a working PVC.
+
+> [!WARNING]
+> Deleting a PVC discards everything on it, and you can't undo it.
+> With the default `reclaimPolicy` of `Delete`, the StorageClass also deletes the disk behind the PVC.
+>
+> - **Alertmanager:** the replica loses its silences and notification log.
+>   Replicas share both by gossip, so a new replica recovers them from its peers.
+>   If every replica loses its PVC, silenced alerts notify again, and recent notifications can repeat.
+> - **Loki ruler:** the replica loses the recording-rule samples it hasn't sent yet.
+>   Those samples are missing from the metrics store for good.
 
 To recreate a working PVC, follow these steps:
 
@@ -10651,13 +10690,19 @@ To recreate a working PVC, follow these steps:
    The PVC stays `Terminating` until no pod mounts it:
 
    ```bash
-   kubectl -n monitoring delete pvc PVC --wait=false
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pvc PVC --wait=false
    ```
 
 1. Delete the pod that mounts it:
 
    ```bash
-   kubectl -n monitoring delete pod POD
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pod POD
    ```
 
    Replace `POD` with the pod's name, which is the PVC's name without its prefix, such as `thanos-compactor-0` for `data-thanos-compactor-0`.
@@ -10665,8 +10710,12 @@ To recreate a working PVC, follow these steps:
 1. Check that the StatefulSet recreated the pod and a new PVC at the requested size:
 
    ```bash
-   kubectl -n monitoring get pod POD
-   kubectl -n monitoring get pvc PVC -o jsonpath='{.status.capacity.storage}{"\n"}'
+   MONITORING_NAMESPACE=monitoring
+   KUBECONTEXT=my-cluster
+
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pod POD
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc PVC \
+     -o jsonpath='{.status.capacity.storage}{"\n"}'
    ```
 
    If the new pod stays `Pending` with an event that says its PVC is being deleted, it started before the old PVC was gone.
@@ -10674,6 +10723,12 @@ To recreate a working PVC, follow these steps:
 
 For a StatefulSet with more than one replica, such as the Store Gateway, recreate one PVC at a time.
 Wait for each pod to be `Ready` before you start the next.
+
+> [!NOTE]
+> A recreated working PVC starts empty, so the component pays to rebuild it.
+> A Store Gateway replica rebuilds its index headers from the bucket, and serves no historical query until it finishes.
+> On a large bucket, that takes minutes.
+> The Compactor downloads the blocks of a compaction in progress again.
 
 
 --------------------------------------------------------------------------------
