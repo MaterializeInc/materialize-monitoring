@@ -37,6 +37,17 @@ pipeline:
         subscriptionId: 00000000-0000-0000-0000-000000000000
         postgres:
           servers: [mz-metadata, mz-grafana]
+# The postgres-exporter likewise, watching both by target name.
+tags:
+  postgres-exporter: true
+postgres-exporter:
+  targets:
+    - name: mz-metadata
+      host: metadata.example.com
+      database: materialize
+    - name: mz-grafana
+      host: grafana.example.com
+      database: grafana
 externalDependencies:
   consensus:
     - flavor: rds
@@ -44,4 +55,6 @@ externalDependencies:
     - flavor: cloudsql
       resourceId: mz-metadata
     - flavor: azure-postgres
+      resourceId: mz-metadata
+    - flavor: postgres
       resourceId: mz-metadata

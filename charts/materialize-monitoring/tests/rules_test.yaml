@@ -598,6 +598,69 @@ tests:
       - notExists:
           path: spec.groups[*].rules[?(@.alert == "consensus-failures")]
 
+  # The exporter watches Grafana's database too; only the declared target is a
+  # metadata database.
+  - it: records the postgres adapter for the declared target only
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: mz-metadata, host: metadata.example.com, database: materialize}
+        - {name: mz-grafana, host: grafana.example.com, database: grafana}
+      externalDependencies.consensus:
+        - {flavor: postgres, resourceId: mz-metadata}
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - matchRegex:
+          path: spec.groups[?(@.name == "ext_consensus_postgres")].rules[?(@.record == "ext:consensus_xid_used_ratio")].expr
+          pattern: 'target=~"\(\?i\)mz-metadata"'
+      - notMatchRegex:
+          path: spec.groups[?(@.name == "ext_consensus_postgres")].rules[?(@.record == "ext:consensus_xid_used_ratio")].expr
+          pattern: "mz-grafana"
+      - equal:
+          path: spec.groups[?(@.name == "ext_consensus_postgres")].rules[?(@.record == "ext:consensus_connections_used_ratio")].labels.flavor
+          value: postgres
+      - exists:
+          path: spec.groups[?(@.name == "ext_consensus_postgres")].rules[?(@.record == "ext:consensus_database_bytes")]
+      - exists:
+          path: spec.groups[?(@.name == "ext_consensus_postgres")].rules[?(@.record == "ext:consensus_version_info")]
+
+  - it: leaves the postgres adapter out where the exporter is off
+    template: templates/alerts/prometheusrules.yaml
+    set:
+      externalDependencies.consensus:
+        - {flavor: postgres, resourceId: mz-metadata}
+    documentSelector:
+      path: metadata.name
+      value: mzmon-ext-consensus
+    asserts:
+      - notExists:
+          path: spec.groups[?(@.name == "ext_consensus_postgres")]
+
+  - it: warns when the declared postgres database is not an exporter target
+    template: templates/NOTES.txt
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: mz-grafana, host: grafana.example.com}
+      externalDependencies.consensus:
+        - {flavor: postgres, resourceId: mz-metadata}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'externalDependencies.consensus names the postgres database "mz-metadata", which postgres-exporter.targets does not list by name'
+
+  - it: warns when the exporter watches targets and none is declared
+    template: templates/NOTES.txt
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: mz-metadata, host: metadata.example.com}
+    asserts:
+      - matchRegexRaw:
+          pattern: 'postgres-exporter.targets watches mz-metadata, but externalDependencies.consensus names none of them'
+
   - it: warns when a selected alert reads a recorded series nothing records
     template: templates/NOTES.txt
     set:
@@ -616,7 +679,7 @@ tests:
         - {flavor: mysql, resourceId: mz-metadata}
     asserts:
       - failedTemplate:
-          errorPattern: 'externalDependencies.consensus\[0\].flavor is "mysql"; it is one of azure-postgres, cloudsql, rds'
+          errorPattern: 'externalDependencies.consensus\[0\].flavor is "mysql"; it is one of azure-postgres, cloudsql, postgres, rds'
 
   # The id lands in a PromQL string unescaped.
   - it: rejects a resource id that is not a provider name

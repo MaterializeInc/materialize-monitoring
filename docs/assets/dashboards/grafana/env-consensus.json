@@ -34,7 +34,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "The metadata database, as Materialize experiences it.\n\nCommits, failures, latency and connection pools, measured by the processes that use the database — the same on every database flavor. What a CloudNativePG database reports about itself is on the Database Internals tab, and what a managed database's cloud provider reports is on the Infrastructure Cloud Provider dashboard.",
+    "description": "The metadata database, as Materialize experiences it.\n\nCommits, failures, latency and connection pools, measured by the processes that use the database — the same on every database flavor. What the database reports about itself, through the postgres-exporter or CloudNativePG, is on the Database Internals tab, and what a managed database's cloud provider reports is on the Infrastructure Cloud Provider dashboard.",
     "editable": true,
     "elements": {
       "cnpg-archive-failures": {
@@ -1557,7 +1557,7 @@
             }
           },
           "description": "Why this tab has no database rows on it.",
-          "id": 1049,
+          "id": 1067,
           "links": [],
           "title": "No Database Metrics",
           "vizConfig": {
@@ -1574,7 +1574,7 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "**The metadata database is not reporting its own metrics.**\n\nThis tab shows what a database running in the cluster says about itself: connections against its ceiling, transactions, the size of each database, vacuum and replication. It renders for **CloudNativePG (CNPG)**, which publishes these from every instance with nothing extra to deploy.\n\n- **On CNPG**, create a `PodMonitor` for the cluster, selecting `cnpg.io/cluster: <name>` and the `metrics` port. CNPG's documentation has the manifest; its `spec.monitoring.enablePodMonitor` is deprecated. If one exists and this note remains, check `up{container=\"postgres\"}` — a scrape that fails outright, such as one blocked by a NetworkPolicy, reports nothing else.\n- **On a managed database** — RDS, Cloud SQL, Azure Database for PostgreSQL — the provider's view is on the **Infrastructure Cloud Provider** dashboard instead.\n\nThe other tabs here need none of this: they are Materialize's own measurement of the database, and work on every flavor.",
+                "content": "**The metadata database is not reporting its own metrics.**\n\nThis tab shows what the database says about itself: connections against its ceiling, transactions, the size of each database on the instance, transaction-ID age and vacuum. It renders for **any PostgreSQL** the chart's postgres-exporter watches, and for **CloudNativePG (CNPG)**, which publishes these from every instance with nothing extra to deploy.\n\n- **On any PostgreSQL**, managed or not, set `tags.postgres-exporter: true` and list the database under `postgres-exporter.targets`, with a `postgres-exporter` Secret holding its credentials. The external dependencies guide has the grant. If the exporter runs and this note remains, check `up{job=\"postgres-exporter\"}`.\n- **On CNPG**, create a `PodMonitor` for the cluster, selecting `cnpg.io/cluster: <name>` and the `metrics` port. CNPG's documentation has the manifest; its `spec.monitoring.enablePodMonitor` is deprecated. If one exists and this note remains, check `up{container=\"postgres\"}` — a scrape that fails outright, such as one blocked by a NetworkPolicy, reports nothing else.\n- **On a managed database**, what the cloud provider sees of the machine under it — CPU, memory, disk and IOPS — is on the **Infrastructure Cloud Provider** dashboard, beside the exporter's view here.\n\nThe other tabs here need none of this: they are Materialize's own measurement of the database, and work on every flavor.",
                 "mode": "markdown"
               }
             },
@@ -3219,6 +3219,1474 @@
                     ]
                   },
                   "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-autovacuum-running": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "time() - max by (relname) (pg_stat_activity_autovacuum_timestamp_seconds{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n",
+                        "legendFormat": "{{relname}}",
+                        "qryType": 1,
+                        "query": "time() - max by (relname) (pg_stat_activity_autovacuum_timestamp_seconds{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long each autovacuum worker running now has been at it, by table.**\n\n**Nominal:** Short, frequent passes. No data most of the time.\n\n**Degraded:** One pass on the consensus table that runs for many minutes, or restarts without finishing, means vacuum cannot keep up — often because it is throttled by `autovacuum_vacuum_cost_limit`, or cancelled by a lock it conflicts with.",
+          "id": 1066,
+          "links": [],
+          "title": "Autovacuum Running",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No autovacuum worker is running now, which is usual between passes.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-cache-hit": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(\n  sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  / (\n      sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n    + sum by (datname) (rate(pg_stat_database_blks_read{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  )\n) >= 0\n",
+                        "legendFormat": "{{datname}}",
+                        "qryType": 1,
+                        "query": "(\n  sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  / (\n      sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n    + sum by (datname) (rate(pg_stat_database_blks_read{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  )\n) >= 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The fraction of block reads served from PostgreSQL's shared buffers rather than from disk, by database.**\n\n**Nominal:** Close to 100%. The consensus table is small and hot, and should live in memory.\n\n**Degraded:** Well below 99% means reads are going to disk, so commits wait on I/O. The instance needs more memory, or its `shared_buffers` setting is smaller than the working set.",
+          "id": 1061,
+          "links": [],
+          "title": "Buffer Cache Hit Ratio",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-connections-by-database": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname, usename) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}) > 0\n",
+                        "legendFormat": "{{datname}} ({{usename}})",
+                        "qryType": 1,
+                        "query": "sum by (datname, usename) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n- max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n- (\n    max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n    or vector(0)\n  )\n",
+                        "legendFormat": "ceiling",
+                        "qryType": 1,
+                        "query": "max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n- max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n- (\n    max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n    or vector(0)\n  )\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Client connections open on the instance, by database and role, beside the ceiling an ordinary role is refused at.**\n\n**Nominal:** Materialize's role holding nearly all of them, well under the ceiling.\n\n**Degraded:** Connections near the ceiling. If they are Materialize's, its pools have grown with the number of replicas; if they are another database's, something else is sharing the instance and Materialize is competing with it.\n\nMaterialize's own count of the connections it holds is on the Connections tab, and should match its line here.",
+          "id": 1055,
+          "links": [],
+          "title": "Connections by Database and Role",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-connections-by-state": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (state) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n",
+                        "legendFormat": "{{state}}",
+                        "qryType": 1,
+                        "query": "sum by (state) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Client connections by what they are doing: running a statement (`active`), waiting for the next one (`idle`), or holding a transaction open between statements (`idle in transaction`).**\n\n**Nominal:** Mostly `idle`. A connection pool keeps connections open between uses.\n\n**Degraded:** `idle in transaction` that does not drain is a client holding a transaction open, which blocks vacuum and can hold locks. It is a different fault from too many connections, and the fix is in the client that opened it.",
+          "id": 1056,
+          "links": [],
+          "title": "Connections by State",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-connections-used": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n/ (\n    max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - (\n      max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n      or vector(0)\n    )\n)\n",
+                        "legendFormat": "used",
+                        "qryType": 1,
+                        "query": "sum(pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n/ (\n    max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - (\n      max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n      or vector(0)\n    )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Client connections open on the selected database's instance, as a fraction of the connections an ordinary role may open.**\n\n**Nominal:** Well below 1. Materialize holds a pool of connections per process, so the count rises with every cluster replica added.\n\n**Degraded:** Above 80%, the next cluster scale-up or rollout — which briefly runs two generations of every process — can exhaust it.\n\n**Unhealthy:** At 1, PostgreSQL refuses new connections with `remaining connection slots are reserved`, and every Materialize process reports connection errors at once.\n\nThe ceiling is `max_connections` less `superuser_reserved_connections` and, from PostgreSQL 16, `reserved_connections`, which is where an ordinary role is refused. Connections to every database on the instance count against it, not only Materialize's. A managed service's own maintenance connections count too.",
+          "id": 1050,
+          "links": [],
+          "title": "Connections Used",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.8
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.95
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-database-size": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (datname) (pg_database_size_bytes{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n",
+                        "legendFormat": "{{datname}}",
+                        "qryType": 1,
+                        "query": "max by (datname) (pg_database_size_bytes{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The size of each database on the instance.**\n\n**Nominal:** Materialize's database small and roughly flat: persist keeps only current state there, and the data itself is in object storage.\n\n**Degraded:** Materialize's database growing without bound means truncation has stopped. Another database growing is a neighbour consuming the volume — a full disk looks the same either way from outside the database, and this is what tells them apart.",
+          "id": 1062,
+          "links": [],
+          "title": "Size by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-dead-tuples": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(\n  pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}\n  / (\n      pg_stat_user_tables_n_live_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}\n    + pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}\n    > 1000\n  )\n)\n",
+                        "legendFormat": "dead",
+                        "qryType": 1,
+                        "query": "max(\n  pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}\n  / (\n      pg_stat_user_tables_n_live_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}\n    + pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}\n    > 1000\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The dead-row fraction of the table with the most dead rows, in the database the exporter connects to.**\n\n**Nominal:** Below 20%, and falling back after each autovacuum. Persist rewrites its consensus rows constantly, so dead rows accumulate quickly and autovacuum clears them just as quickly.\n\n**Degraded:** A fraction that keeps climbing means autovacuum is not keeping up with the table, or cannot run: a long-running transaction, an abandoned replication slot, or `autovacuum_vacuum_cost_limit` throttling it. Every commit then scans more dead rows, and the database's own metrics stay flat while Materialize's commit latency climbs.\n\nIgnores tables with fewer than 1,000 rows, whose ratio swings on a handful of updates. _Dead Rows by Table_ names the table.",
+          "id": 1053,
+          "links": [],
+          "title": "Worst Dead-Row Ratio",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "No table statistics. They come from the database the target connects to, and it has no tables with rows to report.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.2
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.5
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-dead-tuples-by-table": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\n",
+                        "legendFormat": "{{datname}}.{{relname}}",
+                        "qryType": 1,
+                        "query": "topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Dead rows waiting for vacuum, for the ten tables with the most, in the database the exporter connects to.**\n\n**Nominal:** A saw-tooth on persist's `consensus` table: dead rows build up between autovacuum passes and drop at each one.\n\n**Degraded:** A line that only rises is a table autovacuum is not reaching. On the consensus table, that is the workload-specific failure: every commit scans the dead rows, so commits slow while nothing else changes.",
+          "id": 1064,
+          "links": [],
+          "title": "Dead Rows by Table",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No table statistics. They come from the database the target connects to, and it has no tables with rows to report.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-locks": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname, mode) (pg_locks_count{job=\"postgres-exporter\", target=\"$postgresTarget\"}) > 0\n",
+                        "legendFormat": "{{datname}} {{mode}}",
+                        "qryType": 1,
+                        "query": "sum by (datname, mode) (pg_locks_count{job=\"postgres-exporter\", target=\"$postgresTarget\"}) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Locks held, by database and lock mode.**\n\n**Nominal:** A steady handful of `accesssharelock` and `rowexclusivelock` from ordinary reads and writes.\n\n**Degraded:** A sudden rise in `exclusivelock` or `accessexclusivelock` on Materialize's database is something taking the consensus table for itself, such as a `VACUUM FULL`, a migration, or a manual `LOCK`, and Materialize's commits wait behind it.\n\nLocks held, not locks waited on: PostgreSQL's lock table does not say which holder is blocking which waiter. The exporter reports each mode in lowercase. Compare with commit latency on the Operations tab.",
+          "id": 1058,
+          "links": [],
+          "title": "Locks Held by Database and Mode",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-not-reachable": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "(1 - max(pg_up{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\nor (1 - max(up{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\n",
+                        "legendFormat": "unreachable",
+                        "qryType": 1,
+                        "query": "(1 - max(pg_up{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\nor (1 - max(up{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Whether the exporter can reach the selected database: 1 when it cannot connect, or cannot itself be scraped.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** The exporter cannot connect. If Materialize's own commits on the other tabs are failing at the same time, the database is down or unreachable from the cluster. If they are not, the exporter's credentials or grant are wrong: check the pod's log and the `postgres-exporter` Secret.\n\nCounts both ways a target can go dark: `pg_up` reading 0, and the exporter's `/probe` not answering at all.",
+          "id": 1049,
+          "links": [],
+          "title": "Not Reachable",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 1
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 1
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-oldest-transaction": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(pg_stat_activity_max_tx_duration{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n",
+                        "legendFormat": "oldest",
+                        "qryType": 1,
+                        "query": "max(pg_stat_activity_max_tx_duration{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long the oldest open transaction on the instance has been running.**\n\n**Nominal:** Under a second. Persist's commits are single, short transactions.\n\n**Degraded:** Minutes. A long-running transaction holds back vacuum on every table, so the consensus table grows and every commit slows. It is usually something other than Materialize: a migration, a backup tool, or a session left `idle in transaction`.\n\n_Oldest Transaction by Database_ on this tab names the database and state it is in.",
+          "id": 1051,
+          "links": [],
+          "title": "Oldest Open Transaction",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 60
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 900
+                      }
+                    ]
+                  },
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-rows": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} inserted",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(pg_stat_database_tup_updated{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} updated",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(pg_stat_database_tup_updated{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} deleted",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-2"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Rows inserted, updated and deleted per second, by database.**\n\n**Nominal:** A steady churn on Materialize's database. Every commit rewrites a small state record and truncation deletes the versions behind it, so deletes track inserts.\n\n**Degraded:** Inserts with no matching deletes means truncation has stopped and the consensus table is growing; _State and Cleanup_ shows it from Materialize's side. Heavy churn on another database is a neighbour competing for the same disk.",
+          "id": 1060,
+          "links": [],
+          "title": "Rows Written by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "rowsps"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-since-autovacuum": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "time() - (\n  max by (datname, relname) (pg_stat_user_tables_last_autovacuum{job=\"postgres-exporter\", target=\"$postgresTarget\"} > 0)\n  and on (datname, relname)\n    topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\n)\n",
+                        "legendFormat": "{{datname}}.{{relname}}",
+                        "qryType": 1,
+                        "query": "time() - (\n  max by (datname, relname) (pg_stat_user_tables_last_autovacuum{job=\"postgres-exporter\", target=\"$postgresTarget\"} > 0)\n  and on (datname, relname)\n    topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job=\"postgres-exporter\", target=\"$postgresTarget\"}))\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Time since autovacuum last finished on each of the ten tables with the most dead rows, in the database the exporter connects to.**\n\n**Nominal:** Minutes on the consensus table, which churns fast enough to be vacuumed constantly. Hours or days on tables that rarely change.\n\n**Degraded:** A table with many dead rows and a growing time since its last autovacuum is the leading indicator of the slowdown _Dead Rows by Table_ shows.\n\nAbsent for a table autovacuum has never processed.",
+          "id": 1065,
+          "links": [],
+          "title": "Time Since Autovacuum",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No table here has been autovacuumed since statistics were last reset, or the database the target connects to has no tables.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-transactions": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(pg_stat_database_xact_commit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} committed",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(pg_stat_database_xact_commit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (datname) (rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "legendFormat": "{{datname}} rolled back",
+                        "qryType": 1,
+                        "query": "sum by (datname) (rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Transactions committed and rolled back per second, by database.**\n\n**Nominal:** Materialize's database committing steadily — tens per second on an idle environment — and few rollbacks.\n\n**Degraded:** A commit rate well below Materialize's own count of commits means its calls are not arriving. Rising rollbacks on Materialize's database are usually commits that lost a race, which persist expects and retries.\n\nCompare with _Commits_ on the Overview tab, which is the same work counted by Materialize.",
+          "id": 1059,
+          "links": [],
+          "title": "Transactions by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "unit": "ops"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-transactions-held": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (datname, state) (pg_stat_activity_max_tx_duration{job=\"postgres-exporter\", target=\"$postgresTarget\"}) > 0\n",
+                        "legendFormat": "{{datname}} ({{state}})",
+                        "qryType": 1,
+                        "query": "max by (datname, state) (pg_stat_activity_max_tx_duration{job=\"postgres-exporter\", target=\"$postgresTarget\"}) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The oldest open transaction, by database and connection state.**\n\n**Nominal:** Under a second.\n\n**Degraded:** A transaction that keeps aging holds back vacuum on every table, so the consensus table grows and every commit slows.",
+          "id": 1057,
+          "links": [],
+          "title": "Oldest Transaction by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No transaction is open. Persist's commits finish between scrapes.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-version": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (short_version) (pg_static{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n",
+                        "instant": true,
+                        "legendFormat": "{{short_version}}",
+                        "qryType": 1,
+                        "query": "max by (short_version) (pg_static{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "labelsToFields",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {}
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**The PostgreSQL version the selected database runs.**\n\n**Nominal:** A supported major version.\n\nAn out-of-date dependency has been the cause of an incident before, and this is the one place it is visible without a database login.",
+          "id": 1054,
+          "links": [],
+          "title": "PostgreSQL Version",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#009988",
+                    "mode": "shades"
+                  },
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect."
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "fields": "/^short_version$/",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "text": {
+                  "valueSize": 20
+                },
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-xid-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (datname) (pg_database_wraparound_age_datfrozenxid_seconds{job=\"postgres-exporter\", target=\"$postgresTarget\"}) / 2147483648\n",
+                        "legendFormat": "{{datname}}",
+                        "qryType": 1,
+                        "query": "max by (datname) (pg_database_wraparound_age_datfrozenxid_seconds{job=\"postgres-exporter\", target=\"$postgresTarget\"}) / 2147483648\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Transaction-ID space consumed by each database since vacuum last froze it, as a fraction of the wraparound limit.**\n\n**Nominal:** Below 10%, and saw-toothed: each autovacuum freeze pass brings it down.\n\n**Degraded:** A line that only rises means vacuum cannot freeze that database — usually a long-running transaction or an abandoned replication slot holding it back.",
+          "id": 1063,
+          "links": [],
+          "title": "Transaction IDs Used by Database",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Not reported. The exporter needs --collector.database_wraparound, which the chart sets.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.25
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.5
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "pg-xid-used": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(pg_database_wraparound_age_datfrozenxid_seconds{job=\"postgres-exporter\", target=\"$postgresTarget\"}) / 2147483648\n",
+                        "legendFormat": "used",
+                        "qryType": 1,
+                        "query": "max(pg_database_wraparound_age_datfrozenxid_seconds{job=\"postgres-exporter\", target=\"$postgresTarget\"}) / 2147483648\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How much of the transaction-ID space the most at-risk database on the instance has consumed since vacuum last froze it.**\n\n**Nominal:** Below 10%. Autovacuum freezes old rows long before this matters.\n\n**Degraded:** Above 25% means freezing is falling behind. Persist commits constantly, so a small instance whose autovacuum is blocked reaches this faster than most workloads.\n\n**Unhealthy:** Past 50%, treat it as urgent: the remaining headroom is what a stalled vacuum has left before wraparound. At 100%, PostgreSQL stops accepting writes to protect itself, and Materialize stops with it; its own warnings start only once fewer than 40 million IDs remain, at about 98%.\n\n`age(datfrozenxid)` against the 2^31 wraparound limit, the same measure Cloud SQL publishes as transaction-ID utilization. The exporter names it `…_seconds`, but it counts transactions.",
+          "id": 1052,
+          "links": [],
+          "title": "Transaction IDs Used",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "The selected database has not reported this. Check the Database picker, and that the exporter can connect.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#F19903",
+                        "value": 0.25
+                      },
+                      {
+                        "color": "#AB0003",
+                        "value": 0.5
+                      }
+                    ]
+                  },
+                  "unit": "percentunit"
                 },
                 "overrides": []
               },
@@ -5026,9 +6494,325 @@
                               {
                                 "kind": "ConditionalRenderingVariable",
                                 "spec": {
+                                  "operator": "matches",
+                                  "value": "postgres-exporter",
+                                  "variable": "postgresDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": true,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "narrow",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-not-reachable"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-connections-used"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-oldest-transaction"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-xid-used"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-dead-tuples"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-version"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 6,
+                                      "rowHeightMode": "short"
+                                    }
+                                  },
+                                  "title": "Status"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-connections-by-database"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-connections-by-state"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-transactions-held"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-locks"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 2,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Connections"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-transactions"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-rows"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-cache-hit"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 3,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Activity"
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "collapse": false,
+                                  "hideHeader": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "columnWidthMode": "wide",
+                                      "fillScreen": false,
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-database-size"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-xid-age"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-dead-tuples-by-table"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-since-autovacuum"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "pg-autovacuum-running"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "maxColumnCount": 3,
+                                      "rowHeightMode": "standard"
+                                    }
+                                  },
+                                  "title": "Storage and Vacuum"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "title": "PostgreSQL",
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "allowCustomValue": true,
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "definition": "label_values(up{job=\"postgres-exporter\"}, target)",
+                              "description": "The postgres-exporter target serving as this environment's metadata database",
+                              "hide": "dontHide",
+                              "includeAll": false,
+                              "label": "Database",
+                              "multi": false,
+                              "name": "postgresTarget",
+                              "options": [],
+                              "query": {
+                                "datasource": {
+                                  "name": "${metricsDatasource}"
+                                },
+                                "group": "prometheus",
+                                "kind": "DataQuery",
+                                "spec": {
+                                  "expr": "label_values(up{job=\"postgres-exporter\"}, target)",
+                                  "qryType": 1,
+                                  "query": "label_values(up{job=\"postgres-exporter\"}, target)"
+                                },
+                                "version": "v0"
+                              },
+                              "refresh": "never",
+                              "regex": "",
+                              "regexApplyTo": "value",
+                              "skipUrlSync": false,
+                              "sort": "alphabeticalAsc"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
                                   "operator": "notMatches",
                                   "value": "cnpg_collector_up",
                                   "variable": "cnpgDetected"
+                                }
+                              },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "postgres-exporter",
+                                  "variable": "postgresDetected"
                                 }
                               }
                             ],
@@ -5265,6 +7049,42 @@
               "expr": "label_values(cnpg_collector_up, __name__)",
               "qryType": 1,
               "query": "label_values(cnpg_collector_up, __name__)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": true,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(up{job=\"postgres-exporter\"}, job)",
+          "description": "Whether the postgres-exporter is scraping a database; empty when it is not",
+          "hide": "hideVariable",
+          "includeAll": false,
+          "label": "PostgreSQL Exporter",
+          "multi": false,
+          "name": "postgresDetected",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(up{job=\"postgres-exporter\"}, job)",
+              "qryType": 1,
+              "query": "label_values(up{job=\"postgres-exporter\"}, job)"
             },
             "version": "v0"
           },

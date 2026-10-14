@@ -318,6 +318,7 @@ fn extraction_context<'a>(
         ("consensusRdsResources", ".+"),
         ("consensusCloudsqlResources", ".+"),
         ("consensusAzurePostgresResources", ".+"),
+        ("consensusPostgresResources", ".+"),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))

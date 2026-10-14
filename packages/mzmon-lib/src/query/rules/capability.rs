@@ -47,6 +47,7 @@ pub enum Capability {
     Cloudwatch,
     CloudMonitoring,
     AzureMonitor,
+    PostgresExporter,
     // Set explicitly by an operator.
     SyntheticUptime,
     ExternalUptime,
@@ -76,6 +77,7 @@ impl Capability {
         Capability::Cloudwatch,
         Capability::CloudMonitoring,
         Capability::AzureMonitor,
+        Capability::PostgresExporter,
         Capability::SyntheticUptime,
         Capability::ExternalUptime,
         Capability::FeatureFlags,
@@ -104,6 +106,7 @@ impl Capability {
             Capability::Cloudwatch => "cloudwatch",
             Capability::CloudMonitoring => "cloud-monitoring",
             Capability::AzureMonitor => "azure-monitor",
+            Capability::PostgresExporter => "postgres-exporter",
             Capability::SyntheticUptime => "synthetic-uptime",
             Capability::ExternalUptime => "external-uptime",
             Capability::FeatureFlags => "feature-flags",
@@ -139,6 +142,7 @@ impl Capability {
                 | Capability::Cloudwatch
                 | Capability::CloudMonitoring
                 | Capability::AzureMonitor
+                | Capability::PostgresExporter
         )
     }
 
@@ -253,6 +257,11 @@ const SOURCES: &[(&str, MetricSource)] = &[
         "azure_microsoft_(dbforpostgresql_flexibleservers|storage_storageaccounts_blobservices|containerservice_managedclusters|compute_virtualmachinescalesets)_.+",
         MetricSource::Capability(Capability::AzureMonitor),
     ),
+    // postgres_exporter, whichever database it watches.
+    (
+        "pg_.+",
+        MetricSource::Capability(Capability::PostgresExporter),
+    ),
     (
         "crdb_dedicated_.+",
         MetricSource::Capability(Capability::CrdbDedicated),
@@ -331,6 +340,10 @@ mod tests {
                 "azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count",
                 C(AzureMonitor),
             ),
+            (
+                "pg_database_wraparound_age_datfrozenxid_seconds",
+                C(PostgresExporter),
+            ),
         ];
         for (metric, expected) in cases {
             assert_eq!(source(metric), Some(expected), "{metric}");
@@ -388,6 +401,6 @@ mod tests {
                 assert!(Capability::ALL.contains(c), "{c} missing from ALL");
             }
         }
-        assert_eq!(Capability::ALL.len(), 23);
+        assert_eq!(Capability::ALL.len(), 24);
     }
 }

@@ -7,7 +7,7 @@ aliases:
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-09-20
-lastmod: 2026-10-09
+lastmod: 2026-10-14
 # custom parameters
 params:
   author: Heather Lapointe
@@ -490,8 +490,8 @@ Four departures from the sections above.
 
 - **The `externalDependencies` block is partly here already.** Every Terraform-configured pull also watches Grafana's database, and a provider adapter cannot tell it from the metadata database, so recording every pulled database would have named Grafana's a consensus database. The provider adapters therefore record only the databases `externalDependencies.consensus` lists, as `{flavor, resourceId}` pairs. `name` and `environments` stay with [DEP-303](https://linear.app/materializeinc/issue/DEP-303).
 - **`ext:consensus_up` has a client adapter.** It is 0 when no metadata-database call has succeeded in five minutes, and absent only when the environment is not scraped. CloudWatch publishes no reachability signal, so `rds` records no `up`.
-- **`ext:consensus_connections_used_ratio` has no producer.** No provider publishes `max_connections`, and the client does not publish its pool's ceiling. The exporter adapters are the first that can record it.
-- **`ext:consensus_cpu_ratio`, `ext:consensus_database_bytes` and `ext:consensus_version_info` are not recorded.** No alert reads the first yet, and the other two need the exporter.
+- **`ext:consensus_connections_used_ratio` has no provider or client producer.** No provider publishes `max_connections`, and the client does not publish its pool's ceiling. The exporter adapter records it; see [As built: the postgres_exporter subchart](#as-built-the-postgres_exporter-subchart).
+- **`ext:consensus_cpu_ratio` is not recorded**, because no alert reads it yet. `ext:consensus_database_bytes` and `ext:consensus_version_info` need the exporter, whose adapter records both.
 
 ## The consensus database
 
@@ -972,6 +972,44 @@ The departures, each with its reason.
   so turning on a dashboard would turn on a second alert set.
   The fallback names both routes.
 
+### As built: the postgres_exporter subchart
+
+<!-- Agent note: recorded as a decision rather than rewriting "The exporter is a subchart", which is the reasoning that was reviewed. -->
+
+[DEP-297](https://linear.app/materializeinc/issue/DEP-297) built the exporter vantage point for PostgreSQL, and the `postgres` adapter that [DEP-298](https://linear.app/materializeinc/issue/DEP-298) owes.
+It was built against `postgres_exporter` v0.20.1 and the `prometheus-postgres-exporter` chart 8.2.0.
+It was checked on the wrapper-provisioned AWS and GCP test installs, against each one's metadata and Grafana databases:
+RDS on PostgreSQL 18.3 and 16.13, and Cloud SQL on 18.6 and 16.14.
+The documented grant worked as the wrappers' own non-superuser roles, and `ext:consensus_xid_used_ratio` from the `postgres` adapter agreed with `rds` and `cloudsql` to within 0.0001.
+[PostgreSQL exporter](../../../../metrics/collecting/postgresql-exporter/) is the operator's page.
+
+| Decision | As built |
+|---|---|
+| The workload | The upstream chart, aliased `postgres-exporter`, in no tag group, so the default stack never turns it on. One Deployment, scraped once per target on `/probe` |
+| Targets | `postgres-exporter.targets`, each a `name`, a `host`, and optionally a `port`, a `database` and an `authModule`. The name becomes `target` on every series |
+| The scrape | A ServiceMonitor the chart renders, with `job`, `target` and `instance` set by `relabelings`. The subchart's multi-target monitor sets them with `metricRelabelings`, which leaves every target's `up` with one label set |
+| Credentials | A Secret the operator creates, holding the whole `postgres_exporter.yml`. In multi-target mode the exporter reads credentials from that file's `auth_modules` and has no indirection to a file or an environment variable, so the file is the secret |
+| The grant | A dedicated role with `pg_monitor` and `CONNECT`, documented. The chart cannot create it |
+| Transaction-ID age | The exporter's own `database_wraparound` collector, turned on, rather than a custom query |
+| Per-database size | The default `database` collector, unscoped |
+| Applicability | A derived capability, `postgres-exporter` |
+| Which target is a metadata database | `externalDependencies.consensus` with `flavor: postgres` and the target's name as `resourceId`, filled into the rules through `consensusPostgresResources`, as the provider adapters are |
+| Recorded | `ext:consensus_up`, `ext:consensus_connections_used_ratio`, `ext:consensus_xid_used_ratio`, `ext:consensus_database_bytes` with a `database` label, and `ext:consensus_version_info` with a `version` label |
+| Rows | A PostgreSQL section on `env-consensus`'s Database Internals tab beside CNPG's, discovered from `up{job="postgres-exporter"}` as `$postgresDetected` and scoped by a section picker, `$postgresTarget` |
+
+The departures, each with its reason.
+
+- **No custom query.**
+  The design expected transaction-ID age to need one.
+  The exporter has since gained a `database_wraparound` collector that reports `age(datfrozenxid)` per database, and its custom-query path, `extend.query-path`, is deprecated upstream.
+- **Grafana's database is a target, not an Alloy component.**
+  One mechanism covers both databases, which settles the open question about keeping `prometheus.exporter.postgres` for low-criticality targets.
+  Grafana's target is scraped and pickable on the dashboard, and never recorded as a metadata database unless `externalDependencies.consensus` names it.
+- **The fallback waits on two variables.**
+  CNPG and the exporter are discovered from different series, so the Database Internals fallback renders when neither matches, on a group of two negated conditions.
+- **The exporter records no `ext:consensus_storage_used_ratio`.**
+  It sees inside the database and not the volume, so the ratio stays the provider's to record.
+
 ## Deployment shapes
 
 | Shape | Client | Exporter | Provider |
@@ -1075,9 +1113,9 @@ Four questions from the first draft are settled and are recorded here rather tha
 
 - [x] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides. **Settled: committed**, as documented recording rules; see [As built](#as-built-the-metadata-databases-adapters).
 - [x] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious. **Settled: recording rules**, which [DEP-295](https://linear.app/materializeinc/issue/DEP-295) built.
-- [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
+- [x] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row. **Settled: one mechanism.** Grafana's database is an exporter target; see [As built](#as-built-the-postgres_exporter-subchart).
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
-- [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.
+- [x] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either. **Settled: its own role**, documented with the exporter.
 - [ ] **What does the persist blob path owe upstream?** Persist publishes a latency histogram for `blob_get`, `blob_set` and `consensus_cas` and only a mean for everything else, which is the remaining gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
 - [ ] **Is the Day 0 probe and the steady-state probe one component or two?** They answer the same question with the same credential and differ only in lifecycle — one runs as an install hook and fails the install, the other runs forever and feeds an alert. One component with two invocations is the obvious shape and couples an install-blocking check to a long-running workload.
 - [ ] **What is the version floor, and who owns it?** The version alert has no threshold this repository can set, and a values-supplied floor puts the policy on the operator, which is where it can be wrong quietly. A published support matrix is the real answer and does not exist in a form this can read.

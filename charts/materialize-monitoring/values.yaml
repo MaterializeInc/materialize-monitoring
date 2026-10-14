@@ -120,6 +120,10 @@ clusterName: "default"
 # ours off with the `node-exporter.enabled: false` circuit breaker —
 # setting `tags.node-exporter: false` does nothing while `tags.default`
 # is true, because tags are OR'd.)
+#
+# `postgres-exporter` belongs to no group, `default` included. It watches
+# databases you name with credentials you create, so it stays off until you
+# set `tags.postgres-exporter: true`.
 tags:
   # Group toggles
   # -- Enable all recommended defaults.
@@ -153,6 +157,9 @@ tags:
   node-exporter: false
   # -- Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
   metrics-server: false
+  # -- Enable postgres_exporter. In no group, `default` included: it watches
+  # databases you list under `postgres-exporter.targets`.
+  postgres-exporter: false
 
 # -- Scheduling priority shared across the stack's subcharts.
 # @notationType -- (sectionstart) Priority classes
@@ -2488,10 +2495,10 @@ rules:
 # @notationType -- (sectionstart) External dependencies
 # @raw
 #
-# A provider pull (`pipeline.metrics.provider.*`) watches every database it is
-# told to, and the provider cannot say which of them is Materialize's metadata
-# database: the Terraform modules add Grafana's database to the same pull. This
-# block says which is which. The normalized `ext:consensus_*` recording rules
+# A provider pull (`pipeline.metrics.provider.*`) or the postgres-exporter
+# watches every database it is told to, and neither can say which of them is
+# Materialize's metadata database: the Terraform modules add Grafana's database
+# to the same pull. This block says which is which. The normalized `ext:consensus_*` recording rules
 # read only the databases named here, so an undeclared database, Grafana's
 # among them, is never recorded as a metadata database.
 #
@@ -2506,6 +2513,7 @@ externalDependencies:
   # | `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
   # | `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
   # | `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+  # | `postgres` | The target's `name` | `postgres-exporter.targets` |
   #
   # ```yaml
   # externalDependencies:
@@ -2514,8 +2522,8 @@ externalDependencies:
   #       resourceId: mzmon-prod-db
   # ```
   #
-  # The resource has to be watched by its provider pull as well, or there is
-  # nothing to record, and the render warns. Each recorded series carries the
+  # The resource has to be watched by its provider pull or the exporter as
+  # well, or there is nothing to record, and the render warns. Each recorded series carries the
   # resource as its `resource` label. Matching ignores case.
   # @default -- `[]`
   consensus: []
@@ -6665,4 +6673,172 @@ metrics-server:
     enabled: true
 
   serviceMonitor:
+    enabled: true
+
+# -- (h4) postgres_exporter, watching the PostgreSQL databases this deployment depends on from the inside.
+# @notationType -- (sectionstart) PostgreSQL Exporter
+# @raw
+#
+# Upstream reference:
+#    * https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-postgres-exporter/values.yaml
+#    * https://github.com/prometheus-community/postgres_exporter#multi-target-support-beta
+#
+# Off by default, and in no tag group: it watches databases you name, with
+# credentials you create. Turn it on with `tags.postgres-exporter: true` (or the
+# `postgres-exporter.enabled` circuit breaker) and list each database under
+# `targets`.
+#
+# One Deployment serves every target. The alloy-gateway scrapes it once per
+# target, on `/probe`, and the exporter opens a connection to that database for
+# the length of the scrape. So the replica count is not a multiplier on the
+# connections each database sees, and adding a target never restarts the metric
+# pipeline.
+#
+# **The credentials are a Secret you create**, named by
+# `config.existingSecret.name` (default `postgres-exporter`) in the release
+# namespace, holding one key, `postgres_exporter.yml`. It carries one
+# `auth_modules` entry per target, named after the target:
+#
+# ```yaml
+# auth_modules:
+#   consensus:
+#     type: userpass
+#     userpass:
+#       username: mzmon_exporter
+#       password: <password>
+#     options:
+#       sslmode: require
+#   grafana:
+#     type: userpass
+#     userpass:
+#       username: mzmon_exporter
+#       password: <password>
+#     options:
+#       sslmode: require
+# ```
+#
+# postgres_exporter reads credentials for a multi-target scrape from this file
+# and from nowhere else, so the whole file is the Secret rather than a
+# password referenced from it. Create the role it names with the least-privilege
+# grant on the
+# [PostgreSQL exporter](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/postgresql-exporter/)
+# page.
+#
+# Until the Secret exists, the pod waits in `ContainerCreating` with an event
+# naming it.
+postgres-exporter:
+  # Circuit breaker (precedence over `tags.postgres-exporter`):
+  # enabled: true
+
+  # -- The databases to watch, one scrape each.
+  # @raw
+  #
+  # | Key | Required | Meaning |
+  # |---|---|---|
+  # | `name` | yes | The target's name: its `target` label, and the `auth_modules` entry its credentials come from. Letters, digits and hyphens |
+  # | `host` | yes | The database host, as the exporter pod resolves it |
+  # | `port` | no | Defaults to `5432` |
+  # | `database` | no | The database the connection opens. Defaults to `postgres` |
+  # | `authModule` | no | The `auth_modules` entry to use. Defaults to `name` |
+  #
+  # ```yaml
+  # targets:
+  #   - name: consensus
+  #     host: mzmon-db.abc123.us-east-1.rds.amazonaws.com
+  #     database: materialize
+  #   - name: grafana
+  #     host: grafana-db.abc123.us-east-1.rds.amazonaws.com
+  # ```
+  #
+  # **Point `database` at a database whose tables you want statistics for**,
+  # and leave it at `postgres` otherwise. Per-table statistics come from that
+  # database alone, at about 29 series per table: the metadata database's are
+  # persist's `consensus` and `timestamp_oracle`, while Grafana's roughly 90
+  # tables would cost about 2,600 series no panel reads. Everything
+  # instance-wide, `pg_database_size_bytes` among it, covers every database on
+  # the instance whichever one the connection opens.
+  #
+  # A target is scraped whether or not it is a metadata database. To record it
+  # as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
+  # @default -- `[]`
+  targets: []
+
+  # -- Standard Helm full-name override.
+  # We use a static name for deterministic relations.
+  fullnameOverride: "postgres-exporter"
+
+  # -- Scheduling priority. See the Priority classes section.
+  # Scalable: a missed scrape is a gap in a slow-moving series, and the
+  # Deployment comes back on its own.
+  priorityClassName: monitoring-scalable
+
+  # -- Container image, pinned here rather than inherited from the subchart's `appVersion`.
+  # So Renovate bumps the exporter on its own cadence, with its own release notes.
+  image:
+    registry: quay.io
+    repository: prometheuscommunity/postgres-exporter
+    tag: v0.20.1
+
+  # -- Resource envelope.
+  # The exporter is idle between scrapes and holds no state. Memory is
+  # request == limit because its working set is small and flat; there is no CPU
+  # limit, so a scrape is never throttled into a timeout.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+  config:
+    # -- The Secret holding `postgres_exporter.yml`, which you create.
+    # See the section introduction for its shape.
+    existingSecret:
+      enabled: true
+      name: postgres-exporter
+
+    # The subchart builds a single-target data source from these and refuses to
+    # render without a password for it. Multi-target mode needs neither, so the
+    # password file is a placeholder that satisfies the check, and
+    # `DATA_SOURCE_URI_FILE` under `extraEnvs` blanks the URI, which is what
+    # tells the exporter there is no single target to watch.
+    datasource:
+      passwordFile: /dev/null
+
+    # -- Collectors to turn on beyond the exporter's defaults.
+    # @raw
+    #
+    # | Flag | Adds | Why |
+    # |---|---|---|
+    # | `--collector.database_wraparound` | `pg_database_wraparound_age_datfrozenxid_seconds`, per database | Transaction-ID age, the wraparound signal. It counts transactions, despite the name |
+    # | `--collector.stat_activity_autovacuum` | `pg_stat_activity_autovacuum_*` | Autovacuum workers running now, per table |
+    #
+    # The defaults already cover what the dashboards read besides these:
+    # connections by state and the oldest open transaction, `max_connections`,
+    # per-database sizes, per-table dead tuples and vacuum times, and the
+    # server version.
+    extraArgs:
+      - --collector.database_wraparound
+      - --collector.stat_activity_autovacuum
+
+  extraEnvs:
+    - name: DATA_SOURCE_URI_FILE
+      value: /dev/null
+
+  # The exporter calls no Kubernetes API, so it gets no Role.
+  rbac:
+    create: false
+
+  # The chart renders its own ServiceMonitor from `targets`, so each target's
+  # `up` carries the target's name. The subchart's multi-target monitor labels
+  # only the scraped samples, which leaves every target's `up` with one label
+  # set.
+  serviceMonitor:
+    enabled: false
+
+  # -- NetworkPolicy for the exporter.
+  # The subchart's policy admits ingress on the exporter's port and leaves
+  # egress unrestricted, because the databases it connects to are wherever you
+  # put them.
+  networkPolicy:
     enabled: true

@@ -171,18 +171,23 @@ pub(crate) fn variable_conditioned_rows(resource: &Resource) -> Vec<(String, Str
     let mut rows = Vec::new();
     collect(&json, &mut rows);
     rows.iter()
-        .filter_map(|row| {
-            let spec = row.get("spec")?;
-            let title = spec.get("title")?.as_str()?.to_string();
-            let item = spec
-                .pointer("/conditionalRendering/spec/items/0")?
-                .get("spec")?;
-            item.get("variable")?;
-            Some((
-                title,
-                item.get("operator")?.as_str()?.to_string(),
-                item.get("value")?.as_str()?.to_string(),
-            ))
+        .flat_map(|row| {
+            let spec = &row["spec"];
+            let title = spec["title"].as_str().unwrap_or_default().to_string();
+            let items = spec
+                .pointer("/conditionalRendering/spec/items")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            items.into_iter().filter_map(move |item| {
+                let item = item.get("spec")?;
+                item.get("variable")?;
+                Some((
+                    title.clone(),
+                    item.get("operator")?.as_str()?.to_string(),
+                    item.get("value")?.as_str()?.to_string(),
+                ))
+            })
         })
         .collect()
 }

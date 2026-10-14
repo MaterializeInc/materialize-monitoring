@@ -29,5 +29,8 @@ dependencies:
 - name: metrics-server
   repository: https://kubernetes-sigs.github.io/metrics-server
   version: 3.14.0
-digest: sha256:7e33b8245c66b26a66e8c5875b44d49dc03f25b1e80e09616673a9a4ee255630
-generated: "2026-10-14T16:46:04.612615-04:00"
+- name: prometheus-postgres-exporter
+  repository: oci://ghcr.io/prometheus-community/charts
+  version: 8.2.0
+digest: sha256:4ad520bf97ac4b2665a8adb8637521418592ec341c749a6441577acc9ed1e7cb
+generated: "2026-10-14T18:14:33.644974-04:00"

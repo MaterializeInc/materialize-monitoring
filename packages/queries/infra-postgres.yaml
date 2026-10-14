@@ -1,0 +1,411 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# A PostgreSQL database, as postgres_exporter reads it from the inside.
+
+description: |
+  What a PostgreSQL database reports about itself, read by the
+  postgres-exporter subchart: connections against the ceiling, transactions,
+  locks, the size of every database on the instance, transaction-ID age, and
+  vacuum on the tables of the database the exporter connects to.
+
+  It works the same on RDS, Cloud SQL, Azure Database for PostgreSQL and a
+  self-hosted server, because it is an ordinary SQL connection. That makes it
+  the complement of the provider pull, which sees the machine the database
+  runs on and nothing inside it. The external dependency design doc calls this
+  the exporter vantage point.
+
+  ## Scope
+
+  One exporter scrapes every database in `postgres-exporter.targets`, and each
+  scrape's series carry that target's name as `target` and
+  `job="postgres-exporter"`. Nothing on them names a Materialize environment,
+  so `$postgresTarget` is that mapping, chosen by the reader and declared on
+  the dashboard section these rows sit in. It holds one target, because the
+  instance-level numbers here would mix two databases' into one.
+
+  ## Label families
+
+  `datname` is the database. Instance-wide families (`pg_database_*`,
+  `pg_stat_activity_*`, `pg_stat_database_*`, `pg_locks_*`) cover every
+  database on the instance, whichever one the exporter connects to — which is
+  the attribution the per-database panels exist for. `pg_stat_user_tables_*`
+  covers only the database the exporter connects to, and `relname` is the
+  table.
+
+  `pg_stat_database_*` counters do not end in `_total`, so Grafana marks every
+  `rate()` over one with Prometheus's "metric might not be a counter" notice.
+  They are counters, and the notice is harmless.
+
+  ## What it does not publish
+
+  The size of the volume the database lives on, so there is no "disk full"
+  ratio here: that is the provider's to say, on the Infrastructure Cloud
+  Provider dashboard. Replication is left out too, because no deployment shape
+  this chart targets reads from a replica.
+
+metricImportanceHint: extended
+
+queries:
+  # --- Status -----------------------------------------------------------------
+  - id: infra.postgres.health.not_reachable
+    stability: experimental
+    description:
+      summary: |
+        Whether the exporter can reach the selected database: 1 when it
+        cannot connect, or cannot itself be scraped.
+      nominal: Zero.
+      unhealthy: |
+        The exporter cannot connect. If Materialize's own commits on the other
+        tabs are failing at the same time, the database is down or unreachable
+        from the cluster. If they are not, the exporter's credentials or grant
+        are wrong: check the pod's log and the `postgres-exporter` Secret.
+      notes: |
+        Counts both ways a target can go dark: `pg_up` reading 0, and the
+        exporter's `/probe` not answering at all.
+    promQL: |
+      (1 - max(pg_up{job="postgres-exporter", target="$postgresTarget"}))
+      or (1 - max(up{job="postgres-exporter", target="$postgresTarget"}))
+
+  - id: infra.postgres.health.connections_used
+    stability: experimental
+    description:
+      summary: |
+        Client connections open on the selected database's instance, as a
+        fraction of the connections an ordinary role may open.
+      nominal: |
+        Well below 1. Materialize holds a pool of connections per process,
+        so the count rises with every cluster replica added.
+      degraded: |
+        Above 80%, the next cluster scale-up or rollout — which briefly runs
+        two generations of every process — can exhaust it.
+      unhealthy: |
+        At 1, PostgreSQL refuses new connections with `remaining connection
+        slots are reserved`, and every Materialize process reports connection
+        errors at once.
+      notes: |
+        The ceiling is `max_connections` less `superuser_reserved_connections`
+        and, from PostgreSQL 16, `reserved_connections`, which is where an
+        ordinary role is refused. Connections to every database on the
+        instance count against it, not only Materialize's. A managed service's
+        own maintenance connections count too.
+    promQL: |
+      sum(pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"})
+      / (
+          max(pg_settings_max_connections{job="postgres-exporter", target="$postgresTarget"})
+        - max(pg_settings_superuser_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
+        - (
+            max(pg_settings_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
+            or vector(0)
+          )
+      )
+
+  - id: infra.postgres.health.oldest_transaction
+    stability: experimental
+    description:
+      summary: |
+        How long the oldest open transaction on the instance has been running.
+      nominal: |
+        Under a second. Persist's commits are single, short transactions.
+      degraded: |
+        Minutes. A long-running transaction holds back vacuum on every table,
+        so the consensus table grows and every commit slows. It is usually
+        something other than Materialize: a migration, a backup tool, or a
+        session left `idle in transaction`.
+      notes: |
+        _Oldest Transaction by Database_ on this tab names the database and
+        state it is in.
+    promQL: |
+      max(pg_stat_activity_max_tx_duration{job="postgres-exporter", target="$postgresTarget"})
+
+  - id: infra.postgres.health.xid_used
+    stability: experimental
+    description:
+      summary: |
+        How much of the transaction-ID space the most at-risk database on the
+        instance has consumed since vacuum last froze it.
+      nominal: Below 10%. Autovacuum freezes old rows long before this matters.
+      degraded: |
+        Above 25% means freezing is falling behind. Persist commits
+        constantly, so a small instance whose autovacuum is blocked reaches
+        this faster than most workloads.
+      unhealthy: |
+        Past 50%, treat it as urgent: the remaining headroom is what a stalled
+        vacuum has left before wraparound. At 100%, PostgreSQL stops accepting
+        writes to protect itself, and Materialize stops with it; its own
+        warnings start only once fewer than 40 million IDs remain, at about
+        98%.
+      notes: |
+        `age(datfrozenxid)` against the 2^31 wraparound limit, the same
+        measure Cloud SQL publishes as transaction-ID utilization. The
+        exporter names it `…_seconds`, but it counts transactions.
+    promQL: |
+      max(pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="$postgresTarget"}) / 2147483648
+
+  - id: infra.postgres.health.dead_tuples
+    stability: experimental
+    description:
+      summary: |
+        The dead-row fraction of the table with the most dead rows, in the
+        database the exporter connects to.
+      nominal: |
+        Below 20%, and falling back after each autovacuum. Persist rewrites
+        its consensus rows constantly, so dead rows accumulate quickly and
+        autovacuum clears them just as quickly.
+      degraded: |
+        A fraction that keeps climbing means autovacuum is not keeping up with
+        the table, or cannot run: a long-running transaction, an abandoned
+        replication slot, or `autovacuum_vacuum_cost_limit` throttling it.
+        Every commit then scans more dead rows, and the database's own
+        metrics stay flat while Materialize's commit latency climbs.
+      notes: |
+        Ignores tables with fewer than 1,000 rows, whose ratio swings on a
+        handful of updates. _Dead Rows by Table_ names the table.
+    promQL: |
+      max(
+        pg_stat_user_tables_n_dead_tup{job="postgres-exporter", target="$postgresTarget"}
+        / (
+            pg_stat_user_tables_n_live_tup{job="postgres-exporter", target="$postgresTarget"}
+          + pg_stat_user_tables_n_dead_tup{job="postgres-exporter", target="$postgresTarget"}
+          > 1000
+        )
+      )
+
+  - id: infra.postgres.health.version
+    stability: experimental
+    description:
+      summary: |
+        The PostgreSQL version the selected database runs.
+      nominal: A supported major version.
+      notes: |
+        An out-of-date dependency has been the cause of an incident before, and
+        this is the one place it is visible without a database login.
+    promQL: |
+      max by (short_version) (pg_static{job="postgres-exporter", target="$postgresTarget"})
+    instant: true
+
+  # --- Connections ------------------------------------------------------------
+  - id: infra.postgres.connections.by_database
+    stability: experimental
+    description:
+      summary: |
+        Client connections open on the instance, by database and role, beside
+        the ceiling an ordinary role is refused at.
+      nominal: |
+        Materialize's role holding nearly all of them, well under the ceiling.
+      degraded: |
+        Connections near the ceiling. If they are Materialize's, its pools
+        have grown with the number of replicas; if they are another
+        database's, something else is sharing the instance and Materialize is
+        competing with it.
+      notes: |
+        Materialize's own count of the connections it holds is on the
+        Connections tab, and should match its line here.
+    promQL:
+      - |
+        sum by (datname, usename) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"}) > 0
+      - |
+        max(pg_settings_max_connections{job="postgres-exporter", target="$postgresTarget"})
+        - max(pg_settings_superuser_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
+        - (
+            max(pg_settings_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
+            or vector(0)
+          )
+
+  - id: infra.postgres.connections.by_state
+    stability: experimental
+    description:
+      summary: |
+        Client connections by what they are doing: running a statement
+        (`active`), waiting for the next one (`idle`), or holding a
+        transaction open between statements (`idle in transaction`).
+      nominal: |
+        Mostly `idle`. A connection pool keeps connections open between uses.
+      degraded: |
+        `idle in transaction` that does not drain is a client holding a
+        transaction open, which blocks vacuum and can hold locks. It is a
+        different fault from too many connections, and the fix is in the
+        client that opened it.
+    promQL: |
+      sum by (state) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"})
+
+  - id: infra.postgres.connections.oldest_transaction
+    stability: experimental
+    description:
+      summary: |
+        The oldest open transaction, by database and connection state.
+      nominal: Under a second.
+      degraded: |
+        A transaction that keeps aging holds back vacuum on every table, so
+        the consensus table grows and every commit slows.
+    promQL: |
+      max by (datname, state) (pg_stat_activity_max_tx_duration{job="postgres-exporter", target="$postgresTarget"}) > 0
+
+  - id: infra.postgres.connections.locks
+    stability: experimental
+    description:
+      summary: |
+        Locks held, by database and lock mode.
+      nominal: |
+        A steady handful of `accesssharelock` and `rowexclusivelock` from
+        ordinary reads and writes.
+      degraded: |
+        A sudden rise in `exclusivelock` or `accessexclusivelock` on
+        Materialize's database is something taking the consensus table for
+        itself, such as a `VACUUM FULL`, a migration, or a manual `LOCK`, and
+        Materialize's commits wait behind it.
+      notes: |
+        Locks held, not locks waited on: PostgreSQL's lock table does not say
+        which holder is blocking which waiter. The exporter reports each mode
+        in lowercase. Compare with commit latency on the Operations tab.
+    promQL: |
+      sum by (datname, mode) (pg_locks_count{job="postgres-exporter", target="$postgresTarget"}) > 0
+
+  # --- Activity ---------------------------------------------------------------
+  - id: infra.postgres.activity.transactions
+    stability: experimental
+    description:
+      summary: |
+        Transactions committed and rolled back per second, by database.
+      nominal: |
+        Materialize's database committing steadily — tens per second on an
+        idle environment — and few rollbacks.
+      degraded: |
+        A commit rate well below Materialize's own count of commits means its
+        calls are not arriving. Rising rollbacks on Materialize's database are
+        usually commits that lost a race, which persist expects and retries.
+      notes: |
+        Compare with _Commits_ on the Overview tab, which is the same work
+        counted by Materialize.
+    promQL:
+      - |
+        sum by (datname) (rate(pg_stat_database_xact_commit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+      - |
+        sum by (datname) (rate(pg_stat_database_xact_rollback{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+
+  - id: infra.postgres.activity.rows
+    stability: experimental
+    description:
+      summary: |
+        Rows inserted, updated and deleted per second, by database.
+      nominal: |
+        A steady churn on Materialize's database. Every commit rewrites a
+        small state record and truncation deletes the versions behind it, so
+        deletes track inserts.
+      degraded: |
+        Inserts with no matching deletes means truncation has stopped and the
+        consensus table is growing; _State and Cleanup_ shows it from
+        Materialize's side. Heavy churn on another database is a neighbour
+        competing for the same disk.
+    promQL:
+      - |
+        sum by (datname) (rate(pg_stat_database_tup_inserted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+      - |
+        sum by (datname) (rate(pg_stat_database_tup_updated{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+      - |
+        sum by (datname) (rate(pg_stat_database_tup_deleted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+
+  - id: infra.postgres.activity.cache_hit
+    stability: experimental
+    description:
+      summary: |
+        The fraction of block reads served from PostgreSQL's shared buffers
+        rather than from disk, by database.
+      nominal: |
+        Close to 100%. The consensus table is small and hot, and should live
+        in memory.
+      degraded: |
+        Well below 99% means reads are going to disk, so commits wait on I/O.
+        The instance needs more memory, or its `shared_buffers` setting is
+        smaller than the working set.
+    promQL: |
+      (
+        sum by (datname) (rate(pg_stat_database_blks_hit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))
+        / (
+            sum by (datname) (rate(pg_stat_database_blks_hit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))
+          + sum by (datname) (rate(pg_stat_database_blks_read{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))
+        )
+      ) >= 0
+
+  # --- Storage and vacuum -----------------------------------------------------
+  - id: infra.postgres.storage.database_size
+    stability: experimental
+    description:
+      summary: |
+        The size of each database on the instance.
+      nominal: |
+        Materialize's database small and roughly flat: persist keeps only
+        current state there, and the data itself is in object storage.
+      degraded: |
+        Materialize's database growing without bound means truncation has
+        stopped. Another database growing is a neighbour consuming the
+        volume — a full disk looks the same either way from outside the
+        database, and this is what tells them apart.
+    promQL: |
+      max by (datname) (pg_database_size_bytes{job="postgres-exporter", target="$postgresTarget"})
+
+  - id: infra.postgres.storage.xid_age
+    stability: experimental
+    description:
+      summary: |
+        Transaction-ID space consumed by each database since vacuum last froze
+        it, as a fraction of the wraparound limit.
+      nominal: |
+        Below 10%, and saw-toothed: each autovacuum freeze pass brings it down.
+      degraded: |
+        A line that only rises means vacuum cannot freeze that database —
+        usually a long-running transaction or an abandoned replication slot
+        holding it back.
+    promQL: |
+      max by (datname) (pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="$postgresTarget"}) / 2147483648
+
+  - id: infra.postgres.storage.dead_tuples
+    stability: experimental
+    description:
+      summary: |
+        Dead rows waiting for vacuum, for the ten tables with the most, in the
+        database the exporter connects to.
+      nominal: |
+        A saw-tooth on persist's `consensus` table: dead rows build up between
+        autovacuum passes and drop at each one.
+      degraded: |
+        A line that only rises is a table autovacuum is not reaching. On the
+        consensus table, that is the workload-specific failure: every commit
+        scans the dead rows, so commits slow while nothing else changes.
+    promQL: |
+      topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job="postgres-exporter", target="$postgresTarget"}))
+
+  - id: infra.postgres.storage.since_autovacuum
+    stability: experimental
+    description:
+      summary: |
+        Time since autovacuum last finished on each of the ten tables with the
+        most dead rows, in the database the exporter connects to.
+      nominal: |
+        Minutes on the consensus table, which churns fast enough to be vacuumed
+        constantly. Hours or days on tables that rarely change.
+      degraded: |
+        A table with many dead rows and a growing time since its last
+        autovacuum is the leading indicator of the slowdown _Dead Rows by
+        Table_ shows.
+      notes: |
+        Absent for a table autovacuum has never processed.
+    promQL: |
+      time() - (
+        max by (datname, relname) (pg_stat_user_tables_last_autovacuum{job="postgres-exporter", target="$postgresTarget"} > 0)
+        and on (datname, relname)
+          topk(10, max by (datname, relname) (pg_stat_user_tables_n_dead_tup{job="postgres-exporter", target="$postgresTarget"}))
+      )
+
+  - id: infra.postgres.storage.autovacuum_running
+    stability: experimental
+    description:
+      summary: |
+        How long each autovacuum worker running now has been at it, by table.
+      nominal: |
+        Short, frequent passes. No data most of the time.
+      degraded: |
+        One pass on the consensus table that runs for many minutes, or
+        restarts without finishing, means vacuum cannot keep up — often
+        because it is throttled by `autovacuum_vacuum_cost_limit`, or
+        cancelled by a lock it conflicts with.
+    promQL: |
+      time() - max by (relname) (pg_stat_activity_autovacuum_timestamp_seconds{job="postgres-exporter", target="$postgresTarget"})

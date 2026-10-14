@@ -1,0 +1,58 @@
+{{- /*
+  The postgres-exporter's scrape: one endpoint per `postgres-exporter.targets`
+  entry, each a `/probe` of that database.
+
+  The subchart can render a multi-target monitor of its own, and it is off
+  because of how it labels: it writes the target's name with
+  `metricRelabelings`, which apply to the scraped samples and not to the `up`
+  and `scrape_*` series the scraper adds. Every target's `up` then has one label
+  set, and the scraper can tell neither which database is down nor keep their
+  samples apart. `relabelings` here run before the scrape, so `target` and
+  `instance` are on everything.
+
+  `job` is set rather than left to the Service's name, which follows
+  `fullnameOverride`: the dashboards and recording rules find these targets by
+  `job="postgres-exporter"`.
+*/ -}}
+{{- if include "mzmon.postgresExporter.enabled" . }}
+  {{- $values := index .Values "postgres-exporter" }}
+  {{- $targets := include "mzmon.postgresExporter.targets" . | fromYamlArray }}
+  {{- if $targets }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ printf "%s-postgres-exporter" ( include "mzmon.fullname" . ) }}
+  namespace: {{ $values.namespaceOverride | default .Release.Namespace }}
+  labels:
+    {{- include "mzmon.labels" . | nindent 4 }}
+  {{- with ( include "mzmon.annotations" . | fromYaml ) }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  endpoints:
+    {{- range $targets }}
+    - port: {{ $values.service.name }}
+      path: /probe
+      params:
+        target:
+          - {{ printf "%s:%d/%s" .host ( int .port ) .database | quote }}
+        auth_module:
+          - {{ .authModule | quote }}
+      relabelings:
+        - action: replace
+          targetLabel: job
+          replacement: postgres-exporter
+        - action: replace
+          targetLabel: target
+          replacement: {{ .name | quote }}
+        - action: replace
+          targetLabel: instance
+          replacement: {{ printf "%s:%d" .host ( int .port ) | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}

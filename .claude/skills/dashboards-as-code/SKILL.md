@@ -516,12 +516,14 @@ These things about them are not re-derivable by reading the modules:
 - **The S3 client's counters exist on Azure and read zero**, so the panels on them gate on
   `mz_persist_s3_operations > 0`.
 - **Every mean is `(A / B) >= 0`**, so an operation nobody called does not put the empty-state text into the legend.
-- **The last tab is the dependency's own account, for self-hosted flavors only.** Database Internals reads CNPG
-  (`infra-cnpg.yaml`) and Object Store Internals reads Rook Ceph (`infra-ceph.yaml`), on rows discovered from
+- **The last tab is the dependency's own account.** Database Internals reads the postgres-exporter
+  (`infra-postgres.yaml`) and CNPG (`infra-cnpg.yaml`), and Object Store Internals reads Rook Ceph (`infra-ceph.yaml`),
+  on rows discovered from `$postgresDetected` (`up{job="postgres-exporter"}`, which the chart's ServiceMonitor sets),
   `$cnpgDetected` (`cnpg_collector_up`, since a CNPG pod's `up` says only `postgresql`) and `$cephDetected`
-  (`up{app="ceph-mgr"}`), each with one fallback. Neither family carries an environment, so the reader picks the
-  cluster on `$cnpgClusterList` (from pod names, `<cluster>-<n>`) or `$cephNamespace`; a test holds every selector to
-  its picker. **The pickers are section variables**, declared with `Row::variables` on the one `Row::section` that
+  (`up{app="ceph-mgr"}`). Each tab has one fallback; Database Internals' waits on both of its variables, with
+  `Row::only_unless_variables`. None of these families carries an environment, so the reader picks the database on
+  `$postgresTarget` (the exporter's `target` label), `$cnpgClusterList` (from pod names, `<cluster>-<n>`) or
+  `$cephNamespace`; a test holds every selector to its picker. **The pickers are section variables**, declared with `Row::variables` on the one `Row::section` that
   holds a flavor's rows, so they render under its header and hide with it instead of sitting in every environment's
   controls. `variable::consensus_scoped` and `persist_scoped` add only the hidden detection to `dependency_scoped`.
 

@@ -81,10 +81,12 @@ The Overview tab's verdict row separates the common failures: connection errors,
 The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
 State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
 Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
-The Database Internals tab is the database's own account, for a CloudNativePG (CNPG) cluster:
-which instance is primary, connections against the ceiling PostgreSQL refuses them at, the oldest open transaction,
-transaction-ID headroom, the size of each database on the instance, and backups.
-It appears when you create a `PodMonitor` for the CNPG cluster; on a managed database, the tab points you to `infra-cloud` instead.
+The Database Internals tab is the database's own account, in a section per source.
+The PostgreSQL section reads the chart's [PostgreSQL exporter](../../metrics/collecting/postgresql-exporter/), on any PostgreSQL, managed or not:
+connections against the ceiling PostgreSQL refuses them at, the oldest open transaction, locks, transaction-ID headroom, the size of each database on the instance, dead rows, and autovacuum.
+The CloudNativePG (CNPG) section reads what a CNPG cluster publishes about itself, adding which instance is primary, replication, and backups.
+Each section appears when its source is scraped, and has a picker for the database it reads.
+With neither, the tab says how to set each up.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}
