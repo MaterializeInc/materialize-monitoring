@@ -262,7 +262,7 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every dashboard in the registry is rendered, and `selected` decides which of them a release installs.
 Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
 These are the ones with something to know before narrowing it:
 
