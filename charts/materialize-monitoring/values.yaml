@@ -2856,7 +2856,7 @@ cleanup:
     image:
       registry: registry.k8s.io
       repository: kubectl
-      tag: v1.35.6
+      tag: v1.36.5
       pullPolicy: IfNotPresent
       # Pull secrets for this image alone, appended to `global.imagePullSecrets`
       # and `global.image.pullSecrets`. Set this when the cleanup image is the
@@ -5160,7 +5160,7 @@ thanos:
         image:
           registry: docker.io
           repository: alpine/kubectl
-          tag: "1.35.4"
+          tag: "1.36.4"
         resources:
           requests:
             cpu: 25m

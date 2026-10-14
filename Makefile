@@ -550,7 +550,9 @@ KIND_CONTEXT ?= kind-$(KIND_CLUSTER)
 KUBECTL ?= kubectl --context $(KIND_CONTEXT)
 HELM_KUBE ?= --kube-context $(KIND_CONTEXT)
 
-# Matches the GKE minor the stack is validated against.
+# Matches the minor of the kubectl images the chart ships (the cleanup hook and
+# the Thanos rule-importer sidecar), so E2E runs them against the API server
+# version they are pinned for.
 #
 # Digest-pinned, and it earns it: kind rebuilds node images per kind release and
 # reuses the tag, so a tag alone does not identify an image. `kindest/node:v1.21.14`
@@ -558,7 +560,7 @@ HELM_KUBE ?= --kube-context $(KIND_CONTEXT)
 # (amd64 + arm64), so it works on both a CI runner and an Apple Silicon laptop.
 #
 # renovate: datasource=docker packageName=kindest/node
-KIND_NODE_IMAGE ?= kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
+KIND_NODE_IMAGE ?= kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
 
 e2e-cluster:
 	$(KIND) create cluster --config test/e2e/kind-config.yaml --image $(KIND_NODE_IMAGE) --wait 120s

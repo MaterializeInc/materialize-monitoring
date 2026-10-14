@@ -448,7 +448,7 @@ tests:
           value: prometheus-rule-importer
       - equal:
           path: spec.template.spec.containers[1].image
-          value: docker.io/alpine/kubectl:1.35.4
+          value: docker.io/alpine/kubectl:1.36.4
 
   # --- addressing edge cases ------------------------------------------------
 
