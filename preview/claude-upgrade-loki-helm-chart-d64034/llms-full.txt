@@ -18207,17 +18207,6 @@ end-to-end write→read check, which is exactly the signal you want during
 the incident that caused the pressure.
 </td>
     </tr>
-    <tr>
-      <td class="helm-value-key">loki<wbr>.test</td>
-      <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":false}</code></td>
-      <td class="helm-value-desc">The subchart's `helm test` Pod, off.
-It queries the canary's metrics endpoint, so it renders wherever the canary
-does. Its image is `grafana/loki-helm-test:latest`: unpinned, and outside
-what the profiles under `profiles/registry/` repoint. The canary's own
-metrics already carry the same write→read signal continuously.
-</td>
-    </tr>
   </tbody>
 </table>
 
