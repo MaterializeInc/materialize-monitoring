@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: stable
@@ -45,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           lfs: true
       # helm is preinstalled on the runner image. The subchart deps are vendored
       # (charts/materialize-monitoring/charts/*.tgz are committed), so no
@@ -77,6 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           # The render check runs `helm template`, and the vendored subchart
           # tarballs are LFS-tracked. Without this they check out as pointer
           # files and the render fails.
