@@ -42,7 +42,7 @@ tests:
           value: docker.io/nginxinc/nginx-unprivileged:1.31.6-alpine-slim
       - equal:
           path: spec.template.spec.containers[1].image
-          value: ghcr.io/jkroepke/access-log-exporter:0.4.11
+          value: ghcr.io/jkroepke/access-log-exporter:0.4.22
       - equal:
           path: spec.template.spec.priorityClassName
           value: monitoring-scalable
