@@ -41,7 +41,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.5.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.15.1 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
@@ -5167,7 +5167,7 @@ Upstream reference:
 {
   "registry": "docker.io",
   "repository": "grafana/loki",
-  "tag": "3.7.6"
+  "tag": "3.7.8"
 }</pre>
 </td>
       <td class="helm-value-desc">Loki image, pinned here rather than inherited from the subchart's `appVersion`.
@@ -6237,7 +6237,7 @@ unconditional so the two modes share one code path.
     <tr>
       <td class="helm-value-key">loki<wbr>.lokiCanary</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.6"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
+      <td class="helm-value-default"><code>{"enabled":true, "image":{"registry":"docker.io", "repository":"grafana/loki-canary", "tag":"3.7.8"}, "kind":"Deployment", "lokiurl":"loki-query-frontend:3100", "priorityClassName":"monitoring-scalable", "push":false, "service":{"labels":{"monitoring.materialize.cloud/scrape-scheme":"plaintext", "prometheus.io/service-monitor":"false"}}}</code></td>
       <td class="helm-value-desc">End-to-end write→read canary for meta-monitoring. On by default upstream; surfaced here because self-monitoring the log store is a first-class requirement for us.
 </td>
     </tr>
@@ -6248,7 +6248,7 @@ unconditional so the two modes share one code path.
 {
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
-  "tag": "3.7.6"
+  "tag": "3.7.8"
 }</pre>
 </td>
       <td class="helm-value-desc">Canary image, pinned beside `loki.loki.image` and grouped with it in Renovate. Loki publishes the two from one release, so the tags match.
