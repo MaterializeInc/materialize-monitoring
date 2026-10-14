@@ -4847,8 +4847,8 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-gr
 
 # Available Dashboards
 
-Thirteen dashboards ship today: five scoped to a Materialize environment (`env-*`), and eight to the platform underneath it (`infra-*`).
-Two of the eight watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+The dashboards come in two families: those scoped to a Materialize environment (`env-*`), and those scoped to the platform underneath it (`infra-*`).
+The `infra-*` dashboards that watch the monitoring stack itself, rather than anything it collects, are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
@@ -5008,9 +5008,9 @@ It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpe
 
 ## Meta monitoring (`infra-*`)
 
-These two dashboards watch the monitoring stack rather than anything it collects.
-Their subject can take its own instrumentation down with it, so an empty panel on either can mean the component that would have reported a problem is the one that failed.
-Every panel on both states its own empty-state text for that reason.
+These dashboards watch the monitoring stack rather than anything it collects.
+Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
+Every panel states its own empty-state text for that reason.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
@@ -5033,6 +5033,24 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
 `kubectl get pods -l app.kubernetes.io/name=alloy-gateway` in the monitoring namespace is the check that does not depend on it.
 
 {{< download-dashboards name="infra-alloy" >}}
+
+### Thanos Meta Monitoring (`infra-thanos`)
+
+Whether the metrics store is healthy, and which part of it broke if not.
+Its tabs are Overview, Writes, Reads, Ruler, Storage, Resources, and Logs.
+The Overview tab leads with any Thanos alert firing or pending now, then with scrape health.
+The alerts are the upstream Thanos mixin's, which the Thanos subchart installs and the Thanos ruler evaluates.
+Writes follows a sample through the receivers to object storage.
+Reads covers Thanos Query and the stores it fans out to, including whether every store is connected.
+Ruler covers rule evaluation, notifications to Alertmanager, and the results written back.
+Storage covers the compactor, and object storage as each Thanos process sees it.
+It needs both a metrics and a logs datasource.
+
+**Thanos answers every metrics panel on this dashboard, including the ones about Thanos Query.**
+A dashboard that is empty throughout most likely means Thanos Query is down.
+The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where a halted compactor says why it halted.
+
+{{< download-dashboards name="infra-thanos" >}}
 
 ## What the annotations mean
 
@@ -5352,7 +5370,7 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every dashboard in the registry is rendered, and `selected` decides which of them a release installs.
 Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
 These are the ones with something to know before narrowing it:
 
@@ -11641,7 +11659,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.5.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.6.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.11.0 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
@@ -21411,7 +21429,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
         persist's own view of object storage and the metadata database
-      * `infra-*.yaml`: the platform, including `infra-loki.yaml` and `infra-alloy.yaml` (the log store and the collectors watching themselves),
+      * `infra-*.yaml`: the platform, including `infra-loki.yaml`, `infra-alloy.yaml` and `infra-thanos.yaml` (the log store, the collectors and the metrics store watching themselves),
         `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
         and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
       * `node-*.yaml`: node-exporter
@@ -24678,9 +24696,12 @@ and long enough to overflow the column.
 Leave it unset on any table that joins several queries.
 Blank is the honest rendering of "this row has none", and a genuinely empty panel
 still falls back to Grafana's own "No data".
-Single-query tables are unaffected: their columns come from one result, so a row
-exists in full or not at all, and `noValue` only fires when the whole panel is
-empty — which is exactly what it is for.
+A single-query table is unaffected only when every series carries every label it shows.
+Then its columns come from one result, a row exists in full or not at all, and `noValue` only fires when the whole
+panel is empty, which is what it is for.
+A label some series lack is a sparse column all the same: `ThanosCompactHasNotRun` carries no `pod`, so on
+`infra-thanos`'s alert table the cell beside it read "No Thanos alert is firing or pending" next to a firing alert.
+Keep the panel's `noValue` and override it on the sparse columns with a dash.
 
 ## Shade single-series panels, never graphs with several lines
 
@@ -24916,6 +24937,54 @@ against the pass it belongs to.
 `test_queries()` uses `DashboardScope::default()`, where the operator namespace is the pinned literal rather than
 `$operatorNamespace` — an assertion about a rendered selector under the default scope is about a rendering that never
 ships.
+
+## Firing alerts lead an Overview tab
+
+When a dashboard's subject has alerting rules, its Overview tab shows what is firing before any measurement.
+A reader who arrived from a notification lands on the alert, and a reader who arrived cold learns that someone's rule already reached a conclusion.
+The rest of the tab is evidence for or against it.
+
+The shape, as `infra-thanos` draws it:
+
+1. A count of firing alerts in the verdict row, with health colors.
+2. An **Alerts** row directly below the verdict, above Collection Health: a table of every alert firing or pending now, beside a timeseries of firing alerts over the range.
+
+The rules that keep those panels honest:
+
+- **Select by a label the rules carry, not by alert names written into the dashboard.**
+  The registry's rules carry `component`, so a new rule appears without a dashboard change.
+  Fall back to a name prefix only where the rules carry nothing else; the upstream Thanos mixin's carry only `severity`, so `infra-thanos` selects `alertname=~"Thanos.*"`.
+- **Deduplicate across rulers** with `max by (alertname, job, pod)` before counting.
+  Two ruler replicas evaluate the same rule.
+- **Draw the count's zero from a ruler that is evaluating and delivering**, never from `or vector(0)`.
+  A ruler that has stopped evaluating fires nothing.
+  A ruler whose write-back has stalled keeps evaluating, but its `ALERTS` series go stale in Thanos while its own metrics stay fresh.
+  "No alerts" from either is the reading most worth avoiding:
+
+  ```promql
+  count(max by (alertname, job, pod) (ALERTS{alertname=~"Thanos.*", alertstate="firing"}))
+  or
+  0 * (
+    (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{container="ruler"}) < 300)
+    and on ()
+    (
+      min(
+        max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{container="ruler"})
+        - on (pod)
+        max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{container="ruler"})
+      ) < 300
+    )
+  )
+  ```
+
+- **The table is a table of current facts**, so it is an instant query with `table_format`; see
+  [A table of current facts is an instant query](#a-table-of-current-facts-is-an-instant-query).
+  Drop `Value`, which is always 1 on an `ALERTS` series.
+- **Know which ruler wrote the series.**
+  `ALERTS` reaches Thanos from the Thanos ruler, through the gateway, so a gateway outage delays it.
+  Check that a log-derived rule's alerts reach Thanos before drawing them; the Loki ruler evaluates those.
+- **Exempt the alert panels from namespace-scoping tests by name**, and assert the exemption in both directions, as `infra-thanos` does.
+  An alert's labels come from its rule, and a rule's selector may span every namespace.
 
 ## PromQL recipes
 
@@ -25315,6 +25384,9 @@ Helm encodes a release: the manifest and the chart's files, JSON-encoded, gzippe
 The three external-dependency dashboards — `env-persist` (122 KB), `env-consensus` (137 KB) and `infra-cloud`
 (122 KB) — took it to 683,928 bytes, 65%, measured the same way.
 `infra-autoscaling` (153 KB) and `infra-karpenter` (137 KB) took it from 691,288 to 794,244 bytes, 76%.
+By the time `infra-thanos` (235 KB) landed, other changes had taken the release to 840,860 bytes, and `infra-thanos` took it to 914,352, 87%, measured the same way.
+That leaves about 134 KB of headroom, which is less than two more dashboards of that size need.
+For the options, see [the issue tracking the dashboards release size](https://linear.app/materializeinc/issue/DEP-392).
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana
