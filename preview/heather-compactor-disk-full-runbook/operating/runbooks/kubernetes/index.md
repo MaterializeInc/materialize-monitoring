@@ -34,21 +34,21 @@ Nothing reconciles an existing PVC against its StatefulSet's `volumeClaimTemplat
 
 #### Grow the PVC
 
-To grow a working PVC, follow these steps:
+To grow a working PVC, follow these steps.
+In each snippet, set `PVC_NAME` to the PVC from the table earlier on this page, and `NEW_SIZE` to the size you want.
 
 1. Check that the PVC's StorageClass allows expansion:
 
    ```bash
    MONITORING_NAMESPACE=monitoring
    KUBECONTEXT=my-cluster
+   PVC_NAME=data-thanos-compactor-0
 
-   STORAGE_CLASS=$(kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc PVC \
+   STORAGE_CLASS=$(kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc "$PVC_NAME" \
      -o jsonpath='{.spec.storageClassName}')
    kubectl --context "$KUBECONTEXT" get storageclass "$STORAGE_CLASS" \
      -o jsonpath='{.allowVolumeExpansion}{"\n"}'
    ```
-
-   Replace `PVC` with the PVC's name.
 
    If the command prints nothing or `false`, you can't grow the PVC in place.
    Raise the component's `persistence.size` in the chart values and upgrade the release instead.
@@ -59,23 +59,21 @@ To grow a working PVC, follow these steps:
    ```bash
    MONITORING_NAMESPACE=monitoring
    KUBECONTEXT=my-cluster
+   PVC_NAME=data-thanos-compactor-0
+   NEW_SIZE=50Gi
 
-   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" patch pvc PVC \
-     -p '{"spec":{"resources":{"requests":{"storage":"SIZE"}}}}'
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" patch pvc "$PVC_NAME" \
+     -p "$(printf '{"spec":{"resources":{"requests":{"storage":"%s"}}}}' "$NEW_SIZE")"
    ```
-
-   Replace the following:
-
-   - `PVC`: the PVC's name.
-   - `SIZE`: the new size, such as `50Gi`.
 
 1. Wait until the PVC reports the new size:
 
    ```bash
    MONITORING_NAMESPACE=monitoring
    KUBECONTEXT=my-cluster
+   PVC_NAME=data-thanos-compactor-0
 
-   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc PVC \
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc "$PVC_NAME" \
      -o jsonpath='{.status.capacity.storage} {.status.conditions[*].type}{"\n"}'
    ```
 
@@ -102,7 +100,9 @@ Recreate only a working PVC.
 > - **Loki ruler:** the replica loses the recording-rule samples it hasn't sent yet.
 >   Those samples are missing from the metrics store for good.
 
-To recreate a working PVC, follow these steps:
+To recreate a working PVC, follow these steps.
+In each snippet, set `PVC_NAME` to the PVC, and `POD_NAME` to the pod that mounts it.
+The pod's name is the PVC's name without its prefix, such as `thanos-compactor-0` for `data-thanos-compactor-0`.
 
 1. Delete the PVC without waiting.
    The PVC stays `Terminating` until no pod mounts it:
@@ -110,8 +110,9 @@ To recreate a working PVC, follow these steps:
    ```bash
    MONITORING_NAMESPACE=monitoring
    KUBECONTEXT=my-cluster
+   PVC_NAME=data-thanos-compactor-0
 
-   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pvc PVC --wait=false
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pvc "$PVC_NAME" --wait=false
    ```
 
 1. Delete the pod that mounts it:
@@ -119,20 +120,21 @@ To recreate a working PVC, follow these steps:
    ```bash
    MONITORING_NAMESPACE=monitoring
    KUBECONTEXT=my-cluster
+   POD_NAME=thanos-compactor-0
 
-   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pod POD
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" delete pod "$POD_NAME"
    ```
-
-   Replace `POD` with the pod's name, which is the PVC's name without its prefix, such as `thanos-compactor-0` for `data-thanos-compactor-0`.
 
 1. Check that the StatefulSet recreated the pod and a new PVC at the requested size:
 
    ```bash
    MONITORING_NAMESPACE=monitoring
    KUBECONTEXT=my-cluster
+   PVC_NAME=data-thanos-compactor-0
+   POD_NAME=thanos-compactor-0
 
-   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pod POD
-   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc PVC \
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pod "$POD_NAME"
+   kubectl --context "$KUBECONTEXT" -n "$MONITORING_NAMESPACE" get pvc "$PVC_NAME" \
      -o jsonpath='{.status.capacity.storage}{"\n"}'
    ```
 
