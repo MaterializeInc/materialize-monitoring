@@ -78,7 +78,9 @@ The deployment and the system clusters (`s*`) are `materialize-alerts.yaml`,
 with `audience: platform`; user clusters (`u*`) and their sources are
 `materialize-workload-alerts.yaml`, with `audience: workload`. A signal that
 belongs to both is two alerts, scoped by cluster id. Authoring Alerts has the
-scoping labels.
+scoping labels. A condition the stack has already contained, which only the
+people who write the software can remove, is `dev-alerts.yaml`, with
+`audience: development` and `severity: notice` for the whole file.
 
 **Calibrate against more than two installs.** A threshold quiet on the test
 installs can page on a fleet. Aggregate queries over a larger fleet, with no

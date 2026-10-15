@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=../mzmon-lib/schemas/query/mzmon-query.schema.yaml
+# Alerting rules for the people who write the software behind a condition the
+# stack has already contained. Operator-facing alerts live in
+# materialize-alerts.yaml, materialize-workload-alerts.yaml and infra-alerts.yaml.
+
+description: |
+  Alerting rules for development awareness.
+
+  Each alert here is a condition the stack has already contained: nothing is
+  down, and there is nothing for whoever runs the deployment to fix right now.
+  The people who can remove the cause are the ones who write the software
+  emitting it.
+
+  Every alert carries `audience: development` and `severity: notice`, both set
+  for the whole file, so no routing preset pages on one and an extra route on
+  `audience="development"` can send them to a development channel.
+
+metricImportanceHint: essential
+
+alertLabels:
+  audience: development
+  severity: notice
+
+alerts:
+  # --- log pipeline ---------------------------------------------------------
+  - alert: oversized-log-lines
+    group: log_pipeline
+    stability: best-effort
+    # The expression already looks back an hour, which is the debounce; a
+    # single cut is worth hearing about.
+    for: 0s
+    labels:
+      component: alloy
+    description:
+      summary: >-
+        Alloy cut log lines too long to store in the last hour. Find the source
+        in Loki with `{level=~".+"} |= "[TRUNCATED:"` and shorten what it logs.
+      degraded: |
+        Each cut line is stored up to the limit, and the rest of it is lost.
+        The suffix names the rule that cut it: `[TRUNCATED:SAFETYCLAMP]` for
+        the 1MiB clamp on the agent and the gateway, `[TRUNCATED:LINE]` for the
+        gateway's line limit, and `[TRUNCATED:FIELDS]` for its fixed backstop.
+        A line cut by the clamp no longer parses, so it also arrives without
+        its fields.
+      notes: |
+        Counts cuts to the line only. The gateway cuts structured metadata
+        values to a budget by design, so a cut there is routine.
+
+        `component_id` says where the cut happened. `loki.process.pod_logs` and
+        `loki.process.node_logs` are an agent's clamp, and
+        `loki.process.inputProcessor` is the gateway's clamp or line limit. A
+        line cut by both counts twice.
+
+        Alloy creates the counter at its first cut, so a series that is newer
+        than the window counts as cut. Without that, the first oversized line
+        after every restart would never fire.
+    query:
+      id: dev.log_pipeline.oversized_lines
+      stability: best-effort
+      description:
+        summary: Log line cuts in the last hour, per Alloy component.
+      promQL: |
+        sum by (namespace, app, component_id) (
+            (
+              loki_process_truncated_fields_total{field="line"}
+              unless
+              loki_process_truncated_fields_total{field="line"} offset 1h
+            )
+          or
+            increase(loki_process_truncated_fields_total{field="line"}[1h])
+        ) > 0

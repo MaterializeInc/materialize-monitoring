@@ -88,6 +88,7 @@ essential:
 - loki_distributor_bytes_received_total
 - loki_objstore_bucket_operation_failures_total
 - loki_panic_total
+- loki_process_truncated_fields_total
 - loki_request_duration_seconds_count
 - loki_write_dropped_entries_total
 - loki_write_sent_entries_total
@@ -227,7 +228,6 @@ recommended:
 - loki_objstore_bucket_operations_total
 - loki_process_cri_lines_truncated_total
 - loki_process_dropped_lines_total
-- loki_process_truncated_fields_total
 - loki_query_frontend_queries_in_progress
 - loki_source_api_entries_written
 - loki_source_api_request_duration_seconds_count

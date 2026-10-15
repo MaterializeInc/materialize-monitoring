@@ -54,6 +54,7 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
   one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
 - **Line size limits.** The agent and the gateway cut a line longer than `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`) rather than dropping it.
   The gateway then cuts any line longer than `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), so it fits Loki's line limit.
+  It parses the line first, so a line under the clamp still yields its level, timestamp, and fields.
   A cut line ends in a suffix, such as `[TRUNCATED:LINE]`, that names the rule that cut it.
   Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
   For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).

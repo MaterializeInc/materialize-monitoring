@@ -69,6 +69,16 @@ capabilities:
   egress-gateway:
     derived: false
 rules:
+  oversized-log-lines:
+    file: prometheus/dev-alerts.yaml
+    engine: promql
+    group: log_pipeline
+    severity: notice
+    audience: development
+    requires:
+    - alloy
+    enabledByDefault: false
+    minImportance: essential
   crdb-disk-usage-critical:
     file: prometheus/infra-alerts.yaml
     engine: promql

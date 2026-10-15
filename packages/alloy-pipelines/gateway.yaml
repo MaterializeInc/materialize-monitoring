@@ -1315,7 +1315,9 @@ blocks:
         # included.
         #
         # Line: GATEWAY_LOG_LINE_SIZE_LIMIT is the limit to tune; it needs a
-        # unit, like the safety clamp. The 250KiB rule after it is a fixed
+        # unit, like the safety clamp. Every stage above has already parsed the
+        # whole line, so a line under the clamp still yields its level,
+        # timestamp, and fields; only what Loki stores as the line is cut. The 250KiB rule after it is a fixed
         # backstop that holds whatever that variable says. Set it above 250KiB
         # and the backstop cuts instead, so the suffix tells you which fired.
         #

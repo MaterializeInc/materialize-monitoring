@@ -171,8 +171,9 @@ tests:
         - {flavor: cloudsql, resourceId: mz-metadata}
         - {flavor: azure-postgres, resourceId: mz-metadata}
     asserts:
+      # One PrometheusRule per PromQL registry file.
       - hasDocuments:
-          count: 4
+          count: 5
 
   # --- placeholders ---------------------------------------------------------
 
