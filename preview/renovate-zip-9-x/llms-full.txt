@@ -4173,6 +4173,40 @@ The exporter needs network access to each database.
 It runs in the cluster that already reaches the metadata database, so the path Materialize uses is the one it needs.
 A database behind a private endpoint, such as a Cloud SQL private IP, is reachable only from networks the endpoint allows.
 
+### Turn it on with Terraform
+
+The `materialize-monitoring` Terraform module creates the Secret for you.
+Set `enable_postgres_exporter`, and the exporter watches Grafana's database whenever the module configures one, as a target named `grafana`.
+List any other database in `postgres_exporter_targets`, with its password in `postgres_exporter_passwords`:
+
+```hcl
+module "monitoring" {
+  # ...
+  enable_postgres_exporter = true
+
+  postgres_exporter_targets = [{
+    name              = "consensus"
+    host              = METADATA_DB_HOST
+    database          = "materialize"
+    user              = "mzmon_exporter"
+    metadata_database = true
+  }]
+  postgres_exporter_passwords = {
+    consensus = var.metadata_exporter_password
+  }
+}
+```
+
+Replace `METADATA_DB_HOST` with the metadata database's host.
+`metadata_database = true` adds the target to `externalDependencies.consensus`.
+A database a cloud provider pull watches is declared in `metadata_databases` instead, by its flavor and the provider's name for it.
+The module rolls the exporter when a password changes.
+
+The per-cloud wrappers in `materialize-terraform-self-managed` connect as the users they already hold: the metadata database's administrator and Grafana's database owner.
+On RDS and Cloud SQL, both are members of `pg_monitor` through `rds_superuser` and `cloudsqlsuperuser`, so the exporter sees every session.
+Both can also write.
+For a role that can only read statistics, create `mzmon_exporter` as described earlier, and pass it to the wrapper instead.
+
 ### Choose the database to connect to
 
 Point each target's `database` at a database whose tables you want statistics for, and leave it at `postgres` otherwise.
@@ -23146,6 +23180,24 @@ the CRDs is a deliberate step of its own; see the "Uninstalling" page in the doc
         <td class="tf-var-default"><code>true</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="enable_postgres_exporter" href="#enable_postgres_exporter">enable_<wbr>postgres_<wbr>exporter</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Run the chart's postgres-exporter, which reads each PostgreSQL database it watches from the
+inside: connections against the ceiling, transaction-ID age, vacuum, and the size of every
+database on the instance.
+
+It watches every `postgres_exporter_targets` entry, and Grafana's own database whenever this
+module configures one with a password, as a target named `grafana`. Grafana's connects to the
+`postgres` database rather than `grafana_database_name`, because Grafana's own tables would add
+thousands of per-table series that no panel reads.
+
+Each target's credentials go into a Secret this module creates, `postgres-exporter`, never into
+the Helm values. The role each target connects as needs `pg_monitor` to see other roles'
+sessions; see the PostgreSQL exporter page.
+</td>
+        <td class="tf-var-default"><code>false</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="enable_sql_scraper" href="#enable_sql_scraper">enable_<wbr>sql_<wbr>scraper</a></td>
         <td class="tf-var-type"><code>bool</code></td>
       <td class="tf-var-desc">Enable the SQL-on-scrape collector against environmentd.
@@ -23453,6 +23505,22 @@ Name each label. `*` copies every label on every pod, and is refused.
         <td class="tf-var-default"><code>materialize</code></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="metadata_databases" href="#metadata_databases">metadata_<wbr>databases</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">The metadata databases a cloud provider pull watches, by flavor and the provider's name for
+them. Each becomes an `externalDependencies.consensus` entry, so the `ext:consensus_*`
+recording rules read that database and no other the pull also watches, such as Grafana's.
+
+`flavor` is `rds` (the DB instance identifier), `cloudsql` (the instance name, without the
+project) or `azure-postgres` (the flexible server name). A postgres-exporter target is declared
+with its own `metadata_database` flag instead.
+</td>
+        <td class="tf-var-schema"><pre><code>list(object({
+    flavor      = string
+    resource_id = string
+  }))</code></pre></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="min_zones" href="#min_zones">min_<wbr>zones</a></td>
         <td class="tf-var-type"><code>number</code></td>
       <td class="tf-var-desc">Number of availability zones the node pool can actually launch in, used to adjust the hard zone
@@ -23609,6 +23677,41 @@ a Secret.
     min_importance = optional(string, "recommended")
     auth_headers   = optional(map(string), {})
   })</code></pre></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="postgres_exporter_passwords" href="#postgres_exporter_passwords">postgres_<wbr>exporter_<wbr>passwords</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">The password for each `postgres_exporter_targets` entry, keyed by its `name`. Written into the
+exporter's Secret and nowhere else. Every target needs a non-empty one: the exporter refuses a
+target whose credentials have no password. Grafana's always comes from
+`grafana_database_password`, and a `grafana` entry here is ignored.
+</td>
+        <td class="tf-var-default"><code>map[]</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="postgres_exporter_targets" href="#postgres_exporter_targets">postgres_<wbr>exporter_<wbr>targets</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Databases for the postgres-exporter to watch, beside Grafana's. Ignored unless
+`enable_postgres_exporter` is true.
+
+`name` becomes the target's `target` label and keys its password in
+`postgres_exporter_passwords`. `database` is the one the connection opens, and per-table
+statistics come from it alone; everything instance-wide covers every database on the
+instance. Point it at the metadata database's own database (`materialize` in the shipped
+examples), and leave it at `postgres` for anything whose tables you do not need.
+
+`metadata_database = true` declares the target a metadata database, which is what the
+`postgres` recording-rule adapter reads.
+</td>
+        <td class="tf-var-schema"><pre><code>list(object({
+    name              = string
+    host              = string
+    port              = optional(number, 5432)
+    database          = optional(string, "postgres")
+    user              = string
+    ssl_mode          = optional(string, "require")
+    metadata_database = optional(bool, false)
+  }))</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="prometheus_remote_write" href="#prometheus_remote_write">prometheus_<wbr>remote_<wbr>write</a></td>
@@ -26898,7 +27001,8 @@ That contract keeps seven database flavors and five object stores from multiplyi
 | [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
 | [DEP-300] Version reporting (`ext:*_version_info`) across every adapter. The `postgres` adapter records `ext:consensus_version_info`; the others remain | 🔨 |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
-| [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |
+| [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
+| [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
 | [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
@@ -27121,6 +27225,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-364]: https://linear.app/materializeinc/issue/DEP-364
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
+[DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-369]: https://linear.app/materializeinc/issue/DEP-369
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
