@@ -23682,8 +23682,9 @@ a Secret.
       <td class="tf-var-name"><a name="postgres_exporter_passwords" href="#postgres_exporter_passwords">postgres_<wbr>exporter_<wbr>passwords</a></td>
         <td class="tf-var-type"><code>map(string)</code></td>
       <td class="tf-var-desc">The password for each `postgres_exporter_targets` entry, keyed by its `name`. Written into the
-exporter's Secret and nowhere else. Every target needs one: the exporter refuses a target whose
-credentials have no password. Grafana's comes from `grafana_database_password`.
+exporter's Secret and nowhere else. Every target needs a non-empty one: the exporter refuses a
+target whose credentials have no password. Grafana's always comes from
+`grafana_database_password`, and a `grafana` entry here is ignored.
 </td>
         <td class="tf-var-default"><code>map[]</code></td>
     </tr>
