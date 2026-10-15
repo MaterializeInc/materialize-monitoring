@@ -4203,7 +4203,7 @@ A database a cloud provider pull watches is declared in `metadata_databases` ins
 The module rolls the exporter when a password changes.
 
 The per-cloud wrappers in `materialize-terraform-self-managed` connect as the users they already hold: the metadata database's administrator and Grafana's database owner.
-On RDS and Cloud SQL, both are members of `pg_monitor` through `rds_superuser` and `cloudsqlsuperuser`, so the exporter sees every session.
+On RDS, Cloud SQL, and Azure Database for PostgreSQL, both hold `pg_monitor` through the service's administrator role (`rds_superuser`, `cloudsqlsuperuser`, or `azure_pg_admin`), so the exporter sees every session.
 Both can also write.
 For a role that can only read statistics, create `mzmon_exporter` as described earlier, and pass it to the wrapper instead.
 
@@ -21826,6 +21826,13 @@ as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
 }</pre>
 </td>
       <td class="helm-value-desc">The Secret holding `postgres_exporter.yml`, which you create. See the section introduction for its shape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.logLevel</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"warn"</code></td>
+      <td class="helm-value-desc">Exporter log level. `warn`, because at `info` every probe logs a new connection and the server's version, two lines per target per scrape. A target that cannot connect is logged at `error`, so nothing worth reading is lost.
 </td>
     </tr>
     <tr>
