@@ -1,0 +1,4992 @@
+{
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "annotations": {
+      "grafana.app/folder": "infra",
+      "monitoring.materialize.cloud/min-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/rec-mz-version": "v26.24.0",
+      "monitoring.materialize.cloud/sql-metric-prefix": "mz_",
+      "monitoring.materialize.cloud/target-export": "generic"
+    },
+    "name": "mz-mon-infra-karpenter"
+  },
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "builtIn": true,
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "query": {
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "group": "grafana",
+            "kind": "DataQuery",
+            "spec": {},
+            "version": "v0"
+          }
+        }
+      }
+    ],
+    "cursorSync": "Crosshair",
+    "description": "How Karpenter adds, replaces and removes the cluster's nodes on EKS.\n\nLaunches and their errors, capacity EC2 refused, how long nodes take to join, what keeps nodes from being consolidated, and the controller's health. The cloud-agnostic view is Infrastructure Autoscaling.",
+    "editable": true,
+    "elements": {
+      "controller-aws-errors": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (exported_service, action, code) (\n  rate(aws_sdk_go_request_total{app=\"karpenter\", code!~\"2..|412\"}[$__rate_interval])\n) * 60 > 0\n",
+                        "legendFormat": "{{exported_service}} {{action}} {{code}}",
+                        "qryType": 1,
+                        "query": "sum by (exported_service, action, code) (\n  rate(aws_sdk_go_request_total{app=\"karpenter\", code!~\"2..|412\"}[$__rate_interval])\n) * 60 > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**AWS API calls that did not succeed per minute, by service, action and status.**\n\n**Nominal:** A trickle of `400` on `DescribeLaunchTemplates`, which is Karpenter looking for a launch template before it creates it.\n\n**Degraded:** `403` is a permission Karpenter's IAM role lacks; `429` or `RequestLimitExceeded` is API throttling, often from something else in the account. `CreateFleet` errors are launches EC2 refused; the Provisioning tab's _EC2 Errors_ says why.\n\n`412` is left out: EC2 answers every dry run with it, and Karpenter dry runs `CreateFleet` and `RunInstances` to check its EC2NodeClasses. The SDK's own `service` label arrives as `exported_service`, since the scrape stamps the Kubernetes Service name on `service`.",
+          "id": 1037,
+          "links": [],
+          "title": "Failed AWS Calls per Minute",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No failed AWS calls",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-cpu": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (pod) (\n  rate(container_cpu_usage_seconds_total{container=\"controller\", pod=~\"karpenter-.+\"}[$__rate_interval])\n)\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "sum by (pod) (\n  rate(container_cpu_usage_seconds_total{container=\"controller\", pod=~\"karpenter-.+\"}[$__rate_interval])\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**CPU each Karpenter replica uses, in cores.**\n\nThe standby replica uses almost none.",
+          "id": 1040,
+          "links": [],
+          "title": "CPU by Replica",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics: cadvisor metrics are required (via kubelet)",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-kube-errors": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (method, code) (\n  rate(client_go_request_total{app=\"karpenter\", code!~\"2..\"}[$__rate_interval])\n) * 60 > 0\n",
+                        "legendFormat": "{{method}} {{code}}",
+                        "qryType": 1,
+                        "query": "sum by (method, code) (\n  rate(client_go_request_total{app=\"karpenter\", code!~\"2..\"}[$__rate_interval])\n) * 60 > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Kubernetes API calls that did not succeed per minute, by method and status.**\n\n**Nominal:** Near zero. `409` conflicts are an object changed underneath Karpenter, which it retries.\n\n**Degraded:** `429` is the API server throttling Karpenter; `5xx` an API server in trouble, which also shows as _Cluster State Synced_ dropping.",
+          "id": 1038,
+          "links": [],
+          "title": "Failed Kubernetes API Calls per Minute",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No failed Kubernetes API calls",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-leader": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (leader_election_master_status{app=\"karpenter\"})\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "max by (pod) (leader_election_master_status{app=\"karpenter\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Which Karpenter replica holds the leader lease.**\n\nOnly the leader provisions and disrupts. A change of leader restarts its counters, and Karpenter spends a few seconds syncing its state.",
+          "id": 1039,
+          "links": [],
+          "title": "Leader",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-memory": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (container_memory_working_set_bytes{container=\"controller\", pod=~\"karpenter-.+\"})\n",
+                        "legendFormat": "{{pod}}",
+                        "qryType": 1,
+                        "query": "max by (pod) (container_memory_working_set_bytes{container=\"controller\", pod=~\"karpenter-.+\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (pod) (kube_pod_container_resource_limits{container=\"controller\", pod=~\"karpenter-.+\", resource=\"memory\"})\n",
+                        "legendFormat": "{{pod}} limit",
+                        "qryType": 1,
+                        "query": "max by (pod) (kube_pod_container_resource_limits{container=\"controller\", pod=~\"karpenter-.+\", resource=\"memory\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Memory each Karpenter replica holds, against its limit.**\n\n**Degraded:** The leader near its limit. Karpenter's memory grows with the number of nodes, pods and instance types it tracks, and an out-of-memory restart stops all provisioning while the standby takes over.",
+          "id": 1041,
+          "links": [],
+          "title": "Memory by Replica",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No metrics: cadvisor and kube-state-metrics are required",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-no-karpenter": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no rows on it.",
+          "id": 1042,
+          "links": [],
+          "title": "Karpenter Not Detected",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Karpenter is not reporting on this cluster.**\n\nKarpenter adds nodes on EKS in the self-managed Terraform. GKE and AKS use their managed cluster autoscaler instead, which has no equivalent of this dashboard: **Infrastructure Autoscaling** covers every cloud.\n\nOn EKS, this dashboard needs the ServiceMonitor that the Terraform `karpenter` module creates with `enable_service_monitor`, and the monitoring CRDs installed before Karpenter, which the examples' `monitoring-crds` module does. Karpenter's chart leaves the ServiceMonitor out when the CRDs are not there yet, and does not add it later on its own; re-apply once they are.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-reconcile-errors": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (controller) (\n  rate(controller_runtime_reconcile_errors_total{app=\"karpenter\"}[$__rate_interval])\n) * 60 > 0\n",
+                        "legendFormat": "{{controller}}",
+                        "qryType": 1,
+                        "query": "sum by (controller) (\n  rate(controller_runtime_reconcile_errors_total{app=\"karpenter\"}[$__rate_interval])\n) * 60 > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Reconcile errors per minute, by controller.**\n\n**Nominal:** Near zero. A few are routine: an object changed while it was being reconciled, and the next attempt succeeds.\n\n**Degraded:** A controller erroring steadily. Its log lines, on the Events and Logs tab, carry the error.",
+          "id": 1035,
+          "links": [],
+          "title": "Reconcile Errors per Minute",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No reconcile errors",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "controller-workqueue": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (name) (workqueue_depth{app=\"karpenter\"}) > 0\n",
+                        "legendFormat": "{{name}}",
+                        "qryType": 1,
+                        "query": "max by (name) (workqueue_depth{app=\"karpenter\"}) > 0\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Items waiting in each of Karpenter's work queues.**\n\n**Nominal:** Near zero.\n\n**Degraded:** A queue that grows and does not drain: that controller is behind.",
+          "id": 1036,
+          "links": [],
+          "title": "Work Queue Depth",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Every queue is empty",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-blocked": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (why) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\"}\n      | reportingcontroller=\"karpenter\"\n      | reason=~\"DisruptionBlocked|Unconsolidatable\"\n      | line_format \"{{.msg}}\"\n      | regexp \"^(?P<why>Pod has .karpenter.sh/do-not-disrupt. annotation|Pdb prevents pod evictions|NodePool .[^ ]+. has [a-z-]+ consolidation disabled|[A-Z][^(]+)\"\n  [5m])\n)\n",
+                        "legendFormat": "{{why}}"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Why Karpenter is leaving nodes in place, from its `DisruptionBlocked` and `Unconsolidatable` events per five minutes.**\n\n**Nominal:** On a Materialize cluster, mostly the `do-not-disrupt` annotation: the operator marks every Materialize pod so, because moving a replica means rehydrating it. That is the design working, not a fault.\n\n**Degraded:** A PodDisruptionBudget blocking the same pods for hours holds nodes that could otherwise be removed or replaced, including drifted nodes that should be.\n\nKarpenter repeats these events every few minutes for every blocked node, so the numbers track how long, not how many.",
+          "id": 1025,
+          "links": [],
+          "title": "Why Disruption Is Blocked",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No blocked disruptions in this time range",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-blocked-events": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{job=\"loki.source.kubernetes_events\"}\n  | reportingcontroller=\"karpenter\"\n  | reason=~\"DisruptionBlocked|Unconsolidatable\"\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Karpenter's blocked-disruption events, newest first.**\n\nThe message names the pod or PodDisruptionBudget holding each node.",
+          "id": 1026,
+          "links": [],
+          "title": "Blocked Disruption Events",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No blocked disruptions in this time range"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "signature",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-budget": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "min by (nodepool, reason) (karpenter_nodepools_allowed_disruptions{nodepool=~\"$karpenterNodePool\"})\n",
+                        "legendFormat": "{{nodepool}} {{reason}}",
+                        "qryType": 1,
+                        "query": "min by (nodepool, reason) (karpenter_nodepools_allowed_disruptions{nodepool=~\"$karpenterNodePool\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Nodes each NodePool's disruption budget allows removing right now, by reason.**\n\nZero is a budget that allows none at the moment, by design or because nodes are already being disrupted.",
+          "id": 1027,
+          "links": [],
+          "title": "Disruptions the Budget Allows",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-decisions": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (reason, decision) (\n  rate(karpenter_voluntary_disruption_decisions_total[$__rate_interval])\n) * 3600\n",
+                        "legendFormat": "{{reason}} {{decision}}",
+                        "qryType": 1,
+                        "query": "sum by (reason, decision) (\n  rate(karpenter_voluntary_disruption_decisions_total[$__rate_interval])\n) * 3600\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Disruptions Karpenter decided on per hour, by reason and action.**\n\n`delete` removes a node whose pods fit elsewhere; `replace` launches a cheaper or up-to-date node first.",
+          "id": 1023,
+          "links": [],
+          "title": "Disruption Decisions per Hour",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No disruption decisions",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-disrupted": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (nodepool, reason) (\n  rate(karpenter_nodeclaims_disrupted_total{nodepool=~\"$karpenterNodePool\"}[$__rate_interval])\n) * 3600\n",
+                        "legendFormat": "{{nodepool}} {{reason}}",
+                        "qryType": 1,
+                        "query": "sum by (nodepool, reason) (\n  rate(karpenter_nodeclaims_disrupted_total{nodepool=~\"$karpenterNodePool\"}[$__rate_interval])\n) * 3600\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**NodeClaims removed or replaced per hour, by NodePool and reason.**\n\n`empty` and `underutilized` are consolidation; `drifted` a node that no longer matches its NodePool or EC2NodeClass, such as after an AMI update; `expired` one past its NodePool's `expireAfter`; `interrupted` one AWS is reclaiming.",
+          "id": 1022,
+          "links": [],
+          "title": "NodeClaims Disrupted per Hour",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No nodes disrupted",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-eligible": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (reason) (karpenter_voluntary_disruption_eligible_nodes)\n",
+                        "legendFormat": "{{reason}}",
+                        "qryType": 1,
+                        "query": "max by (reason) (karpenter_voluntary_disruption_eligible_nodes)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Nodes Karpenter considers candidates for disruption, by reason.**\n\nCandidates stay candidates while something blocks them. A count that stays high while _NodeClaims Disrupted_ stays at zero is a blocked disruption; _Why Disruption Is Blocked_ says by what.",
+          "id": 1024,
+          "links": [],
+          "title": "Nodes Eligible for Disruption",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-evictions": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (code) (rate(karpenter_nodes_eviction_requests_total[$__rate_interval])) * 60\n",
+                        "legendFormat": "{{code}}",
+                        "qryType": 1,
+                        "query": "sum by (code) (rate(karpenter_nodes_eviction_requests_total[$__rate_interval])) * 60\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Pod evictions Karpenter requested per minute, by response.**\n\n**Nominal:** Mostly `200`, the eviction allowed.\n\n**Degraded:** `429` is an eviction a PodDisruptionBudget refused. Karpenter retries, and the node is not removed until the budget allows it.",
+          "id": 1028,
+          "links": [],
+          "title": "Eviction Requests per Minute",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No evictions requested",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-interruptions": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (message_type) (\n  rate(karpenter_interruption_received_messages_total[$__rate_interval])\n) * 3600\n",
+                        "legendFormat": "{{message_type}}",
+                        "qryType": 1,
+                        "query": "sum by (message_type) (\n  rate(karpenter_interruption_received_messages_total[$__rate_interval])\n) * 3600\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Notices Karpenter read from its interruption queue per hour, by type.**\n\n`spot_interrupted` and `rebalance_recommendation` apply to Spot capacity, which the examples do not use. `scheduled_change` is AWS maintenance on a host, and `instance_stopped` or `instance_terminated` an instance stopped outside Karpenter. The queue receives every instance event in the account and region, so `no_op`, an event about an instance that is not Karpenter's, is usually most of it.",
+          "id": 1032,
+          "links": [],
+          "title": "Interruption Notices per Hour",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No interruption notices",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-no-karpenter": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no rows on it.",
+          "id": 1034,
+          "links": [],
+          "title": "Karpenter Not Detected",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Karpenter is not reporting on this cluster.**\n\nKarpenter adds nodes on EKS in the self-managed Terraform. GKE and AKS use their managed cluster autoscaler instead, which has no equivalent of this dashboard: **Infrastructure Autoscaling** covers every cloud.\n\nOn EKS, this dashboard needs the ServiceMonitor that the Terraform `karpenter` module creates with `enable_service_monitor`, and the monitoring CRDs installed before Karpenter, which the examples' `monitoring-crds` module does. Karpenter's chart leaves the ServiceMonitor out when the CRDs are not there yet, and does not add it later on its own; re-apply once they are.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-node-age": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (node_name, nodepool, instance_type, zone) (\n  karpenter_nodes_current_lifetime_seconds{nodepool!=\"\", nodepool=~\"$karpenterNodePool\"}\n)\n",
+                        "format": "table",
+                        "instant": true,
+                        "qryType": 2,
+                        "query": "max by (node_name, nodepool, instance_type, zone) (\n  karpenter_nodes_current_lifetime_seconds{nodepool!=\"\", nodepool=~\"$karpenterNodePool\"}\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "organize",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true
+                      },
+                      "indexByName": {
+                        "Value": 4,
+                        "instance_type": 2,
+                        "node_name": 0,
+                        "nodepool": 1,
+                        "zone": 3
+                      },
+                      "renameByName": {
+                        "Value": "Age",
+                        "instance_type": "Instance Type",
+                        "node_name": "Node",
+                        "nodepool": "NodePool",
+                        "zone": "Zone"
+                      }
+                    }
+                  }
+                },
+                {
+                  "group": "sortBy",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "field": "Age"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**Each of Karpenter's nodes, with its NodePool, instance type, zone and age.**\n\nThe Materialize pool's nodes are meant to live long: the examples set its `expireAfter` to `Never`, since replacing a node moves replicas.",
+          "id": 1030,
+          "links": [],
+          "title": "Karpenter's Nodes",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-queue-delay": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (le) (increase(karpenter_interruption_message_queue_duration_seconds_bucket[1h]))\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (le) (increase(karpenter_interruption_message_queue_duration_seconds_bucket[1h]))\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long notices waited in the interruption queue before Karpenter read them, at the 99th percentile over the last hour.**\n\n**Nominal:** Seconds.\n\n**Unhealthy:** Minutes: Karpenter is not keeping up, or was down. A notice read late leaves less of AWS's warning to drain the node in.",
+          "id": 1033,
+          "links": [],
+          "title": "Notice Wait in Queue (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No interruption notices in the last hour",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-termination": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (le) (increase(operator_nodeclaim_termination_duration_seconds_bucket{karpenter_sh_nodepool=~\"$karpenterNodePool\"}[1h]))\n)\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (le) (increase(operator_nodeclaim_termination_duration_seconds_bucket{karpenter_sh_nodepool=~\"$karpenterNodePool\"}[1h]))\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long NodeClaims took to terminate, from the decision to the instance gone, at the 99th percentile over the last hour.**\n\n**Degraded:** Hours: pods that could not be evicted held the node. Nodes in the Materialize pool wait for a Materialize rollout to move their pods.",
+          "id": 1029,
+          "links": [],
+          "title": "Time to Terminate a Node (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No nodes terminated in the last hour",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "disruption-timeouts": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (consolidation_type) (\n  rate(karpenter_voluntary_disruption_consolidation_timeouts_total[$__rate_interval])\n) * 3600\n",
+                        "legendFormat": "{{consolidation_type}}",
+                        "qryType": 1,
+                        "query": "sum by (consolidation_type) (\n  rate(karpenter_voluntary_disruption_consolidation_timeouts_total[$__rate_interval])\n) * 3600\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Consolidation searches that ran out of time, per hour.**\n\nKarpenter gives up on a search and tries again later; frequent timeouts mean consolidation rarely completes on a large cluster.",
+          "id": 1031,
+          "links": [],
+          "title": "Consolidation Timeouts per Hour",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "events-by-reason": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (reason) (\n  count_over_time(\n    {job=\"loki.source.kubernetes_events\"}\n      | reportingcontroller=\"karpenter\"\n      | reason!~\"DisruptionBlocked|Unconsolidatable\"\n  [1m])\n)\n",
+                        "legendFormat": "{{reason}}"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Karpenter's events per minute, by reason.**\n\nWithout `DisruptionBlocked` and `Unconsolidatable`, which repeat for every blocked node and are broken down on the Disruption tab. A node's life reads `Launched`, `Registered`, `Initialized`, and at the end `Disrupted` and `Drained`.",
+          "id": 1043,
+          "links": [],
+          "title": "Events by Reason",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No Karpenter events in this time range",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "events-log-rate": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (level) (count_over_time({app=\"karpenter\"}[1m]))\n",
+                        "legendFormat": "{{level}}"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Karpenter's log lines per minute, by level.**",
+          "id": 1044,
+          "links": [],
+          "title": "Log Lines by Level",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No Karpenter logs in this time range",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "events-no-karpenter": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no rows on it.",
+          "id": 1047,
+          "links": [],
+          "title": "Karpenter Not Detected",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Karpenter is not reporting on this cluster.**\n\nKarpenter adds nodes on EKS in the self-managed Terraform. GKE and AKS use their managed cluster autoscaler instead, which has no equivalent of this dashboard: **Infrastructure Autoscaling** covers every cloud.\n\nOn EKS, this dashboard needs the ServiceMonitor that the Terraform `karpenter` module creates with `enable_service_monitor`, and the monitoring CRDs installed before Karpenter, which the examples' `monitoring-crds` module does. Karpenter's chart leaves the ServiceMonitor out when the CRDs are not there yet, and does not add it later on its own; re-apply once they are.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "events-problems": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{app=\"karpenter\", level=~\"WARN|ERROR\"}\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Karpenter's warning and error log lines, newest first.**\n\nKarpenter logs JSON; expanding a line shows its fields, including the NodeClaim or NodePool it concerns.",
+          "id": 1046,
+          "links": [],
+          "title": "Warning and Error Logs",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No warnings or errors in this time range"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "exact",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": true,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "events-stream": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${logsDatasource}"
+                      },
+                      "group": "loki",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "{job=\"loki.source.kubernetes_events\"}\n  | reportingcontroller=\"karpenter\"\n  | reason!~\"DisruptionBlocked|Unconsolidatable\"\n  | line_format \"{{.reason}} {{.kind}}/{{.name}} — {{.msg}}\"\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Karpenter's events, newest first.**\n\nWithout `DisruptionBlocked` and `Unconsolidatable`, for the reason _Events by Reason_ gives.",
+          "id": 1045,
+          "links": [],
+          "title": "Karpenter Events",
+          "vizConfig": {
+            "group": "logs",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "No Karpenter events in this time range"
+                },
+                "overrides": []
+              },
+              "options": {
+                "dedupStrategy": "signature",
+                "detailsMode": "inline",
+                "displayedFields": [],
+                "enableInfiniteScrolling": true,
+                "enableLogDetails": true,
+                "fontSize": "small",
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": true,
+                "showFieldSelector": true,
+                "showLabels": false,
+                "showLevel": true,
+                "showLogContextToggle": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "syntaxHighlighting": true,
+                "timestampResolution": "ms",
+                "unwrappedColumns": false,
+                "wrapLogMessage": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-conditions": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (kind, name, type, status, reason) (\n  operator_status_condition_count{kind=~\"NodePool|EC2NodeClass\"}\n) == 1\n",
+                        "format": "table",
+                        "instant": true,
+                        "qryType": 2,
+                        "query": "max by (kind, name, type, status, reason) (\n  operator_status_condition_count{kind=~\"NodePool|EC2NodeClass\"}\n) == 1\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "organize",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "Value": true,
+                        "__name__": true
+                      },
+                      "indexByName": {
+                        "kind": 0,
+                        "name": 1,
+                        "reason": 4,
+                        "status": 3,
+                        "type": 2
+                      },
+                      "renameByName": {
+                        "kind": "Kind",
+                        "name": "Name",
+                        "reason": "Reason",
+                        "status": "Status",
+                        "type": "Condition"
+                      }
+                    }
+                  }
+                },
+                {
+                  "group": "sortBy",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "fields": {},
+                      "sort": [
+                        {
+                          "field": "Status"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**Every condition on each NodePool and EC2NodeClass, and its current status.**\n\n**Nominal:** Every row True.\n\n**Unhealthy:** A False or Unknown row, with its reason. On an EC2NodeClass, `AMIsReady`, `SubnetsReady`, `SecurityGroupsReady` or `InstanceProfileReady` false means Karpenter cannot build a launch request at all. On a NodePool, `NodeRegistrationHealthy` false means instances launched but did not join the cluster.",
+          "id": 1011,
+          "links": [],
+          "title": "NodePool and NodeClass Conditions",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "Karpenter has not reported this yet."
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-disrupted": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(increase(karpenter_nodeclaims_disrupted_total{nodepool=~\"$karpenterNodePool\"}[$__range]))\nor 0 * max(karpenter_build_info)\n",
+                        "instant": true,
+                        "legendFormat": "disrupted",
+                        "qryType": 1,
+                        "query": "sum(increase(karpenter_nodeclaims_disrupted_total{nodepool=~\"$karpenterNodePool\"}[$__range]))\nor 0 * max(karpenter_build_info)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**NodeClaims Karpenter removed or replaced in the selected time range, in the selected NodePools.**\n\nConsolidation, drift, expiry and interruption all count. A Materialize replica on a disrupted node restarts elsewhere, so a Materialize pool should read low; the examples mark its pods not to be disrupted, which is why it usually reads zero.",
+          "id": 1005,
+          "links": [],
+          "title": "Nodes Disrupted (Select Time Range)",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-launch-errors": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum(increase(karpenter_cloudprovider_errors_total{method=\"Create\"}[$__range]))\nor 0 * max(karpenter_build_info)\n",
+                        "instant": true,
+                        "legendFormat": "errors",
+                        "qryType": 1,
+                        "query": "sum(increase(karpenter_cloudprovider_errors_total{method=\"Create\"}[$__range]))\nor 0 * max(karpenter_build_info)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Instance launches EC2 refused in the selected time range.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any. Karpenter retries with another instance type or zone where the NodePool allows one; a NodePool with a single instance type, like the Terraform examples' Materialize pool, has nowhere else to go. The error type on the Provisioning tab says whether it was capacity, quota or a configuration problem.",
+          "id": 1003,
+          "links": [],
+          "title": "Launch Errors (Select Time Range)",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 2
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 3
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 4
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 5
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-no-karpenter": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no rows on it.",
+          "id": 1012,
+          "links": [],
+          "title": "Karpenter Not Detected",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Karpenter is not reporting on this cluster.**\n\nKarpenter adds nodes on EKS in the self-managed Terraform. GKE and AKS use their managed cluster autoscaler instead, which has no equivalent of this dashboard: **Infrastructure Autoscaling** covers every cloud.\n\nOn EKS, this dashboard needs the ServiceMonitor that the Terraform `karpenter` module creates with `enable_service_monitor`, and the monitoring CRDs installed before Karpenter, which the examples' `monitoring-crds` module does. Karpenter's chart leaves the ServiceMonitor out when the CRDs are not there yet, and does not add it later on its own; re-apply once they are.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-nodepool-cpu": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (nodepool) (karpenter_nodepools_usage{resource_type=\"cpu\", nodepool=~\"$karpenterNodePool\"})\n",
+                        "legendFormat": "{{nodepool}}",
+                        "qryType": 1,
+                        "query": "max by (nodepool) (karpenter_nodepools_usage{resource_type=\"cpu\", nodepool=~\"$karpenterNodePool\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (nodepool) (karpenter_nodepools_limit{resource_type=\"cpu\", nodepool=~\"$karpenterNodePool\"})\n",
+                        "legendFormat": "{{nodepool}} limit",
+                        "qryType": 1,
+                        "query": "max by (nodepool) (karpenter_nodepools_limit{resource_type=\"cpu\", nodepool=~\"$karpenterNodePool\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**CPU each NodePool's nodes provide, against the limit the NodePool sets.**\n\n**Degraded:** Usage at the limit: the NodePool launches nothing more, and pods that need it wait. Raise the limit in the NodePool's `limits`.\n\nThe limit is drawn only for a NodePool that sets one; the Terraform examples set none.",
+          "id": 1009,
+          "links": [],
+          "title": "NodePool CPU Against Limit",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-nodepool-memory": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (nodepool) (karpenter_nodepools_usage{resource_type=\"memory\", nodepool=~\"$karpenterNodePool\"})\n",
+                        "legendFormat": "{{nodepool}}",
+                        "qryType": 1,
+                        "query": "max by (nodepool) (karpenter_nodepools_usage{resource_type=\"memory\", nodepool=~\"$karpenterNodePool\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (nodepool) (karpenter_nodepools_limit{resource_type=\"memory\", nodepool=~\"$karpenterNodePool\"})\n",
+                        "legendFormat": "{{nodepool}} limit",
+                        "qryType": 1,
+                        "query": "max by (nodepool) (karpenter_nodepools_limit{resource_type=\"memory\", nodepool=~\"$karpenterNodePool\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Memory each NodePool's nodes provide, against the limit the NodePool sets.**\n\n**Degraded:** Usage at the limit, for the same reason as CPU.",
+          "id": 1010,
+          "links": [],
+          "title": "NodePool Memory Against Limit",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "bytes"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-nodepools-not-ready": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count(\n  max by (name) (operator_nodepool_status_condition_count{type=\"Ready\", status!=\"True\"}) == 1\n)\nor 0 * count(max by (name) (operator_nodepool_status_condition_count{type=\"Ready\"}))\n",
+                        "legendFormat": "not ready",
+                        "qryType": 1,
+                        "query": "count(\n  max by (name) (operator_nodepool_status_condition_count{type=\"Ready\", status!=\"True\"}) == 1\n)\nor 0 * count(max by (name) (operator_nodepool_status_condition_count{type=\"Ready\"}))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**NodePools that are not Ready.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** A NodePool that is not Ready launches nothing. Its conditions in _NodePool and NodeClass Conditions_ say why: usually its EC2NodeClass cannot find an AMI, subnet or security group, or `NodeRegistrationHealthy` is false because the nodes it launched never joined the cluster.",
+          "id": 1000,
+          "links": [],
+          "title": "NodePools Not Ready",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 1
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 1
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-nodes": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count(\n  max by (node_name) (karpenter_nodes_allocatable{resource_type=\"cpu\", nodepool!=\"\", nodepool=~\"$karpenterNodePool\"})\n)\n",
+                        "legendFormat": "nodes",
+                        "qryType": 1,
+                        "query": "count(\n  max by (node_name) (karpenter_nodes_allocatable{resource_type=\"cpu\", nodepool!=\"\", nodepool=~\"$karpenterNodePool\"})\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Nodes Karpenter manages, in the selected NodePools.**\n\nNodes from an EKS managed node group, such as the base group Karpenter itself runs on, are not Karpenter's and are left out.",
+          "id": 1004,
+          "links": [],
+          "title": "Nodes",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-nodes-by-nodepool": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (nodepool) (\n  max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type=\"cpu\", nodepool!=\"\", nodepool=~\"$karpenterNodePool\"})\n)\n",
+                        "legendFormat": "{{nodepool}}",
+                        "qryType": 1,
+                        "query": "count by (nodepool) (\n  max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type=\"cpu\", nodepool!=\"\", nodepool=~\"$karpenterNodePool\"})\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Karpenter's nodes in each NodePool over time.**",
+          "id": 1007,
+          "links": [],
+          "title": "Nodes by NodePool",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-synced": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(karpenter_cluster_state_synced)\n",
+                        "legendFormat": "state",
+                        "qryType": 1,
+                        "query": "max(karpenter_cluster_state_synced)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Whether Karpenter's view of the cluster's nodes and pods is in step with Kubernetes.**\n\n**Nominal:** 1, synced.\n\n**Unhealthy:** 0 for more than a few seconds. Karpenter makes no scheduling or disruption decision until it is back in step, so pods wait and nodes are not removed. Usually an API server problem; the Controller tab has the error rates.",
+          "id": 1001,
+          "links": [],
+          "title": "Cluster State",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "mappings": [
+                    {
+                      "options": {
+                        "1": {
+                          "color": "#A2F49B",
+                          "index": 1,
+                          "text": "Synced"
+                        }
+                      },
+                      "type": "value"
+                    },
+                    {
+                      "options": {
+                        "0": {
+                          "color": "#AB0003",
+                          "index": 2,
+                          "text": "Not Synced"
+                        }
+                      },
+                      "type": "value"
+                    }
+                  ],
+                  "noValue": "Karpenter has not reported this yet.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#AB0003",
+                        "value": null
+                      },
+                      {
+                        "color": "#A2F49B",
+                        "value": 1
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-unplaceable": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(karpenter_scheduler_unschedulable_pods_count{controller=\"provisioner\"})\n",
+                        "legendFormat": "pods",
+                        "qryType": 1,
+                        "query": "max(karpenter_scheduler_unschedulable_pods_count{controller=\"provisioner\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Pods Karpenter could not find or create a node for in its last scheduling pass.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Non-zero for more than a pass or two: no NodePool can hold these pods. Their node selectors, affinities or tolerations match no pool, a pool is at its limits, or no instance type in the pool is big enough. The pods' `FailedScheduling` events, on Infrastructure Autoscaling, name the constraint.",
+          "id": 1002,
+          "links": [],
+          "title": "Pods Karpenter Cannot Place",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 2
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 3
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 4
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 5
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-utilization": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (resource_type) (karpenter_cluster_utilization_percent{resource_type=~\"cpu|memory|pods\"}) / 100\n",
+                        "legendFormat": "{{resource_type}}",
+                        "qryType": 1,
+                        "query": "max by (resource_type) (karpenter_cluster_utilization_percent{resource_type=~\"cpu|memory|pods\"}) / 100\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The share of Karpenter's nodes' allocatable CPU, memory and pod slots that pods have requested.**\n\n**Nominal:** High. Karpenter consolidates onto fewer nodes when it can, so a low reading that stays low means something is keeping it from doing so.\n\n**Degraded:** Low and not recovering. The Disruption tab says what is blocking consolidation; on a Materialize cluster it is usually replicas marked not to be disrupted.",
+          "id": 1008,
+          "links": [],
+          "title": "Requested Share of Karpenter's Nodes",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "max": 1,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "percentunit"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "overview-version": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (version) (karpenter_build_info)\n",
+                        "instant": true,
+                        "legendFormat": "{{version}}",
+                        "qryType": 1,
+                        "query": "max by (version) (karpenter_build_info)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**The Karpenter version running.**",
+          "id": 1006,
+          "links": [],
+          "title": "Version",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "fixedColor": "#0077BB",
+                    "mode": "shades"
+                  },
+                  "noValue": "Karpenter has not reported this yet."
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "none",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "name",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-cloud-latency": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (method, le) (rate(karpenter_cloudprovider_duration_seconds_bucket[$__rate_interval]))\n)\n",
+                        "legendFormat": "{{method}}",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (method, le) (rate(karpenter_cloudprovider_duration_seconds_bucket[$__rate_interval]))\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long Karpenter's calls to AWS take, by operation, at the 99th percentile.**\n\n`Create` is a launch, which waits on EC2; `GetInstanceTypes` refreshes the catalogue and prices.",
+          "id": 1020,
+          "links": [],
+          "title": "AWS Call Duration (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-created": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (nodepool, reason) (\n  rate(karpenter_nodeclaims_created_total{nodepool=~\"$karpenterNodePool\"}[$__rate_interval])\n) * 3600\n",
+                        "legendFormat": "{{nodepool}} {{reason}}",
+                        "qryType": 1,
+                        "query": "sum by (nodepool, reason) (\n  rate(karpenter_nodeclaims_created_total{nodepool=~\"$karpenterNodePool\"}[$__rate_interval])\n) * 3600\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**NodeClaims created per hour, by NodePool and reason.**\n\n`provisioned` is a new node for waiting pods; `drifted`, `expired` and the consolidation reasons are replacements.",
+          "id": 1013,
+          "links": [],
+          "title": "NodeClaims Created per Hour",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No NodeClaims created",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-errors": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (error, method) (\n  rate(karpenter_cloudprovider_errors_total[$__rate_interval])\n) * 3600\n",
+                        "legendFormat": "{{method}} {{error}}",
+                        "qryType": 1,
+                        "query": "sum by (error, method) (\n  rate(karpenter_cloudprovider_errors_total[$__rate_interval])\n) * 3600\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Errors from EC2 per hour, by error type and operation.**\n\n**Nominal:** Nothing on `Create`.\n\n**Unhealthy:** On `Create`: `InsufficientCapacityError` is EC2 out of the instance type in a zone, which Karpenter works around if the NodePool allows other types or zones. `UnfulfillableCapacity` and quota errors need a change on the AWS side, and the others usually a change to the EC2NodeClass.\n\n`NodeClaimNotFoundError` on `Delete` or `IsDrifted` is an instance already gone when Karpenter checked on it, which is routine after a termination.",
+          "id": 1014,
+          "links": [],
+          "title": "EC2 Errors per Hour",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No errors from EC2",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-no-karpenter": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Why this tab has no rows on it.",
+          "id": 1021,
+          "links": [],
+          "title": "Karpenter Not Detected",
+          "vizConfig": {
+            "group": "text",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
+              "options": {
+                "code": {
+                  "language": "plaintext",
+                  "showLineNumbers": false,
+                  "showMiniMap": false
+                },
+                "content": "**Karpenter is not reporting on this cluster.**\n\nKarpenter adds nodes on EKS in the self-managed Terraform. GKE and AKS use their managed cluster autoscaler instead, which has no equivalent of this dashboard: **Infrastructure Autoscaling** covers every cloud.\n\nOn EKS, this dashboard needs the ServiceMonitor that the Terraform `karpenter` module creates with `enable_service_monitor`, and the monitoring CRDs installed before Karpenter, which the examples' `monitoring-crds` module does. Karpenter's chart leaves the ServiceMonitor out when the CRDs are not there yet, and does not add it later on its own; re-apply once they are.",
+                "mode": "markdown"
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-offerings": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "sum by (instance_type, capacity_type) (\n  max by (instance_type, capacity_type, zone) (karpenter_cloudprovider_instance_type_offering_available{capacity_type!=\"reserved\"})\n)\n",
+                        "legendFormat": "{{instance_type}} {{capacity_type}}",
+                        "qryType": 1,
+                        "query": "sum by (instance_type, capacity_type) (\n  max by (instance_type, capacity_type, zone) (karpenter_cloudprovider_instance_type_offering_available{capacity_type!=\"reserved\"})\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Zones where each of the node pools' instance types can be launched, by capacity type.**\n\n**Nominal:** Flat.\n\n**Degraded:** A dip: EC2 refused a launch for capacity, and Karpenter stops asking that zone for that type for a few minutes. A dip in the only type a NodePool allows is a pool that cannot grow in that zone until it recovers.\n\nOnly the types the Terraform's `service_monitor_instance_types` names are kept. Reserved capacity is left out: it reads unavailable wherever there is no reservation.",
+          "id": 1015,
+          "links": [],
+          "title": "Instance Type Availability",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No availability data. The Terraform karpenter module keeps it only for service_monitor_instance_types.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-pods-waiting": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max(karpenter_scheduler_unschedulable_pods_count{controller=\"provisioner\"})\n",
+                        "legendFormat": "cannot place",
+                        "qryType": 1,
+                        "query": "max(karpenter_scheduler_unschedulable_pods_count{controller=\"provisioner\"})\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max by (controller) (karpenter_scheduler_queue_depth)\n",
+                        "legendFormat": "queued for {{controller}}",
+                        "qryType": 1,
+                        "query": "max by (controller) (karpenter_scheduler_queue_depth)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Pods waiting for Karpenter: the ones it cannot place, and the queue for its next scheduling pass.**\n\n**Nominal:** Zero, or briefly non-zero while a node launches.",
+          "id": 1016,
+          "links": [],
+          "title": "Pods Waiting for Karpenter",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-scheduling": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (controller, le) (rate(karpenter_scheduler_scheduling_duration_seconds_bucket[$__rate_interval]))\n)\n",
+                        "legendFormat": "{{controller}}",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (controller, le) (rate(karpenter_scheduler_scheduling_duration_seconds_bucket[$__rate_interval]))\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long each of Karpenter's scheduling passes takes, at the 99th percentile.**\n\n**Nominal:** Well under a second.\n\n**Degraded:** Seconds or more: a very large number of waiting pods or instance types to consider. Every pass delays the next node.",
+          "id": 1019,
+          "links": [],
+          "title": "Scheduling Pass Duration (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "Karpenter has not reported this yet.",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-stages": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99,\n  sum by (type, le) (\n    increase(operator_nodeclaim_status_condition_transition_seconds_bucket{type=~\"Launched|Registered|Initialized\", karpenter_sh_nodepool=~\"$karpenterNodePool\"}[1h])\n  )\n)\n",
+                        "legendFormat": "{{type}}",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99,\n  sum by (type, le) (\n    increase(operator_nodeclaim_status_condition_transition_seconds_bucket{type=~\"Launched|Registered|Initialized\", karpenter_sh_nodepool=~\"$karpenterNodePool\"}[1h])\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long NodeClaims took to reach each stage of launching, at the 99th percentile over the last hour.**\n\n`Launched` is EC2 accepting the request, `Registered` the node joining the cluster, and `Initialized` the node Ready with its startup taints removed. A slow `Registered` is usually the node's bootstrap; a missing one is a node that never joined.",
+          "id": 1018,
+          "links": [],
+          "title": "Node Launch Stages (p99)",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No NodeClaims launched in the last hour",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "provisioning-startup": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.5, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))\n",
+                        "legendFormat": "p50",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.5, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "histogram_quantile(0.99, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))\n",
+                        "legendFormat": "p99",
+                        "qryType": 1,
+                        "query": "histogram_quantile(0.99, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-1"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**How long pods that needed a new node took to start running, from when the scheduler gave up on existing nodes.**\n\n**Nominal:** A minute or two: the time to launch an instance, boot it and join the cluster.\n\n**Degraded:** Much longer, or rising: slow EC2 capacity, a slow AMI, or a node that joins but is slow to become Ready. _Node Launch Stages_ says which stage.",
+          "id": 1017,
+          "links": [],
+          "title": "Time for a Pod to Start on a New Node",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "No pods needed a new node in the last hour",
+                  "unit": "s"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "TabsLayout",
+      "spec": {
+        "tabs": [
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "narrow",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-nodepools-not-ready"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-synced"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-unplaceable"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-launch-errors"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-nodes"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-disrupted"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-version"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 7,
+                            "rowHeightMode": "short"
+                          }
+                        },
+                        "title": "Verdict"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-nodes-by-nodepool"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-utilization"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-nodepool-cpu"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-nodepool-memory"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Capacity"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-conditions"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "NodePool and NodeClass Conditions"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "overview-no-karpenter"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Karpenter Not Detected"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Overview"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-created"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-errors"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-offerings"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Launches"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-pods-waiting"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-startup"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Pods Waiting"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-stages"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-scheduling"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-cloud-latency"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Where the Time Goes"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "provisioning-no-karpenter"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Karpenter Not Detected"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Provisioning"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-disrupted"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-decisions"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-eligible"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Disruptions"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-blocked"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-blocked-events"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "What Blocks Disruption"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-budget"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-evictions"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-termination"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Draining"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-node-age"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-timeouts"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Node Ages"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-interruptions"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-queue-delay"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Interruptions"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "disruption-no-karpenter"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Karpenter Not Detected"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Disruption"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-reconcile-errors"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-workqueue"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Reconciliation"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-aws-errors"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-kube-errors"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "API Calls"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-leader"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-cpu"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-memory"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 3,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Replicas"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "controller-no-karpenter"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Karpenter Not Detected"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Controller"
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "events-by-reason"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "events-log-rate"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Activity"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "events-stream"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Events"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "matches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "events-problems"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Warnings and Errors"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "operator": "notMatches",
+                                  "value": "karpenter",
+                                  "variable": "karpenterDetected"
+                                }
+                              }
+                            ],
+                            "visibility": "show"
+                          }
+                        },
+                        "hideHeader": true,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "standard",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "events-no-karpenter"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 1,
+                            "rowHeightMode": "tall"
+                          }
+                        },
+                        "title": "Karpenter Not Detected"
+                      }
+                    }
+                  ]
+                }
+              },
+              "title": "Events and Logs"
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [
+      "infrastructure",
+      "mzmon"
+    ],
+    "timeSettings": {
+      "autoRefresh": "",
+      "autoRefreshIntervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "fiscalYearStartMonth": 0,
+      "from": "now-6h",
+      "hideTimepicker": false,
+      "timezone": "browser",
+      "to": "now"
+    },
+    "title": "Karpenter",
+    "variables": [
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "allowCustomValue": false,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Datasource for metrics queries",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Metrics Datasource",
+          "multi": false,
+          "name": "metricsDatasource",
+          "options": [],
+          "pluginId": "prometheus",
+          "refresh": "never",
+          "regex": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "allowCustomValue": false,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "description": "Datasource for log and event queries",
+          "hide": "dontHide",
+          "includeAll": false,
+          "label": "Logs Datasource",
+          "multi": false,
+          "name": "logsDatasource",
+          "options": [],
+          "pluginId": "loki",
+          "refresh": "never",
+          "regex": "",
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(up{app=\"karpenter\"}, app)",
+          "description": "Whether Karpenter's controller is being scraped; empty when it is not",
+          "hide": "hideVariable",
+          "includeAll": false,
+          "label": "Karpenter",
+          "multi": false,
+          "name": "karpenterDetected",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(up{app=\"karpenter\"}, app)",
+              "qryType": 1,
+              "query": "label_values(up{app=\"karpenter\"}, app)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": true,
+          "sort": "alphabeticalAsc"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "allValue": ".+",
+          "allowCustomValue": true,
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "definition": "label_values(karpenter_nodepools_usage, nodepool)",
+          "description": "Which Karpenter NodePools to read",
+          "hide": "dontHide",
+          "includeAll": true,
+          "label": "NodePool",
+          "multi": true,
+          "name": "karpenterNodePool",
+          "options": [],
+          "query": {
+            "datasource": {
+              "name": "${metricsDatasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {
+              "expr": "label_values(karpenter_nodepools_usage, nodepool)",
+              "qryType": 1,
+              "query": "label_values(karpenter_nodepools_usage, nodepool)"
+            },
+            "version": "v0"
+          },
+          "refresh": "never",
+          "regex": "",
+          "regexApplyTo": "value",
+          "skipUrlSync": false,
+          "sort": "alphabeticalAsc"
+        }
+      }
+    ]
+  }
+}
