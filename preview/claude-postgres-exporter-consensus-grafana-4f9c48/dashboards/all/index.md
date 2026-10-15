@@ -233,7 +233,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-postgres-exporter-consensus-grafana-4f9c48/dashboards/grafana/env-consensus.json?xxhash=84e8c19df5c55f53" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-postgres-exporter-consensus-grafana-4f9c48/dashboards/grafana/env-consensus.json?xxhash=e9d402733c44307e" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
         <br /><small>UID <code>mz-mon-env-consensus</code></small>
       </td>
       <td>
