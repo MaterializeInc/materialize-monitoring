@@ -40,12 +40,13 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.6.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.7.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.15.1 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.42.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
-| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.56.1 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.2 |
 
 ## Values {#values}
@@ -214,6 +215,10 @@ ours off with the `node-exporter.enabled: false` circuit breaker —
 setting `tags.node-exporter: false` does nothing while `tags.default`
 is true, because tags are OR'd.)
 
+`postgres-exporter` belongs to no group, `default` included. It watches
+databases you name with credentials you create, so it stays off until you
+set `tags.postgres-exporter: true`.
+
 <table class="helm-values">
   <thead>
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
@@ -314,6 +319,13 @@ is true, because tags are OR'd.)
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">tags<wbr>.postgres-exporter</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable postgres_exporter. In no group, `default` included: it watches databases you list under `postgres-exporter.targets`.
 </td>
     </tr>
   </tbody>
@@ -3774,10 +3786,10 @@ alone.
 
 The services Materialize depends on and does not run: which of the resources the stack watches are which.
 
-A provider pull (`pipeline.metrics.provider.*`) watches every database it is
-told to, and the provider cannot say which of them is Materialize's metadata
-database: the Terraform modules add Grafana's database to the same pull. This
-block says which is which. The normalized `ext:consensus_*` recording rules
+A provider pull (`pipeline.metrics.provider.*`) or the postgres-exporter
+watches every database it is told to, and neither can say which of them is
+Materialize's metadata database: the Terraform modules add Grafana's database
+to the same pull. This block says which is which. The normalized `ext:consensus_*` recording rules
 read only the databases named here, so an undeclared database, Grafana's
 among them, is never recorded as a metadata database.
 
@@ -3801,6 +3813,7 @@ which the `persist` adapter records wherever Materialize is.
 | `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
 | `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
 | `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+| `postgres` | The target's `name` | `postgres-exporter.targets` |
 
 ```yaml
 externalDependencies:
@@ -3809,8 +3822,8 @@ externalDependencies:
       resourceId: mzmon-prod-db
 ```
 
-The resource has to be watched by its provider pull as well, or there is
-nothing to record, and the render warns. Each recorded series carries the
+The resource has to be watched by its provider pull or the exporter as
+well, or there is nothing to record, and the render warns. Each recorded series carries the
 resource as its `resource` label. Matching ignores case.
 </td>
     </tr>
@@ -4237,7 +4250,7 @@ unmanaged here, both scopes fall back to the release.
   "pullSecrets": [],
   "registry": "registry.k8s.io",
   "repository": "kubectl",
-  "tag": "v1.35.6"
+  "tag": "v1.36.5"
 }</pre>
 </td>
       <td class="helm-value-desc">Image for the cleanup job. Upstream's own kubectl build: distroless, multi-arch, and published beside Kubernetes itself, so it tracks patch releases without a third-party rebuild. Its entrypoint is `/bin/kubectl` and there is no shell in the image — the hook runs one argv and needs nothing else. Keep `tag` within one minor of your API server, per Kubernetes' version-skew policy.
@@ -5597,7 +5610,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "0.4.11"
+  "tag": "0.4.22"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -7255,7 +7268,7 @@ validator warns when the two disagree.
       "image": {
         "registry": "docker.io",
         "repository": "alpine/kubectl",
-        "tag": "1.35.4"
+        "tag": "1.36.4"
       },
       "resources": {
         "requests": {
@@ -7466,7 +7479,7 @@ resources, through the import sidecar below.
     "image": {
       "registry": "docker.io",
       "repository": "alpine/kubectl",
-      "tag": "1.35.4"
+      "tag": "1.36.4"
     },
     "resources": {
       "requests": {
@@ -9505,6 +9518,191 @@ Upstream reference:
 }</pre>
 </td>
       <td class="helm-value-desc">Pod security context. The subchart ships an empty one beside an already locked-down container context; this makes the pod-level half say the same thing.
+</td>
+    </tr>
+  </tbody>
+</table>
+
+#### PostgreSQL Exporter
+
+postgres_exporter, watching the PostgreSQL databases this deployment depends on from the inside.
+
+Upstream reference:
+   * https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-postgres-exporter/values.yaml
+   * https://github.com/prometheus-community/postgres_exporter#multi-target-support-beta
+
+Off by default, and in no tag group: it watches databases you name, with
+credentials you create. Turn it on with `tags.postgres-exporter: true` (or the
+`postgres-exporter.enabled` circuit breaker) and list each database under
+`targets`.
+
+One Deployment serves every target. The alloy-gateway scrapes it once per
+target, on `/probe`, and the exporter opens a connection to that database for
+the length of the scrape. So the replica count is not a multiplier on the
+connections each database sees, and adding a target never restarts the metric
+pipeline.
+
+**The credentials are a Secret you create**, named by
+`config.existingSecret.name` (default `postgres-exporter`) in the release
+namespace, holding one key, `postgres_exporter.yml`. It carries one
+`auth_modules` entry per target, named after the target:
+
+```yaml
+auth_modules:
+  consensus:
+    type: userpass
+    userpass:
+      username: mzmon_exporter
+      password: <password>
+    options:
+      sslmode: require
+  grafana:
+    type: userpass
+    userpass:
+      username: mzmon_exporter
+      password: <password>
+    options:
+      sslmode: require
+```
+
+postgres_exporter reads credentials for a multi-target scrape from this file
+and from nowhere else, so the whole file is the Secret rather than a
+password referenced from it. Create the role it names with the least-privilege
+grant on the
+[PostgreSQL exporter](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/postgresql-exporter/)
+page.
+
+Until the Secret exists, the pod waits in `ContainerCreating` with an event
+naming it.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.targets</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">The databases to watch, one scrape each.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `name` | yes | The target's name: its `target` label, and the `auth_modules` entry its credentials come from. Letters, digits and hyphens |
+| `host` | yes | The database host, as the exporter pod resolves it |
+| `port` | no | Defaults to `5432` |
+| `database` | no | The database the connection opens. Defaults to `postgres` |
+| `authModule` | no | The `auth_modules` entry to use. Defaults to `name` |
+
+```yaml
+targets:
+  - name: consensus
+    host: mzmon-db.abc123.us-east-1.rds.amazonaws.com
+    database: materialize
+  - name: grafana
+    host: grafana-db.abc123.us-east-1.rds.amazonaws.com
+```
+
+**Point `database` at a database whose tables you want statistics for**,
+and leave it at `postgres` otherwise. Per-table statistics come from that
+database alone, at about 29 series per table: the metadata database's are
+persist's `consensus` and `timestamp_oracle`, while Grafana's roughly 90
+tables would cost about 2,600 series no panel reads. Everything
+instance-wide, `pg_database_size_bytes` among it, covers every database on
+the instance whichever one the connection opens.
+
+A target is scraped whether or not it is a metadata database. To record it
+as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"postgres-exporter"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Scalable: a missed scrape is a gap in a slow-moving series, and the Deployment comes back on its own.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "prometheuscommunity/postgres-exporter",
+  "tag": "v0.20.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Container image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps the exporter on its own cadence, with its own release notes.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "64Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "32Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource envelope. The exporter is idle between scrapes and holds no state. Memory is request == limit because its working set is small and flat; there is no CPU limit, so a scrape is never throttled into a timeout.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.existingSecret</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "name": "postgres-exporter"
+}</pre>
+</td>
+      <td class="helm-value-desc">The Secret holding `postgres_exporter.yml`, which you create. See the section introduction for its shape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--collector.database_wraparound",
+  "--collector.stat_activity_autovacuum"
+]</pre>
+</td>
+      <td class="helm-value-desc">Collectors to turn on beyond the exporter's defaults.
+
+| Flag | Adds | Why |
+|---|---|---|
+| `--collector.database_wraparound` | `pg_database_wraparound_age_datfrozenxid_seconds`, per database | Transaction-ID age, the wraparound signal. It counts transactions, despite the name |
+| `--collector.stat_activity_autovacuum` | `pg_stat_activity_autovacuum_*` | Autovacuum workers running now, per table |
+
+The defaults already cover what the dashboards read besides these:
+connections by state and the oldest open transaction, `max_connections`,
+per-database sizes, per-table dead tuples and vacuum times, and the
+server version.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for the exporter. The subchart's policy admits ingress on the exporter's port and leaves egress unrestricted, because the databases it connects to are wherever you put them.
 </td>
     </tr>
   </tbody>

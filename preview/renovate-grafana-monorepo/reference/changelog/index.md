@@ -15,13 +15,99 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## materialize-monitoring (Helm chart + Terraform module) v1.4.0 (Unreleased)
+
+_Changes Pending_
+
+## Container Images v0.8.0 (Unreleased)
+
+_Changes Pending_
+
 ## Dashboards (Helm chart) v0.20.0 (Unreleased)
 
 _Changes Pending_
 
-## materialize-monitoring (Helm chart + Terraform module) v1.3.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.3.0
 
-_Changes Pending_
+* Terraform: run the postgres-exporter and declare metadata databases
+    * [materialize-monitoring#542](https://github.com/MaterializeInc/materialize-monitoring/pull/542)
+    * The Terraform module runs the postgres-exporter with `enable_postgres_exporter = true`. It watches Grafana's database whenever the module configures one with a password, plus any database in `postgres_exporter_targets`, with passwords from `postgres_exporter_passwords`. The module creates the exporter's `postgres-exporter` Secret and rolls the exporter when a password changes.
+    * The Terraform module takes `metadata_databases` (`flavor` and `resource_id`) for the metadata databases a provider pull watches, and a `metadata_database` flag on an exporter target. Both become `externalDependencies.consensus` entries.
+    * `node_selector` and `tolerations` reach the postgres-exporter.
+* Add a postgres_exporter subchart for the metadata and Grafana databases
+    * [materialize-monitoring#540](https://github.com/MaterializeInc/materialize-monitoring/pull/540)
+    * A `postgres-exporter` subchart (`prometheus-postgres-exporter` 8.2.0, `postgres_exporter` v0.20.1) watches PostgreSQL databases from the inside. It is off by default: enable it with `tags.postgres-exporter: true` and list the databases under `postgres-exporter.targets`. Credentials come from a `postgres-exporter` Secret you create. See the PostgreSQL exporter page for the Secret's shape and the least-privilege `pg_monitor` grant.
+    * `externalDependencies.consensus` accepts `flavor: postgres`, with an exporter target's name as `resourceId`. The new `postgres` adapter records `ext:consensus_up`, `ext:consensus_connections_used_ratio`, `ext:consensus_xid_used_ratio`, `ext:consensus_database_bytes` (with a `database` label) and `ext:consensus_version_info` (with a `version` label) for that target.
+    * `rules.capabilities` gains a derived capability, `postgres-exporter`, present when the exporter runs.
+    * The Materialize Consensus (Metadata) dashboard's Database Internals tab has a PostgreSQL section, rendered where the exporter is scraped, with a Database picker.
+* Move kubectl and the kind node image to Kubernetes 1.36
+    * [materialize-monitoring#537](https://github.com/MaterializeInc/materialize-monitoring/pull/537)
+    * The kubectl images move to Kubernetes 1.36: `thanos.ruler.autoImportPrometheusRules.sidecar.image.tag` is now `1.36.4`, and `cleanup.grafanaOperator.image.tag` is now `v1.36.5`. Both clear most of the HIGH and CRITICAL CVEs the 1.35 images carried.
+        * Kubernetes supports kubectl within one minor of the API server, so 1.34 clusters are now outside the supported range. kubectl doesn't enforce that range, and these images only list, get, and delete custom resources, which work against a 1.34 API server. To stay inside the supported range on 1.34, set both tags to a 1.35 release through values.
+* Update the Grafana, node-exporter and Alertmanager charts, and access-log-exporter
+    * [materialize-monitoring#539](https://github.com/MaterializeInc/materialize-monitoring/pull/539)
+    * The Loki gateway's `access-log-exporter` sidecar is now `0.4.22`. It parses syslog headers more strictly, validates its configuration at startup, and rejects non-finite values. Its image is now distroless `nonroot`, which matches the UID 65532 that this chart already runs it as. Metric names, labels, and values don't change.
+    * The node-exporter DaemonSet's pod template no longer carries the `helm.sh/chart` label. Upgrading to this release rolls node-exporter once on every node; later chart upgrades don't restart it unless the workload changes.
+    * The Grafana and Alertmanager chart bumps don't change the images that run, because this chart pins its own Grafana, Alertmanager, and config-reloader images.
+    * [`v0.4.22`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.22)
+    * [`v0.4.21`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.21)
+    * [`v0.4.20`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.20)
+    * [`v0.4.19`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.19)
+    * [`v0.4.18`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.18)
+    * [`v0.4.17`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.17)
+    * [`v0.4.16`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.16)
+    * [`v0.4.15`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.15)
+    * [`v0.4.14`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.14)
+    * [`v0.4.13`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.13)
+    * [`v0.4.12`](https://redirect.github.com/jkroepke/access-log-exporter/releases/tag/v0.4.12)
+    * [`v13.6.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-13.6.0)
+    * [`v13.5.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-13.5.1)
+    * [`v4.60.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.60.0)
+    * [`v4.59.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.59.0)
+    * [`v4.58.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.58.0)
+    * [`v4.57.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.57.0)
+    * [`v4.56.3`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.56.3)
+    * [`v4.56.2`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/prometheus-node-exporter-4.56.2)
+    * [`v1.43.3`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/alertmanager-1.43.3)
+    * [`v1.43.2`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/alertmanager-1.43.2)
+    * [`v1.43.1`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/alertmanager-1.43.1)
+    * [`v1.43.0`](https://redirect.github.com/prometheus-community/helm-charts/releases/tag/alertmanager-1.43.0)
+* Update ghcr.io/materializeinc/mzmon-alloy Docker tag to v1.20.1
+    * [materialize-monitoring#536](https://github.com/MaterializeInc/materialize-monitoring/pull/536)
+* Update Loki to 3.7.8 and its Helm chart to 18.15.1
+    * [materialize-monitoring#534](https://github.com/MaterializeInc/materialize-monitoring/pull/534)
+    * The Loki gateway's latency histograms now report seconds. They used to read 1000× too low, because the chart divided nginx durations that were already in seconds by 1000 ([grafana-community/helm-charts#813](https://redirect.github.com/grafana-community/helm-charts/issues/813)). The affected metrics are `http_request_duration_seconds`, `http_upstream_connect_duration_seconds`, `http_upstream_header_duration_seconds`, and `http_upstream_request_duration_seconds`. If you query or alert on them yourself, multiply any thresholds you tuned against the old values by 1000.
+    * Loki `3.7.7` and `3.7.8` are mostly security patches to dependencies, including two HIGH-severity gRPC fixes. `3.7.7` also adds a flag that ignores missing chunks when deleting logs with a line filter.
+    * [`v3.7.8`](https://redirect.github.com/grafana/loki/releases/tag/v3.7.8)
+    * [`v3.7.7`](https://redirect.github.com/grafana/loki/releases/tag/v3.7.7)
+    * [`v18.15.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.15.1)
+    * [`v18.15.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.15.0)
+    * [`v18.14.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.14.0)
+    * [`v18.13.8`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.8)
+    * [`v18.13.7`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.7)
+    * [`v18.13.6`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.6)
+    * [`v18.13.5`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.5)
+    * [`v18.13.4`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.4)
+    * [`v18.13.3`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.3)
+    * [`v18.13.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.2)
+    * [`v18.13.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.1)
+    * [`v18.13.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.13.0)
+    * [`v18.12.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.12.2)
+    * [`v18.12.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.12.1)
+    * [`v18.12.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.12.0)
+    * [`v18.11.7`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.7)
+    * [`v18.11.6`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.6)
+    * [`v18.11.5`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.5)
+    * [`v18.11.4`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.4)
+    * [`v18.11.3`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.3)
+    * [`v18.11.2`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.2)
+    * [`v18.11.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/loki-18.11.1)
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* Included mzmon-lib (shared library) @ v0.13.0..v0.14.0
 
 ## mzmon-lib (shared library) v0.14.0 (Unreleased)
 
@@ -478,9 +564,15 @@ An install on an older 0.x release should read [Upgrading](https://materializein
     * chore(deps): update rust crate tokio-rustls to v0.26.6
         * [materialize-monitoring#427](https://github.com/MaterializeInc/materialize-monitoring/pull/427)
 
-## Container Images v0.7.0 (Unreleased)
+## Container Images v0.7.0
 
-_Changes Pending_
+* Update debian:13 Docker digest to 913f670
+    * [materialize-monitoring#503](https://github.com/MaterializeInc/materialize-monitoring/pull/503)
+* Update gcr.io/distroless/base-debian13 Docker digest to 389cad2
+    * [materialize-monitoring#448](https://github.com/MaterializeInc/materialize-monitoring/pull/448)
+* Update dependency grafana/alloy to v1.20.1
+    * [materialize-monitoring#437](https://github.com/MaterializeInc/materialize-monitoring/pull/437)
+    * [`v1.20.1`](https://redirect.github.com/grafana/alloy/releases/tag/v1.20.1)
 
 ## materialize-monitoring (Helm chart + Terraform module) v0.27.0
 

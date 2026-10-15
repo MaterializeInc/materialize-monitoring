@@ -54,7 +54,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Area | At 1.0 |
 |---|---|
 | Delivery | The umbrella chart, the optional CRDs chart and the dashboards chart, published to GHCR as OCI artifacts. The common Terraform module lives here and is wrapped per cloud in `materialize-terraform-self-managed`, where observability is on by default. Profiles cover sizing, scheduling, storage class, registries, Grafana ingress and persistence, and mTLS |
-| Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor. Rust panics are merged into one entry at ingest |
+| Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor, and scrapes an optional `postgres_exporter` watching the metadata and Grafana databases. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
 | Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
@@ -262,19 +262,21 @@ Designed in [Monitoring Materialize's External Dependencies](../design-docs/2026
 Several pieces shipped with 1.0: the client vantage point, the provider pulls, and the client and provider dashboards.
 So did the `persist-failures` split and the `ext:consensus_*` recording rules.
 Since then, the first flavor-native rows have shipped: CloudNativePG on `env-consensus` and Rook Ceph on `env-persist`.
-What remains of the flavor-specific half is the normalized rules those flavors feed, and the other flavors.
+So has the exporter vantage point, a `postgres_exporter` subchart whose PostgreSQL rows sit beside CNPG's and whose `postgres` adapter records `ext:consensus_*`.
+What remains of the flavor-specific half is the normalized rules CNPG and Ceph feed, and the other flavors.
 It stays opt-in behind the normalized `ext:*` contract.
 That contract keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
 | Item | Status |
 |---|---|
-| [DEP-295] The rest of the `ext:*` layer: `ext:consensus_connections_used_ratio` and the `ext:objstore_*` families | 🔨 |
-| [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ⬜ |
-| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. CNPG's flavor-native rows are on `env-consensus`; the `ext:*` rules and the other flavors remain | 🔨 |
+| [DEP-295] The rest of the `ext:*` layer: the `ext:objstore_*` families. `ext:consensus_connections_used_ratio` has a producer, the `postgres` adapter | 🔨 |
+| [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ✅ |
+| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. The PostgreSQL adapter and its rows shipped with [DEP-297], and CNPG's flavor-native rows are on `env-consensus`; CNPG's `ext:*` rules and the CockroachDB adapters remain | 🔨 |
 | [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
-| [DEP-300] Version reporting (`ext:*_version_info`) across every adapter | ⬜ |
+| [DEP-300] Version reporting (`ext:*_version_info`) across every adapter. The `postgres` adapter records `ext:consensus_version_info`; the others remain | 🔨 |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
-| [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |
+| [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
+| [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
 | [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
@@ -497,6 +499,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-364]: https://linear.app/materializeinc/issue/DEP-364
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
+[DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-369]: https://linear.app/materializeinc/issue/DEP-369
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370

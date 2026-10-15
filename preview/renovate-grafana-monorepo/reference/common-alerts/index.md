@@ -1476,7 +1476,7 @@ Labels:
         <li><strong>severity:</strong> critical</li>
 </ul>
 <p><strong>Installed:</strong> by default, wherever it applies.
-<strong>Reads:</strong> <a href="/materialize-monitoring/preview/renovate-grafana-monorepo/reference/recorded-series/#ext-consensus_up"><code>ext:consensus_up</code></a>, recorded by any of <code>ext_consensus_persist</code>, <code>ext_consensus_cloudsql</code>, <code>ext_consensus_azure_postgres</code>.
+<strong>Reads:</strong> <a href="/materialize-monitoring/preview/renovate-grafana-monorepo/reference/recorded-series/#ext-consensus_up"><code>ext:consensus_up</code></a>, recorded by any of <code>ext_consensus_persist</code>, <code>ext_consensus_cloudsql</code>, <code>ext_consensus_azure_postgres</code>, <code>ext_consensus_postgres</code>.
 </p>
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>flavor, namespace, resource<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>ext<span style="color:#960050;background-color:#1e0010">:</span>consensus_up<span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
