@@ -9675,6 +9675,13 @@ as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.logLevel</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"warn"</code></td>
+      <td class="helm-value-desc">Exporter log level. `warn`, because at `info` every probe logs a new connection and the server's version, two lines per target per scrape. A target that cannot connect is logged at `error`, so nothing worth reading is lost.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.extraArgs</td>
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>

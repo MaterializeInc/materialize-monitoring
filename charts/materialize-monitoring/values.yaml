@@ -6805,6 +6805,12 @@ postgres-exporter:
     datasource:
       passwordFile: /dev/null
 
+    # -- Exporter log level.
+    # `warn`, because at `info` every probe logs a new connection and the
+    # server's version, two lines per target per scrape. A target that cannot
+    # connect is logged at `error`, so nothing worth reading is lost.
+    logLevel: warn
+
     # -- Collectors to turn on beyond the exporter's defaults.
     # @raw
     #
