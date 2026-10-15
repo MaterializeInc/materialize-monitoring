@@ -123,6 +123,8 @@ pub mod extra {
     pub const KARPENTER_DETECTED: &str = "karpenterDetected";
     /// Whether any CloudNativePG instance is being scraped.
     pub const CNPG_DETECTED: &str = "cnpgDetected";
+    /// Whether the postgres-exporter is scraping any database.
+    pub const POSTGRES_DETECTED: &str = "postgresDetected";
     /// Whether a Rook-managed Ceph cluster's manager is being scraped.
     pub const CEPH_DETECTED: &str = "cephDetected";
 }
@@ -982,6 +984,60 @@ pub fn cnpg_clusters() -> dashboardv2::VariableKind {
     .build()
 }
 
+/// Whether the postgres-exporter is scraping any database, which the metadata
+/// database's PostgreSQL rows render on.
+///
+/// Discovered from `up`, per the discovered-row rules: the chart's
+/// ServiceMonitor sets `job="postgres-exporter"` on every target, so `up` tells
+/// "no exporter here" from "the exporter is here and the database is mute",
+/// which is a grant or credential problem worth rows that say so.
+///
+/// The value is the job name, `postgres-exporter`. Hidden, single valued and
+/// without "All", for the reasons [`karpenter_detected`] gives.
+pub fn postgres_detected() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::POSTGRES_DETECTED,
+        label: "PostgreSQL Exporter",
+        description: "Whether the postgres-exporter is scraping a database; empty when it is not",
+        expr: r#"label_values(up{job="postgres-exporter"}, job)"#.to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// The postgres-exporter target a metadata-database panel reads.
+///
+/// The reader's answer to the same question [`cnpg_clusters`] answers: the
+/// exporter's series carry the target's name and nothing about Materialize, so
+/// which database serves this environment is picked, from the names given in
+/// `postgres-exporter.targets`. Grafana's own database is a target too, and
+/// pickable here.
+///
+/// Single-select, with no "All", for the reason [`cnpg_clusters`] gives. A
+/// section variable, likewise.
+pub fn postgres_targets() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: variables::POSTGRES_TARGET,
+        label: "Database",
+        description: "The postgres-exporter target serving as this environment's metadata database",
+        expr: r#"label_values(up{job="postgres-exporter"}, target)"#.to_string(),
+        multi: false,
+        include_all: false,
+        all_value: None,
+        hide: dashboardv2::VariableHide::DontHide,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
 /// Whether a Rook-managed Ceph cluster's manager is being scraped, which the
 /// object store's Ceph rows render on.
 ///
@@ -1698,13 +1754,15 @@ pub fn dependency_scoped() -> Vec<dashboardv2::VariableKind> {
 }
 
 /// Controls for the metadata database dashboard: [`dependency_scoped`], plus
-/// the hidden discovery of a CloudNativePG cluster.
+/// the hidden discovery of a CloudNativePG cluster and of the
+/// postgres-exporter.
 ///
-/// Not [`cnpg_clusters`]: that picker is declared on the section of rows it
-/// scopes, so it renders only where CNPG does.
+/// Not [`cnpg_clusters`] or [`postgres_targets`]: each picker is declared on
+/// the section of rows it scopes, so it renders only where its flavor does.
 pub fn consensus_scoped() -> Vec<dashboardv2::VariableKind> {
     let mut variables = dependency_scoped();
     variables.push(cnpg_detected());
+    variables.push(postgres_detected());
     variables
 }
 
@@ -2406,7 +2464,7 @@ mod tests {
     fn self_hosted_dependency_pickers_select_one_cluster() {
         // An environment has one metadata database and one bucket; a second
         // selected cluster would merge per-instance and per-disk numbers.
-        for picker in [cnpg_clusters(), ceph_namespaces()] {
+        for picker in [cnpg_clusters(), postgres_targets(), ceph_namespaces()] {
             let dashboardv2::VariableKind::QueryVariableKind(v) = picker else {
                 panic!("not a query variable");
             };

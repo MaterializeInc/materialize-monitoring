@@ -2,8 +2,9 @@
 #
 # Run by `make rules-check` against the `all` scenario
 # (charts/materialize-monitoring/tests/rules/all.values.yaml), which enables
-# every provider pull, each watching `mz-metadata` and `mz-grafana`, and
-# declares only `mz-metadata` in `externalDependencies.consensus`.
+# every provider pull and the postgres-exporter, each watching `mz-metadata`
+# and `mz-grafana`, and declares only `mz-metadata` in
+# `externalDependencies.consensus`.
 #
 # Each test pins what the normalized layer promises: one name and unit whatever
 # the adapter, a `flavor` naming it, and absence rather than a guessed value when
@@ -250,3 +251,158 @@ tests:
             value: 1
           - labels: '{flavor="azure-postgres"}'
             value: 1
+
+  # --- postgres -----------------------------------------------------------------
+  - name: postgres records up for the declared target only
+    interval: 1m
+    input_series:
+      - series: 'pg_up{job="postgres-exporter", target="mz-metadata", instance="metadata.example.com:5432"}'
+        values: "1x10 0x10"
+      - series: 'pg_up{job="postgres-exporter", target="mz-grafana", instance="grafana.example.com:5432"}'
+        values: "1x20"
+    promql_expr_test:
+      - expr: ext:consensus_up{flavor="postgres"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="postgres", resource="mz-metadata"}'
+            value: 1
+      - expr: ext:consensus_up{flavor="postgres"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ext:consensus_up{flavor="postgres", resource="mz-metadata"}'
+            value: 0
+
+  # Another exporter's `pg_up` is somebody else's database.
+  - name: postgres ignores targets of other jobs
+    interval: 1m
+    input_series:
+      - series: 'pg_up{job="some-other-exporter", target="mz-metadata"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: ext:consensus_up{flavor="postgres"}
+        eval_time: 5m
+        exp_samples: []
+
+  # 30 client connections, two background workers that do not count, against
+  # 100 less 3 superuser slots on a server older than PostgreSQL 16.
+  - name: postgres records connections against the ceiling an ordinary role is refused at
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_activity_count{job="postgres-exporter", target="mz-metadata", datname="materialize", state="idle", backend_type="client backend", usename="materialize"}'
+        values: "25x10"
+      - series: 'pg_stat_activity_count{job="postgres-exporter", target="mz-metadata", datname="materialize", state="active", backend_type="client backend", usename="materialize"}'
+        values: "5x10"
+      - series: 'pg_stat_activity_count{job="postgres-exporter", target="mz-metadata", datname="materialize", state="active", backend_type="autovacuum worker", usename=""}'
+        values: "2x10"
+      - series: 'pg_settings_max_connections{job="postgres-exporter", target="mz-metadata"}'
+        values: "100x10"
+      - series: 'pg_settings_superuser_reserved_connections{job="postgres-exporter", target="mz-metadata"}'
+        values: "3x10"
+    promql_expr_test:
+      - expr: ext:consensus_connections_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_connections_used_ratio{flavor="postgres", resource="mz-metadata"}'
+            value: 0.30927835051546393
+
+  # During a rollout two exporter pods each probe the database; the copies
+  # differ only by `pod`, and count once.
+  - name: postgres counts connections once while two exporter pods probe
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_activity_count{job="postgres-exporter", target="mz-metadata", pod="postgres-exporter-a", datname="materialize", state="idle", backend_type="client backend", usename="materialize"}'
+        values: "30x10"
+      - series: 'pg_stat_activity_count{job="postgres-exporter", target="mz-metadata", pod="postgres-exporter-b", datname="materialize", state="idle", backend_type="client backend", usename="materialize"}'
+        values: "30x10"
+      - series: 'pg_settings_max_connections{job="postgres-exporter", target="mz-metadata", pod="postgres-exporter-a"}'
+        values: "100x10"
+      - series: 'pg_settings_max_connections{job="postgres-exporter", target="mz-metadata", pod="postgres-exporter-b"}'
+        values: "100x10"
+      - series: 'pg_settings_superuser_reserved_connections{job="postgres-exporter", target="mz-metadata", pod="postgres-exporter-a"}'
+        values: "3x10"
+      - series: 'pg_settings_superuser_reserved_connections{job="postgres-exporter", target="mz-metadata", pod="postgres-exporter-b"}'
+        values: "3x10"
+    promql_expr_test:
+      - expr: ext:consensus_connections_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_connections_used_ratio{flavor="postgres", resource="mz-metadata"}'
+            value: 0.30927835051546393
+
+  # PostgreSQL 16 adds `reserved_connections`, and it comes off the ceiling too.
+  - name: postgres takes reserved connections off the ceiling where they exist
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_activity_count{job="postgres-exporter", target="mz-metadata", datname="materialize", state="idle", backend_type="client backend", usename="materialize"}'
+        values: "45x10"
+      - series: 'pg_settings_max_connections{job="postgres-exporter", target="mz-metadata"}'
+        values: "100x10"
+      - series: 'pg_settings_superuser_reserved_connections{job="postgres-exporter", target="mz-metadata"}'
+        values: "3x10"
+      - series: 'pg_settings_reserved_connections{job="postgres-exporter", target="mz-metadata"}'
+        values: "7x10"
+    promql_expr_test:
+      - expr: ext:consensus_connections_used_ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_connections_used_ratio{flavor="postgres", resource="mz-metadata"}'
+            value: 0.5
+
+  # Wraparound stops the whole instance, so the oldest database is the answer.
+  - name: postgres records the oldest database's transaction-ID age
+    interval: 1m
+    input_series:
+      - series: 'pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="mz-metadata", datname="materialize"}'
+        values: "214748364x10"
+      - series: 'pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="mz-metadata", datname="neighbour"}'
+        values: "1073741824x10"
+      - series: 'pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target="mz-grafana", datname="grafana"}'
+        values: "2000000000x10"
+    promql_expr_test:
+      - expr: ext:consensus_xid_used_ratio{flavor="postgres"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_xid_used_ratio{flavor="postgres", resource="mz-metadata"}'
+            value: 0.5
+
+  # The neighbour is the point: it is what a full disk is attributed to.
+  - name: postgres records every database on the instance, by name
+    interval: 1m
+    input_series:
+      - series: 'pg_database_size_bytes{job="postgres-exporter", target="mz-metadata", datname="materialize"}'
+        values: "50000000x10"
+      - series: 'pg_database_size_bytes{job="postgres-exporter", target="mz-metadata", datname="neighbour"}'
+        values: "90000000000x10"
+      - series: 'pg_database_size_bytes{job="postgres-exporter", target="mz-grafana", datname="grafana"}'
+        values: "10000000x10"
+    promql_expr_test:
+      - expr: ext:consensus_database_bytes
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_database_bytes{flavor="postgres", resource="mz-metadata", database="materialize"}'
+            value: 50000000
+          - labels: 'ext:consensus_database_bytes{flavor="postgres", resource="mz-metadata", database="neighbour"}'
+            value: 90000000000
+
+  - name: postgres records the version as a label on a constant
+    interval: 1m
+    input_series:
+      - series: 'pg_static{job="postgres-exporter", target="mz-metadata", server="metadata.example.com:5432", short_version="16.4.0", version="PostgreSQL 16.4 on x86_64-pc-linux-gnu"}'
+        values: "1x10"
+    promql_expr_test:
+      - expr: ext:consensus_version_info
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ext:consensus_version_info{flavor="postgres", resource="mz-metadata", version="16.4.0"}'
+            value: 1
+
+  # The exporter sees inside the database and not the volume under it.
+  - name: postgres records no storage ratio
+    interval: 1m
+    input_series:
+      - series: 'pg_database_size_bytes{job="postgres-exporter", target="mz-metadata", datname="materialize"}'
+        values: "50000000x10"
+    promql_expr_test:
+      - expr: ext:consensus_storage_used_ratio{flavor="postgres"}
+        eval_time: 5m
+        exp_samples: []

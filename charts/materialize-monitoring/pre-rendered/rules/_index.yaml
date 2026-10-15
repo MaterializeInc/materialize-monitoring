@@ -15,6 +15,7 @@ placeholders:
 - __mzmon_excluded_namespaces__
 - __mzmon_operator_namespaces__
 - __mzmon_consensus_cloudsql__
+- __mzmon_consensus_postgres__
 - __mzmon_core_workloads__
 - __mzmon_consensus_rds__
 - __mzmon_sql_prefix__
@@ -40,6 +41,8 @@ capabilities:
   cloud-monitoring:
     derived: true
   azure-monitor:
+    derived: true
+  postgres-exporter:
     derived: true
   synthetic-uptime:
     derived: false
@@ -804,6 +807,7 @@ rules:
       - ext_consensus_persist/ext:consensus_up
       - ext_consensus_cloudsql/ext:consensus_up
       - ext_consensus_azure_postgres/ext:consensus_up
+      - ext_consensus_postgres/ext:consensus_up
   consensus-failures:
     file: prometheus/materialize-alerts.yaml
     engine: promql
@@ -1274,3 +1278,48 @@ records:
       flavor: azure-postgres
     requires:
     - azure-monitor
+  "ext_consensus_postgres/ext:consensus_up":
+    file: prometheus/ext-consensus.yaml
+    group: ext_consensus_postgres
+    record: ext:consensus_up
+    labels:
+      flavor: postgres
+    requires:
+    - postgres-exporter
+    minImportance: extended
+  "ext_consensus_postgres/ext:consensus_connections_used_ratio":
+    file: prometheus/ext-consensus.yaml
+    group: ext_consensus_postgres
+    record: ext:consensus_connections_used_ratio
+    labels:
+      flavor: postgres
+    requires:
+    - postgres-exporter
+    minImportance: extended
+  "ext_consensus_postgres/ext:consensus_xid_used_ratio":
+    file: prometheus/ext-consensus.yaml
+    group: ext_consensus_postgres
+    record: ext:consensus_xid_used_ratio
+    labels:
+      flavor: postgres
+    requires:
+    - postgres-exporter
+    minImportance: extended
+  "ext_consensus_postgres/ext:consensus_database_bytes":
+    file: prometheus/ext-consensus.yaml
+    group: ext_consensus_postgres
+    record: ext:consensus_database_bytes
+    labels:
+      flavor: postgres
+    requires:
+    - postgres-exporter
+    minImportance: extended
+  "ext_consensus_postgres/ext:consensus_version_info":
+    file: prometheus/ext-consensus.yaml
+    group: ext_consensus_postgres
+    record: ext:consensus_version_info
+    labels:
+      flavor: postgres
+    requires:
+    - postgres-exporter
+    minImportance: extended

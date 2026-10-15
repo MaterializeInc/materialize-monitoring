@@ -203,10 +203,12 @@ $defs:
       # pull also watches databases that are not one, such as Grafana's, and the
       # provider cannot tell them apart, so which ones are is an install-time
       # value (`externalDependencies.consensus` in the chart). Cloud SQL's are
-      # instance names, without the project.
+      # instance names, without the project. The postgres-exporter's are target
+      # names, which it scrapes whether or not they are a metadata database.
       - "consensusRdsResources"
       - "consensusCloudsqlResources"
       - "consensusAzurePostgresResources"
+      - "consensusPostgresResources"
 
   metricImportance:
     description: |
@@ -545,6 +547,8 @@ $defs:
         description: The gateway's Cloud Monitoring pull, `pipeline.metrics.provider.gcp` (`stackdriver_cloudsql_database_*`, `stackdriver_gcs_bucket_*`, and Compute Engine quota).
       - const: azure-monitor
         description: The gateway's Azure Monitor pull, `pipeline.metrics.provider.azure` (`azure_microsoft_dbforpostgresql_flexibleservers_*`, blob storage, AKS and scale sets).
+      - const: postgres-exporter
+        description: The postgres-exporter subchart, `postgres-exporter.targets` (`pg_*`).
       # Set explicitly by an operator.
       - const: synthetic-uptime
         description: A per-environment probe exporter writing connection and `SELECT 1` results (`can_connect`, `envd_up`, `views_query_successful`). Materialize Cloud runs one; the chart does not.

@@ -261,15 +261,18 @@ enum RowBody {
 
 /// What a row's visibility can depend on.
 ///
-/// Grafana allows several conditions in one group, ANDed or ORed; a row here
-/// carries at most one, because every use so far is a single test and a builder
-/// offering combinations would be speculative.
+/// Grafana allows several conditions in one group, ANDed or ORed. A row here
+/// carries one test, except for the fallback a tab shows when none of several
+/// discovery variables found its flavor, which is the one use that needs more.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RowCondition {
     /// The selected time range, relative to a threshold.
     TimeRange(TimeRangeCondition),
     /// The value of a dashboard variable.
     Variable(VariableCondition),
+    /// None of several variables matches its pattern; see
+    /// [`Row::only_unless_variables`].
+    NoneMatch(Vec<VariableCondition>),
 }
 
 impl RowCondition {
@@ -277,6 +280,20 @@ impl RowCondition {
         match self {
             RowCondition::TimeRange(c) => c.build(),
             RowCondition::Variable(c) => c.build(),
+            RowCondition::NoneMatch(conditions) => {
+                let mut items = Vec::new();
+                for condition in conditions {
+                    items.extend(condition.build().spec.items);
+                }
+                dashboardv2::ConditionalRenderingGroupKind {
+                    kind: "ConditionalRenderingGroup".to_string(),
+                    spec: dashboardv2::ConditionalRenderingGroupSpec {
+                        condition: dashboardv2::ConditionalRenderingGroupSpecCondition::And,
+                        items,
+                        visibility: dashboardv2::ConditionalRenderingGroupSpecVisibility::Show,
+                    },
+                }
+            }
         }
     }
 }
@@ -528,6 +545,25 @@ impl Row {
             variable,
             pattern: pattern.into(),
         }));
+        self
+    }
+
+    /// Render this row only when *none* of `conditions`' variables matches its
+    /// pattern.
+    ///
+    /// [`Row::only_unless_variable`] for siblings discovered by different
+    /// variables: one flavor's rows render on one variable and another's on a
+    /// second, and the fallback has to wait until both have missed.
+    pub fn only_unless_variables(
+        mut self,
+        conditions: impl IntoIterator<Item = (&'static str, String)>,
+    ) -> Self {
+        self.condition = Some(RowCondition::NoneMatch(
+            conditions
+                .into_iter()
+                .map(|(variable, pattern)| VariableCondition::DoesNotMatch { variable, pattern })
+                .collect(),
+        ));
         self
     }
 
@@ -870,6 +906,28 @@ mod tests {
             group["spec"]["items"][0]["spec"]["value"],
             "aws-vpc-cni|cilium"
         );
+    }
+
+    #[test]
+    fn a_fallback_over_several_variables_ands_their_negations() {
+        // Shown only when every discovery missed: any one matching means its
+        // flavor's rows are on screen, and the fallback would sit beside them.
+        let group = condition_of(Row::new("None").only_unless_variables([
+            ("cnpgDetected", "cnpg_collector_up".to_string()),
+            ("postgresDetected", "postgres-exporter".to_string()),
+        ]));
+        assert_eq!(group["spec"]["condition"], "and");
+        assert_eq!(group["spec"]["visibility"], "show");
+        let items = group["spec"]["items"].as_array().expect("items");
+        assert_eq!(items.len(), 2);
+        for (item, (variable, value)) in items.iter().zip([
+            ("cnpgDetected", "cnpg_collector_up"),
+            ("postgresDetected", "postgres-exporter"),
+        ]) {
+            assert_eq!(item["spec"]["operator"], "notMatches");
+            assert_eq!(item["spec"]["variable"], variable);
+            assert_eq!(item["spec"]["value"], value);
+        }
     }
 
     #[test]

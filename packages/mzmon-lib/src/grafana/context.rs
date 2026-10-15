@@ -166,6 +166,13 @@ pub mod variables {
     /// [`LOKI_NAMESPACE`]. Matched against instance pod names, which CNPG
     /// derives from the cluster's: `pod=~"($cnpgClusterList)-[0-9]+"`.
     pub const CNPG_CLUSTER_LIST: &str = "cnpgClusterList";
+    /// Which postgres-exporter target a metadata-database panel reads, by the
+    /// target's name.
+    ///
+    /// Written literally by `infra-postgres.yaml`, on the same precedent as
+    /// [`LOKI_NAMESPACE`], and matched against the `target` label the chart's
+    /// ServiceMonitor puts on every scrape.
+    pub const POSTGRES_TARGET: &str = "postgresTarget";
     /// Which Rook-managed Ceph clusters an object-store panel reads, by the
     /// namespace each runs in.
     ///
@@ -271,12 +278,15 @@ pub const KARPENTER_VARIABLES: &[&str] = &[variables::KARPENTER_NODE_POOL];
 /// Variables required only by the self-hosted dependency rows of the
 /// client-side dependency dashboards.
 ///
-/// Written literally by `infra-cnpg.yaml` and `infra-ceph.yaml`, for the reason
-/// [`LOKI_VARIABLES`] gives: which database cluster or Ceph cluster serves an
-/// environment is not something the render context can know, so the reader
-/// picks it and the queries name the picker directly.
-pub const SELF_HOSTED_DEPENDENCY_VARIABLES: &[&str] =
-    &[variables::CNPG_CLUSTER_LIST, variables::CEPH_NAMESPACE];
+/// Written literally by `infra-cnpg.yaml`, `infra-postgres.yaml` and
+/// `infra-ceph.yaml`, for the reason [`LOKI_VARIABLES`] gives: which database
+/// or Ceph cluster serves an environment is not something the render context
+/// can know, so the reader picks it and the queries name the picker directly.
+pub const SELF_HOSTED_DEPENDENCY_VARIABLES: &[&str] = &[
+    variables::CNPG_CLUSTER_LIST,
+    variables::POSTGRES_TARGET,
+    variables::CEPH_NAMESPACE,
+];
 
 /// Variables required only by a dashboard that scopes itself to the operator with
 /// [`DashboardScope::operator_variable`].
@@ -605,6 +615,7 @@ pub fn dashboard_context<'a>(
         ("consensusRdsResources", ".+".to_string()),
         ("consensusCloudsqlResources", ".+".to_string()),
         ("consensusAzurePostgresResources", ".+".to_string()),
+        ("consensusPostgresResources", ".+".to_string()),
         // Generation, which is a *name* pattern rather than a label matcher --
         // see `GENERATION_NAME_PATTERN`. `:regex` for the same reason as the
         // cluster and replica forms: the value is a fragment of a larger regex,

@@ -43,7 +43,8 @@ annotations:
 #   oci://ghcr.io/grafana/helm-charts           → grafana-operator
 #   oci://ghcr.io/thanos-community/helm-charts  → thanos
 #   oci://ghcr.io/prometheus-community/charts   → alertmanager, kube-state-metrics,
-#                                                 prometheus-node-exporter
+#                                                 prometheus-node-exporter,
+#                                                 prometheus-postgres-exporter
 #   https://grafana.github.io/helm-charts       → alloy
 #   https://kubernetes-sigs.github.io/metrics-server → metrics-server (TODO: switch to OCI when upstream publishes one)
 #
@@ -61,6 +62,10 @@ annotations:
 # `app.kubernetes.io/name` from — so the alias is what makes the pods carry
 # `app.kubernetes.io/name: node-exporter`, matching the label the gateway
 # pipeline and the dashboards already expect.
+#
+# `prometheus-postgres-exporter` is aliased to `postgres-exporter` for the same
+# reason, and is in no group: it watches databases the deployment names, so it
+# is something an operator turns on rather than part of the default stack.
 #
 # Enablement is driven primarily by Helm tags: each dependency carries a
 # group tag and a per-chart tag, and customers flip entries under `tags:`
@@ -167,3 +172,10 @@ dependencies:
     tags:
       - cluster-metrics
       - metrics-server
+  - name: prometheus-postgres-exporter
+    alias: postgres-exporter
+    version: "8.2.0"
+    repository: oci://ghcr.io/prometheus-community/charts
+    condition: postgres-exporter.enabled
+    tags:
+      - postgres-exporter

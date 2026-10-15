@@ -27,9 +27,10 @@
 //! cluster and its series carry no environment label, while everything here is
 //! scoped to one environment.
 //!
-//! The exception is a database running in the cluster, which has no provider
-//! to ask. Database Internals carries its own account, for CloudNativePG, on
-//! rows that render only where CNPG is scraped — see [`database`].
+//! The exception is Database Internals, the database's own account: from the
+//! postgres-exporter on any PostgreSQL, and from CloudNativePG's own metrics,
+//! each on rows that render only where that source is scraped — see
+//! [`database`].
 //!
 //! # Scope
 //!
@@ -130,9 +131,10 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
             "The metadata database, as Materialize experiences it.\n\n\
              Commits, failures, latency and connection pools, measured by the \
              processes that use the database — the same on every database \
-             flavor. What a CloudNativePG database reports about itself is on \
-             the Database Internals tab, and what a managed database's cloud \
-             provider reports is on the Infrastructure Cloud Provider dashboard.",
+             flavor. What the database reports about itself, through the \
+             postgres-exporter or CloudNativePG, is on the Database Internals \
+             tab, and what a managed database's cloud provider reports is on \
+             the Infrastructure Cloud Provider dashboard.",
         )
         .tags([tags::MATERIALIZE, tags::MZMON, tags::content::DEPENDENCIES])
         .folder(Folder::Materialize)
@@ -221,29 +223,41 @@ mod tests {
     }
 
     #[test]
-    fn every_cnpg_row_renders_only_where_cnpg_is_scraped() {
-        // A CNPG row without a condition draws empty panels on every managed
-        // database, which is most installs.
+    fn every_source_row_renders_only_where_its_source_is_scraped() {
+        // A source's row without a condition draws empty panels on every
+        // deployment that does not run it, which is most installs.
         let conditions = test_support::variable_conditioned_rows(&built());
-        let when: Vec<_> = conditions
+        let mut when: Vec<_> = conditions
             .iter()
             .filter(|(_, op, _)| op == "matches")
+            .map(|(title, _, value)| (title.as_str(), value.as_str()))
             .collect();
-        // One section holds them all, so its condition is the only one.
-        assert_eq!(when.len(), 1, "{conditions:?}");
-        assert_eq!(when[0].0, database::CNPG_SECTION);
-        assert_eq!(when[0].2, database::CNPG);
+        when.sort();
+        // One section per source holds all its rows, so these are the only
+        // conditions.
+        assert_eq!(
+            when,
+            vec![
+                (database::CNPG_SECTION, database::CNPG),
+                (database::POSTGRES_SECTION, database::POSTGRES),
+            ],
+            "{conditions:?}"
+        );
     }
 
     #[test]
-    fn the_database_tab_has_exactly_one_fallback_covering_every_flavor() {
+    fn the_database_tab_has_exactly_one_fallback_covering_every_source() {
         let conditions = test_support::variable_conditioned_rows(&built());
         let fallbacks: Vec<_> = conditions
             .iter()
             .filter(|(_, op, _)| op == "notMatches")
             .collect();
-        assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
-        assert!(fallbacks[0].2.contains(database::CNPG), "{fallbacks:?}");
+        let titles: std::collections::HashSet<_> = fallbacks.iter().map(|f| &f.0).collect();
+        assert_eq!(titles.len(), 1, "{fallbacks:?}");
+        let values: Vec<_> = fallbacks.iter().map(|f| f.2.as_str()).collect();
+        for (_, value) in database::known_flavors() {
+            assert!(values.contains(&value.as_str()), "{fallbacks:?}");
+        }
     }
 
     #[test]
@@ -252,10 +266,39 @@ mod tests {
     }
 
     #[test]
-    fn an_unset_detection_variable_renders_no_cnpg_row() {
+    fn an_unset_detection_variable_renders_no_source_row() {
         // An empty discovery reaches the condition as one of these strings.
         for unset in ["", "undefined", "null", "[object Object]"] {
-            assert!(!unset.contains(database::CNPG), "{unset}");
+            for (_, value) in database::known_flavors() {
+                assert!(!unset.contains(value.as_str()), "{unset}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_postgres_query_is_scoped_by_the_target_picker() {
+        // The exporter's series carry no environment, and Grafana's own
+        // database is a target too, so the picker is the only thing keeping
+        // another database's numbers off these panels.
+        let resource = built();
+        let json = serde_json::to_string(&resource.spec.elements).expect("serialize");
+        // `cnpg_pg_*` contains `pg_` too; only a name that starts there is
+        // the exporter's.
+        let selectors: Vec<_> = test_support::selectors_of(&json, "pg_")
+            .into_iter()
+            .filter(|selector| {
+                let at = selector.as_ptr() as usize - json.as_ptr() as usize;
+                at == 0
+                    || !(json.as_bytes()[at - 1].is_ascii_alphanumeric()
+                        || json.as_bytes()[at - 1] == b'_')
+            })
+            .collect();
+        assert!(!selectors.is_empty(), "no postgres-exporter queries found");
+        for selector in selectors {
+            assert!(
+                selector.contains("$postgresTarget") && selector.contains("postgres-exporter"),
+                "unscoped: {selector}"
+            );
         }
     }
 
@@ -276,27 +319,36 @@ mod tests {
     }
 
     #[test]
-    fn the_cluster_picker_lives_on_its_section_not_the_dashboard() {
+    fn each_picker_lives_on_its_section_not_the_dashboard() {
         // A dashboard-level picker sits in the controls of every environment,
         // whether or not it runs this flavor; on the section, it hides with it.
         let resource = built();
-        assert!(
-            !resource
-                .spec
-                .variables
-                .iter()
-                .any(|v| variable::name_of(v) == "cnpgClusterList"),
-            "the picker is dashboard-level"
-        );
+        for picker in ["cnpgClusterList", "postgresTarget"] {
+            assert!(
+                !resource
+                    .spec
+                    .variables
+                    .iter()
+                    .any(|v| variable::name_of(v) == picker),
+                "{picker} is dashboard-level"
+            );
+        }
         let json = serde_json::to_value(&resource.spec.layout).expect("serialize");
         let mut found = Vec::new();
         find_section_variables(&json, &mut found);
+        found.sort();
         assert_eq!(
             found,
-            vec![(
-                database::CNPG_SECTION.to_string(),
-                "cnpgClusterList".to_string()
-            )]
+            vec![
+                (
+                    database::CNPG_SECTION.to_string(),
+                    "cnpgClusterList".to_string()
+                ),
+                (
+                    database::POSTGRES_SECTION.to_string(),
+                    "postgresTarget".to_string()
+                ),
+            ]
         );
     }
 
@@ -327,6 +379,7 @@ mod tests {
     #[test]
     fn the_fallback_explains_rather_than_announces() {
         assert!(database::NO_FLAVOR.contains("PodMonitor"));
+        assert!(database::NO_FLAVOR.contains("postgres-exporter.targets"));
         assert!(database::NO_FLAVOR.contains("Infrastructure Cloud Provider"));
     }
 

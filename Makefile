@@ -126,8 +126,11 @@ target/debug/mz-monitoring-%: $$(SOURCES_mz-monitoring-%) $(SOURCES_mzmon-lib) $
 
 ### DASHBOARD SYNC ###
 
+# Every panel takes its expression and its description from the query registry,
+# so a registry-only change has to regenerate them too.
 charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana: \
-		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
+		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) $(wildcard packages/queries/*.yaml) \
+		target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.yaml
 	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format yaml
@@ -757,7 +760,8 @@ serve-docs:
 # directly rather than consuming GKE's reduced subset -- which left it recording
 # nothing but its own name.
 docs/assets/dashboards/grafana: \
-		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) target/debug/mz-monitoring-build
+		$(SOURCES_dashboards) $(SOURCES_mzmon-lib) $(wildcard packages/queries/*.yaml) \
+		target/debug/mz-monitoring-build
 	mkdir -p "$@"
 	rm -f "$@/"*.json
 	target/debug/mz-monitoring-build gen-dashboards --output-dir "$@" --format json

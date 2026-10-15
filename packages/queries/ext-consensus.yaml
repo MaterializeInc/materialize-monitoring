@@ -21,12 +21,13 @@ description: |
   | `rds` | `ext_consensus_rds` | The CloudWatch pull | `resource`: the DB instance identifier |
   | `cloudsql` | `ext_consensus_cloudsql` | The Cloud Monitoring pull | `resource`: the instance name |
   | `azure-postgres` | `ext_consensus_azure_postgres` | The Azure Monitor pull | `resource`: the flexible server name |
+  | `postgres` | `ext_consensus_postgres` | The postgres-exporter, `pg_*` | `resource`: the exporter target's name |
 
   The `persist` adapter needs nothing configured and is present wherever
-  Materialize is. The provider adapters record only the instances that
+  Materialize is. The others record only the databases that
   `externalDependencies.consensus` in the chart names as a metadata database.
-  A provider pull also watches databases that are not one, Grafana's among
-  them, and the provider cannot tell them apart.
+  A provider pull or the exporter also watches databases that are not one,
+  Grafana's among them, and neither can tell them apart.
 
   ## Absence is an answer
 
@@ -34,16 +35,19 @@ description: |
   records a zero, a constant, or a value derived from a different
   measurement. CloudWatch publishes neither an RDS instance's allocated
   storage nor any reachability signal, so the `rds` adapter records no
-  `ext:consensus_storage_used_ratio` and no `ext:consensus_up`. No adapter
-  here can see `max_connections`, so nothing records
-  `ext:consensus_connections_used_ratio` yet; the exporter adapters will.
+  `ext:consensus_storage_used_ratio` and no `ext:consensus_up`. Only the
+  `postgres` adapter sees inside the instance, so it alone records
+  `ext:consensus_connections_used_ratio`, `ext:consensus_database_bytes` and
+  `ext:consensus_version_info`, and it cannot see the volume, so it records
+  no `ext:consensus_storage_used_ratio`.
 
   ## Freshness
 
   Provider samples arrive minutes late and every few minutes, so each
   provider adapter reads its family through `last_over_time(…[15m])`. A
   stopped pull's last value goes on being recorded for up to 15 minutes.
-  The `persist` adapter reads five-minute rates and is current.
+  The `persist` adapter reads five-minute rates and is current, and the
+  `postgres` adapter reads the exporter's latest scrape.
 
 # Diagnostic, so that the rules here never raise the tier of the metrics they
 # read. The provider families are tiered by values
@@ -273,3 +277,155 @@ rules:
             "resource", "$1", "resourceName", "(.+)"
           )
         ) / 2147483648
+
+  # --- postgres: the postgres-exporter -----------------------------------------
+  - record: ext:consensus_up
+    group: ext_consensus_postgres
+    stability: best-effort
+    labels:
+      flavor: postgres
+    description:
+      summary: |
+        1 while the postgres-exporter can connect to each metadata database,
+        and 0 when it cannot.
+      notes: |
+        From `pg_up`. Absent while the exporter itself cannot be scraped,
+        which is a fault in the exporter rather than in the database.
+    query:
+      id: ext.consensus.postgres.up
+      stability: experimental
+      description:
+        summary: The exporter's `pg_up`, per declared target.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            pg_up{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"},
+            "resource", "$1", "target", "(.+)"
+          )
+        )
+
+  - record: ext:consensus_connections_used_ratio
+    group: ext_consensus_postgres
+    stability: best-effort
+    labels:
+      flavor: postgres
+    description:
+      summary: |
+        Client connections open on each metadata database's instance, as a
+        fraction of the connections an ordinary role may open.
+      notes: |
+        The ceiling is `max_connections` less `superuser_reserved_connections`
+        and, from PostgreSQL 16, `reserved_connections`, which is where an
+        ordinary role is refused. Connections to every database on the
+        instance count, not only Materialize's, because they share the
+        ceiling.
+        While a rollout runs two exporter pods, each probes the database, and
+        their copies are counted once.
+    query:
+      id: ext.consensus.postgres.connections_used_ratio
+      stability: experimental
+      description:
+        summary: |
+          Client backends against the connection ceiling, per declared target.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            sum by (target) (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}", backend_type="client backend"}))
+            / on (target) (
+                max by (target) (pg_settings_max_connections{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"})
+              - on (target) max by (target) (pg_settings_superuser_reserved_connections{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"})
+              - on (target) (
+                  max by (target) (pg_settings_reserved_connections{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"})
+                  or 0 * max by (target) (pg_settings_max_connections{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"})
+                )
+            ),
+            "resource", "$1", "target", "(.+)"
+          )
+        )
+
+  - record: ext:consensus_xid_used_ratio
+    group: ext_consensus_postgres
+    stability: best-effort
+    labels:
+      flavor: postgres
+    description:
+      summary: |
+        The fraction of PostgreSQL's transaction-ID space each metadata
+        database's instance has used, against the 2^31 at which it stops
+        accepting writes.
+      notes: |
+        The oldest `age(datfrozenxid)` of any database on the instance, since
+        wraparound stops the whole instance whichever database reaches it.
+    query:
+      id: ext.consensus.postgres.xid_used_ratio
+      stability: experimental
+      description:
+        summary: |
+          The exporter's oldest `datfrozenxid` age, per declared target.
+      promQL: |
+        max by (resource) (
+          label_replace(
+            pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"},
+            "resource", "$1", "target", "(.+)"
+          )
+        ) / 2147483648
+
+  - record: ext:consensus_database_bytes
+    group: ext_consensus_postgres
+    stability: best-effort
+    labels:
+      flavor: postgres
+    description:
+      summary: |
+        The size of each database on each metadata database's instance, with
+        the database's name as `database`.
+      notes: |
+        Every database on the instance, not only Materialize's: a neighbour
+        filling the volume is what this series exists to attribute, and the
+        instance's total cannot.
+    query:
+      id: ext.consensus.postgres.database_bytes
+      stability: experimental
+      description:
+        summary: |
+          The exporter's `pg_database_size_bytes`, per declared target and
+          database.
+      promQL: |
+        max by (resource, database) (
+          label_replace(
+            label_replace(
+              pg_database_size_bytes{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"},
+              "resource", "$1", "target", "(.+)"
+            ),
+            "database", "$1", "datname", "(.+)"
+          )
+        )
+
+  - record: ext:consensus_version_info
+    group: ext_consensus_postgres
+    stability: best-effort
+    labels:
+      flavor: postgres
+    description:
+      summary: |
+        1, with the PostgreSQL version each metadata database runs as
+        `version`.
+      notes: |
+        The server's own version number, such as `16.4.0`. Join it onto
+        another `ext:consensus_*` series with `group_left (version)` on
+        `flavor` and `resource`.
+    query:
+      id: ext.consensus.postgres.version_info
+      stability: experimental
+      description:
+        summary: The exporter's `pg_static`, per declared target.
+      promQL: |
+        max by (resource, version) (
+          label_replace(
+            label_replace(
+              pg_static{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"},
+              "resource", "$1", "target", "(.+)"
+            ),
+            "version", "$1", "short_version", "(.+)"
+          )
+        )

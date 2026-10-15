@@ -65,6 +65,8 @@ pub enum Placeholder {
     ConsensusCloudsql,
     /// The same for Azure Database for PostgreSQL flexible servers.
     ConsensusAzurePostgres,
+    /// The same for the postgres-exporter's targets, by target name.
+    ConsensusPostgres,
 }
 
 impl Placeholder {
@@ -79,6 +81,7 @@ impl Placeholder {
         Placeholder::ExcludedNamespaces,
         Placeholder::OperatorNamespaces,
         Placeholder::ConsensusCloudsql,
+        Placeholder::ConsensusPostgres,
         Placeholder::CoreWorkloads,
         Placeholder::ConsensusRds,
         Placeholder::SqlPrefix,
@@ -103,6 +106,7 @@ impl Placeholder {
             Placeholder::ConsensusRds => "__mzmon_consensus_rds__",
             Placeholder::ConsensusCloudsql => "__mzmon_consensus_cloudsql__",
             Placeholder::ConsensusAzurePostgres => "__mzmon_consensus_azure_postgres__",
+            Placeholder::ConsensusPostgres => "__mzmon_consensus_postgres__",
         }
     }
 
@@ -222,6 +226,10 @@ pub fn alerting_context(
         (
             "consensusAzurePostgresResources",
             Placeholder::ConsensusAzurePostgres.token().to_string(),
+        ),
+        (
+            "consensusPostgresResources",
+            Placeholder::ConsensusPostgres.token().to_string(),
         ),
     ]
     .into_iter()

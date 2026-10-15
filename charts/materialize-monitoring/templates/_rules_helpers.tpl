@@ -134,21 +134,26 @@ Usage:
     {{- if dig "azure" "enabled" false $provider }}
       {{- $caps = append $caps "azure-monitor" }}
     {{- end }}
+    {{- if include "mzmon.postgresExporter.enabled" $ }}
+      {{- $caps = append $caps "postgres-exporter" }}
+    {{- end }}
   {{- end }}
   {{- $caps | toYaml }}
 {{- end }}
 
 {{- /*
 The flavors `externalDependencies.consensus` accepts, as a dict of flavor to
-the placeholder its resources fill and the provider pull that watches them:
-`values` is the pull's key under `pipeline.metrics.provider`, and `list` the
-path to its resource list below that.
+the placeholder its resources fill and what watches them. A provider flavor
+names its pull: `values` is the pull's key under `pipeline.metrics.provider`,
+and `list` the path to its resource list below that. `postgres` is watched by
+the postgres-exporter instead, and names no pull.
 */}}
 {{- define "mzmon.externalDependencies.consensusFlavors" }}
   {{- dict
       "rds" ( dict "token" "__mzmon_consensus_rds__" "values" "cloudwatch" "list" ( list "rds" "instances" ) )
       "cloudsql" ( dict "token" "__mzmon_consensus_cloudsql__" "values" "gcp" "list" ( list "cloudSql" "instances" ) )
       "azure-postgres" ( dict "token" "__mzmon_consensus_azure_postgres__" "values" "azure" "list" ( list "postgres" "servers" ) )
+      "postgres" ( dict "token" "__mzmon_consensus_postgres__" )
     | toYaml }}
 {{- end }}
 
@@ -578,7 +583,7 @@ Validation for the rules surface.
             {{- $errors = append $errors ( printf "externalDependencies.consensus[%d].flavor is %s; it is one of %s." $i ( toJson $entry.flavor ) ( join ", " $flavorNames ) ) }}
           {{- end }}
           {{- if not ( and ( kindIs "string" $entry.resourceId ) ( regexMatch "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$" ( toString $entry.resourceId ) ) ) }}
-            {{- $errors = append $errors ( printf "externalDependencies.consensus[%d].resourceId is %s; it is the provider's name for the database, which is letters, digits and hyphens." $i ( toJson $entry.resourceId ) ) }}
+            {{- $errors = append $errors ( printf "externalDependencies.consensus[%d].resourceId is %s; it is the provider's name for the database, or the postgres-exporter target's, which is letters, digits and hyphens." $i ( toJson $entry.resourceId ) ) }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -698,24 +703,45 @@ Validation for the rules surface.
     {{- $provider := dig "metrics" "provider" dict ( $.Values.pipeline | default dict ) }}
     {{- range $flavor, $ids := $consensus }}
       {{- $spec := get $flavors $flavor }}
-      {{- $pull := get $provider $spec.values | default dict }}
-      {{- $listPath := printf "pipeline.metrics.provider.%s.%s" $spec.values ( join "." $spec.list ) }}
-      {{- $watched := list }}
-      {{- range ( dig ( index $spec.list 0 ) ( index $spec.list 1 ) ( list ) $pull ) }}
-        {{- $watched = append $watched ( lower ( toString . ) ) }}
-      {{- end }}
-      {{- if $ids }}
-        {{- if not $pull.enabled }}
-          {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the %s database %s, but pipeline.metrics.provider.%s is off, so nothing records its ext:consensus_* series beyond what Materialize itself reports." $flavor ( join ", " $ids ) $spec.values ) }}
-        {{- else }}
-          {{- range $id := $ids }}
-            {{- if not ( has ( lower $id ) $watched ) }}
-              {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the %s database %q, which %s does not list, so the pull does not watch it and its ext:consensus_* series are absent." $flavor $id $listPath ) }}
+      {{- if eq $flavor "postgres" }}
+        {{- $exporterOn := include "mzmon.postgresExporter.enabled" $ }}
+        {{- $targetNames := list }}
+        {{- range ( include "mzmon.postgresExporter.targets" $ | fromYamlArray ) }}
+          {{- $targetNames = append $targetNames ( lower .name ) }}
+        {{- end }}
+        {{- if $ids }}
+          {{- if not $exporterOn }}
+            {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the postgres database %s, but postgres-exporter is off, so nothing records its ext:consensus_* series beyond what Materialize itself reports." ( join ", " $ids ) ) }}
+          {{- else }}
+            {{- range $id := $ids }}
+              {{- if not ( has ( lower $id ) $targetNames ) }}
+                {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the postgres database %q, which postgres-exporter.targets does not list by name, so the exporter does not watch it and its ext:consensus_* series are absent." $id ) }}
+              {{- end }}
             {{- end }}
           {{- end }}
+        {{- else if and $exporterOn $targetNames }}
+          {{- $warnings = append $warnings ( printf "postgres-exporter.targets watches %s, but externalDependencies.consensus names none of them as the metadata database, so the postgres adapter records no ext:consensus_* series. Name the metadata database's target there with flavor: postgres, and leave out any other, such as Grafana's." ( join ", " $targetNames ) ) }}
         {{- end }}
-      {{- else if and $pull.enabled $watched }}
-        {{- $warnings = append $warnings ( printf "%s watches %s, but externalDependencies.consensus names none of them as the metadata database, so the %s adapter records no ext:consensus_* series. Name the metadata database there, and leave out any other, such as Grafana's." $listPath ( join ", " $watched ) $flavor ) }}
+      {{- else }}
+        {{- $pull := get $provider $spec.values | default dict }}
+        {{- $listPath := printf "pipeline.metrics.provider.%s.%s" $spec.values ( join "." $spec.list ) }}
+        {{- $watched := list }}
+        {{- range ( dig ( index $spec.list 0 ) ( index $spec.list 1 ) ( list ) $pull ) }}
+          {{- $watched = append $watched ( lower ( toString . ) ) }}
+        {{- end }}
+        {{- if $ids }}
+          {{- if not $pull.enabled }}
+            {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the %s database %s, but pipeline.metrics.provider.%s is off, so nothing records its ext:consensus_* series beyond what Materialize itself reports." $flavor ( join ", " $ids ) $spec.values ) }}
+          {{- else }}
+            {{- range $id := $ids }}
+              {{- if not ( has ( lower $id ) $watched ) }}
+                {{- $warnings = append $warnings ( printf "externalDependencies.consensus names the %s database %q, which %s does not list, so the pull does not watch it and its ext:consensus_* series are absent." $flavor $id $listPath ) }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- else if and $pull.enabled $watched }}
+          {{- $warnings = append $warnings ( printf "%s watches %s, but externalDependencies.consensus names none of them as the metadata database, so the %s adapter records no ext:consensus_* series. Name the metadata database there, and leave out any other, such as Grafana's." $listPath ( join ", " $watched ) $flavor ) }}
+        {{- end }}
       {{- end }}
     {{- end }}
   {{- end }}

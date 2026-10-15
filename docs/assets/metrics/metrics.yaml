@@ -1207,6 +1207,7 @@
   - namespace
   - network_component
   - pod
+  - target
   name: up
   usage:
   - infra.alloy.health.agents_missing
@@ -1224,6 +1225,7 @@
   - infra.monitoring.clusterd_metrics_missing
   - infra.monitoring.critical_metrics_missing
   - infra.net.overview.dataplane
+  - infra.postgres.health.not_reachable
   - infra.thanos.health.components_down
   - infra.thanos.health.restarts
   - infra.thanos.health.up
@@ -4118,6 +4120,178 @@
   name: operator_status_condition_count
   usage:
   - infra.karpenter.conditions
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_database_size_bytes
+  usage:
+  - ext.consensus.postgres.database_bytes
+  - infra.postgres.storage.database_size
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_database_wraparound_age_datfrozenxid_seconds
+  usage:
+  - ext.consensus.postgres.xid_used_ratio
+  - infra.postgres.health.xid_used
+  - infra.postgres.storage.xid_age
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_locks_count
+  usage:
+  - infra.postgres.connections.locks
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_settings_max_connections
+  usage:
+  - ext.consensus.postgres.connections_used_ratio
+  - infra.postgres.connections.by_database
+  - infra.postgres.health.connections_used
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_settings_reserved_connections
+  usage:
+  - ext.consensus.postgres.connections_used_ratio
+  - infra.postgres.connections.by_database
+  - infra.postgres.health.connections_used
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_settings_superuser_reserved_connections
+  usage:
+  - ext.consensus.postgres.connections_used_ratio
+  - infra.postgres.connections.by_database
+  - infra.postgres.health.connections_used
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_stat_activity_autovacuum_timestamp_seconds
+  usage:
+  - infra.postgres.storage.autovacuum_running
+- importance: extended
+  labels:
+  - backend_type
+  - job
+  - target
+  name: pg_stat_activity_count
+  usage:
+  - ext.consensus.postgres.connections_used_ratio
+  - infra.postgres.connections.by_database
+  - infra.postgres.connections.by_state
+  - infra.postgres.health.connections_used
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_stat_activity_max_tx_duration
+  usage:
+  - infra.postgres.connections.oldest_transaction
+  - infra.postgres.health.oldest_transaction
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_blks_hit
+  usage:
+  - infra.postgres.activity.cache_hit
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_blks_read
+  usage:
+  - infra.postgres.activity.cache_hit
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_tup_deleted
+  usage:
+  - infra.postgres.activity.rows
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_tup_inserted
+  usage:
+  - infra.postgres.activity.rows
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_tup_updated
+  usage:
+  - infra.postgres.activity.rows
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_xact_commit
+  usage:
+  - infra.postgres.activity.transactions
+- importance: extended
+  labels:
+  - datname
+  - job
+  - target
+  name: pg_stat_database_xact_rollback
+  usage:
+  - infra.postgres.activity.transactions
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_stat_user_tables_last_autovacuum
+  usage:
+  - infra.postgres.storage.since_autovacuum
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_stat_user_tables_n_dead_tup
+  usage:
+  - infra.postgres.health.dead_tuples
+  - infra.postgres.storage.dead_tuples
+  - infra.postgres.storage.since_autovacuum
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_stat_user_tables_n_live_tup
+  usage:
+  - infra.postgres.health.dead_tuples
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_static
+  usage:
+  - ext.consensus.postgres.version_info
+  - infra.postgres.health.version
+- importance: extended
+  labels:
+  - job
+  - target
+  name: pg_up
+  usage:
+  - ext.consensus.postgres.up
+  - infra.postgres.health.not_reachable
 - importance: extended
   labels:
   - app

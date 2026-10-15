@@ -191,6 +191,10 @@ Usage:
   {{- $errors = concat $errors $res.errors | default list }}
   {{- $warnings = concat $warnings $res.warnings | default list }}
 
+  {{- $res = include "mzmon.postgresExporter.validate" $ | fromYaml }}
+  {{- $errors = concat $errors $res.errors | default list }}
+  {{- $warnings = concat $warnings $res.warnings | default list }}
+
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}
 {{- end }}

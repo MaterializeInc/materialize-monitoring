@@ -98,3 +98,69 @@ groups:
       ) / 2147483648
     labels:
       flavor: azure-postgres
+- name: ext_consensus_postgres
+  rules:
+  - record: ext:consensus_up
+    expr: |-
+      max by (resource) (
+        label_replace(
+          pg_up{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"},
+          "resource", "$1", "target", "(.+)"
+        )
+      )
+    labels:
+      flavor: postgres
+  - record: ext:consensus_connections_used_ratio
+    expr: |-
+      max by (resource) (
+        label_replace(
+          sum by (target) (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__", backend_type="client backend"}))
+          / on (target) (
+              max by (target) (pg_settings_max_connections{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"})
+            - on (target) max by (target) (pg_settings_superuser_reserved_connections{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"})
+            - on (target) (
+                max by (target) (pg_settings_reserved_connections{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"})
+                or 0 * max by (target) (pg_settings_max_connections{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"})
+              )
+          ),
+          "resource", "$1", "target", "(.+)"
+        )
+      )
+    labels:
+      flavor: postgres
+  - record: ext:consensus_xid_used_ratio
+    expr: |-
+      max by (resource) (
+        label_replace(
+          pg_database_wraparound_age_datfrozenxid_seconds{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"},
+          "resource", "$1", "target", "(.+)"
+        )
+      ) / 2147483648
+    labels:
+      flavor: postgres
+  - record: ext:consensus_database_bytes
+    expr: |-
+      max by (resource, database) (
+        label_replace(
+          label_replace(
+            pg_database_size_bytes{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"},
+            "resource", "$1", "target", "(.+)"
+          ),
+          "database", "$1", "datname", "(.+)"
+        )
+      )
+    labels:
+      flavor: postgres
+  - record: ext:consensus_version_info
+    expr: |-
+      max by (resource, version) (
+        label_replace(
+          label_replace(
+            pg_static{job="postgres-exporter", target=~"(?i)__mzmon_consensus_postgres__"},
+            "resource", "$1", "target", "(.+)"
+          ),
+          "version", "$1", "short_version", "(.+)"
+        )
+      )
+    labels:
+      flavor: postgres

@@ -1521,7 +1521,7 @@ mod tests {
             alert(
                 "consensus-storage",
                 LABELS,
-                r#"aws_rds_free_storage_space_minimum{dimension_DBInstanceIdentifier=~"%%{consensusRdsResources}"} < 1 or stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id=~".+:(%%{consensusCloudsqlResources})"} == 0 or azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName=~"%%{consensusAzurePostgresResources}"} == 0"#,
+                r#"aws_rds_free_storage_space_minimum{dimension_DBInstanceIdentifier=~"%%{consensusRdsResources}"} < 1 or stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{database_id=~".+:(%%{consensusCloudsqlResources})"} == 0 or azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName=~"%%{consensusAzurePostgresResources}"} == 0 or pg_up{target=~"%%{consensusPostgresResources}"} == 0"#,
                 ""
             ),
         );

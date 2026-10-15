@@ -189,6 +189,12 @@ metrics-server:
   image:
     repository: "<REGISTRY>/registry-k8s-io/metrics-server/metrics-server"
 
+# --- External dependencies ---------------------------------------------------
+# Inert unless `tags.postgres-exporter` is on.
+postgres-exporter:
+  image:
+    registry: *quay
+
 # --- The uninstall hook ------------------------------------------------------
 # The `pre-delete` Job that clears grafana-operator's finalizers. Worth
 # confirming by hand: it runs at `pre-delete`, so an image it cannot pull does

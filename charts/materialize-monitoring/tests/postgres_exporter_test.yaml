@@ -1,0 +1,421 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# The postgres-exporter subchart and the scrape this chart renders for it.
+#
+# What these lock down is silent when wrong: an exporter that runs and watches
+# nothing, a target whose `up` cannot be told from another's, or a credential
+# path that never reaches the pod all leave a healthy Deployment and an empty
+# dashboard section.
+suite: postgres-exporter subchart
+release:
+  name: test-mon
+  namespace: test-monitoring
+set:
+  tags.default: false
+  tags.alloy-gateway: true
+  pipeline.metrics.gateway.destination.prometheusRemoteWrite.thanos.enabled: false
+  pipeline.logging.gateway.destination.loki.enabled: false
+templates:
+  # The Deployment hashes these two into its pod annotations, so they are
+  # loaded beside it.
+  - ../charts/postgres-exporter/templates/configmap.yaml
+  - ../charts/postgres-exporter/templates/secrets.yaml
+  - ../charts/postgres-exporter/templates/deployment.yaml
+  - ../charts/postgres-exporter/templates/role.yaml
+  - templates/scrapers/monitor-postgres-exporter.yaml
+  - templates/validate.yaml
+  - templates/NOTES.txt
+tests:
+  # --- enablement ------------------------------------------------------------
+  # It watches databases someone names, with credentials they create, so the
+  # recommended stack must not turn it on. A disabled subchart's templates do
+  # not exist to assert on, so the scrape stands in: it renders exactly where
+  # the subchart does, and a target is listed so only enablement decides.
+  - it: is off under the default tag
+    set:
+      tags.default: true
+      loki.enabled: false
+      thanos.enabled: false
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: is on with its own tag
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: postgres-exporter
+          namespace: test-monitoring
+
+  - it: is off with the circuit breaker, whatever the tag says
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.enabled: false
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- the workload ----------------------------------------------------------
+  - it: pins the image here rather than inheriting the subchart's appVersion
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^quay\.io/prometheuscommunity/postgres-exporter:v\d+\.\d+\.\d+$'
+
+  # The wraparound collector is off upstream, and it is the whole
+  # transaction-ID signal.
+  - it: turns on the transaction-ID collector
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --collector.database_wraparound
+
+  # `pg_database_size_bytes` is only useful unscoped: a neighbour filling the
+  # instance is what it attributes.
+  - it: does not exclude any database from the size collector
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --no-collector.database
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: exclude-databases
+
+  # An empty URI is what tells the exporter it has no single target of its own.
+  - it: runs in multi-target mode with no data source of its own
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DATA_SOURCE_URI_FILE
+            value: /dev/null
+
+  - it: reads its credentials from the Secret the operator creates
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: postgres-exporter
+            secret:
+              defaultMode: 420
+              secretName: postgres-exporter
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: postgres-exporter
+            mountPath: /etc/postgres_exporter.yml
+            subPath: postgres_exporter.yml
+
+  - it: runs on the scalable priority class
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: monitoring-scalable
+
+  - it: grants no Kubernetes API access
+    set:
+      tags.postgres-exporter: true
+    template: ../charts/postgres-exporter/templates/role.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- the scrape ------------------------------------------------------------
+  - it: renders no scrape until a target is listed
+    set:
+      tags.postgres-exporter: true
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: probes each target with its own address and credentials
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - name: consensus
+          host: db.example.com
+          database: materialize
+        - name: grafana
+          host: grafana-db.example.com
+          port: 6432
+          database: grafana
+          authModule: shared
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - isKind:
+          of: ServiceMonitor
+      - equal:
+          path: metadata.namespace
+          value: test-monitoring
+      - lengthEqual:
+          path: spec.endpoints
+          count: 2
+      - equal:
+          path: spec.endpoints[0].path
+          value: /probe
+      - equal:
+          path: spec.endpoints[0].params
+          value:
+            target: ["db.example.com:5432/materialize"]
+            auth_module: ["consensus"]
+      - equal:
+          path: spec.endpoints[1].params
+          value:
+            target: ["grafana-db.example.com:6432/grafana"]
+            auth_module: ["shared"]
+
+  - it: connects to the postgres database when none is named
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].params.target
+          value: ["db.example.com:5432/postgres"]
+
+  # Relabelled before the scrape, so `up` carries them too; the subchart's own
+  # monitor labels only the samples, which leaves every target's `up` alike.
+  - it: names each target on every series, up included
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].relabelings
+          value:
+            - action: replace
+              targetLabel: job
+              replacement: postgres-exporter
+            - action: replace
+              targetLabel: target
+              replacement: consensus
+            - action: replace
+              targetLabel: instance
+              replacement: db.example.com:5432
+      - notExists:
+          path: spec.endpoints[0].metricRelabelings
+
+  - it: selects only this release's exporter
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: postgres-exporter
+            app.kubernetes.io/instance: test-mon
+
+  - it: renders no scrape while the exporter is off
+    set:
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- validation ------------------------------------------------------------
+  # The name lands in a label and inside a PromQL string.
+  - it: rejects a target name that is not letters, digits and hyphens
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: 'my"db', host: db.example.com}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].name is "my\\"db"'
+
+  - it: rejects two targets with one name
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: a.example.com}
+        - {name: consensus, host: b.example.com}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[1\].name "consensus" is used by an earlier target'
+
+  # The recording rules match target names with `(?i)`, so declaring one of
+  # these as the metadata database would record both.
+  - it: rejects two targets whose names differ only in case
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: Consensus, host: a.example.com}
+        - {name: consensus, host: b.example.com}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[1\].name "consensus" is used by an earlier target, ignoring case'
+
+  # A falsy value is a mistake, not a request for the default; letting it
+  # through would quietly connect somewhere else.
+  - it: rejects a port of zero rather than defaulting it
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, port: 0}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].port is 0; it is a port number'
+
+  - it: rejects a false database rather than defaulting it
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, database: false}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].database is false; it is a name'
+
+  - it: rejects an empty auth module rather than defaulting it
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, authModule: ""}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].authModule is ""; it is a name'
+
+  # `null` is how Helm records a cleared value, so it means "use the default".
+  - it: takes the defaults for null optional fields
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, port: null, database: null, authModule: null}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].params
+          value:
+            target: ["db.example.com:5432/postgres"]
+            auth_module: ["consensus"]
+
+  - it: rejects a target with no host
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].host is null'
+
+  - it: rejects a field a target does not have
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, password: hunter2}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].password is not a field'
+
+  - it: rejects a port that is not a port
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, port: "5432"}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].port is "5432"; it is a port number'
+
+  # The database lands in the probe's target string, between `/` and `?`.
+  - it: rejects a database name that would break the probe URL
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, database: "materialize?sslmode=disable"}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].database is .*; it is a name'
+
+  - it: rejects running without the credentials Secret
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.config.existingSecret.enabled: false
+      postgres-exporter.config.datasource.password: unused
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.config.existingSecret.enabled is off'
+
+  - it: accepts a full target list
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, port: 5432, database: materialize, authModule: consensus}
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}
+
+  - it: warns when it runs with nothing to watch
+    set:
+      tags.postgres-exporter: true
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'postgres-exporter is enabled with no targets'
+
+  - it: warns when targets are listed and the exporter is off
+    set:
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'postgres-exporter.targets lists databases, but postgres-exporter is not enabled'
+
+  - it: warns when nothing scrapes it
+    set:
+      tags.alloy-gateway: false
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com}
+    template: templates/NOTES.txt
+    asserts:
+      - matchRegexRaw:
+          pattern: 'the alloy-gateway that scrapes it is not'
