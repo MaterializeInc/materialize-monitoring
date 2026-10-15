@@ -345,6 +345,9 @@ depends_on = [
   # pod does is not an error anywhere — the gateway simply starts with empty
   # credentials and every export is rejected until something restarts it.
   kubernetes_secret.alloy_gateway_env,
+  # Mounted without `optional`, so a Secret that lands after the pod leaves it
+  # in ContainerCreating, and the release waits on it until the timeout.
+  kubernetes_secret.postgres_exporter,
 ]
 }
 

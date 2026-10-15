@@ -43,7 +43,7 @@ pub fn database_enabled(ctx: &Ctx) -> bool {
 ///
 /// False is the passwordless shape — a Cloud SQL Auth Proxy sidecar, say — which
 /// has no Secret, no `$__file{}` reference and no mount to check.
-fn password_secret_expected(ctx: &Ctx) -> bool {
+pub(crate) fn password_secret_expected(ctx: &Ctx) -> bool {
     match ctx
         .declared("grafana_database_manage_password_secret")
         .and_then(Value::as_bool)

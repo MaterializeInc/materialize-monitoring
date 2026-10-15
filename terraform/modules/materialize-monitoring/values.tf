@@ -494,6 +494,10 @@ locals {
     # writes `rules` or `alerting`.
     local.alert_rules_document,
     local.alerting_document,
+    # Nothing above writes `postgres-exporter`, `tags.postgres-exporter` or
+    # `externalDependencies`; see postgres_exporter.tf.
+    local.postgres_exporter_document,
+    local.consensus_document,
   )
 
   # The caller stays last, so `additional_values` still overrides everything —

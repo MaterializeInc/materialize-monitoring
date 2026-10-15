@@ -30,6 +30,7 @@ pub mod internal_tls;
 pub mod kube_state_metrics;
 pub mod node_exporter;
 pub mod object_storage;
+pub mod postgres_exporter;
 pub mod scheduling;
 pub mod storage_class;
 pub mod workload_identity;

@@ -44,6 +44,7 @@ locals {
     "alertmanager",
     "kube-state-metrics",
     "metrics-server",
+    "postgres-exporter",
   ]
 
   # Subcharts taking them one key down. `thanos.global` covers every Thanos
