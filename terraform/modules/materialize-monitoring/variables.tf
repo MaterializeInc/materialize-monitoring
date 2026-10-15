@@ -998,6 +998,131 @@ variable "grafana_database_manage_password_secret" {
 }
 
 # ==============================================================================
+# External dependencies
+# ==============================================================================
+# The databases a Materialize deployment cannot run without: which of them is
+# the metadata (consensus) database, and the postgres-exporter that reads them
+# from the inside. A provider pull is configured through `additional_values`;
+# what it watches is named here only so the recording rules can tell the
+# metadata database from Grafana's.
+
+# Keep this type expression free of blank lines and comments: terraform-docs
+# renders it verbatim into the README's inputs table.
+variable "metadata_databases" {
+  description = <<-EOT
+    The metadata databases a cloud provider pull watches, by flavor and the provider's name for
+    them. Each becomes an `externalDependencies.consensus` entry, so the `ext:consensus_*`
+    recording rules read that database and no other the pull also watches, such as Grafana's.
+
+    `flavor` is `rds` (the DB instance identifier), `cloudsql` (the instance name, without the
+    project) or `azure-postgres` (the flexible server name). A postgres-exporter target is declared
+    with its own `metadata_database` flag instead.
+  EOT
+  type = list(object({
+    flavor      = string
+    resource_id = string
+  }))
+  default  = []
+  nullable = false
+
+  validation {
+    condition     = alltrue([for d in var.metadata_databases : contains(["rds", "cloudsql", "azure-postgres"], d.flavor)])
+    error_message = "metadata_databases[*].flavor must be one of rds, cloudsql, azure-postgres. Declare a postgres-exporter target with its metadata_database flag."
+  }
+
+  validation {
+    condition     = alltrue([for d in var.metadata_databases : can(regex("^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$", d.resource_id))])
+    error_message = "metadata_databases[*].resource_id is the provider's name for the database: letters, digits and hyphens."
+  }
+}
+
+variable "enable_postgres_exporter" {
+  description = <<-EOT
+    Run the chart's postgres-exporter, which reads each PostgreSQL database it watches from the
+    inside: connections against the ceiling, transaction-ID age, vacuum, and the size of every
+    database on the instance.
+
+    It watches every `postgres_exporter_targets` entry, and Grafana's own database whenever this
+    module configures one with a password, as a target named `grafana`. Grafana's connects to the
+    `postgres` database rather than `grafana_database_name`, because Grafana's own tables would add
+    thousands of per-table series that no panel reads.
+
+    Each target's credentials go into a Secret this module creates, `postgres-exporter`, never into
+    the Helm values. The role each target connects as needs `pg_monitor` to see other roles'
+    sessions; see the PostgreSQL exporter page.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+# Keep this type expression free of blank lines and comments: terraform-docs
+# renders it verbatim into the README's inputs table.
+variable "postgres_exporter_targets" {
+  description = <<-EOT
+    Databases for the postgres-exporter to watch, beside Grafana's. Ignored unless
+    `enable_postgres_exporter` is true.
+
+    `name` becomes the target's `target` label and keys its password in
+    `postgres_exporter_passwords`. `database` is the one the connection opens, and per-table
+    statistics come from it alone; everything instance-wide covers every database on the
+    instance. Point it at the metadata database's own database (`materialize` in the shipped
+    examples), and leave it at `postgres` for anything whose tables you do not need.
+
+    `metadata_database = true` declares the target a metadata database, which is what the
+    `postgres` recording-rule adapter reads.
+  EOT
+  type = list(object({
+    name              = string
+    host              = string
+    port              = optional(number, 5432)
+    database          = optional(string, "postgres")
+    user              = string
+    ssl_mode          = optional(string, "require")
+    metadata_database = optional(bool, false)
+  }))
+  default  = []
+  nullable = false
+
+  validation {
+    condition     = alltrue([for t in var.postgres_exporter_targets : can(regex("^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$", t.name))])
+    error_message = "postgres_exporter_targets[*].name is letters, digits and hyphens: it becomes a label and lands inside the recording rules' PromQL."
+  }
+
+  validation {
+    condition     = length(distinct([for t in var.postgres_exporter_targets : lower(t.name)])) == length(var.postgres_exporter_targets)
+    error_message = "postgres_exporter_targets[*].name must be unique, ignoring case: the recording rules match names case-insensitively."
+  }
+
+  validation {
+    condition     = alltrue([for t in var.postgres_exporter_targets : t.port >= 1 && t.port <= 65535])
+    error_message = "postgres_exporter_targets[*].port must be a port number."
+  }
+
+  validation {
+    condition     = alltrue([for t in var.postgres_exporter_targets : can(regex("^[^/?#&=\\s]+$", t.database))])
+    error_message = "postgres_exporter_targets[*].database is a database name, and may not contain whitespace or any of / ? # & =."
+  }
+
+  validation {
+    condition     = alltrue([for t in var.postgres_exporter_targets : contains(["disable", "allow", "prefer", "require", "verify-ca", "verify-full"], t.ssl_mode)])
+    error_message = "postgres_exporter_targets[*].ssl_mode must be a libpq sslmode: disable, allow, prefer, require, verify-ca or verify-full."
+  }
+}
+
+variable "postgres_exporter_passwords" {
+  description = <<-EOT
+    The password for each `postgres_exporter_targets` entry, keyed by its `name`. Written into the
+    exporter's Secret and nowhere else. Every target needs one: the exporter refuses a target whose
+    credentials have no password. Grafana's comes from `grafana_database_password`.
+  EOT
+  type        = map(string)
+  default     = {}
+  nullable    = false
+  sensitive   = true
+}
+
+# ==============================================================================
 # Escape hatch
 # ==============================================================================
 

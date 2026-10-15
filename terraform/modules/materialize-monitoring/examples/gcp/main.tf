@@ -61,6 +61,26 @@ module "monitoring" {
   grafana_database_host     = "grafana-db.example.internal"
   grafana_database_password = "example-not-a-real-password"
 
+  # The postgres-exporter, watching the metadata database beside Grafana's, which
+  # it adds on its own. Set so the render check can assert the targets reach the
+  # scrape, the passwords stay in the Secret, and the declared metadata databases
+  # reach the recording rules.
+  enable_postgres_exporter = true
+  postgres_exporter_targets = [{
+    name              = "consensus"
+    host              = "10.0.0.3"
+    database          = "materialize"
+    user              = "materialize"
+    metadata_database = true
+  }]
+  postgres_exporter_passwords = {
+    consensus = "example-not-a-real-metadata-password"
+  }
+  metadata_databases = [{
+    flavor      = "cloudsql"
+    resource_id = "example-metadata-db"
+  }]
+
   # No `region` or `endpoint`: those are S3-only fields, and Thanos rejects them
   # in a GCS objstore config.
   object_storage = {

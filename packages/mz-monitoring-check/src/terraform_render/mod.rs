@@ -323,6 +323,23 @@ const CHECKS: &[Check] = &[
         applies: checks::grafana::database_enabled,
         run: checks::grafana::database,
     },
+    // Gated on the declared inputs, never on the planned Secret or the rendered
+    // scrape, for the reason the gateway credentials are.
+    Check {
+        name: "postgres_exporter::targets_reach_the_scrape",
+        applies: checks::postgres_exporter::enabled,
+        run: checks::postgres_exporter::targets_reach_the_scrape,
+    },
+    Check {
+        name: "postgres_exporter::passwords_stay_in_the_secret",
+        applies: checks::postgres_exporter::enabled,
+        run: checks::postgres_exporter::passwords_stay_in_the_secret,
+    },
+    Check {
+        name: "postgres_exporter::metadata_databases_reach_the_rules",
+        applies: checks::postgres_exporter::declares_metadata,
+        run: checks::postgres_exporter::metadata_databases_reach_the_rules,
+    },
     Check {
         name: "alerting::receivers",
         applies: |ctx| ctx.declared_at("alerting", "receivers").is_some_and(truthy),
