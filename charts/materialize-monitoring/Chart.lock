@@ -13,7 +13,7 @@ dependencies:
   version: 0.47.2
 - name: grafana
   repository: oci://ghcr.io/grafana-community/helm-charts
-  version: 13.6.0
+  version: 14.0.0
 - name: grafana-operator
   repository: oci://ghcr.io/grafana/helm-charts
   version: 5.25.0
@@ -32,5 +32,5 @@ dependencies:
 - name: prometheus-postgres-exporter
   repository: oci://ghcr.io/prometheus-community/charts
   version: 8.2.0
-digest: sha256:4ad520bf97ac4b2665a8adb8637521418592ec341c749a6441577acc9ed1e7cb
-generated: "2026-10-14T18:14:33.644974-04:00"
+digest: sha256:8f39bb77b590a10296ecc4d229263f615e7e81f9617e61b0890dd1938cce6fa7
+generated: "2026-10-15T16:33:35.957393888Z"
