@@ -125,8 +125,22 @@ locals {
     }
   })] : []
 
+  # Unmarked for the reason the targets are: a wrapper building these from an
+  # object that also holds a sensitive field hands them over marked, and a
+  # provider's name for a database is not a secret.
+  metadata_databases_marked = [
+    for d in var.metadata_databases : {
+      flavor     = try(nonsensitive(d.flavor), d.flavor)
+      resourceId = try(nonsensitive(d.resource_id), d.resource_id)
+    }
+  ]
+  metadata_databases = try(
+    nonsensitive(local.metadata_databases_marked),
+    local.metadata_databases_marked,
+  )
+
   consensus_entries = concat(
-    [for d in var.metadata_databases : { flavor = d.flavor, resourceId = d.resource_id }],
+    local.metadata_databases,
     [for t in local.postgres_exporter_public_targets : { flavor = "postgres", resourceId = t.name } if t.metadata_database],
   )
 
