@@ -152,7 +152,8 @@
     {
       "description": "Crates automerge on every update type, including the 0.x minors the rule above skips and the majors the top-level `major` block holds back. Cargo treats both as breaking, and the build is what catches a break: an API change fails to compile, and a behavior change shows up as drift in the renders CI regenerates and diffs (dashboards, pipelines, rules). That is only a gate if the merge waits for those checks, which the `platformAutomerge` rule above makes sure of. Covers Cargo.lock maintenance too.",
       "matchManagers": ["cargo"],
-      "automerge": true
+      "automerge": true,
+      "platformAutomerge": false
     },
     {
       "description": "One lock file maintenance PR per manager rather than one for the whole repository. A combined refresh stalls on whichever half breaks: a uv.lock refresh that pulled in a ruff with a new rule held a clean Cargo.lock refresh unmerged with it for six weeks. The branch is keyed on the manager, so Cargo.lock (cargo), uv.lock (pep621) and the Chart.lock files (helmv3) land separately.",
