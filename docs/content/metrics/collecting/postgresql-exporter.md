@@ -154,7 +154,7 @@ A database a cloud provider pull watches is declared in `metadata_databases` ins
 The module rolls the exporter when a password changes.
 
 The per-cloud wrappers in `materialize-terraform-self-managed` connect as the users they already hold: the metadata database's administrator and Grafana's database owner.
-On RDS and Cloud SQL, both are members of `pg_monitor` through `rds_superuser` and `cloudsqlsuperuser`, so the exporter sees every session.
+On RDS, Cloud SQL, and Azure Database for PostgreSQL, both hold `pg_monitor` through the service's administrator role (`rds_superuser`, `cloudsqlsuperuser`, or `azure_pg_admin`), so the exporter sees every session.
 Both can also write.
 For a role that can only read statistics, create `mzmon_exporter` as described earlier, and pass it to the wrapper instead.
 
