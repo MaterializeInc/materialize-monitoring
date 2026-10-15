@@ -86,7 +86,7 @@ Those parameters render to a `__mzmon_*__` token that the chart replaces at inst
 | `infraNonessentialWorkloadList` | `__mzmon_nonessential_workloads__` | `rules.infraWorkloads.nonessential` |
 | `infraDaemonsetWorkloadList` | `__mzmon_daemonset_workloads__` | `rules.infraWorkloads.daemonset` |
 | `mzEnvironmentFilter` | `materialize_cloud_organization_name=~".+"` | nothing; a rule covers every environment |
-| `consensusRdsResources`, `consensusCloudsqlResources`, `consensusAzurePostgresResources` | `__mzmon_consensus_rds__` and so on, bare values | `externalDependencies.consensus`, per flavor; see [Install-time facts](/materialize-monitoring/preview/renovate-loki-18-x/reference/development/queries/recording-rules/#install-time-facts) |
+| `consensusRdsResources`, `consensusCloudsqlResources`, `consensusAzurePostgresResources`, `consensusPostgresResources` | `__mzmon_consensus_rds__` and so on, bare values | `externalDependencies.consensus`, per flavor; see [Install-time facts](/materialize-monitoring/preview/renovate-loki-18-x/reference/development/queries/recording-rules/#install-time-facts) |
 
 An empty namespace list or workload tier renders as `a^`, a regex that matches nothing, rather than as an empty string.
 
@@ -130,6 +130,7 @@ An alert reading one, such as `ext:consensus_up`, installs wherever any one of t
 |---|---|---|
 | Derived | `materialize`, `materialize-sql`, `materialize-operator`, `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` | This chart runs the component and collects its metrics |
 | Derived | `cloudwatch`, `cloud-monitoring`, `azure-monitor` | The gateway runs that provider pull, `pipeline.metrics.provider.{cloudwatch,gcp,azure}` |
+| Derived | `postgres-exporter` | The postgres-exporter subchart runs, `tags.postgres-exporter`, and the gateway scrapes it |
 | Explicit | `synthetic-uptime`, `external-uptime`, `feature-flags`, `frontegg-auth`, `memory-limiter`, `crdb-dedicated`, `cilium`, `coredns`, `cert-manager`, `kubelet-metrics`, `swap-nodes`, `egress-gateway` | An operator lists it in `rules.capabilities` |
 
 Adding a capability means adding it to the `Capability` enum, to the `capability` enum in `mzmon-query.schema.yaml`, and, for a derived one, to `mzmon.rules.derivedCapabilities` in the chart.

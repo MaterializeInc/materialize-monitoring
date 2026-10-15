@@ -46,6 +46,18 @@ like our bundled Thanos provider.
 
 
 <ul>
+    <li id="ALERTS">ALERTS
+        <details>
+            Used labels: alertname, alertstate
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.health.alert_history">infra.thanos.health.alert_history</a></li>
+                <li><a href="../common-queries#infra.thanos.health.alerts">infra.thanos.health.alerts</a></li>
+                <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="alloy_build_info">alloy_build_info
         <details>
             Used labels: app, namespace, pod
@@ -143,6 +155,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.karpenter.controller.cpu">infra.karpenter.controller.cpu</a></li>
                 <li><a href="../common-queries#infra.kubernetes.pods_high_cpu_ratio">infra.kubernetes.pods_high_cpu_ratio</a></li>
                 <li><a href="../common-queries#infra.kubernetes.vector_high_cpu_ratio">infra.kubernetes.vector_high_cpu_ratio</a></li>
+                <li><a href="../common-queries#infra.thanos.resources.cpu">infra.thanos.resources.cpu</a></li>
                 <li><a href="../common-queries#materialize.clusters.cpu_high">materialize.clusters.cpu_high</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_cpu">materialize.environmentd.high_cpu</a></li>
                 <li><a href="../common-queries#materialize.generations.cpu">materialize.generations.cpu</a></li>
@@ -211,6 +224,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.karpenter.controller.memory">infra.karpenter.controller.memory</a></li>
                 <li><a href="../common-queries#infra.kubernetes.memory_elevated">infra.kubernetes.memory_elevated</a></li>
                 <li><a href="../common-queries#infra.kubernetes.memory_high">infra.kubernetes.memory_high</a></li>
+                <li><a href="../common-queries#infra.thanos.resources.memory">infra.thanos.resources.memory</a></li>
                 <li><a href="../common-queries#materialize.environmentd.high_memory">materialize.environmentd.high_memory</a></li>
                 <li><a href="../common-queries#materialize.environmentd.memory_elevated">materialize.environmentd.memory_elevated</a></li>
                 <li><a href="../common-queries#materialize.generations.memory">materialize.generations.memory</a></li>
@@ -706,6 +720,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.kubernetes.oomkill_core_systems">infra.kubernetes.oomkill_core_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_important_systems">infra.kubernetes.oomkill_important_systems</a></li>
                 <li><a href="../common-queries#infra.kubernetes.oomkill_nonessential_systems">infra.kubernetes.oomkill_nonessential_systems</a></li>
+                <li><a href="../common-queries#infra.thanos.resources.terminations">infra.thanos.resources.terminations</a></li>
                 <li><a href="../common-queries#materialize.clusterd.swap_cluster_oom">materialize.clusterd.swap_cluster_oom</a></li>
                 <li><a href="../common-queries#materialize.clusters.replica_oomkilled">materialize.clusters.replica_oomkilled</a></li>
             </ul>
@@ -725,6 +740,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.kubernetes.pod_restart_rate_high_nonessential">infra.kubernetes.pod_restart_rate_high_nonessential</a></li>
                 <li><a href="../common-queries#infra.loki.health.restarts">infra.loki.health.restarts</a></li>
                 <li><a href="../common-queries#infra.nodes.pods.restarts">infra.nodes.pods.restarts</a></li>
+                <li><a href="../common-queries#infra.thanos.health.restarts">infra.thanos.health.restarts</a></li>
                 <li><a href="../common-queries#materialize.clusterd.error_kill">materialize.clusterd.error_kill</a></li>
                 <li><a href="../common-queries#materialize.clusterd.new_restarts_during_release">materialize.clusterd.new_restarts_during_release</a></li>
                 <li><a href="../common-queries#materialize.clusterd.not_receiving_commands">materialize.clusterd.not_receiving_commands</a></li>
@@ -1611,35 +1627,40 @@ like our bundled Thanos provider.
     </li>
     <li id="prometheus_remote_storage_highest_timestamp_in_seconds">prometheus_remote_storage_highest_timestamp_in_seconds
         <details>
-            Used labels: app, namespace, pod
+            Used labels: app, container, namespace, pod
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+                <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag</a></li>
             </ul>
         </details>
     </li>
     <li id="prometheus_remote_storage_queue_highest_sent_timestamp_seconds">prometheus_remote_storage_queue_highest_sent_timestamp_seconds
         <details>
-            Used labels: app, namespace, pod
+            Used labels: app, container, namespace, pod
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+                <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag</a></li>
             </ul>
         </details>
     </li>
     <li id="prometheus_remote_storage_samples_failed_total">prometheus_remote_storage_samples_failed_total
         <details>
-            Used labels: app, namespace, pod, url
+            Used labels: app, container, namespace, pod, url
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.health.samples_lost">infra.alloy.health.samples_lost</a></li>
                 <li><a href="../common-queries#infra.alloy.ingest.remote_write.senders">infra.alloy.ingest.remote_write.senders</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.remote_write">infra.alloy.metric_pipeline.remote_write</a></li>
+                <li><a href="../common-queries#infra.thanos.rule.remote_write_failures">infra.thanos.rule.remote_write_failures</a></li>
             </ul>
         </details>
     </li>
@@ -1657,9 +1678,50 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="prometheus_rule_evaluation_failures_total">prometheus_rule_evaluation_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.health.rule_failures">infra.thanos.health.rule_failures</a></li>
+                <li><a href="../common-queries#infra.thanos.rule.failures">infra.thanos.rule.failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_rule_group_last_evaluation_timestamp_seconds">prometheus_rule_group_last_evaluation_timestamp_seconds
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_build_info">thanos_build_info
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.health.versions">infra.thanos.health.versions</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_halted">thanos_compact_halted
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.health.compactor_halted">infra.thanos.health.compactor_halted</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="up">up
         <details>
-            Used labels: app, app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component, pod
+            Used labels: app, app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component, pod, target
             <br />
             Example queries:
             <ul>
@@ -1678,6 +1740,13 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.net.overview.dataplane">infra.net.overview.dataplane</a></li>
+                <li><a href="../common-queries#infra.postgres.health.not_reachable">infra.postgres.health.not_reachable</a></li>
+                <li><a href="../common-queries#infra.thanos.health.components_down">infra.thanos.health.components_down</a></li>
+                <li><a href="../common-queries#infra.thanos.health.restarts">infra.thanos.health.restarts</a></li>
+                <li><a href="../common-queries#infra.thanos.health.up">infra.thanos.health.up</a></li>
+                <li><a href="../common-queries#infra.thanos.resources.cpu">infra.thanos.resources.cpu</a></li>
+                <li><a href="../common-queries#infra.thanos.resources.memory">infra.thanos.resources.memory</a></li>
+                <li><a href="../common-queries#infra.thanos.resources.terminations">infra.thanos.resources.terminations</a></li>
                 <li><a href="../common-queries#materialize.environmentd.down">materialize.environmentd.down</a></li>
                 <li><a href="../common-queries#materialize.environmentd.not_scraped">materialize.environmentd.not_scraped</a></li>
                 <li><a href="../common-queries#materialize.scraper.mzmon.clusterd">materialize.scraper.mzmon.clusterd</a></li>
@@ -4197,6 +4266,86 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="prometheus_tsdb_checkpoint_creations_failed_total">prometheus_tsdb_checkpoint_creations_failed_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.database_failures">infra.thanos.write.database_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_compactions_failed_total">prometheus_tsdb_compactions_failed_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.database_failures">infra.thanos.write.database_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_head_truncations_failed_total">prometheus_tsdb_head_truncations_failed_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.database_failures">infra.thanos.write.database_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_out_of_bound_samples_total">prometheus_tsdb_out_of_bound_samples_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.samples_rejected">infra.thanos.write.samples_rejected</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_out_of_order_samples_total">prometheus_tsdb_out_of_order_samples_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.samples_rejected">infra.thanos.write.samples_rejected</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_reloads_failures_total">prometheus_tsdb_reloads_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.database_failures">infra.thanos.write.database_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_too_old_samples_total">prometheus_tsdb_too_old_samples_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.samples_rejected">infra.thanos.write.samples_rejected</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="prometheus_tsdb_wal_corruptions_total">prometheus_tsdb_wal_corruptions_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.database_failures">infra.thanos.write.database_failures</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="prometheus_tsdb_wal_storage_size_bytes">prometheus_tsdb_wal_storage_size_bytes
         <details>
             Used labels: app, namespace, pod
@@ -4209,11 +4358,12 @@ like our bundled Thanos provider.
     </li>
     <li id="prometheus_tsdb_wal_truncations_failed_total">prometheus_tsdb_wal_truncations_failed_total
         <details>
-            Used labels: app, namespace, pod
+            Used labels: app, container, namespace, pod
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.wal_errors">infra.alloy.metric_pipeline.wal_errors</a></li>
+                <li><a href="../common-queries#infra.thanos.write.database_failures">infra.thanos.write.database_failures</a></li>
             </ul>
         </details>
     </li>
@@ -4242,6 +4392,378 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.largest_scrapes">infra.alloy.metric_pipeline.largest_scrapes</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_alert_queue_alerts_dropped_total">thanos_alert_queue_alerts_dropped_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.alerts_dropped">infra.thanos.rule.alerts_dropped</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_alert_queue_capacity">thanos_alert_queue_capacity
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.queue">infra.thanos.rule.queue</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_alert_queue_length">thanos_alert_queue_length
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.queue">infra.thanos.rule.queue</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_alert_sender_alerts_dropped_total">thanos_alert_sender_alerts_dropped_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.alerts_dropped">infra.thanos.rule.alerts_dropped</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_alert_sender_alerts_sent_total">thanos_alert_sender_alerts_sent_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.alerts_sent">infra.thanos.rule.alerts_sent</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_blocks_meta_synced">thanos_blocks_meta_synced
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.blocks">infra.thanos.storage.blocks</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_bucket_store_block_drop_failures_total">thanos_bucket_store_block_drop_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.block_failures">infra.thanos.read.block_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_bucket_store_block_load_failures_total">thanos_bucket_store_block_load_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.block_failures">infra.thanos.read.block_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_bucket_store_blocks_loaded">thanos_bucket_store_blocks_loaded
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.blocks_loaded">infra.thanos.read.blocks_loaded</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_bucket_store_queries_dropped_total">thanos_bucket_store_queries_dropped_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.queries_dropped">infra.thanos.read.queries_dropped</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_block_cleanup_failures_total">thanos_compact_block_cleanup_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.compactor_failures">infra.thanos.storage.compactor_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_downsample_failures_total">thanos_compact_downsample_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.compactor_failures">infra.thanos.storage.compactor_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_garbage_collection_failures_total">thanos_compact_garbage_collection_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.compactor_failures">infra.thanos.storage.compactor_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_group_compactions_failures_total">thanos_compact_group_compactions_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.compactor_failures">infra.thanos.storage.compactor_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_group_compactions_total">thanos_compact_group_compactions_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.compactions">infra.thanos.storage.compactions</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_todo_compaction_blocks">thanos_compact_todo_compaction_blocks
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.backlog">infra.thanos.storage.backlog</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_todo_compactions">thanos_compact_todo_compactions
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.backlog">infra.thanos.storage.backlog</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_todo_deletion_blocks">thanos_compact_todo_deletion_blocks
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.backlog">infra.thanos.storage.backlog</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_compact_todo_downsample_blocks">thanos_compact_todo_downsample_blocks
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.backlog">infra.thanos.storage.backlog</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_objstore_bucket_last_successful_upload_time">thanos_objstore_bucket_last_successful_upload_time
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.upload_age">infra.thanos.storage.upload_age</a></li>
+                <li><a href="../common-queries#infra.thanos.write.upload_age">infra.thanos.write.upload_age</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_objstore_bucket_operation_failures_total">thanos_objstore_bucket_operation_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.failures">infra.thanos.storage.failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_objstore_bucket_operations_total">thanos_objstore_bucket_operations_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.storage.failures">infra.thanos.storage.failures</a></li>
+                <li><a href="../common-queries#infra.thanos.storage.operations">infra.thanos.storage.operations</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_query_concurrent_gate_queries_in_flight">thanos_query_concurrent_gate_queries_in_flight
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.concurrency">infra.thanos.read.concurrency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_query_concurrent_gate_queries_max">thanos_query_concurrent_gate_queries_max
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.concurrency">infra.thanos.read.concurrency</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_receive_config_last_reload_successful">thanos_receive_config_last_reload_successful
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.config_failed">infra.thanos.write.config_failed</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_receive_forward_requests_total">thanos_receive_forward_requests_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.forward">infra.thanos.write.forward</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_receive_hashring_nodes">thanos_receive_hashring_nodes
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.hashring">infra.thanos.write.hashring</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_receive_pending_write_requests">thanos_receive_pending_write_requests
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.pending">infra.thanos.write.pending</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_receive_replications_total">thanos_receive_replications_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.replication">infra.thanos.write.replication</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_receive_write_samples_sum">thanos_receive_write_samples_sum
+        <details>
+            Used labels: app, code, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.health.samples_ingested">infra.thanos.health.samples_ingested</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_rule_config_last_reload_successful">thanos_rule_config_last_reload_successful
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.config_failed">infra.thanos.rule.config_failed</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_rule_loaded_rules">thanos_rule_loaded_rules
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.rule.loaded">infra.thanos.rule.loaded</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_shipper_upload_failures_total">thanos_shipper_upload_failures_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.write.upload_failures">infra.thanos.write.upload_failures</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_store_index_cache_hits_total">thanos_store_index_cache_hits_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.index_cache_hits">infra.thanos.read.index_cache_hits</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_store_index_cache_requests_total">thanos_store_index_cache_requests_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.index_cache_hits">infra.thanos.read.index_cache_hits</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_store_nodes_grpc_connections">thanos_store_nodes_grpc_connections
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.endpoints">infra.thanos.read.endpoints</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="thanos_store_selects_dropped_total">thanos_store_selects_dropped_total
+        <details>
+            Used labels: app, container, namespace
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.thanos.read.queries_dropped">infra.thanos.read.queries_dropped</a></li>
             </ul>
         </details>
     </li>

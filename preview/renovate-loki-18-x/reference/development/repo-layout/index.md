@@ -41,9 +41,10 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
       validated against `mzmon-lib/schemas/query/mzmon-query.schema.yaml`
       * `materialize-*.yaml`: the deployment, including `materialize-persist.yaml` and `materialize-consensus.yaml`,
         persist's own view of object storage and the metadata database
-      * `infra-*.yaml`: the platform, including `infra-loki.yaml` and `infra-alloy.yaml` (the log store and the collectors watching themselves),
+      * `infra-*.yaml`: the platform, including `infra-loki.yaml`, `infra-alloy.yaml` and `infra-thanos.yaml` (the log store, the collectors and the metrics store watching themselves),
         `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
-        and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
+        `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves),
+        and `infra-postgres.yaml` (any PostgreSQL, through the postgres-exporter)
       * `node-*.yaml`: node-exporter
       * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
       * `tests/`: the `promtool test rules` cases for the rendered rules
@@ -62,14 +63,14 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `materialize-monitoring/`: umbrella chart
       * `Chart.yaml` / `Chart.lock`: chart metadata; lock pins subchart versions
       * `values.yaml` / `README.md` / `README.md.gotmpl`: profile-driven defaults; README generated from the template via `helm-docs`
-      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`
+      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`, `prometheus-postgres-exporter`
       * `files/`: hand-authored files loaded via `{{ .Files.Get }}` and never rendered by Helm — `alertmanager/mzmon.gotmpl` and `alertmanager/defaults.gotmpl`, the notification templates the chart ships in `alertmanager-config`
       * `pre-rendered/`: generated artifacts loaded via `{{ .Files.Get }}`; never hand-edited
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`, `gateway-metrics.alloy`, `gateway-dest-stub.alloy`)
         * `scrapers/`: `classic/` (raw scrape config), `prometheus-operator/` (PodMonitors + ScrapeConfig), `gmp/` (GCP `PodMonitoring`)
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
-      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`)
+      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
       * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`

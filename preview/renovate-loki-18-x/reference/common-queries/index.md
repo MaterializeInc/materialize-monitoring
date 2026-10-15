@@ -7332,6 +7332,2112 @@ Kubernetes events filed against this node, newest first.
   </div>
 </div>
 
+## infra-postgres
+
+<p>What a PostgreSQL database reports about itself, read by the
+postgres-exporter subchart: connections against the ceiling, transactions,
+locks, the size of every database on the instance, transaction-ID age, and
+vacuum on the tables of the database the exporter connects to.</p>
+<p>It works the same on RDS, Cloud SQL, Azure Database for PostgreSQL and a
+self-hosted server, because it is an ordinary SQL connection. That makes it
+the complement of the provider pull, which sees the machine the database
+runs on and nothing inside it. The external dependency design doc calls this
+the exporter vantage point.</p>
+<h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
+<p>One exporter scrapes every database in <code>postgres-exporter.targets</code>, and each
+scrape&rsquo;s series carry that target&rsquo;s name as <code>target</code> and
+<code>job=&quot;postgres-exporter&quot;</code>. Nothing on them names a Materialize environment,
+so <code>$postgresTarget</code> is that mapping, chosen by the reader and declared on
+the dashboard section these rows sit in. It holds one target, because the
+instance-level numbers here would mix two databases&rsquo; into one.</p>
+<h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
+<p><code>datname</code> is the database. Instance-wide families (<code>pg_database_*</code>,
+<code>pg_stat_activity_*</code>, <code>pg_stat_database_*</code>, <code>pg_locks_*</code>) cover every
+database on the instance, whichever one the exporter connects to — which is
+the attribution the per-database panels exist for. <code>pg_stat_user_tables_*</code>
+covers only the database the exporter connects to, and <code>relname</code> is the
+table.</p>
+<p>While a rollout runs two exporter pods, each probes every target, so each
+series arrives twice with a different <code>pod</code>. Every query that sums takes
+<code>max without (pod)</code> first, so the copies count once.</p>
+<p><code>pg_stat_database_*</code> counters do not end in <code>_total</code>, so Grafana marks every
+<code>rate()</code> over one with Prometheus&rsquo;s &ldquo;metric might not be a counter&rdquo; notice.
+They are counters, and the notice is harmless.</p>
+<h2 id="what-it-does-not-publish">What it does not publish<a class="anchor" href="#what-it-does-not-publish">#</a></h2>
+<p>The size of the volume the database lives on, so there is no &ldquo;disk full&rdquo;
+ratio here: that is the provider&rsquo;s to say, on the Infrastructure Cloud
+Provider dashboard. Replication is left out too, because no deployment shape
+this chart targets reads from a replica.</p>
+
+<h4 id="infra.postgres.health.not_reachable">infra.postgres.health.not_reachable
+  <a class="anchor" href="#infra.postgres.health.not_reachable">#</a>
+</h4>
+Whether the exporter can reach the selected database: 1 when it
+cannot connect, or cannot itself be scraped.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.not_reachable-tabs" id="infra.postgres.health.not_reachable-tab-0" checked>
+  <label for="infra.postgres.health.not_reachable-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#f92672">(</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.connections_used">infra.postgres.health.connections_used
+  <a class="anchor" href="#infra.postgres.health.connections_used">#</a>
+</h4>
+Client connections open on the selected database&rsquo;s instance, as a
+fraction of the connections an ordinary role may open.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.connections_used-tabs" id="infra.postgres.health.connections_used-tab-0" checked>
+  <label for="infra.postgres.health.connections_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_max_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_superuser_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.oldest_transaction">infra.postgres.health.oldest_transaction
+  <a class="anchor" href="#infra.postgres.health.oldest_transaction">#</a>
+</h4>
+How long the oldest open transaction on the instance has been running.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.oldest_transaction-tabs" id="infra.postgres.health.oldest_transaction-tab-0" checked>
+  <label for="infra.postgres.health.oldest_transaction-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_stat_activity_max_tx_duration{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.xid_used">infra.postgres.health.xid_used
+  <a class="anchor" href="#infra.postgres.health.xid_used">#</a>
+</h4>
+How much of the transaction-ID space the most at-risk database on the
+instance has consumed since vacuum last froze it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.xid_used-tabs" id="infra.postgres.health.xid_used-tab-0" checked>
+  <label for="infra.postgres.health.xid_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_database_wraparound_age_datfrozenxid_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.dead_tuples">infra.postgres.health.dead_tuples
+  <a class="anchor" href="#infra.postgres.health.dead_tuples">#</a>
+</h4>
+The dead-row fraction of the table with the most dead rows, in the
+database the exporter connects to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.dead_tuples-tabs" id="infra.postgres.health.dead_tuples-tab-0" checked>
+  <label for="infra.postgres.health.dead_tuples-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      pg_stat_user_tables_n_live_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1000</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.version">infra.postgres.health.version
+  <a class="anchor" href="#infra.postgres.health.version">#</a>
+</h4>
+The PostgreSQL version the selected database runs.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.version-tabs" id="infra.postgres.health.version-tab-0" checked>
+  <label for="infra.postgres.health.version-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>short_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_static{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.by_database">infra.postgres.connections.by_database
+  <a class="anchor" href="#infra.postgres.connections.by_database">#</a>
+</h4>
+Client connections open on the instance, by database and role, beside
+the ceiling an ordinary role is refused at.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.by_database-tabs" id="infra.postgres.connections.by_database-tab-0" checked>
+  <label for="infra.postgres.connections.by_database-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, usename<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_max_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_superuser_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.by_state">infra.postgres.connections.by_state
+  <a class="anchor" href="#infra.postgres.connections.by_state">#</a>
+</h4>
+Client connections by what they are doing: running a statement
+(<code>active</code>), waiting for the next one (<code>idle</code>), or holding a
+transaction open between statements (<code>idle in transaction</code>).
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.by_state-tabs" id="infra.postgres.connections.by_state-tab-0" checked>
+  <label for="infra.postgres.connections.by_state-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.oldest_transaction">infra.postgres.connections.oldest_transaction
+  <a class="anchor" href="#infra.postgres.connections.oldest_transaction">#</a>
+</h4>
+The oldest open transaction, by database and connection state.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.oldest_transaction-tabs" id="infra.postgres.connections.oldest_transaction-tab-0" checked>
+  <label for="infra.postgres.connections.oldest_transaction-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_max_tx_duration{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.locks">infra.postgres.connections.locks
+  <a class="anchor" href="#infra.postgres.connections.locks">#</a>
+</h4>
+Locks held, by database and lock mode.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.locks-tabs" id="infra.postgres.connections.locks-tab-0" checked>
+  <label for="infra.postgres.connections.locks-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, mode<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_locks_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.activity.transactions">infra.postgres.activity.transactions
+  <a class="anchor" href="#infra.postgres.activity.transactions">#</a>
+</h4>
+Transactions committed and rolled back per second, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.activity.transactions-tabs" id="infra.postgres.activity.transactions-tab-0" checked>
+  <label for="infra.postgres.activity.transactions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_xact_commit{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_xact_rollback{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.activity.rows">infra.postgres.activity.rows
+  <a class="anchor" href="#infra.postgres.activity.rows">#</a>
+</h4>
+Rows inserted, updated and deleted per second, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.activity.rows-tabs" id="infra.postgres.activity.rows-tab-0" checked>
+  <label for="infra.postgres.activity.rows-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_tup_inserted{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_tup_updated{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_tup_deleted{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.activity.cache_hit">infra.postgres.activity.cache_hit
+  <a class="anchor" href="#infra.postgres.activity.cache_hit">#</a>
+</h4>
+The fraction of block reads served from PostgreSQL&rsquo;s shared buffers
+rather than from disk, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.activity.cache_hit-tabs" id="infra.postgres.activity.cache_hit-tab-0" checked>
+  <label for="infra.postgres.activity.cache_hit-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_blks_hit{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_blks_hit{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_blks_read{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.database_size">infra.postgres.storage.database_size
+  <a class="anchor" href="#infra.postgres.storage.database_size">#</a>
+</h4>
+The size of each database on the instance.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.database_size-tabs" id="infra.postgres.storage.database_size-tab-0" checked>
+  <label for="infra.postgres.storage.database_size-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_database_size_bytes{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.xid_age">infra.postgres.storage.xid_age
+  <a class="anchor" href="#infra.postgres.storage.xid_age">#</a>
+</h4>
+Transaction-ID space consumed by each database since vacuum last froze
+it, as a fraction of the wraparound limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.xid_age-tabs" id="infra.postgres.storage.xid_age-tab-0" checked>
+  <label for="infra.postgres.storage.xid_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_database_wraparound_age_datfrozenxid_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.dead_tuples">infra.postgres.storage.dead_tuples
+  <a class="anchor" href="#infra.postgres.storage.dead_tuples">#</a>
+</h4>
+Dead rows waiting for vacuum, for the ten tables with the most, in the
+database the exporter connects to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.dead_tuples-tabs" id="infra.postgres.storage.dead_tuples-tab-0" checked>
+  <label for="infra.postgres.storage.dead_tuples-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span><span style="color:#ae81ff">10</span>, <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.since_autovacuum">infra.postgres.storage.since_autovacuum
+  <a class="anchor" href="#infra.postgres.storage.since_autovacuum">#</a>
+</h4>
+Time since autovacuum last finished on each of the ten tables with the
+most dead rows, in the database the exporter connects to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.since_autovacuum-tabs" id="infra.postgres.storage.since_autovacuum-tab-0" checked>
+  <label for="infra.postgres.storage.since_autovacuum-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_user_tables_last_autovacuum{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;} <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span><span style="color:#ae81ff">10</span>, <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.autovacuum_running">infra.postgres.storage.autovacuum_running
+  <a class="anchor" href="#infra.postgres.storage.autovacuum_running">#</a>
+</h4>
+How long each autovacuum worker running now has been at it, by table.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.autovacuum_running-tabs" id="infra.postgres.storage.autovacuum_running-tab-0" checked>
+  <label for="infra.postgres.storage.autovacuum_running-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_autovacuum_timestamp_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
+## infra-thanos
+
+<p>Is the metrics store healthy, and if not, which part of it broke.</p>
+<p>Every other metrics query in this repository reads Thanos. These watch it, and
+the same caveat applies as on the log store&rsquo;s own dashboard: a blank panel can
+mean that the thing that would have reported a problem is the thing that is
+down. Thanos answers every query on these dashboards, including these ones, so
+a Thanos Query outage empties the whole dashboard rather than only its Reads
+tab.</p>
+<p>The audience is whoever operates the monitoring stack. Thanos runs as five
+processes, and each panel says which one it reads:</p>
+<ul>
+<li><strong>Receive</strong> takes remote writes from the gateway, replicates each sample to
+its peers, and holds the last two hours in a local database before uploading
+it to object storage as a <em>block</em>.</li>
+<li><strong>Query</strong> answers PromQL by fanning out to every <em>store</em>: each receiver for
+recent data, the store gateway for older data, and the rulers.</li>
+<li><strong>Store gateway</strong> serves the blocks in object storage.</li>
+<li><strong>Compactor</strong> merges small blocks into larger ones, downsamples old data, and
+deletes blocks past retention. It is the only process that changes what is
+in the bucket.</li>
+<li><strong>Ruler</strong> evaluates the alerting and recording rules by querying Thanos
+Query, notifies Alertmanager, and remote-writes what it records back through
+the gateway.</li>
+</ul>
+<h2 id="scoping">Scoping<a class="anchor" href="#scoping">#</a></h2>
+<p>Two variables, written literally on the precedent <code>infra-loki.yaml</code> sets:</p>
+<ul>
+<li><strong><code>$thanosNamespace</code></strong>: where Thanos runs. Every query carries it, so two
+releases sharing a cluster do not read as one store.</li>
+<li><strong><code>$thanosComponent</code></strong>: which Thanos process. Matched against <code>container</code>
+on a metric and <code>component</code> on a log line, which are the same name. Only the
+panels that span processes honor it. A panel about one process names that
+process&rsquo;s container instead, because narrowing it to a different process
+could only empty it.</li>
+</ul>
+<p><code>app=&quot;thanos&quot;</code> anchors every selector. The Thanos subchart stamps it on every
+pod, and <code>prometheus_remote_storage_*</code>, <code>prometheus_tsdb_*</code>, and the gRPC and
+HTTP families are published by other processes in this stack too.</p>
+<h2 id="alerts">Alerts<a class="anchor" href="#alerts">#</a></h2>
+<p>The Thanos subchart installs the upstream mixin&rsquo;s alerting rules as
+<code>PrometheusRule/thanos-rules</code> (<code>thanos.thanosRules</code>), and the Thanos ruler
+evaluates them. Their <code>ALERTS</code> series reach Thanos through the gateway like
+any other recorded series. They are selected here by name, <code>Thanos.*</code>,
+because the mixin labels them with nothing but <code>severity</code>. The mixin&rsquo;s own
+selectors are cluster-wide, so <code>$thanosNamespace</code> cannot narrow them either.</p>
+
+<h4 id="infra.thanos.health.components_down">infra.thanos.health.components_down
+  <a class="anchor" href="#infra.thanos.health.components_down">#</a>
+</h4>
+Thanos processes whose metrics endpoint the gateway cannot scrape.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.components_down-tabs" id="infra.thanos.health.components_down-tab-0" checked>
+  <label for="infra.thanos.health.components_down-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing
+  <a class="anchor" href="#infra.thanos.health.alerts_firing">#</a>
+</h4>
+Thanos alerts firing now.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.alerts_firing-tabs" id="infra.thanos.health.alerts_firing-tab-0" checked>
+  <label for="infra.thanos.health.alerts_firing-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname, job, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{alertname<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Thanos.*</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.write_errors">infra.thanos.health.write_errors
+  <a class="anchor" href="#infra.thanos.health.write_errors">#</a>
+</h4>
+The share of remote writes the receivers answered with a server error.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.write_errors-tabs" id="infra.thanos.health.write_errors-tab-0" checked>
+  <label for="infra.thanos.health.write_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_requests_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>        code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">5..</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_requests_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    http_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>      handler<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.query_errors">infra.thanos.health.query_errors
+  <a class="anchor" href="#infra.thanos.health.query_errors">#</a>
+</h4>
+The share of PromQL queries Thanos Query answered with a server error.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.query_errors-tabs" id="infra.thanos.health.query_errors-tab-0" checked>
+  <label for="infra.thanos.health.query_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_requests_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">query|query_range</span>&#34;,
+</span></span><span style="display:flex;"><span>        code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">5..</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_requests_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">query|query_range</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    http_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;,
+</span></span><span style="display:flex;"><span>      handler<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">query|query_range</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.rule_failures">infra.thanos.health.rule_failures
+  <a class="anchor" href="#infra.thanos.health.rule_failures">#</a>
+</h4>
+Alerting and recording rules the rulers failed to evaluate, per second.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.rule_failures-tabs" id="infra.thanos.health.rule_failures-tab-0" checked>
+  <label for="infra.thanos.health.rule_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_rule_evaluation_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.compactor_halted">infra.thanos.health.compactor_halted
+  <a class="anchor" href="#infra.thanos.health.compactor_halted">#</a>
+</h4>
+Whether the compactor has halted.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.compactor_halted-tabs" id="infra.thanos.health.compactor_halted-tab-0" checked>
+  <label for="infra.thanos.health.compactor_halted-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_compact_halted{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.alerts">infra.thanos.health.alerts
+  <a class="anchor" href="#infra.thanos.health.alerts">#</a>
+</h4>
+Every Thanos alert that is firing or pending now, with the process it
+is about.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.alerts-tabs" id="infra.thanos.health.alerts-tab-0" checked>
+  <label for="infra.thanos.health.alerts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname, alertstate, severity, job, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  ALERTS{alertname<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Thanos.*</span>&#34;}
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.alert_history">infra.thanos.health.alert_history
+  <a class="anchor" href="#infra.thanos.health.alert_history">#</a>
+</h4>
+Which Thanos alerts were firing over the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.alert_history-tabs" id="infra.thanos.health.alert_history-tab-0" checked>
+  <label for="infra.thanos.health.alert_history-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname, job, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{alertname<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Thanos.*</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.up">infra.thanos.health.up
+  <a class="anchor" href="#infra.thanos.health.up">#</a>
+</h4>
+Whether the gateway can scrape each Thanos process&rsquo;s own metrics
+endpoint.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.up-tabs" id="infra.thanos.health.up-tab-0" checked>
+  <label for="infra.thanos.health.up-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.restarts">infra.thanos.health.restarts
+  <a class="anchor" href="#infra.thanos.health.restarts">#</a>
+</h4>
+Container restarts per Thanos pod over the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.restarts-tabs" id="infra.thanos.health.restarts-tab-0" checked>
+  <label for="infra.thanos.health.restarts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    kube_pod_container_status_restarts_total{
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max_over_time</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    up{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.versions">infra.thanos.health.versions
+  <a class="anchor" href="#infra.thanos.health.versions">#</a>
+</h4>
+The Thanos version each process is running, and how many pods run it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.versions-tabs" id="infra.thanos.health.versions-tab-0" checked>
+  <label for="infra.thanos.health.versions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_build_info{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.samples_ingested">infra.thanos.health.samples_ingested
+  <a class="anchor" href="#infra.thanos.health.samples_ingested">#</a>
+</h4>
+Samples per second the receivers accepted from remote writes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.samples_ingested-tabs" id="infra.thanos.health.samples_ingested-tab-0" checked>
+  <label for="infra.thanos.health.samples_ingested-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_receive_write_samples_sum{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>      code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">2..</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.health.query_rate">infra.thanos.health.query_rate
+  <a class="anchor" href="#infra.thanos.health.query_rate">#</a>
+</h4>
+PromQL queries per second Thanos Query answered, split by instant and
+range queries.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.health.query_rate-tabs" id="infra.thanos.health.query_rate-tab-0" checked>
+  <label for="infra.thanos.health.query_rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>handler<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    http_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;,
+</span></span><span style="display:flex;"><span>      handler<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">query|query_range</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.requests">infra.thanos.write.requests
+  <a class="anchor" href="#infra.thanos.write.requests">#</a>
+</h4>
+Remote-write requests per second the receivers answered, by status code.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.requests-tabs" id="infra.thanos.write.requests-tab-0" checked>
+  <label for="infra.thanos.write.requests-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    http_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>      handler<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.latency">infra.thanos.write.latency
+  <a class="anchor" href="#infra.thanos.write.latency">#</a>
+</h4>
+How long the receivers took to answer a remote write, at the median and
+the 99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.latency-tabs" id="infra.thanos.write.latency-tab-0" checked>
+  <label for="infra.thanos.write.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.50</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.samples_rejected">infra.thanos.write.samples_rejected
+  <a class="anchor" href="#infra.thanos.write.samples_rejected">#</a>
+</h4>
+Samples per second the receivers&rsquo; databases refused, by reason.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.samples_rejected-tabs" id="infra.thanos.write.samples_rejected-tab-0" checked>
+  <label for="infra.thanos.write.samples_rejected-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_out_of_order_samples_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_out_of_bound_samples_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_too_old_samples_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.head_series">infra.thanos.write.head_series
+  <a class="anchor" href="#infra.thanos.write.head_series">#</a>
+</h4>
+Series each receiver holds in memory, for the last two hours of data.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.head_series-tabs" id="infra.thanos.write.head_series-tab-0" checked>
+  <label for="infra.thanos.write.head_series-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  prometheus_tsdb_head_series{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.pending">infra.thanos.write.pending
+  <a class="anchor" href="#infra.thanos.write.pending">#</a>
+</h4>
+Remote-write requests each receiver is handling at once.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.pending-tabs" id="infra.thanos.write.pending-tab-0" checked>
+  <label for="infra.thanos.write.pending-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_receive_pending_write_requests{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.replication">infra.thanos.write.replication
+  <a class="anchor" href="#infra.thanos.write.replication">#</a>
+</h4>
+Replication requests per second between receivers, by outcome.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.replication-tabs" id="infra.thanos.write.replication-tab-0" checked>
+  <label for="infra.thanos.write.replication-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>result<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_receive_replications_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.forward">infra.thanos.write.forward
+  <a class="anchor" href="#infra.thanos.write.forward">#</a>
+</h4>
+Requests per second each receiver forwarded to the peer that owns the
+series, by outcome.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.forward-tabs" id="infra.thanos.write.forward-tab-0" checked>
+  <label for="infra.thanos.write.forward-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>result<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_receive_forward_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.hashring">infra.thanos.write.hashring
+  <a class="anchor" href="#infra.thanos.write.hashring">#</a>
+</h4>
+How many receivers each receiver counts in the hashring, the table that
+assigns each series to its replicas.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.hashring-tabs" id="infra.thanos.write.hashring-tab-0" checked>
+  <label for="infra.thanos.write.hashring-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_receive_hashring_nodes{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.config_failed">infra.thanos.write.config_failed
+  <a class="anchor" href="#infra.thanos.write.config_failed">#</a>
+</h4>
+Receivers whose most recent attempt to reload the hashring
+configuration failed.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.config_failed-tabs" id="infra.thanos.write.config_failed-tab-0" checked>
+  <label for="infra.thanos.write.config_failed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_receive_config_last_reload_successful{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_receive_config_last_reload_successful{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.upload_age">infra.thanos.write.upload_age
+  <a class="anchor" href="#infra.thanos.write.upload_age">#</a>
+</h4>
+Time since each receiver last uploaded a block to object storage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.upload_age-tabs" id="infra.thanos.write.upload_age-tab-0" checked>
+  <label for="infra.thanos.write.upload_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_objstore_bucket_last_successful_upload_time{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.upload_failures">infra.thanos.write.upload_failures
+  <a class="anchor" href="#infra.thanos.write.upload_failures">#</a>
+</h4>
+Failed block uploads to object storage per second, per receiver.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.upload_failures-tabs" id="infra.thanos.write.upload_failures-tab-0" checked>
+  <label for="infra.thanos.write.upload_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_shipper_upload_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.write.database_failures">infra.thanos.write.database_failures
+  <a class="anchor" href="#infra.thanos.write.database_failures">#</a>
+</h4>
+Failures per second in the receivers&rsquo; local databases, by kind:
+compactions, truncations, reloads and checkpoints, and write-ahead log
+corruptions.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.write.database_failures-tabs" id="infra.thanos.write.database_failures-tab-0" checked>
+  <label for="infra.thanos.write.database_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_compactions_failed_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_head_truncations_failed_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_wal_truncations_failed_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_reloads_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_checkpoint_creations_failed_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_tsdb_wal_corruptions_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">receive</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.requests">infra.thanos.read.requests
+  <a class="anchor" href="#infra.thanos.read.requests">#</a>
+</h4>
+Requests per second Thanos Query answered, by endpoint and status code.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.requests-tabs" id="infra.thanos.read.requests-tab-0" checked>
+  <label for="infra.thanos.read.requests-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>handler, code<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    http_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.latency">infra.thanos.read.latency
+  <a class="anchor" href="#infra.thanos.read.latency">#</a>
+</h4>
+How long Thanos Query took to answer instant and range queries, at the
+99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.latency-tabs" id="infra.thanos.read.latency-tab-0" checked>
+  <label for="infra.thanos.read.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>handler, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      http_request_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;,
+</span></span><span style="display:flex;"><span>        handler<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">query|query_range</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.concurrency">infra.thanos.read.concurrency
+  <a class="anchor" href="#infra.thanos.read.concurrency">#</a>
+</h4>
+Queries Thanos Query is evaluating at once, against the most it allows.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.concurrency-tabs" id="infra.thanos.read.concurrency-tab-0" checked>
+  <label for="infra.thanos.read.concurrency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_query_concurrent_gate_queries_in_flight{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_query_concurrent_gate_queries_max{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.endpoints">infra.thanos.read.endpoints
+  <a class="anchor" href="#infra.thanos.read.endpoints">#</a>
+</h4>
+Stores each Thanos Query instance is connected to, by kind, taking the
+worst-connected instance.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.endpoints-tabs" id="infra.thanos.read.endpoints-tab-0" checked>
+  <label for="infra.thanos.read.endpoints-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>store_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, store_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_store_nodes_grpc_connections{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">query</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.store_errors">infra.thanos.read.store_errors
+  <a class="anchor" href="#infra.thanos.read.store_errors">#</a>
+</h4>
+The share of store requests each process failed with a server error.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.store_errors-tabs" id="infra.thanos.read.store_errors-tab-0" checked>
+  <label for="infra.thanos.read.store_errors-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      grpc_server_handled_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>        grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;,
+</span></span><span style="display:flex;"><span>        grpc_code<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      grpc_server_handled_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>        grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    grpc_server_handled_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>      grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.series_latency">infra.thanos.read.series_latency
+  <a class="anchor" href="#infra.thanos.read.series_latency">#</a>
+</h4>
+How long each kind of store took to answer a request for series, at the
+99th percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.series_latency-tabs" id="infra.thanos.read.series_latency-tab-0" checked>
+  <label for="infra.thanos.read.series_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      grpc_server_handling_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;,
+</span></span><span style="display:flex;"><span>        grpc_service<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos.Store</span>&#34;,
+</span></span><span style="display:flex;"><span>        grpc_method<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Series</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.blocks_loaded">infra.thanos.read.blocks_loaded
+  <a class="anchor" href="#infra.thanos.read.blocks_loaded">#</a>
+</h4>
+Blocks each store gateway has loaded from object storage and can serve.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.blocks_loaded-tabs" id="infra.thanos.read.blocks_loaded-tab-0" checked>
+  <label for="infra.thanos.read.blocks_loaded-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_bucket_store_blocks_loaded{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">storegateway</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.block_failures">infra.thanos.read.block_failures
+  <a class="anchor" href="#infra.thanos.read.block_failures">#</a>
+</h4>
+Blocks per second each store gateway failed to load or to drop.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.block_failures-tabs" id="infra.thanos.read.block_failures-tab-0" checked>
+  <label for="infra.thanos.read.block_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_bucket_store_block_load_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">storegateway</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">+</span> <span style="color:#66d9ef">ignoring</span> <span style="color:#f92672">(</span>operation<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_bucket_store_block_drop_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">storegateway</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.index_cache_hits">infra.thanos.read.index_cache_hits
+  <a class="anchor" href="#infra.thanos.read.index_cache_hits">#</a>
+</h4>
+The share of index lookups the store gateways answered from their cache,
+by kind of index entry.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.index_cache_hits-tabs" id="infra.thanos.read.index_cache_hits-tab-0" checked>
+  <label for="infra.thanos.read.index_cache_hits-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>item_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_store_index_cache_hits_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">storegateway</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>item_type<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_store_index_cache_requests_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">storegateway</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.read.queries_dropped">infra.thanos.read.queries_dropped
+  <a class="anchor" href="#infra.thanos.read.queries_dropped">#</a>
+</h4>
+Store requests per second refused for exceeding a limit, by process.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.read.queries_dropped-tabs" id="infra.thanos.read.queries_dropped-tab-0" checked>
+  <label for="infra.thanos.read.queries_dropped-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_store_selects_dropped_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_bucket_store_queries_dropped_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">storegateway</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.evaluations">infra.thanos.rule.evaluations
+  <a class="anchor" href="#infra.thanos.rule.evaluations">#</a>
+</h4>
+Rules evaluated per second, per ruler.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.evaluations-tabs" id="infra.thanos.rule.evaluations-tab-0" checked>
+  <label for="infra.thanos.rule.evaluations-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_rule_evaluations_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.failures">infra.thanos.rule.failures
+  <a class="anchor" href="#infra.thanos.rule.failures">#</a>
+</h4>
+Rule evaluations per second that failed, by rule group.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.failures-tabs" id="infra.thanos.rule.failures-tab-0" checked>
+  <label for="infra.thanos.rule.failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">group</span><span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      prometheus_rule_evaluation_failures_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">rule_group</span>&#34;, &#34;<span style="color:#e6db74">.*;(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.missed">infra.thanos.rule.missed
+  <a class="anchor" href="#infra.thanos.rule.missed">#</a>
+</h4>
+Evaluations skipped because the previous one was still running, by rule
+group.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.missed-tabs" id="infra.thanos.rule.missed-tab-0" checked>
+  <label for="infra.thanos.rule.missed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">group</span><span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      prometheus_rule_group_iterations_missed_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">rule_group</span>&#34;, &#34;<span style="color:#e6db74">.*;(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.slowest_groups">infra.thanos.rule.slowest_groups
+  <a class="anchor" href="#infra.thanos.rule.slowest_groups">#</a>
+</h4>
+The ten rule groups whose last evaluation took the largest share of
+their interval.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.slowest_groups-tabs" id="infra.thanos.rule.slowest_groups-tab-0" checked>
+  <label for="infra.thanos.rule.slowest_groups-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">10</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">group</span><span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      prometheus_rule_group_last_duration_seconds{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">/</span> prometheus_rule_group_interval_seconds{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      },
+</span></span><span style="display:flex;"><span>      &#34;<span style="color:#e6db74">group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">rule_group</span>&#34;, &#34;<span style="color:#e6db74">.*;(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.loaded">infra.thanos.rule.loaded
+  <a class="anchor" href="#infra.thanos.rule.loaded">#</a>
+</h4>
+Rules each ruler has loaded.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.loaded-tabs" id="infra.thanos.rule.loaded-tab-0" checked>
+  <label for="infra.thanos.rule.loaded-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_rule_loaded_rules{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.config_failed">infra.thanos.rule.config_failed
+  <a class="anchor" href="#infra.thanos.rule.config_failed">#</a>
+</h4>
+Rulers whose most recent attempt to reload their rule files failed.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.config_failed-tabs" id="infra.thanos.rule.config_failed-tab-0" checked>
+  <label for="infra.thanos.rule.config_failed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_rule_config_last_reload_successful{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_rule_config_last_reload_successful{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.alerts_sent">infra.thanos.rule.alerts_sent
+  <a class="anchor" href="#infra.thanos.rule.alerts_sent">#</a>
+</h4>
+Alert notifications per second the rulers sent, per Alertmanager.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.alerts_sent-tabs" id="infra.thanos.rule.alerts_sent-tab-0" checked>
+  <label for="infra.thanos.rule.alerts_sent-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertmanager<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_alert_sender_alerts_sent_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.alerts_dropped">infra.thanos.rule.alerts_dropped
+  <a class="anchor" href="#infra.thanos.rule.alerts_dropped">#</a>
+</h4>
+Alerts per second the rulers dropped, before sending and while sending.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.alerts_dropped-tabs" id="infra.thanos.rule.alerts_dropped-tab-0" checked>
+  <label for="infra.thanos.rule.alerts_dropped-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_alert_queue_alerts_dropped_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_alert_sender_alerts_dropped_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.queue">infra.thanos.rule.queue
+  <a class="anchor" href="#infra.thanos.rule.queue">#</a>
+</h4>
+Alerts waiting to be sent, against the queue&rsquo;s capacity.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.queue-tabs" id="infra.thanos.rule.queue-tab-0" checked>
+  <label for="infra.thanos.rule.queue-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_alert_queue_length{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_alert_queue_capacity{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.sender_latency">infra.thanos.rule.sender_latency
+  <a class="anchor" href="#infra.thanos.rule.sender_latency">#</a>
+</h4>
+How long each Alertmanager took to accept a batch of alerts, at the 99th
+percentile.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.sender_latency-tabs" id="infra.thanos.rule.sender_latency-tab-0" checked>
+  <label for="infra.thanos.rule.sender_latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertmanager, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      thanos_alert_sender_latency_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag
+  <a class="anchor" href="#infra.thanos.rule.remote_write_lag">#</a>
+</h4>
+How far behind each ruler is in writing its results back, in seconds.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.remote_write_lag-tabs" id="infra.thanos.rule.remote_write_lag-tab-0" checked>
+  <label for="infra.thanos.rule.remote_write_lag-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">ignoring</span> <span style="color:#f92672">(</span>remote_name, url<span style="color:#f92672">)</span> <span style="color:#66d9ef">group_right</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, remote_name, url<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.rule.remote_write_failures">infra.thanos.rule.remote_write_failures
+  <a class="anchor" href="#infra.thanos.rule.remote_write_failures">#</a>
+</h4>
+Samples per second each ruler failed to write back, after retries.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.rule.remote_write_failures-tabs" id="infra.thanos.rule.remote_write_failures-tab-0" checked>
+  <label for="infra.thanos.rule.remote_write_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    prometheus_remote_storage_samples_failed_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.backlog">infra.thanos.storage.backlog
+  <a class="anchor" href="#infra.thanos.storage.backlog">#</a>
+</h4>
+Work the compactor has planned and not yet done: compactions, the blocks
+they would merge, blocks waiting to be downsampled, and blocks waiting
+to be deleted.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.backlog-tabs" id="infra.thanos.storage.backlog-tab-0" checked>
+  <label for="infra.thanos.storage.backlog-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_compact_todo_compactions{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_compact_todo_compaction_blocks{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_compact_todo_downsample_blocks{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_compact_todo_deletion_blocks{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.compactions">infra.thanos.storage.compactions
+  <a class="anchor" href="#infra.thanos.storage.compactions">#</a>
+</h4>
+Compactions per hour, by the resolution of the blocks merged.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.compactions-tabs" id="infra.thanos.storage.compactions-tab-0" checked>
+  <label for="infra.thanos.storage.compactions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resolution<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_compact_group_compactions_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    [<span style="color:#e6db74">1h</span>]
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.compactor_failures">infra.thanos.storage.compactor_failures
+  <a class="anchor" href="#infra.thanos.storage.compactor_failures">#</a>
+</h4>
+Compactor operations per second that failed, by kind: compaction,
+downsampling, garbage collection, and deleting blocks.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.compactor_failures-tabs" id="infra.thanos.storage.compactor_failures-tab-0" checked>
+  <label for="infra.thanos.storage.compactor_failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_compact_group_compactions_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_compact_downsample_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_compact_garbage_collection_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_compact_block_cleanup_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.blocks">infra.thanos.storage.blocks
+  <a class="anchor" href="#infra.thanos.storage.blocks">#</a>
+</h4>
+Blocks the compactor found in the bucket on its last pass, by state.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.blocks-tabs" id="infra.thanos.storage.blocks-tab-0" checked>
+  <label for="infra.thanos.storage.blocks-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_blocks_meta_synced{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">compactor</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.operations">infra.thanos.storage.operations
+  <a class="anchor" href="#infra.thanos.storage.operations">#</a>
+</h4>
+Object-storage requests per second, by process and operation.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.operations-tabs" id="infra.thanos.storage.operations-tab-0" checked>
+  <label for="infra.thanos.storage.operations-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, operation<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_objstore_bucket_operations_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.failures">infra.thanos.storage.failures
+  <a class="anchor" href="#infra.thanos.storage.failures">#</a>
+</h4>
+The share of object-storage requests that failed, by process.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.failures-tabs" id="infra.thanos.storage.failures-tab-0" checked>
+  <label for="infra.thanos.storage.failures-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_objstore_bucket_operation_failures_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    thanos_objstore_bucket_operations_total{
+</span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.latency">infra.thanos.storage.latency
+  <a class="anchor" href="#infra.thanos.storage.latency">#</a>
+</h4>
+How long object-storage requests took, at the 99th percentile, by
+process and operation.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.latency-tabs" id="infra.thanos.storage.latency-tab-0" checked>
+  <label for="infra.thanos.storage.latency-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">histogram_quantile</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#ae81ff">0.99</span>,
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, operation, le<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      thanos_objstore_bucket_operation_duration_seconds_bucket{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.storage.upload_age">infra.thanos.storage.upload_age
+  <a class="anchor" href="#infra.thanos.storage.upload_age">#</a>
+</h4>
+Time since each pod last uploaded to object storage.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.storage.upload_age-tabs" id="infra.thanos.storage.upload_age-tab-0" checked>
+  <label for="infra.thanos.storage.upload_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  thanos_objstore_bucket_last_successful_upload_time{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  } <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.resources.memory">infra.thanos.resources.memory
+  <a class="anchor" href="#infra.thanos.resources.memory">#</a>
+</h4>
+Memory each Thanos pod is using, by working set.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.resources.memory-tabs" id="infra.thanos.resources.memory-tab-0" checked>
+  <label for="infra.thanos.resources.memory-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  container_memory_working_set_bytes{
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.resources.cpu">infra.thanos.resources.cpu
+  <a class="anchor" href="#infra.thanos.resources.cpu">#</a>
+</h4>
+CPU each Thanos pod is using, in cores.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.resources.cpu-tabs" id="infra.thanos.resources.cpu-tab-0" checked>
+  <label for="infra.thanos.resources.cpu-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    container_cpu_usage_seconds_total{
+</span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>      container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.resources.goroutines">infra.thanos.resources.goroutines
+  <a class="anchor" href="#infra.thanos.resources.goroutines">#</a>
+</h4>
+Goroutines in each Thanos process.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.resources.goroutines-tabs" id="infra.thanos.resources.goroutines-tab-0" checked>
+  <label for="infra.thanos.resources.goroutines-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  go_goroutines{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.resources.terminations">infra.thanos.resources.terminations
+  <a class="anchor" href="#infra.thanos.resources.terminations">#</a>
+</h4>
+Why each Thanos container last stopped, for those that have stopped
+since their pod started.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.resources.terminations-tabs" id="infra.thanos.resources.terminations-tab-0" checked>
+  <label for="infra.thanos.resources.terminations-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>container, pod, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  kube_pod_container_status_last_terminated_reason{
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>    container<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosComponent</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  up{
+</span></span><span style="display:flex;"><span>    app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>    namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$thanosNamespace</span>&#34;
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.logs.stream">infra.thanos.logs.stream
+  <a class="anchor" href="#infra.thanos.logs.stream">#</a>
+</h4>
+Thanos&rsquo;s own log feed, newest first, for the selected components and
+levels.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.logs.stream-tabs" id="infra.thanos.logs.stream-tab-0" checked>
+  <label for="infra.thanos.logs.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.logs.warnings.stream">infra.thanos.logs.warnings.stream
+  <a class="anchor" href="#infra.thanos.logs.warnings.stream">#</a>
+</h4>
+Warning-and-worse lines from Thanos, newest first.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.logs.warnings.stream-tabs" id="infra.thanos.logs.warnings.stream-tab-0" checked>
+  <label for="infra.thanos.logs.warnings.stream-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.logs.rate.by_component">infra.thanos.logs.rate.by_component
+  <a class="anchor" href="#infra.thanos.logs.rate.by_component">#</a>
+</h4>
+Thanos&rsquo;s own log lines per second, split by component.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.logs.rate.by_component-tabs" id="infra.thanos.logs.rate.by_component-tab-0" checked>
+  <label for="infra.thanos.logs.rate.by_component-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.thanos.logs.warnings.rate">infra.thanos.logs.warnings.rate
+  <a class="anchor" href="#infra.thanos.logs.warnings.rate">#</a>
+</h4>
+Warning-and-worse lines per minute from Thanos, across the selected
+components.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.thanos.logs.warnings.rate-tabs" id="infra.thanos.logs.warnings.rate-tab-0" checked>
+  <label for="infra.thanos.logs.warnings.rate-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"></code></pre></div>
+  </div>
+</div>
+
 ## materialize-clusters
 
 Inventory and sizing of a Materialize deployment&rsquo;s clusters and replicas.
