@@ -1721,7 +1721,7 @@ like our bundled Thanos provider.
     </li>
     <li id="up">up
         <details>
-            Used labels: app, app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component, pod
+            Used labels: app, app_instance, cluster_environmentd_materialize_cloud_cluster_id, container, job, namespace, network_component, pod, target
             <br />
             Example queries:
             <ul>
@@ -1740,6 +1740,7 @@ like our bundled Thanos provider.
                 <li><a href="../common-queries#infra.monitoring.clusterd_metrics_missing">infra.monitoring.clusterd_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.monitoring.critical_metrics_missing">infra.monitoring.critical_metrics_missing</a></li>
                 <li><a href="../common-queries#infra.net.overview.dataplane">infra.net.overview.dataplane</a></li>
+                <li><a href="../common-queries#infra.postgres.health.not_reachable">infra.postgres.health.not_reachable</a></li>
                 <li><a href="../common-queries#infra.thanos.health.components_down">infra.thanos.health.components_down</a></li>
                 <li><a href="../common-queries#infra.thanos.health.restarts">infra.thanos.health.restarts</a></li>
                 <li><a href="../common-queries#infra.thanos.health.up">infra.thanos.health.up</a></li>

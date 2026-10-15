@@ -88,15 +88,16 @@ A group holds recording rules or alerts, not both, because alerts are selected b
 
 ## Install-time facts
 
-A provider pull watches every database it is told to, including databases that are not a metadata database: the Terraform modules add Grafana's to the same pull.
-The provider cannot tell them apart, so which ones are a metadata database is an install-time value, `externalDependencies.consensus` in the chart.
-Each provider adapter matches its resource label against a placeholder the chart fills from it.
+A provider pull or the postgres-exporter watches every database it is told to, including databases that are not a metadata database: the Terraform modules add Grafana's to the same pull.
+Neither can tell them apart, so which ones are a metadata database is an install-time value, `externalDependencies.consensus` in the chart.
+Each such adapter matches its resource label against a placeholder the chart fills from it.
 
 | Parameter | Renders to | The chart fills it from |
 |---|---|---|
 | `consensusRdsResources` | `__mzmon_consensus_rds__` | The `resourceId` of each `externalDependencies.consensus` entry with `flavor: rds` |
 | `consensusCloudsqlResources` | `__mzmon_consensus_cloudsql__` | The same, for `flavor: cloudsql` |
 | `consensusAzurePostgresResources` | `__mzmon_consensus_azure_postgres__` | The same, for `flavor: azure-postgres` |
+| `consensusPostgresResources` | `__mzmon_consensus_postgres__` | The same, for `flavor: postgres`, matched against the exporter's `target` label |
 
 An undeclared flavor renders as `a^`, which matches nothing, so its adapter records nothing.
 The adapters match with `(?i)`, because the providers do not promise the case a name was declared in.
@@ -105,6 +106,7 @@ The adapters match with `(?i)`, because the providers do not promise the case a 
 
 A recording rule's capabilities are inferred from its metrics, exactly as an alert's are.
 The three provider pulls are capabilities the chart derives from `pipeline.metrics.provider.*`: `cloudwatch`, `cloud-monitoring` and `azure-monitor`.
+The postgres-exporter is another, `postgres-exporter`, derived from the subchart being enabled.
 A recording rule that reads only `up` MUST declare what it is about with `requires`.
 
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.

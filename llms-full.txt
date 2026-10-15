@@ -2400,7 +2400,7 @@ url: https://materializeinc.github.io/materialize-monitoring/metrics/collecting/
 
 # Collecting Metrics
 
-There are five ways metrics reach `materialize-monitoring`, and most deployments use more than one.
+Metrics reach `materialize-monitoring` by the paths in the following table, and most deployments use more than one.
 
 | Path | Use it when | Direction |
 |---|---|---|
@@ -2409,8 +2409,9 @@ There are five ways metrics reach `materialize-monitoring`, and most deployments
 | [OpenTelemetry Endpoint](../opentelemetry-endpoint/) | You run an OpenTelemetry Collector, or an application that emits OTLP directly | Something **pushes** |
 | [Prometheus Scraper](../prometheus-scraper/) | You run your own Prometheus and this stack is not in the path at all | Your Prometheus **pulls** |
 | [Cloud Provider Metrics](../cloud-provider-metrics/) | The metadata database or the buckets are managed by AWS, Google Cloud or Azure, and their CPU, storage or burst headroom is wanted beside the rest | The gateway **pulls** from the provider's API |
+| [PostgreSQL exporter](../postgresql-exporter/) | The metadata database or Grafana's database is PostgreSQL, and what it reports about itself is wanted: connections, transaction-ID age, vacuum, and the size of every database on the instance | The gateway **pulls** from an exporter the chart runs |
 
-All but the Prometheus Scraper land in the same place: the `alloy-gateway` pipeline, which processes and enriches everything uniformly before writing it to [storage](../../storing/).
+Everything but the Prometheus Scraper lands in the same place: the `alloy-gateway` pipeline, which processes and enriches everything uniformly before writing it to [storage](../../storing/).
 How it got in makes no difference downstream.
 
 ## The gateway's ingress ports
@@ -4051,6 +4052,192 @@ The Collection tab of the Infrastructure Cloud Provider dashboard (`infra-cloud`
 
 
 --------------------------------------------------------------------------------
+title: "PostgreSQL exporter"
+url: https://materializeinc.github.io/materialize-monitoring/metrics/collecting/postgresql-exporter/index.md
+--------------------------------------------------------------------------------
+
+# PostgreSQL exporter
+
+The chart can run [`postgres_exporter`](https://github.com/prometheus-community/postgres_exporter) against the PostgreSQL databases a deployment depends on:
+Materialize's metadata database and the database behind the bundled Grafana.
+This page is for the operator who turns it on.
+
+The exporter connects to each database as an ordinary SQL client and reports what the database says about itself.
+That covers connections against the ceiling, transactions, locks, the size of every database on the instance, transaction-ID age, and vacuum on the tables of the database it connects to.
+It works the same on RDS, Cloud SQL, Azure Database for PostgreSQL, and a self-managed server.
+
+It complements the two views the stack has without it.
+Materialize measures every call it makes to the metadata database, which says whether the database is slow, and needs nothing configured.
+A [cloud provider pull](../cloud-provider-metrics/) sees the machine the database runs on, such as CPU, memory, storage headroom, and burst credits, and nothing inside it.
+The exporter sees inside the database and not the machine, so it answers why: a stalled autovacuum on persist's consensus table, a session holding a transaction open, or a neighboring database filling the volume.
+For the reasoning, see the [external dependency design](../../../reference/development/design-docs/20260920-external-dependency-monitoring/#three-vantage-points-none-of-them-a-substitute).
+
+<!--
+Agent note: the subchart is prometheus-community/prometheus-postgres-exporter, aliased postgres-exporter.
+The chart renders its own ServiceMonitor (templates/scrapers/monitor-postgres-exporter.yaml); the queries are
+packages/queries/infra-postgres.yaml and the ext:consensus_* adapter is the ext_consensus_postgres group in
+packages/queries/ext-consensus.yaml. Metric names and labels on this page were read from postgres_exporter v0.20.1.
+-->
+
+## How it runs
+
+One Deployment serves every database.
+The Alloy gateway scrapes it once per target on `/probe`, and the exporter opens a connection to that database for the length of the scrape.
+Each scrape's series carry the target's name as `target` and `job="postgres-exporter"`, including `up`.
+
+The exporter reads each target's credentials from a file, `postgres_exporter.yml`, and from nowhere else.
+The chart mounts that file from a Secret you create, so no credential passes through Helm values.
+
+## Turn it on
+
+To watch the metadata database and Grafana's database, follow these steps:
+
+1. Create a role for the exporter on each PostgreSQL instance.
+   Run the following as a role that can grant `pg_monitor`, such as the administrator role your database service gives you:
+
+   ```sql
+   CREATE ROLE mzmon_exporter WITH LOGIN PASSWORD 'PASSWORD' CONNECTION LIMIT 3;
+   GRANT pg_monitor TO mzmon_exporter;
+   GRANT CONNECT ON DATABASE DATABASE_NAME TO mzmon_exporter;
+   ```
+
+   Replace the following:
+
+   - `PASSWORD`: a password for the role.
+   - `DATABASE_NAME`: the database the exporter connects to, such as `materialize` for the metadata database, or `postgres` for Grafana's.
+     For more information, see [Choose the database to connect to](#choose-the-database-to-connect-to).
+
+   `pg_monitor` is a predefined role that reads every statistics view and setting, and it grants no access to table data.
+   A scrape holds one connection, so the connection limit leaves room for an overlapping scrape and nothing more.
+
+2. Create the Secret in the release namespace.
+   It holds one key, `postgres_exporter.yml`, with one `auth_modules` entry per target, named after the target:
+
+   ```yaml
+   auth_modules:
+     consensus:
+       type: userpass
+       userpass:
+         username: mzmon_exporter
+         password: PASSWORD
+       options:
+         sslmode: require
+     grafana:
+       type: userpass
+       userpass:
+         username: mzmon_exporter
+         password: PASSWORD
+       options:
+         sslmode: require
+   ```
+
+   ```bash
+   kubectl create secret generic postgres-exporter -n monitoring --from-file=postgres_exporter.yml
+   ```
+
+   Provision it with External Secrets Operator, Vault Agent, SOPS, or your cloud's CSI driver, so that the password never lands in Git.
+   Each entry under `options` becomes a connection parameter.
+   For `sslmode: verify-full`, mount the server's CA certificate with `postgres-exporter.extraVolumes` and `postgres-exporter.extraVolumeMounts`, and point `sslrootcert` at it.
+
+3. Turn on the exporter, list the targets, and say which one is the metadata database:
+
+   ```yaml
+   tags:
+     postgres-exporter: true
+
+   postgres-exporter:
+     targets:
+       - name: consensus
+         host: METADATA_DB_HOST
+         database: materialize
+       - name: grafana
+         host: GRAFANA_DB_HOST
+
+   externalDependencies:
+     consensus:
+       - flavor: postgres
+         resourceId: consensus
+   ```
+
+   Replace `METADATA_DB_HOST` and `GRAFANA_DB_HOST` with each database's host, as a pod in the cluster resolves it.
+   Each target also takes `database`, which defaults to `postgres`, `port`, which defaults to `5432`, and `authModule`, which defaults to the target's name.
+
+The exporter reads the Secret only when it starts.
+After you change the Secret, restart the exporter:
+
+```bash
+kubectl rollout restart deployment/postgres-exporter -n monitoring
+```
+
+The exporter needs network access to each database.
+It runs in the cluster that already reaches the metadata database, so the path Materialize uses is the one it needs.
+A database behind a private endpoint, such as a Cloud SQL private IP, is reachable only from networks the endpoint allows.
+
+### Choose the database to connect to
+
+Point each target's `database` at a database whose tables you want statistics for, and leave it at `postgres` otherwise.
+Per-table statistics, the `pg_stat_user_tables_*` and `pg_statio_user_tables_*` families, come from that database alone, at about 29 series per table.
+For the metadata database, that's where persist's `consensus` and `timestamp_oracle` tables live, so connect to `materialize`.
+Grafana's database holds about 90 tables, so connecting to it costs about 2,600 series that no panel reads.
+Everything instance-wide, including `pg_database_size_bytes`, covers every database on the instance whichever one the connection opens.
+The chart keeps the size collector unscoped, because a neighboring database filling the volume is what per-database sizes exist to attribute.
+
+### Grafana's database
+
+The bundled Grafana keeps users, preferences, API keys, and annotations in its database when you use the [`grafana-postgres` profile](https://github.com/MaterializeInc/materialize-monitoring/blob/main/charts/materialize-monitoring/profiles/grafana-postgres.values.yaml).
+Its target is scraped like any other, and you can pick it on the dashboard.
+Leave it out of `externalDependencies.consensus`, so that it's never recorded as a metadata database.
+
+## What it collects
+
+The exporter's default collectors run, plus the following, which the chart turns on:
+
+- **`--collector.database_wraparound`:** `pg_database_wraparound_age_datfrozenxid_seconds` per database, the transaction-ID age that wraparound is measured against.
+  The name ends in `_seconds`, but it counts transactions.
+- **`--collector.stat_activity_autovacuum`:** `pg_stat_activity_autovacuum_timestamp_seconds`, the start time of each autovacuum worker running now, by table.
+
+The families the dashboard reads are in the `extended` [metric importance](../../../reference/list-metrics/) tier.
+A destination that keeps only `recommended` metrics and above drops them.
+The exporter publishes more families than the dashboard reads, and a destination keeps those only at `all`.
+
+## Where it shows up
+
+The **Database Internals** tab of the **Materialize Consensus (Metadata)** dashboard has a **PostgreSQL** section.
+It renders when the exporter is scraping, and its **Database** picker chooses the target.
+For more information, see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+
+The target you name in `externalDependencies.consensus` is also recorded into the normalized metadata-database series, with `flavor="postgres"` and the target's name as `resource`.
+The following table lists the series the exporter adds:
+
+| Recorded series | From |
+|---|---|
+| `ext:consensus_up` | `pg_up` |
+| `ext:consensus_connections_used_ratio` | Client connections against `max_connections`, less the reserved slots |
+| `ext:consensus_xid_used_ratio` | The oldest database's transaction-ID age, against 2^31 |
+| `ext:consensus_database_bytes` | `pg_database_size_bytes`, with the database's name as `database` |
+| `ext:consensus_version_info` | `pg_static`, with the server version as `version` |
+
+For the rest of the normalized series, see [Recorded Series]({{< relref "../../reference/recorded-series.md" >}}).
+
+## Troubleshoot it
+
+If the PostgreSQL section doesn't render, check `up{job="postgres-exporter"}`.
+No series means nothing scrapes the exporter: check that `postgres-exporter.targets` isn't empty and that the Alloy gateway is running.
+
+If a target's `up` is 0, the exporter refused the probe.
+The usual cause is a Secret with no `auth_modules` entry named after the target or its `authModule`, which the exporter answers with HTTP status 400.
+
+If `up` is 1 and `pg_up` is 0, the exporter can't connect to the database.
+The exporter's log names the target and the error, which is usually one of the following:
+
+- **`password authentication failed`:** the entry's credentials are wrong, or the Secret changed and the exporter wasn't restarted.
+- **A timeout:** the pod has no network path to the database.
+
+If connection counts look low, the role is likely missing `pg_monitor`.
+Without it, PostgreSQL hides the state of other roles' sessions, and the exporter can't count them.
+
+
+--------------------------------------------------------------------------------
 title: "Architecture"
 url: https://materializeinc.github.io/materialize-monitoring/logs-and-events/architecture/index.md
 --------------------------------------------------------------------------------
@@ -4923,10 +5110,12 @@ The Overview tab's verdict row separates the common failures: connection errors,
 The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
 State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
 Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
-The Database Internals tab is the database's own account, for a CloudNativePG (CNPG) cluster:
-which instance is primary, connections against the ceiling PostgreSQL refuses them at, the oldest open transaction,
-transaction-ID headroom, the size of each database on the instance, and backups.
-It appears when you create a `PodMonitor` for the CNPG cluster; on a managed database, the tab points you to `infra-cloud` instead.
+The Database Internals tab is the database's own account, in a section per source.
+The PostgreSQL section reads the chart's [PostgreSQL exporter](../../metrics/collecting/postgresql-exporter/), on any PostgreSQL, managed or not:
+connections against the ceiling PostgreSQL refuses them at, the oldest open transaction, locks, transaction-ID headroom, the size of each database on the instance, dead rows, and autovacuum.
+The CloudNativePG (CNPG) section reads what a CNPG cluster publishes about itself, adding which instance is primary, replication, and backups.
+Each section appears when its source is scraped, and has a picker for the database it reads.
+With neither, the tab says how to set each up.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="env-consensus" >}}
@@ -6776,6 +6965,7 @@ It is not in the default set and is never selected, so `rules.selected`, `rules.
 
 Materialize's own view of its metadata database needs nothing configured.
 The cloud provider's view needs two things: the provider pull, `pipeline.metrics.provider.*`, watching the database, and `externalDependencies.consensus` naming it as a metadata database.
+The database's own view, from the [PostgreSQL exporter](../../metrics/collecting/postgresql-exporter/), needs the same two: a `postgres-exporter.targets` entry, and the target's name in `externalDependencies.consensus`.
 
 ```yaml
 externalDependencies:
@@ -6784,15 +6974,18 @@ externalDependencies:
       resourceId: mzmon-prod-db
 ```
 
-The second is needed because a pull also watches databases that are not a metadata database, Grafana's among them, and the provider cannot tell them apart.
-A database the pull watches and `externalDependencies.consensus` does not name is never recorded as a metadata database.
-The render warns when a pull watches databases and none of them is named, and when a named database is not watched.
+The second is needed because a pull or the exporter also watches databases that are not a metadata database, Grafana's among them, and neither can tell them apart.
+A database that `externalDependencies.consensus` does not name is never recorded as a metadata database.
+The render warns when a pull or the exporter watches databases and none of them is named, and when a named database is not watched.
+
+The following table gives the `resourceId` each flavor takes:
 
 | `flavor` | `resourceId` |
 |---|---|
 | `rds` | The DB instance identifier, as listed in `pipeline.metrics.provider.cloudwatch.rds.instances` |
 | `cloudsql` | The instance name, as listed in `pipeline.metrics.provider.gcp.cloudSql.instances` |
 | `azure-postgres` | The flexible server name, as listed in `pipeline.metrics.provider.azure.postgres.servers` |
+| `postgres` | The target's `name`, as listed in `postgres-exporter.targets` |
 
 An alert can read a recorded series: `consensus-unreachable` reads `ext:consensus_up`, so it installs wherever any adapter recording that series does.
 
@@ -9681,8 +9874,9 @@ Ordered so the cheapest question that could explain everything comes first.
    stalls every collection at once and looks like a Materialize problem.
    Each Overview ends with the dependency's own error text from the logs, which separates a wrong URL or credential from
    a database at `max_connections`.
-   If the database runs on CloudNativePG or the bucket on Ceph, each dashboard's last tab is the dependency's own
-   account of why: Database Internals and Object Store Internals.
+   Each dashboard's last tab is the dependency's own account of why: Database Internals and Object Store Internals.
+   Database Internals reads the PostgreSQL exporter on any PostgreSQL, or CloudNativePG's own metrics.
+   Object Store Internals reads Ceph.
 5. **Is it lagging, or is it stuck?**
    *Environment Overview* → Compute Objects.
    Currently Hydrating counts collections that have produced no results yet; the freshness panels cover the ones that
@@ -11780,7 +11974,7 @@ Those parameters render to a `__mzmon_*__` token that the chart replaces at inst
 | `infraNonessentialWorkloadList` | `__mzmon_nonessential_workloads__` | `rules.infraWorkloads.nonessential` |
 | `infraDaemonsetWorkloadList` | `__mzmon_daemonset_workloads__` | `rules.infraWorkloads.daemonset` |
 | `mzEnvironmentFilter` | `materialize_cloud_organization_name=~".+"` | nothing; a rule covers every environment |
-| `consensusRdsResources`, `consensusCloudsqlResources`, `consensusAzurePostgresResources` | `__mzmon_consensus_rds__` and so on, bare values | `externalDependencies.consensus`, per flavor; see [Install-time facts]({{< relref "recording-rules.md" >}}#install-time-facts) |
+| `consensusRdsResources`, `consensusCloudsqlResources`, `consensusAzurePostgresResources`, `consensusPostgresResources` | `__mzmon_consensus_rds__` and so on, bare values | `externalDependencies.consensus`, per flavor; see [Install-time facts]({{< relref "recording-rules.md" >}}#install-time-facts) |
 
 An empty namespace list or workload tier renders as `a^`, a regex that matches nothing, rather than as an empty string.
 
@@ -11824,6 +12018,7 @@ An alert reading one, such as `ext:consensus_up`, installs wherever any one of t
 |---|---|---|
 | Derived | `materialize`, `materialize-sql`, `materialize-operator`, `kube-state-metrics`, `cadvisor`, `node-exporter`, `loki`, `alloy` | This chart runs the component and collects its metrics |
 | Derived | `cloudwatch`, `cloud-monitoring`, `azure-monitor` | The gateway runs that provider pull, `pipeline.metrics.provider.{cloudwatch,gcp,azure}` |
+| Derived | `postgres-exporter` | The postgres-exporter subchart runs, `tags.postgres-exporter`, and the gateway scrapes it |
 | Explicit | `synthetic-uptime`, `external-uptime`, `feature-flags`, `frontegg-auth`, `memory-limiter`, `crdb-dedicated`, `cilium`, `coredns`, `cert-manager`, `kubelet-metrics`, `swap-nodes`, `egress-gateway` | An operator lists it in `rules.capabilities` |
 
 Adding a capability means adding it to the `Capability` enum, to the `capability` enum in `mzmon-query.schema.yaml`, and, for a derived one, to `mzmon.rules.derivedCapabilities` in the chart.
@@ -11973,6 +12168,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-node-exporter(node-exporter) | 4.60.0 |
+| [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | prometheus-postgres-exporter(postgres-exporter) | 8.2.0 |
 | [oci://ghcr.io/thanos-community/helm-charts](https://github.com/thanos-community/helm-charts) | thanos | 0.47.2 |
 
 ## Values {#values}
@@ -12141,6 +12337,10 @@ ours off with the `node-exporter.enabled: false` circuit breaker —
 setting `tags.node-exporter: false` does nothing while `tags.default`
 is true, because tags are OR'd.)
 
+`postgres-exporter` belongs to no group, `default` included. It watches
+databases you name with credentials you create, so it stays off until you
+set `tags.postgres-exporter: true`.
+
 <table class="helm-values">
   <thead>
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
@@ -12241,6 +12441,13 @@ is true, because tags are OR'd.)
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
       <td class="helm-value-desc">Per-chart override: enable just metrics-server. OR'd with `tags.cluster-metrics`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">tags<wbr>.postgres-exporter</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>false</code></td>
+      <td class="helm-value-desc">Enable postgres_exporter. In no group, `default` included: it watches databases you list under `postgres-exporter.targets`.
 </td>
     </tr>
   </tbody>
@@ -15701,10 +15908,10 @@ alone.
 
 The services Materialize depends on and does not run: which of the resources the stack watches are which.
 
-A provider pull (`pipeline.metrics.provider.*`) watches every database it is
-told to, and the provider cannot say which of them is Materialize's metadata
-database: the Terraform modules add Grafana's database to the same pull. This
-block says which is which. The normalized `ext:consensus_*` recording rules
+A provider pull (`pipeline.metrics.provider.*`) or the postgres-exporter
+watches every database it is told to, and neither can say which of them is
+Materialize's metadata database: the Terraform modules add Grafana's database
+to the same pull. This block says which is which. The normalized `ext:consensus_*` recording rules
 read only the databases named here, so an undeclared database, Grafana's
 among them, is never recorded as a metadata database.
 
@@ -15728,6 +15935,7 @@ which the `persist` adapter records wherever Materialize is.
 | `rds` | The DB instance identifier | `pipeline.metrics.provider.cloudwatch.rds.instances` |
 | `cloudsql` | The instance name, without the project | `pipeline.metrics.provider.gcp.cloudSql.instances` |
 | `azure-postgres` | The flexible server name | `pipeline.metrics.provider.azure.postgres.servers` |
+| `postgres` | The target's `name` | `postgres-exporter.targets` |
 
 ```yaml
 externalDependencies:
@@ -15736,8 +15944,8 @@ externalDependencies:
       resourceId: mzmon-prod-db
 ```
 
-The resource has to be watched by its provider pull as well, or there is
-nothing to record, and the render warns. Each recorded series carries the
+The resource has to be watched by its provider pull or the exporter as
+well, or there is nothing to record, and the render warns. Each recorded series carries the
 resource as its `resource` label. Matching ignores case.
 </td>
     </tr>
@@ -21437,6 +21645,191 @@ Upstream reference:
   </tbody>
 </table>
 
+#### PostgreSQL Exporter
+
+postgres_exporter, watching the PostgreSQL databases this deployment depends on from the inside.
+
+Upstream reference:
+   * https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-postgres-exporter/values.yaml
+   * https://github.com/prometheus-community/postgres_exporter#multi-target-support-beta
+
+Off by default, and in no tag group: it watches databases you name, with
+credentials you create. Turn it on with `tags.postgres-exporter: true` (or the
+`postgres-exporter.enabled` circuit breaker) and list each database under
+`targets`.
+
+One Deployment serves every target. The alloy-gateway scrapes it once per
+target, on `/probe`, and the exporter opens a connection to that database for
+the length of the scrape. So the replica count is not a multiplier on the
+connections each database sees, and adding a target never restarts the metric
+pipeline.
+
+**The credentials are a Secret you create**, named by
+`config.existingSecret.name` (default `postgres-exporter`) in the release
+namespace, holding one key, `postgres_exporter.yml`. It carries one
+`auth_modules` entry per target, named after the target:
+
+```yaml
+auth_modules:
+  consensus:
+    type: userpass
+    userpass:
+      username: mzmon_exporter
+      password: <password>
+    options:
+      sslmode: require
+  grafana:
+    type: userpass
+    userpass:
+      username: mzmon_exporter
+      password: <password>
+    options:
+      sslmode: require
+```
+
+postgres_exporter reads credentials for a multi-target scrape from this file
+and from nowhere else, so the whole file is the Secret rather than a
+password referenced from it. Create the role it names with the least-privilege
+grant on the
+[PostgreSQL exporter](https://materializeinc.github.io/materialize-monitoring/metrics/collecting/postgresql-exporter/)
+page.
+
+Until the Secret exists, the pod waits in `ContainerCreating` with an event
+naming it.
+
+<table class="helm-values">
+  <thead>
+    <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
+  </thead>
+  <tbody>    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.targets</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">The databases to watch, one scrape each.
+
+| Key | Required | Meaning |
+|---|---|---|
+| `name` | yes | The target's name: its `target` label, and the `auth_modules` entry its credentials come from. Letters, digits and hyphens |
+| `host` | yes | The database host, as the exporter pod resolves it |
+| `port` | no | Defaults to `5432` |
+| `database` | no | The database the connection opens. Defaults to `postgres` |
+| `authModule` | no | The `auth_modules` entry to use. Defaults to `name` |
+
+```yaml
+targets:
+  - name: consensus
+    host: mzmon-db.abc123.us-east-1.rds.amazonaws.com
+    database: materialize
+  - name: grafana
+    host: grafana-db.abc123.us-east-1.rds.amazonaws.com
+```
+
+**Point `database` at a database whose tables you want statistics for**,
+and leave it at `postgres` otherwise. Per-table statistics come from that
+database alone, at about 29 series per table: the metadata database's are
+persist's `consensus` and `timestamp_oracle`, while Grafana's roughly 90
+tables would cost about 2,600 series no panel reads. Everything
+instance-wide, `pg_database_size_bytes` among it, covers every database on
+the instance whichever one the connection opens.
+
+A target is scraped whether or not it is a metadata database. To record it
+as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.fullnameOverride</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"postgres-exporter"</code></td>
+      <td class="helm-value-desc">Standard Helm full-name override. We use a static name for deterministic relations.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.priorityClassName</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"monitoring-scalable"</code></td>
+      <td class="helm-value-desc">Scheduling priority. See the Priority classes section. Scalable: a missed scrape is a gap in a slow-moving series, and the Deployment comes back on its own.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.image</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "registry": "quay.io",
+  "repository": "prometheuscommunity/postgres-exporter",
+  "tag": "v0.20.1"
+}</pre>
+</td>
+      <td class="helm-value-desc">Container image, pinned here rather than inherited from the subchart's `appVersion`. So Renovate bumps the exporter on its own cadence, with its own release notes.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.resources</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "limits": {
+    "memory": "64Mi"
+  },
+  "requests": {
+    "cpu": "10m",
+    "memory": "32Mi"
+  }
+}</pre>
+</td>
+      <td class="helm-value-desc">Resource envelope. The exporter is idle between scrapes and holds no state. Memory is request == limit because its working set is small and flat; there is no CPU limit, so a scrape is never throttled into a timeout.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.existingSecret</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true,
+  "name": "postgres-exporter"
+}</pre>
+</td>
+      <td class="helm-value-desc">The Secret holding `postgres_exporter.yml`, which you create. See the section introduction for its shape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.extraArgs</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[
+  "--collector.database_wraparound",
+  "--collector.stat_activity_autovacuum"
+]</pre>
+</td>
+      <td class="helm-value-desc">Collectors to turn on beyond the exporter's defaults.
+
+| Flag | Adds | Why |
+|---|---|---|
+| `--collector.database_wraparound` | `pg_database_wraparound_age_datfrozenxid_seconds`, per database | Transaction-ID age, the wraparound signal. It counts transactions, despite the name |
+| `--collector.stat_activity_autovacuum` | `pg_stat_activity_autovacuum_*` | Autovacuum workers running now, per table |
+
+The defaults already cover what the dashboards read besides these:
+connections by state and the oldest open transaction, `max_connections`,
+per-database sizes, per-table dead tuples and vacuum times, and the
+server version.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.networkPolicy</td>
+      <td class="helm-value-type">object</td>
+      <td class="helm-value-default"><pre>
+{
+  "enabled": true
+}</pre>
+</td>
+      <td class="helm-value-desc">NetworkPolicy for the exporter. The subchart's policy admits ingress on the exporter's port and leaves egress unrestricted, because the databases it connects to are wherever you put them.
+</td>
+    </tr>
+  </tbody>
+</table>
+
 
 --------------------------------------------------------------------------------
 title: "Metrics"
@@ -21739,7 +22132,8 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         persist's own view of object storage and the metadata database
       * `infra-*.yaml`: the platform, including `infra-loki.yaml`, `infra-alloy.yaml` and `infra-thanos.yaml` (the log store, the collectors and the metrics store watching themselves),
         `infra-cloud.yaml` (the cloud provider pull), `infra-autoscaling.yaml` and `infra-karpenter.yaml` (node supply and Karpenter),
-        and `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves)
+        `infra-cnpg.yaml` and `infra-ceph.yaml` (CloudNativePG and Rook Ceph reporting on themselves),
+        and `infra-postgres.yaml` (any PostgreSQL, through the postgres-exporter)
       * `node-*.yaml`: node-exporter
       * `ext-*.yaml`: the normalized `ext:*` recording rules, one adapter per rule group
       * `tests/`: the `promtool test rules` cases for the rendered rules
@@ -21758,14 +22152,14 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
     * `materialize-monitoring/`: umbrella chart
       * `Chart.yaml` / `Chart.lock`: chart metadata; lock pins subchart versions
       * `values.yaml` / `README.md` / `README.md.gotmpl`: profile-driven defaults; README generated from the template via `helm-docs`
-      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`
+      * `charts/`: vendored subchart tarballs (LFS) — `alloy`, `loki`, `thanos`, `alertmanager`, `grafana`, `grafana-operator`, `kube-state-metrics`, `prometheus-node-exporter`, `metrics-server`, `prometheus-postgres-exporter`
       * `files/`: hand-authored files loaded via `{{ .Files.Get }}` and never rendered by Helm — `alertmanager/mzmon.gotmpl` and `alertmanager/defaults.gotmpl`, the notification templates the chart ships in `alertmanager-config`
       * `pre-rendered/`: generated artifacts loaded via `{{ .Files.Get }}`; never hand-edited
         * `pipelines/`: rendered Alloy (`agent.alloy`, `gateway.alloy`, `gateway-metrics.alloy`, `gateway-dest-stub.alloy`)
         * `scrapers/`: `classic/` (raw scrape config), `prometheus-operator/` (PodMonitors + ScrapeConfig), `gmp/` (GCP `PodMonitoring`)
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
-      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`)
+      * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
       * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
@@ -23424,15 +23818,16 @@ A group holds recording rules or alerts, not both, because alerts are selected b
 
 ## Install-time facts
 
-A provider pull watches every database it is told to, including databases that are not a metadata database: the Terraform modules add Grafana's to the same pull.
-The provider cannot tell them apart, so which ones are a metadata database is an install-time value, `externalDependencies.consensus` in the chart.
-Each provider adapter matches its resource label against a placeholder the chart fills from it.
+A provider pull or the postgres-exporter watches every database it is told to, including databases that are not a metadata database: the Terraform modules add Grafana's to the same pull.
+Neither can tell them apart, so which ones are a metadata database is an install-time value, `externalDependencies.consensus` in the chart.
+Each such adapter matches its resource label against a placeholder the chart fills from it.
 
 | Parameter | Renders to | The chart fills it from |
 |---|---|---|
 | `consensusRdsResources` | `__mzmon_consensus_rds__` | The `resourceId` of each `externalDependencies.consensus` entry with `flavor: rds` |
 | `consensusCloudsqlResources` | `__mzmon_consensus_cloudsql__` | The same, for `flavor: cloudsql` |
 | `consensusAzurePostgresResources` | `__mzmon_consensus_azure_postgres__` | The same, for `flavor: azure-postgres` |
+| `consensusPostgresResources` | `__mzmon_consensus_postgres__` | The same, for `flavor: postgres`, matched against the exporter's `target` label |
 
 An undeclared flavor renders as `a^`, which matches nothing, so its adapter records nothing.
 The adapters match with `(?i)`, because the providers do not promise the case a name was declared in.
@@ -23441,6 +23836,7 @@ The adapters match with `(?i)`, because the providers do not promise the case a 
 
 A recording rule's capabilities are inferred from its metrics, exactly as an alert's are.
 The three provider pulls are capabilities the chart derives from `pipeline.metrics.provider.*`: `cloudwatch`, `cloud-monitoring` and `azure-monitor`.
+The postgres-exporter is another, `postgres-exporter`, derived from the subchart being enabled.
 A recording rule that reads only `up` MUST declare what it is about with `requires`.
 
 A registry file of recording rules SHOULD set `metricImportanceHint: diagnostic`.
@@ -26039,12 +26435,14 @@ One name is recorded by each **adapter** that can measure it, and the `flavor` l
 
 | Label | On | Holds |
 |---|---|---|
-| `flavor` | Every `ext:*` series | The adapter that recorded it: `persist` is Materialize's own measurement, and `rds`, `cloudsql` and `azure-postgres` are a cloud provider's |
+| `flavor` | Every `ext:*` series | The adapter that recorded it: `persist` is Materialize's own measurement, `rds`, `cloudsql` and `azure-postgres` are a cloud provider's, and `postgres` is the postgres-exporter's |
 | `namespace` | Series from `persist` | The Materialize environment's namespace |
-| `resource` | Series from a cloud provider | The database's name at the provider, as declared in `externalDependencies.consensus` |
+| `resource` | Series from a cloud provider or the exporter | The database's name at the provider, or the exporter target's name, as declared in `externalDependencies.consensus` |
+| `database` | `ext:consensus_database_bytes` | The name of one database on the instance |
+| `version` | `ext:consensus_version_info` | The version the database server reports |
 
 An adapter that cannot measure a series records nothing for it, rather than a zero.
-The provider adapters record only the databases `externalDependencies.consensus` declares; see [Configuring Alerting](../../alerting/configuring/#recorded-series).
+The provider and exporter adapters record only the databases `externalDependencies.consensus` declares; see [Configuring Alerting](../../alerting/configuring/#recorded-series).
 
 Recorded-series names are covered by the [stability policy](../stability/) from the release that first ships them, like alert names.
 
@@ -26279,7 +26677,7 @@ From 1.0, a breaking change to the committed surface owes a deprecation cycle un
 | Area | At 1.0 |
 |---|---|
 | Delivery | The umbrella chart, the optional CRDs chart and the dashboards chart, published to GHCR as OCI artifacts. The common Terraform module lives here and is wrapped per cloud in `materialize-terraform-self-managed`, where observability is on by default. Profiles cover sizing, scheduling, storage class, registries, Grafana ingress and persistence, and mTLS |
-| Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor. Rust panics are merged into one entry at ingest |
+| Collection | An Alloy agent for pod logs and the node journal, and an Alloy gateway for metrics. The gateway scrapes Materialize, kube-state-metrics, node-exporter, every kubelet's cAdvisor, the AWS VPC CNI, Cilium and kube-proxy. It also pulls provider metrics from CloudWatch, Cloud Monitoring and Azure Monitor, and scrapes an optional `postgres_exporter` watching the metadata and Grafana databases. Rust panics are merged into one entry at ingest |
 | Destinations | The bundled Loki and Thanos, any number of Prometheus remote-write destinations, OTLP, Datadog and Google Cloud's Telemetry API, each filtered by importance tier |
 | Dashboards | `env-top`, `env-logs`, `env-upgrade`, `env-persist` and `env-consensus` for Materialize. `infra-logs`, `infra-nodes`, `infra-net`, `infra-autoscaling`, `infra-karpenter`, `infra-cloud`, `infra-loki` and `infra-alloy` for the platform. All are rendered from Rust against the query registry |
 | Alerting | Thanos and Loki rulers notifying a highly available Alertmanager, with severity-to-receiver presets, capability-tagged rules, notification templates that link to Grafana, and a Terraform surface. Thirty-five alerts are in the default set, four of them log-derived, beside the `ext:consensus_*` recording rules. Alert and recording-rule names are a committed surface |
@@ -26487,17 +26885,18 @@ Designed in [Monitoring Materialize's External Dependencies](../design-docs/2026
 Several pieces shipped with 1.0: the client vantage point, the provider pulls, and the client and provider dashboards.
 So did the `persist-failures` split and the `ext:consensus_*` recording rules.
 Since then, the first flavor-native rows have shipped: CloudNativePG on `env-consensus` and Rook Ceph on `env-persist`.
-What remains of the flavor-specific half is the normalized rules those flavors feed, and the other flavors.
+So has the exporter vantage point, a `postgres_exporter` subchart whose PostgreSQL rows sit beside CNPG's and whose `postgres` adapter records `ext:consensus_*`.
+What remains of the flavor-specific half is the normalized rules CNPG and Ceph feed, and the other flavors.
 It stays opt-in behind the normalized `ext:*` contract.
 That contract keeps seven database flavors and five object stores from multiplying the dashboard and alert set.
 
 | Item | Status |
 |---|---|
-| [DEP-295] The rest of the `ext:*` layer: `ext:consensus_connections_used_ratio` and the `ext:objstore_*` families | 🔨 |
-| [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ⬜ |
-| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. CNPG's flavor-native rows are on `env-consensus`; the `ext:*` rules and the other flavors remain | 🔨 |
+| [DEP-295] The rest of the `ext:*` layer: the `ext:objstore_*` families. `ext:consensus_connections_used_ratio` has a producer, the `postgres` adapter | 🔨 |
+| [DEP-297] The exporter vantage point: a multi-target `postgres_exporter` subchart, transaction-ID age, per-database sizes, a documented grant | ✅ |
+| [DEP-298] PostgreSQL, CNPG and self-hosted CockroachDB adapters, with the CockroachDB Cloud alerts reclassified as their own adapter. The PostgreSQL adapter and its rows shipped with [DEP-297], and CNPG's flavor-native rows are on `env-consensus`; CNPG's `ext:*` rules and the CockroachDB adapters remain | 🔨 |
 | [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
-| [DEP-300] Version reporting (`ext:*_version_info`) across every adapter | ⬜ |
+| [DEP-300] Version reporting (`ext:*_version_info`) across every adapter. The `postgres` adapter records `ext:consensus_version_info`; the others remain | 🔨 |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
 | [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |
 | [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
@@ -32571,8 +32970,8 @@ Four departures from the sections above.
 
 - **The `externalDependencies` block is partly here already.** Every Terraform-configured pull also watches Grafana's database, and a provider adapter cannot tell it from the metadata database, so recording every pulled database would have named Grafana's a consensus database. The provider adapters therefore record only the databases `externalDependencies.consensus` lists, as `{flavor, resourceId}` pairs. `name` and `environments` stay with [DEP-303](https://linear.app/materializeinc/issue/DEP-303).
 - **`ext:consensus_up` has a client adapter.** It is 0 when no metadata-database call has succeeded in five minutes, and absent only when the environment is not scraped. CloudWatch publishes no reachability signal, so `rds` records no `up`.
-- **`ext:consensus_connections_used_ratio` has no producer.** No provider publishes `max_connections`, and the client does not publish its pool's ceiling. The exporter adapters are the first that can record it.
-- **`ext:consensus_cpu_ratio`, `ext:consensus_database_bytes` and `ext:consensus_version_info` are not recorded.** No alert reads the first yet, and the other two need the exporter.
+- **`ext:consensus_connections_used_ratio` has no provider or client producer.** No provider publishes `max_connections`, and the client does not publish its pool's ceiling. The exporter adapter records it; see [As built: the postgres_exporter subchart](#as-built-the-postgres_exporter-subchart).
+- **`ext:consensus_cpu_ratio` is not recorded**, because no alert reads it yet. `ext:consensus_database_bytes` and `ext:consensus_version_info` need the exporter, whose adapter records both.
 
 ## The consensus database
 
@@ -33053,6 +33452,44 @@ The departures, each with its reason.
   so turning on a dashboard would turn on a second alert set.
   The fallback names both routes.
 
+### As built: the postgres_exporter subchart
+
+<!-- Agent note: recorded as a decision rather than rewriting "The exporter is a subchart", which is the reasoning that was reviewed. -->
+
+[DEP-297](https://linear.app/materializeinc/issue/DEP-297) built the exporter vantage point for PostgreSQL, and the `postgres` adapter that [DEP-298](https://linear.app/materializeinc/issue/DEP-298) owes.
+It was built against `postgres_exporter` v0.20.1 and the `prometheus-postgres-exporter` chart 8.2.0.
+It was checked on the wrapper-provisioned AWS and GCP test installs, against each one's metadata and Grafana databases:
+RDS on PostgreSQL 18.3 and 16.13, and Cloud SQL on 18.6 and 16.14.
+The documented grant worked as the wrappers' own non-superuser roles, and `ext:consensus_xid_used_ratio` from the `postgres` adapter agreed with `rds` and `cloudsql` to within 0.0001.
+[PostgreSQL exporter](../../../../metrics/collecting/postgresql-exporter/) is the operator's page.
+
+| Decision | As built |
+|---|---|
+| The workload | The upstream chart, aliased `postgres-exporter`, in no tag group, so the default stack never turns it on. One Deployment, scraped once per target on `/probe` |
+| Targets | `postgres-exporter.targets`, each a `name`, a `host`, and optionally a `port`, a `database` and an `authModule`. The name becomes `target` on every series |
+| The scrape | A ServiceMonitor the chart renders, with `job`, `target` and `instance` set by `relabelings`. The subchart's multi-target monitor sets them with `metricRelabelings`, which leaves every target's `up` with one label set |
+| Credentials | A Secret the operator creates, holding the whole `postgres_exporter.yml`. In multi-target mode the exporter reads credentials from that file's `auth_modules` and has no indirection to a file or an environment variable, so the file is the secret |
+| The grant | A dedicated role with `pg_monitor` and `CONNECT`, documented. The chart cannot create it |
+| Transaction-ID age | The exporter's own `database_wraparound` collector, turned on, rather than a custom query |
+| Per-database size | The default `database` collector, unscoped |
+| Applicability | A derived capability, `postgres-exporter` |
+| Which target is a metadata database | `externalDependencies.consensus` with `flavor: postgres` and the target's name as `resourceId`, filled into the rules through `consensusPostgresResources`, as the provider adapters are |
+| Recorded | `ext:consensus_up`, `ext:consensus_connections_used_ratio`, `ext:consensus_xid_used_ratio`, `ext:consensus_database_bytes` with a `database` label, and `ext:consensus_version_info` with a `version` label |
+| Rows | A PostgreSQL section on `env-consensus`'s Database Internals tab beside CNPG's, discovered from `up{job="postgres-exporter"}` as `$postgresDetected` and scoped by a section picker, `$postgresTarget` |
+
+The departures, each with its reason.
+
+- **No custom query.**
+  The design expected transaction-ID age to need one.
+  The exporter has since gained a `database_wraparound` collector that reports `age(datfrozenxid)` per database, and its custom-query path, `extend.query-path`, is deprecated upstream.
+- **Grafana's database is a target, not an Alloy component.**
+  One mechanism covers both databases, which settles the open question about keeping `prometheus.exporter.postgres` for low-criticality targets.
+  Grafana's target is scraped and pickable on the dashboard, and never recorded as a metadata database unless `externalDependencies.consensus` names it.
+- **The fallback waits on two variables.**
+  CNPG and the exporter are discovered from different series, so the Database Internals fallback renders when neither matches, on a group of two negated conditions.
+- **The exporter records no `ext:consensus_storage_used_ratio`.**
+  It sees inside the database and not the volume, so the ratio stays the provider's to record.
+
 ## Deployment shapes
 
 | Shape | Client | Exporter | Provider |
@@ -33156,9 +33593,9 @@ Four questions from the first draft are settled and are recorded here rather tha
 
 - [x] **Does a recorded series belong in the committed surface at all?** The alerting design makes recording-rule names committed from first ship, which settles the *when*. Whether `ext:*` should carry that weight, or be an internal implementation the dashboards happen to read, is the part this design decides. **Settled: committed**, as documented recording rules; see [As built](#as-built-the-metadata-databases-adapters).
 - [x] **Should the normalized layer be recording rules or a query-registry construct?** Rules cost storage and need a ruler; a registry-level abstraction costs nothing at runtime and cannot be read by a customer's own Grafana or by an alert evaluated elsewhere. The recommendation is rules, and it is not obvious. **Settled: recording rules**, which [DEP-295](https://linear.app/materializeinc/issue/DEP-295) built.
-- [ ] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row.
+- [x] **Is the Alloy exporter worth keeping as a second mechanism** for low-criticality targets like Grafana's database, or is one mechanism for every target simpler than two? It is only attractive if the conditionality is clean enough that an absent target produces an explanation rather than an empty row. **Settled: one mechanism.** Grafana's database is an exporter target; see [As built](#as-built-the-postgres_exporter-subchart).
 - [ ] **How does the exporter reach a managed database it is not already connected to?** Cloud SQL is on a private IP, Flexible Server may be VNet-integrated, and the wrappers make Materialize reach them but say nothing about a second consumer.
-- [ ] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either.
+- [x] **Does the exporter get its own least-privilege role, or reuse Materialize's credential?** Reuse is what a customer will do anyway; a separate `pg_monitor` role is what should be documented. The chart cannot create either. **Settled: its own role**, documented with the exporter.
 - [ ] **What does the persist blob path owe upstream?** Persist publishes a latency histogram for `blob_get`, `blob_set` and `consensus_cas` and only a mean for everything else, which is the remaining gap in the client vantage point. It belongs in the [metrics contract](../../roadmap/#metrics-contract-upstream-dependency) asks if it is wanted.
 - [ ] **Is the Day 0 probe and the steady-state probe one component or two?** They answer the same question with the same credential and differ only in lifecycle — one runs as an install hook and fails the install, the other runs forever and feeds an alert. One component with two invocations is the obvious shape and couples an install-blocking check to a long-running workload.
 - [ ] **What is the version floor, and who owns it?** The version alert has no threshold this repository can set, and a values-supplied floor puts the policy on the operator, which is where it can be wrong quietly. A published support matrix is the real answer and does not exist in a form this can read.

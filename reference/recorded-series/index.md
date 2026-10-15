@@ -14,12 +14,14 @@ One name is recorded by each **adapter** that can measure it, and the `flavor` l
 
 | Label | On | Holds |
 |---|---|---|
-| `flavor` | Every `ext:*` series | The adapter that recorded it: `persist` is Materialize's own measurement, and `rds`, `cloudsql` and `azure-postgres` are a cloud provider's |
+| `flavor` | Every `ext:*` series | The adapter that recorded it: `persist` is Materialize's own measurement, `rds`, `cloudsql` and `azure-postgres` are a cloud provider's, and `postgres` is the postgres-exporter's |
 | `namespace` | Series from `persist` | The Materialize environment's namespace |
-| `resource` | Series from a cloud provider | The database's name at the provider, as declared in `externalDependencies.consensus` |
+| `resource` | Series from a cloud provider or the exporter | The database's name at the provider, or the exporter target's name, as declared in `externalDependencies.consensus` |
+| `database` | `ext:consensus_database_bytes` | The name of one database on the instance |
+| `version` | `ext:consensus_version_info` | The version the database server reports |
 
 An adapter that cannot measure a series records nothing for it, rather than a zero.
-The provider adapters record only the databases `externalDependencies.consensus` declares; see [Configuring Alerting](../../alerting/configuring/#recorded-series).
+The provider and exporter adapters record only the databases `externalDependencies.consensus` declares; see [Configuring Alerting](../../alerting/configuring/#recorded-series).
 
 Recorded-series names are covered by the [stability policy](../stability/) from the release that first ships them, like alert names.
 
@@ -61,6 +63,20 @@ when it reports it down.
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{resourceName<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusAzurePostgresResources}</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
 </span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">resourceName</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h4><code>flavor="postgres"</code> <small>from <code>ext-consensus</code>, group <code>ext_consensus_postgres</code></small></h4>
+1 while the postgres-exporter can connect to each metadata database,
+and 0 when it cannot.
+From <code>pg_up</code>. Absent while the exporter itself cannot be scraped,
+which is a fault in the exporter rather than in the database.
+<p><strong>Recorded where:</strong> <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    pg_up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;},
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">target</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
@@ -125,6 +141,21 @@ writes.
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
 </span></span></code></pre></div>
+<h4><code>flavor="postgres"</code> <small>from <code>ext-consensus</code>, group <code>ext_consensus_postgres</code></small></h4>
+The fraction of PostgreSQL&rsquo;s transaction-ID space each metadata
+database&rsquo;s instance has used, against the 2^31 at which it stops
+accepting writes.
+The oldest <code>age(datfrozenxid)</code> of any database on the instance, since
+wraparound stops the whole instance whichever database reaches it.
+<p><strong>Recorded where:</strong> <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    pg_database_wraparound_age_datfrozenxid_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;},
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">target</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
 <h3 id="ext-consensus_storage_used_ratio"><code>ext:consensus_storage_used_ratio</code>
   <a class="anchor" href="#ext-consensus_storage_used_ratio">#</a>
 </h3>
@@ -151,6 +182,78 @@ storage in use.
 </span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">resourceName</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">100</span>
+</span></span></code></pre></div>
+<h3 id="ext-consensus_connections_used_ratio"><code>ext:consensus_connections_used_ratio</code>
+  <a class="anchor" href="#ext-consensus_connections_used_ratio">#</a>
+</h3>
+<h4><code>flavor="postgres"</code> <small>from <code>ext-consensus</code>, group <code>ext_consensus_postgres</code></small></h4>
+Client connections open on each metadata database&rsquo;s instance, as a
+fraction of the connections an ordinary role may open.
+The ceiling is <code>max_connections</code> less <code>superuser_reserved_connections</code>
+and, from PostgreSQL 16, <code>reserved_connections</code>, which is where an
+ordinary role is refused. Connections to every database on the
+instance count, not only Materialize&rsquo;s, because they share the
+ceiling.
+While a rollout runs two exporter pods, each probes the database, and
+their copies are counted once.
+<p><strong>Recorded where:</strong> <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">/</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_settings_max_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_settings_superuser_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_settings_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">or</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_settings_max_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">target</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h3 id="ext-consensus_database_bytes"><code>ext:consensus_database_bytes</code>
+  <a class="anchor" href="#ext-consensus_database_bytes">#</a>
+</h3>
+<h4><code>flavor="postgres"</code> <small>from <code>ext-consensus</code>, group <code>ext_consensus_postgres</code></small></h4>
+The size of each database on each metadata database&rsquo;s instance, with
+the database&rsquo;s name as <code>database</code>.
+Every database on the instance, not only Materialize&rsquo;s: a neighbour
+filling the volume is what this series exists to attribute, and the
+instance&rsquo;s total cannot.
+<p><strong>Recorded where:</strong> <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource, database<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      pg_database_size_bytes{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;},
+</span></span><span style="display:flex;"><span>      &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">target</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">database</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">datname</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+<h3 id="ext-consensus_version_info"><code>ext:consensus_version_info</code>
+  <a class="anchor" href="#ext-consensus_version_info">#</a>
+</h3>
+<h4><code>flavor="postgres"</code> <small>from <code>ext-consensus</code>, group <code>ext_consensus_postgres</code></small></h4>
+1, with the PostgreSQL version each metadata database runs as
+<code>version</code>.
+The server&rsquo;s own version number, such as <code>16.4.0</code>. Join it onto
+another <code>ext:consensus_*</code> series with <code>group_left (version)</code> on
+<code>flavor</code> and <code>resource</code>.
+<p><strong>Recorded where:</strong> <code>postgres-exporter</code>.</p>
+        
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resource, version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      pg_static{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">(?i)${consensusPostgresResources}</span>&#34;},
+</span></span><span style="display:flex;"><span>      &#34;<span style="color:#e6db74">resource</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">target</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">version</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">short_version</span>&#34;, &#34;<span style="color:#e6db74">(.+)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
 
 

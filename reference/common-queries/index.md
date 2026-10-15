@@ -7332,6 +7332,332 @@ Kubernetes events filed against this node, newest first.
   </div>
 </div>
 
+## infra-postgres
+
+<p>What a PostgreSQL database reports about itself, read by the
+postgres-exporter subchart: connections against the ceiling, transactions,
+locks, the size of every database on the instance, transaction-ID age, and
+vacuum on the tables of the database the exporter connects to.</p>
+<p>It works the same on RDS, Cloud SQL, Azure Database for PostgreSQL and a
+self-hosted server, because it is an ordinary SQL connection. That makes it
+the complement of the provider pull, which sees the machine the database
+runs on and nothing inside it. The external dependency design doc calls this
+the exporter vantage point.</p>
+<h2 id="scope">Scope<a class="anchor" href="#scope">#</a></h2>
+<p>One exporter scrapes every database in <code>postgres-exporter.targets</code>, and each
+scrape&rsquo;s series carry that target&rsquo;s name as <code>target</code> and
+<code>job=&quot;postgres-exporter&quot;</code>. Nothing on them names a Materialize environment,
+so <code>$postgresTarget</code> is that mapping, chosen by the reader and declared on
+the dashboard section these rows sit in. It holds one target, because the
+instance-level numbers here would mix two databases&rsquo; into one.</p>
+<h2 id="label-families">Label families<a class="anchor" href="#label-families">#</a></h2>
+<p><code>datname</code> is the database. Instance-wide families (<code>pg_database_*</code>,
+<code>pg_stat_activity_*</code>, <code>pg_stat_database_*</code>, <code>pg_locks_*</code>) cover every
+database on the instance, whichever one the exporter connects to — which is
+the attribution the per-database panels exist for. <code>pg_stat_user_tables_*</code>
+covers only the database the exporter connects to, and <code>relname</code> is the
+table.</p>
+<p>While a rollout runs two exporter pods, each probes every target, so each
+series arrives twice with a different <code>pod</code>. Every query that sums takes
+<code>max without (pod)</code> first, so the copies count once.</p>
+<p><code>pg_stat_database_*</code> counters do not end in <code>_total</code>, so Grafana marks every
+<code>rate()</code> over one with Prometheus&rsquo;s &ldquo;metric might not be a counter&rdquo; notice.
+They are counters, and the notice is harmless.</p>
+<h2 id="what-it-does-not-publish">What it does not publish<a class="anchor" href="#what-it-does-not-publish">#</a></h2>
+<p>The size of the volume the database lives on, so there is no &ldquo;disk full&rdquo;
+ratio here: that is the provider&rsquo;s to say, on the Infrastructure Cloud
+Provider dashboard. Replication is left out too, because no deployment shape
+this chart targets reads from a replica.</p>
+
+<h4 id="infra.postgres.health.not_reachable">infra.postgres.health.not_reachable
+  <a class="anchor" href="#infra.postgres.health.not_reachable">#</a>
+</h4>
+Whether the exporter can reach the selected database: 1 when it
+cannot connect, or cannot itself be scraped.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.not_reachable-tabs" id="infra.postgres.health.not_reachable-tab-0" checked>
+  <label for="infra.postgres.health.not_reachable-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span> <span style="color:#f92672">(</span><span style="color:#ae81ff">1</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>up{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.connections_used">infra.postgres.health.connections_used
+  <a class="anchor" href="#infra.postgres.health.connections_used">#</a>
+</h4>
+Client connections open on the selected database&rsquo;s instance, as a
+fraction of the connections an ordinary role may open.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.connections_used-tabs" id="infra.postgres.health.connections_used-tab-0" checked>
+  <label for="infra.postgres.health.connections_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_max_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_superuser_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.oldest_transaction">infra.postgres.health.oldest_transaction
+  <a class="anchor" href="#infra.postgres.health.oldest_transaction">#</a>
+</h4>
+How long the oldest open transaction on the instance has been running.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.oldest_transaction-tabs" id="infra.postgres.health.oldest_transaction-tab-0" checked>
+  <label for="infra.postgres.health.oldest_transaction-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_stat_activity_max_tx_duration{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.xid_used">infra.postgres.health.xid_used
+  <a class="anchor" href="#infra.postgres.health.xid_used">#</a>
+</h4>
+How much of the transaction-ID space the most at-risk database on the
+instance has consumed since vacuum last froze it.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.xid_used-tabs" id="infra.postgres.health.xid_used-tab-0" checked>
+  <label for="infra.postgres.health.xid_used-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_database_wraparound_age_datfrozenxid_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.dead_tuples">infra.postgres.health.dead_tuples
+  <a class="anchor" href="#infra.postgres.health.dead_tuples">#</a>
+</h4>
+The dead-row fraction of the table with the most dead rows, in the
+database the exporter connects to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.dead_tuples-tabs" id="infra.postgres.health.dead_tuples-tab-0" checked>
+  <label for="infra.postgres.health.dead_tuples-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      pg_stat_user_tables_n_live_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1000</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.health.version">infra.postgres.health.version
+  <a class="anchor" href="#infra.postgres.health.version">#</a>
+</h4>
+The PostgreSQL version the selected database runs.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.health.version-tabs" id="infra.postgres.health.version-tab-0" checked>
+  <label for="infra.postgres.health.version-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>short_version<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_static{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.by_database">infra.postgres.connections.by_database
+  <a class="anchor" href="#infra.postgres.connections.by_database">#</a>
+</h4>
+Client connections open on the instance, by database and role, beside
+the ceiling an ordinary role is refused at.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.by_database-tabs" id="infra.postgres.connections.by_database-tab-0" checked>
+  <label for="infra.postgres.connections.by_database-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, usename<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_max_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_superuser_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">-</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>pg_settings_reserved_connections{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">vector</span><span style="color:#f92672">(</span><span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.by_state">infra.postgres.connections.by_state
+  <a class="anchor" href="#infra.postgres.connections.by_state">#</a>
+</h4>
+Client connections by what they are doing: running a statement
+(<code>active</code>), waiting for the next one (<code>idle</code>), or holding a
+transaction open between statements (<code>idle in transaction</code>).
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.by_state-tabs" id="infra.postgres.connections.by_state-tab-0" checked>
+  <label for="infra.postgres.connections.by_state-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, backend_type<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">client backend</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.oldest_transaction">infra.postgres.connections.oldest_transaction
+  <a class="anchor" href="#infra.postgres.connections.oldest_transaction">#</a>
+</h4>
+The oldest open transaction, by database and connection state.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.oldest_transaction-tabs" id="infra.postgres.connections.oldest_transaction-tab-0" checked>
+  <label for="infra.postgres.connections.oldest_transaction-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, state<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_max_tx_duration{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.connections.locks">infra.postgres.connections.locks
+  <a class="anchor" href="#infra.postgres.connections.locks">#</a>
+</h4>
+Locks held, by database and lock mode.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.connections.locks-tabs" id="infra.postgres.connections.locks-tab-0" checked>
+  <label for="infra.postgres.connections.locks-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, mode<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_locks_count{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.activity.transactions">infra.postgres.activity.transactions
+  <a class="anchor" href="#infra.postgres.activity.transactions">#</a>
+</h4>
+Transactions committed and rolled back per second, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.activity.transactions-tabs" id="infra.postgres.activity.transactions-tab-0" checked>
+  <label for="infra.postgres.activity.transactions-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_xact_commit{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_xact_rollback{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.activity.rows">infra.postgres.activity.rows
+  <a class="anchor" href="#infra.postgres.activity.rows">#</a>
+</h4>
+Rows inserted, updated and deleted per second, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.activity.rows-tabs" id="infra.postgres.activity.rows-tab-0" checked>
+  <label for="infra.postgres.activity.rows-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_tup_inserted{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_tup_updated{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_tup_deleted{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.activity.cache_hit">infra.postgres.activity.cache_hit
+  <a class="anchor" href="#infra.postgres.activity.cache_hit">#</a>
+</h4>
+The fraction of block reads served from PostgreSQL&rsquo;s shared buffers
+rather than from disk, by database.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.activity.cache_hit-tabs" id="infra.postgres.activity.cache_hit-tab-0" checked>
+  <label for="infra.postgres.activity.cache_hit-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_blks_hit{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_blks_hit{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">+</span> <span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>pg_stat_database_blks_read{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;, datname<span style="color:#f92672">!=</span>&#34;&#34;}<span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span><span style="color:#f92672">)))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.database_size">infra.postgres.storage.database_size
+  <a class="anchor" href="#infra.postgres.storage.database_size">#</a>
+</h4>
+The size of each database on the instance.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.database_size-tabs" id="infra.postgres.storage.database_size-tab-0" checked>
+  <label for="infra.postgres.storage.database_size-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_database_size_bytes{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.xid_age">infra.postgres.storage.xid_age
+  <a class="anchor" href="#infra.postgres.storage.xid_age">#</a>
+</h4>
+Transaction-ID space consumed by each database since vacuum last froze
+it, as a fraction of the wraparound limit.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.xid_age-tabs" id="infra.postgres.storage.xid_age-tab-0" checked>
+  <label for="infra.postgres.storage.xid_age-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_database_wraparound_age_datfrozenxid_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">2147483648</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.dead_tuples">infra.postgres.storage.dead_tuples
+  <a class="anchor" href="#infra.postgres.storage.dead_tuples">#</a>
+</h4>
+Dead rows waiting for vacuum, for the ten tables with the most, in the
+database the exporter connects to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.dead_tuples-tabs" id="infra.postgres.storage.dead_tuples-tab-0" checked>
+  <label for="infra.postgres.storage.dead_tuples-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span><span style="color:#ae81ff">10</span>, <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.since_autovacuum">infra.postgres.storage.since_autovacuum
+  <a class="anchor" href="#infra.postgres.storage.since_autovacuum">#</a>
+</h4>
+Time since autovacuum last finished on each of the ten tables with the
+most dead rows, in the database the exporter connects to.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.since_autovacuum-tabs" id="infra.postgres.storage.since_autovacuum-tab-0" checked>
+  <label for="infra.postgres.storage.since_autovacuum-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_user_tables_last_autovacuum{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;} <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">topk</span><span style="color:#f92672">(</span><span style="color:#ae81ff">10</span>, <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>datname, relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_user_tables_n_dead_tup{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.postgres.storage.autovacuum_running">infra.postgres.storage.autovacuum_running
+  <a class="anchor" href="#infra.postgres.storage.autovacuum_running">#</a>
+</h4>
+How long each autovacuum worker running now has been at it, by table.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.postgres.storage.autovacuum_running-tabs" id="infra.postgres.storage.autovacuum_running-tab-0" checked>
+  <label for="infra.postgres.storage.autovacuum_running-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">time</span><span style="color:#f92672">()</span> <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>relname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>pg_stat_activity_autovacuum_timestamp_seconds{job<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">postgres-exporter</span>&#34;, target<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">$postgresTarget</span>&#34;}<span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+
 ## infra-thanos
 
 <p>Is the metrics store healthy, and if not, which part of it broke.</p>
