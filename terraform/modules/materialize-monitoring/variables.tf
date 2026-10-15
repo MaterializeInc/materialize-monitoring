@@ -1113,8 +1113,9 @@ variable "postgres_exporter_targets" {
 variable "postgres_exporter_passwords" {
   description = <<-EOT
     The password for each `postgres_exporter_targets` entry, keyed by its `name`. Written into the
-    exporter's Secret and nowhere else. Every target needs one: the exporter refuses a target whose
-    credentials have no password. Grafana's comes from `grafana_database_password`.
+    exporter's Secret and nowhere else. Every target needs a non-empty one: the exporter refuses a
+    target whose credentials have no password. Grafana's always comes from
+    `grafana_database_password`, and a `grafana` entry here is ignored.
   EOT
   type        = map(string)
   default     = {}

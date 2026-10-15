@@ -17,8 +17,10 @@
 //! recording rule matching `a^`, which records nothing and errors nowhere.
 
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
 use anyhow::{Context, Result, bail};
+use regex::Regex;
 use serde_json::Value;
 
 use super::grafana;
@@ -213,17 +215,20 @@ pub fn metadata_databases_reach_the_rules(ctx: &Ctx) -> Result<()> {
         .rendered
         .find("PrometheusRule", "mzmon-ext-consensus")
         .context("no mzmon-ext-consensus PrometheusRule rendered")?;
-    let postgres = rules
+    let exprs: Vec<&str> = rules
         .get("spec.groups")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .find(|group| str_at(group, "name") == Some("ext_consensus_postgres"))
-        .map(|group| group.to_string())
-        .unwrap_or_default();
+        .filter(|group| str_at(group, "name") == Some("ext_consensus_postgres"))
+        .filter_map(|group| group.get("rules")?.as_array())
+        .flatten()
+        .filter_map(|rule| str_at(rule, "expr"))
+        .collect();
+    let recorded = recorded_targets(&exprs);
     let unrecorded: Vec<&str> = metadata_targets(ctx)
         .into_iter()
-        .filter(|name| !postgres.contains(&format!("(?i){name}")))
+        .filter(|name| !recorded.contains(&name.to_lowercase()))
         .collect();
     if !unrecorded.is_empty() {
         bail!(
@@ -233,4 +238,51 @@ pub fn metadata_databases_reach_the_rules(ctx: &Ctx) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The target names the `ext_consensus_postgres` rules read, lowercased, from
+/// every `target=~"(?i)…"` matcher in them.
+///
+/// The chart joins every declared name into one alternation, `(?i)a|b`, so a
+/// name is read whole out of the matcher rather than searched for: only the
+/// first alternative follows `(?i)`. Lowercased because the rules match
+/// ignoring case.
+fn recorded_targets(exprs: &[&str]) -> BTreeSet<String> {
+    static MATCHER: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"target=~"\(\?i\)([^"]*)""#).expect("the target matcher pattern compiles")
+    });
+    exprs
+        .iter()
+        .flat_map(|expr| MATCHER.captures_iter(expr))
+        .flat_map(|captures| {
+            captures[1]
+                .split('|')
+                .map(|name| name.trim_matches(|c| c == '(' || c == ')').to_lowercase())
+                .collect::<Vec<_>>()
+        })
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_alternative_of_the_matcher_is_recorded() {
+        // The shape the chart renders for two declared metadata targets.
+        let expr = r#"max by (resource) (label_replace(pg_up{job="postgres-exporter", target=~"(?i)consensus-a|Consensus-B"}, "resource", "$1", "target", "(.+)"))"#;
+        assert_eq!(
+            recorded_targets(&[expr]),
+            BTreeSet::from(["consensus-a".to_owned(), "consensus-b".to_owned()])
+        );
+    }
+
+    #[test]
+    fn an_undeclared_matcher_records_nothing() {
+        // `a^` is what the chart renders when nothing is declared.
+        let expr = r#"pg_up{job="postgres-exporter", target=~"(?i)a^"}"#;
+        assert_eq!(recorded_targets(&[expr]), BTreeSet::from(["a^".to_owned()]));
+        assert!(!recorded_targets(&[expr]).contains("consensus"));
+    }
 }

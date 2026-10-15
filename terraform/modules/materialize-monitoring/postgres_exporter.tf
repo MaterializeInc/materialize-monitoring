@@ -70,22 +70,28 @@ locals {
     local.postgres_exporter_caller_names_marked,
   )
 
-  # A target with no password is not an error the exporter reports clearly: it
-  # answers that target's probe with HTTP 400, so `up` reads 0 and nothing
-  # names the cause. Grafana's is checked by the gate above.
-  postgres_exporter_password_names = try(
-    nonsensitive(keys(var.postgres_exporter_passwords)),
-    keys(var.postgres_exporter_passwords),
-  )
-  postgres_exporter_unpassworded = [
-    for name in local.postgres_exporter_caller_names : name
-    if !contains(local.postgres_exporter_password_names, name)
-  ]
-
+  # Grafana's password is the one Grafana itself uses, last so that it wins: a
+  # `grafana` entry in the caller's map would otherwise pin the exporter to a
+  # password `grafana_database_password` has since rotated away from.
   postgres_exporter_passwords = merge(
-    local.postgres_exporter_watches_grafana ? { grafana = var.grafana_database_password } : {},
     var.postgres_exporter_passwords,
+    local.postgres_exporter_watches_grafana ? { grafana = var.grafana_database_password } : {},
   )
+
+  # A target with no usable password is not an error the exporter reports
+  # clearly: it answers that target's probe with HTTP 400, so `up` reads 0 and
+  # nothing names the cause. Missing, null and empty are all unusable, and
+  # Grafana's is checked too, since `grafana_database_manage_password_secret`
+  # can be forced on with no password. Whether a password is empty says nothing
+  # about it, so that answer is unmarked; a password generated in the same apply
+  # leaves it unknown, and the check waits for the apply.
+  postgres_exporter_unpassworded = [
+    for t in local.postgres_exporter_public_targets : t.name
+    if !try(
+      nonsensitive(lookup(local.postgres_exporter_passwords, t.name, null) != null && lookup(local.postgres_exporter_passwords, t.name, "") != ""),
+      lookup(local.postgres_exporter_passwords, t.name, null) != null && lookup(local.postgres_exporter_passwords, t.name, "") != "",
+    )
+  ]
 
   postgres_exporter_config = yamlencode({
     auth_modules = {
@@ -167,7 +173,7 @@ resource "kubernetes_secret" "postgres_exporter" {
   lifecycle {
     precondition {
       condition     = length(local.postgres_exporter_unpassworded) == 0
-      error_message = "postgres_exporter_passwords has no password for: ${join(", ", local.postgres_exporter_unpassworded)}. The exporter refuses a target without one."
+      error_message = "No usable password for postgres-exporter target(s): ${join(", ", local.postgres_exporter_unpassworded)}. Set a non-empty one in postgres_exporter_passwords, or grafana_database_password for Grafana's; the exporter refuses a target without one."
     }
     precondition {
       condition     = !local.postgres_exporter_watches_grafana || !contains([for name in local.postgres_exporter_caller_names : lower(name)], "grafana")
