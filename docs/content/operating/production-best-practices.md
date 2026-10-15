@@ -232,8 +232,8 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 
 ### Cardinality & rate control (the lever)
 
-- [x] `[chart]` The gateway promotes only a small, stable label set (`level`, `app`, `container`, `namespace` + their `k8s_`-prefixed forms, `environment_id`) and routes everything else identifying to **structured metadata**. Adding a Loki label multiplies [stream cardinality](../../o11y-glossary/#observability-foundations) — default to structured metadata.
-- [x] `[chart]` Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through; oversized and stale lines are dropped (`longer_than`, `older_than`).
+- [x] `[chart]` The gateway promotes only a small, stable label set (`level`, `app`, `container`, `namespace`, `environment_id`) and routes everything else identifying to **structured metadata**. Adding a Loki label multiplies [stream cardinality](../../o11y-glossary/#observability-foundations) — default to structured metadata.
+- [x] `[chart]` Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through; stale lines are dropped (`older_than`), and oversized lines are cut to fit Loki (`stage.truncate`).
 - [x] `[chart]` The agent applies a **per-node** pod-log rate cap (`AGENT_POD_LOG_RATE_LIMIT` / `AGENT_POD_LOG_BURST`) so one noisy node can't starve the pipeline.
 - [ ] `[operator]` Understand the backpressure semantics before tuning: `stage.limit` with `drop = false` **queues** (backpressures the sender), `drop = true` **sheds** load. The final safety limit sheds; per-node and per-level limits are the tuning surface.
 

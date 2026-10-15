@@ -4035,7 +4035,7 @@ spec:
 
           **Nominal:** Zero.
 
-          **Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. `too large` is a single line above the pipeline's size limit. Each of these lines is lost.
+          **Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. Each of these lines is lost.
 
           Excludes the debug tap's sampling and its echo suppression, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.
 
@@ -4083,9 +4083,21 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      sum by (pod) (
+                      sum by (pod, field) (
+                        label_replace(
+                          rate(
+                            loki_process_cri_lines_truncated_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod"
+                            }
+                            [$__rate_interval]
+                          ),
+                          "field", "cri_reassembly", "", ""
+                        )
+                        or
                         rate(
-                          loki_process_cri_lines_truncated_total{
+                          loki_process_truncated_fields_total{
                             app=~"$alloyRole",
                             namespace=~"$alloyNamespace",
                             pod=~"$alloyPod"
@@ -4093,12 +4105,24 @@ spec:
                           [$__rate_interval]
                         )
                       )
-                    legendFormat: "{{pod}}"
+                    legendFormat: "{{pod}} {{field}}"
                     qryType: 1
                     query: |
-                      sum by (pod) (
+                      sum by (pod, field) (
+                        label_replace(
+                          rate(
+                            loki_process_cri_lines_truncated_total{
+                              app=~"$alloyRole",
+                              namespace=~"$alloyNamespace",
+                              pod=~"$alloyPod"
+                            }
+                            [$__rate_interval]
+                          ),
+                          "field", "cri_reassembly", "", ""
+                        )
+                        or
                         rate(
-                          loki_process_cri_lines_truncated_total{
+                          loki_process_truncated_fields_total{
                             app=~"$alloyRole",
                             namespace=~"$alloyNamespace",
                             pod=~"$alloyPod"
@@ -4111,11 +4135,13 @@ spec:
             queryOptions: {}
             transformations: []
         description: |-
-          **Container log lines per second the agents truncated while reassembling lines the container runtime had split.**
+          **Cuts per second the pipelines made to log lines and their fields, split by Alloy pod and by what was cut.**
 
           **Nominal:** Zero.
 
-          **Degraded:** A steady rate from one workload. It is writing lines longer than the agent reassembles, and the tail of each is lost.
+          **Degraded:** A steady rate. Some workload writes lines longer than a limit, and the tail of each is lost.
+
+          `cri_reassembly` is an agent cutting a line the container runtime had split, when the reassembled line is longer than the agent reassembles. `line`, `label`, and `structured_metadata` are a size limit cutting a value, and the cut line ends in a suffix naming the rule: `[TRUNCATED:SAFETYCLAMP]` for the 1MiB clamp on the agent and the gateway, `[TRUNCATED:LINE]` for the gateway's line limit, and `[TRUNCATED:FIELDS]` for its fixed backstop. A line the clamp and the line limit both cut counts twice.
         id: 1023
         links: []
         title: Truncated Lines

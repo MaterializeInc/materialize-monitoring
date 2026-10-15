@@ -227,6 +227,7 @@ recommended:
 - loki_objstore_bucket_operations_total
 - loki_process_cri_lines_truncated_total
 - loki_process_dropped_lines_total
+- loki_process_truncated_fields_total
 - loki_query_frontend_queries_in_progress
 - loki_source_api_entries_written
 - loki_source_api_request_duration_seconds_count

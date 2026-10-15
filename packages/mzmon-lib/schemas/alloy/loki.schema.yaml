@@ -415,6 +415,12 @@ $defs:
             $ref: "#/$defs/stage.tenant"
         required: [stage.tenant]
         additionalProperties: false
+      - type: object
+        properties:
+          stage.truncate:
+            $ref: "#/$defs/stage.truncate"
+        required: [stage.truncate]
+        additionalProperties: false
       # Escape hatch: any sub-block can also be a raw block.
       - $ref: "./common/raw.schema.yaml"
 
@@ -856,6 +862,104 @@ $defs:
           Static string used as the tenant ID.
         $ref: "#/$defs/expressionOrString"
     additionalProperties: false
+
+  stage.truncate:
+    description: |
+      Cuts the log line, label values, structured metadata values, or
+      extracted-map values that are longer than a size limit, and keeps the
+      entry. Use it where `stage.drop`'s `longer_than` would lose the whole line.
+
+      Each `rule` runs in order on every entry. A value longer than the rule's
+      `limit` is cut and the rule's `suffix` appended. The suffix counts toward
+      the limit, so a truncated value is exactly `limit` bytes. Truncation is by
+      byte, so it can split a multi-byte UTF-8 character.
+
+      Every truncation increments `loki_process_truncated_fields_total`, labelled
+      by `field` (`line`, `label`, `structured_metadata`, `extracted`). The stage
+      also writes `truncated` to the extracted map: a comma-separated list of the
+      fields it cut.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagetruncate
+    type: object
+    properties:
+      blocks:
+        description: |
+          The `rule` sub-blocks, applied in order.
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/$defs/truncateRuleBlock"
+    required: [blocks]
+    additionalProperties: false
+
+  truncateRuleBlock:
+    description: |
+      One `stage.truncate` rule.
+
+      The final `raw` branch is the escape hatch for fields not typed here.
+    oneOf:
+      - type: object
+        properties:
+          rule:
+            $ref: "#/$defs/truncateRule"
+        required: [rule]
+        additionalProperties: false
+      - $ref: "./common/raw.schema.yaml"
+
+  truncateRule:
+    description: |
+      A size limit on one kind of value.
+
+      Alloy refuses two rules only when it loads the config, which `alloy
+      validate` does not catch: `sources` on a `line` rule, and a `suffix` as
+      long as the `limit`. The schema refuses the first; keep the suffix short.
+
+      See: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagetruncate
+    type: object
+    properties:
+      limit:
+        description: |
+          Maximum size in bytes, suffix included. Takes a unit: base-2 (`KiB`,
+          `MiB`) or the equivalent `KB`/`MB` spellings, which Alloy also reads as
+          base 2. A bare number is refused, including one from an environment
+          variable — that one only when the config loads.
+        anyOf:
+          - type: string
+            pattern: '^([0-9]+(\.[0-9]+)?([KMGTPE]i?)?B)+$'
+          - $ref: "./common/expression.schema.yaml"
+        examples: ["1MiB", "240KiB", "4096B"]
+      source_type:
+        description: |
+          Which values the rule cuts. Defaults to `line`.
+        type: string
+        enum: [line, label, structured_metadata, extracted]
+      sources:
+        description: |
+          Names of the labels, structured metadata keys, or extracted fields to
+          cut. Leave it unset to cut every one of `source_type`. Not allowed on a
+          `line` rule.
+        type: array
+        items:
+          type: string
+      suffix:
+        description: |
+          Marker appended to a truncated value, inside the limit.
+        type: string
+        examples: ["…", "[TRUNCATED]"]
+    required: [limit]
+    additionalProperties: false
+    # A `line` rule (the default source_type) takes no `sources`.
+    if:
+      anyOf:
+        - not:
+            required: [source_type]
+        - properties:
+            source_type:
+              const: line
+          required: [source_type]
+    then:
+      not:
+        required: [sources]
 
   # ============================================================
   # `rule` sub-blocks (used by loki.relabel and, via cross-ref, discovery.relabel)

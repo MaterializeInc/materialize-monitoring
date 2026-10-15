@@ -52,6 +52,11 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 - **Cluster label.** Set `clusterName`, or `cluster_name` on the Terraform module, so every collected line carries a
   stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without
   one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
+- **Line size limits.** The agent and the gateway cut a line longer than `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`) rather than dropping it.
+  The gateway then cuts any line longer than `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), so it fits Loki's line limit.
+  A cut line ends in a suffix, such as `[TRUNCATED:LINE]`, that names the rule that cut it.
+  Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
+  For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
 - **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.

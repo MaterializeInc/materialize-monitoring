@@ -19,6 +19,11 @@
 // the thread and source location as structured metadata. Both are commented
 // where they sit.
 //
+// inputProcessor never drops a line for its size. It clamps every entry to
+// PIPELINE_LOG_LINE_SAFETY_CLAMP (1MiB) on intake, and its last stage cuts the
+// line, labels, and structured metadata to fit Loki's limits, the last on a
+// per-entry budget. Each truncation leaves a suffix saying which rule cut it.
+//
 // Metrics: this file also carries a metrics pipeline, processed primarily in
 // otelcol and converted back to Prometheus only on the way out. prometheus
 // .receive_http (pushed remote-write) and prometheus.operator.{podmonitors,
@@ -335,9 +340,11 @@ loki.process "inputProcessor" {
 		drop_counter_reason = "backlog > 2hr"
 	}
 
-	stage.drop {
-		longer_than         = "1MB"
-		drop_counter_reason = "too large"
+	stage.truncate {
+		rule {
+			limit  = coalesce(sys.env("PIPELINE_LOG_LINE_SAFETY_CLAMP"), "1MiB")
+			suffix = "[TRUNCATED:SAFETYCLAMP]"
+		}
 	}
 
 	stage.limit {
@@ -1820,7 +1827,6 @@ loki.process "inputProcessor" {
 			cluster           = "",
 			stream            = "",
 			pod_ready         = "",
-			msg               = "",
 		}
 	}
 
@@ -1829,6 +1835,47 @@ loki.process "inputProcessor" {
 			namespace = "namespace",
 			app       = "app",
 			container = "container",
+		}
+	}
+
+	stage.truncate {
+		rule {
+			limit  = coalesce(sys.env("GATEWAY_LOG_LINE_SIZE_LIMIT"), "240KiB")
+			suffix = "[TRUNCATED:LINE]"
+		}
+
+		rule {
+			limit  = "250KiB"
+			suffix = "[TRUNCATED:FIELDS]"
+		}
+
+		rule {
+			limit       = "2KiB"
+			source_type = "label"
+			suffix      = "[TRUNCATED:FIELDS]"
+		}
+
+		rule {
+			limit       = "512B"
+			source_type = "structured_metadata"
+			suffix      = "[TRUNCATED:FIELDS]"
+		}
+	}
+
+	stage.structured_metadata {
+		values = {
+			msg = "",
+		}
+	}
+
+	stage.truncate {
+		rule {
+			limit = "32KiB"
+			source_type = "structured_metadata"
+			sources = [
+				"msg",
+			]
+			suffix = "[TRUNCATED:FIELDS]"
 		}
 	}
 }
