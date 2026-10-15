@@ -15,6 +15,42 @@ being selected; see [Configuring Alerting](/materialize-monitoring/preview/claud
 
 
 
+## dev-alerts
+
+<p>Alerting rules for development awareness.</p>
+<p>Each alert here is a condition the stack has already contained: nothing is
+down, and there is nothing for whoever runs the deployment to fix right now.
+The people who can remove the cause are the ones who write the software
+emitting it.</p>
+<p>Every alert carries <code>audience: development</code> and <code>severity: notice</code>, both set
+for the whole file, so no routing preset pages on one and an extra route on
+<code>audience=&quot;development&quot;</code> can send them to a development channel.</p>
+
+<h4 id="oversized-log-lines">oversized-log-lines
+  <a class="anchor" href="#oversized-log-lines">#</a>
+</h4>
+Alloy cut log lines too long to store in the last hour. Find the source in Loki with <code>{level=~&quot;.+&quot;} |= &quot;[TRUNCATED:&quot;</code> and shorten what it logs.
+Labels:
+<ul>
+        <li><strong>audience:</strong> development</li>
+        <li><strong>component:</strong> alloy</li>
+        <li><strong>severity:</strong> notice</li>
+</ul>
+<p><strong>Installed:</strong> only when named in <code>rules.selected</code>.
+<strong>Requires:</strong> <code>alloy</code>.
+</p>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, app, component_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_process_truncated_fields_total{field<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">line</span>&#34;}
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">unless</span>
+</span></span><span style="display:flex;"><span>      loki_process_truncated_fields_total{field<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">line</span>&#34;} <span style="color:#66d9ef">offset</span> <span style="color:#e6db74">1h</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">increase</span><span style="color:#f92672">(</span>loki_process_truncated_fields_total{field<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">line</span>&#34;}[<span style="color:#e6db74">1h</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+
 ## infra-alerts
 
 <p>Alerting rules for the infrastructure Materialize depends on.</p>

@@ -4674,6 +4674,7 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
   one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
 - **Line size limits.** The agent and the gateway cut a line longer than `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`) rather than dropping it.
   The gateway then cuts any line longer than `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), so it fits Loki's line limit.
+  It parses the line first, so a line under the clamp still yields its level, timestamp, and fields.
   A cut line ends in a suffix, such as `[TRUNCATED:LINE]`, that names the rule that cut it.
   Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
   For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).
@@ -6982,8 +6983,10 @@ Every bundled rule carries an `audience` label saying who acts on it.
 |---|---|
 | `platform` | The Materialize deployment, its system clusters, and the Kubernetes platform under it |
 | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+| `development` | Conditions the stack has already contained, for the people who write the software behind them, such as log lines too long to store. Bundled as `severity: notice` |
 
 An [extra route](../channels/#extra-routes) on `audience="workload"` sends the second group to the people who own the clusters.
+One on `audience="development"` sends the third to a development channel.
 
 `rules.overrides` changes an installed rule's `for` and labels, and never its expression.
 A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.
@@ -7629,7 +7632,7 @@ alerting:
 Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
 A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
 
-Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it.
+Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it, and `development` for conditions the stack has already contained, which the people who write the software can remove.
 Here the workload alerts, such as a user cluster falling behind or running out of memory, reach `data-team`.
 Because the route continues, they also reach whichever receivers the preset names for their severity.
 
@@ -7917,7 +7920,7 @@ module "monitoring" {
 }
 ```
 
-Every bundled alert carries an `audience` label, `platform` or `workload`, which is what the extra route matches.
+Every bundled alert carries an `audience` label, `platform`, `workload`, or `development`, which is what the extra route matches.
 A matcher is an Alertmanager string, so the quotes inside it are escaped in HCL.
 
 | Attribute | Chart value | Notes |
@@ -8010,7 +8013,7 @@ module "monitoring" {
 
 An override's duration is `for_duration`, the rule's `for`.
 HCL reads `{ for = "6h" }` as a `for` expression, so the attribute has a name of its own.
-An override's `severity` MUST stay `critical`, `warning` or `notice`, and its `audience` `platform` or `workload`, so the routes still match.
+An override's `severity` MUST stay `critical`, `warning` or `notice`, and its `audience` `platform`, `workload`, or `development`, so the routes still match.
 
 ## Checking the result
 
@@ -11977,10 +11980,15 @@ An alert belongs in the file for the people who act on it.
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
 | `infra-log-alerts.yaml` | `platform` | The monitoring stack, detected in its own log lines where its metrics travel the path that is failing |
+| `dev-alerts.yaml` | `development` | Conditions the stack has already contained, for the people who write the software behind them: log lines too long to store |
 
 Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
-`gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
-A route matches on the label to send the two to different people.
+`gen-rules` rejects an alert whose `audience` is not `platform`, `workload`, or `development`.
+A route matches on the label to send each to different people.
+
+A `development` alert is for a condition with nothing to fix in the running deployment, because the stack has already contained it.
+The people who can remove the cause are the ones who write the software.
+Every alert in `dev-alerts.yaml` is `severity: notice`, set for the whole file with `alertLabels`, so no preset pages on one.
 
 Who acts on a signal can depend on the cluster it comes from.
 A user cluster falling behind is the workload owner's to fix, and a system cluster falling behind is the platform's.
@@ -12089,7 +12097,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 |---|---|
 | The name is kebab-case, and the group snake_case | Names become a committed surface |
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
-| `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
+| `audience` is `platform`, `workload`, or `development` | Routes match on it; a missing one sends the alert to no audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
 | The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
 | A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |
@@ -15772,9 +15780,9 @@ rules:
 ```
 
 `severity` must stay one of `critical`, `warning` and `notice`, and
-`audience` one of `platform` and `workload`, so the routes still match. An
-unknown alert name fails the render, and an override for a rule that is
-not installed renders with a warning.
+`audience` one of `platform`, `workload` and `development`, so the routes
+still match. An unknown alert name fails the render, and an override for a
+rule that is not installed renders with a warning.
 </td>
     </tr>
     <tr>
@@ -22940,7 +22948,8 @@ Channels in the docs for worked examples.
   `route` options. Empty means no alert reaches anybody.
 - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
   of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
-  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+  `audience` label, `platform`, `workload` or `development`, which is the usual thing an extra
+  route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
 - `default_templates` — make the chart's notification templates every receiver's default (the
@@ -24330,6 +24339,10 @@ The multi-line merge can also join lines into an entry longer than any one of th
 Clamping keeps the start of a pathological line, which usually says what it is.
 A clamped JSON or logfmt line no longer parses, so it reaches Loki without its fields.
 
+A line under the clamp parses in full, because the gateway parses before its last stages cut anything.
+A JSON line of 500KiB therefore still yields its level, timestamp, and fields, and only the stored line is cut to the line limit.
+The structured metadata budget later on this page still applies to those fields.
+
 The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
 Measured on Loki 3.7.8, the version the chart deploys, with its default limits, Loki refuses the following:
 
@@ -24358,6 +24371,7 @@ If you add a structured metadata key that the budget can't hold, or one promoted
 Both variables need a unit, such as `1MiB` or `512KiB`.
 A bare number fails the configuration load.
 Every cut increments `loki_process_truncated_fields_total`, labeled by `field`.
+The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the people who write the software emitting them.
 
 ### Destinations
 

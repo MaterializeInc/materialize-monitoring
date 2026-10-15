@@ -139,6 +139,10 @@ The multi-line merge can also join lines into an entry longer than any one of th
 Clamping keeps the start of a pathological line, which usually says what it is.
 A clamped JSON or logfmt line no longer parses, so it reaches Loki without its fields.
 
+A line under the clamp parses in full, because the gateway parses before its last stages cut anything.
+A JSON line of 500KiB therefore still yields its level, timestamp, and fields, and only the stored line is cut to the line limit.
+The structured metadata budget later on this page still applies to those fields.
+
 The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
 Measured on Loki 3.7.8, the version the chart deploys, with its default limits, Loki refuses the following:
 
@@ -167,6 +171,7 @@ If you add a structured metadata key that the budget can't hold, or one promoted
 Both variables need a unit, such as `1MiB` or `512KiB`.
 A bare number fails the configuration load.
 Every cut increments `loki_process_truncated_fields_total`, labeled by `field`.
+The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the people who write the software emitting them.
 
 ### Destinations
 
