@@ -120,6 +120,40 @@ The exporter needs network access to each database.
 It runs in the cluster that already reaches the metadata database, so the path Materialize uses is the one it needs.
 A database behind a private endpoint, such as a Cloud SQL private IP, is reachable only from networks the endpoint allows.
 
+### Turn it on with Terraform
+
+The `materialize-monitoring` Terraform module creates the Secret for you.
+Set `enable_postgres_exporter`, and the exporter watches Grafana's database whenever the module configures one, as a target named `grafana`.
+List any other database in `postgres_exporter_targets`, with its password in `postgres_exporter_passwords`:
+
+```hcl
+module "monitoring" {
+  # ...
+  enable_postgres_exporter = true
+
+  postgres_exporter_targets = [{
+    name              = "consensus"
+    host              = METADATA_DB_HOST
+    database          = "materialize"
+    user              = "mzmon_exporter"
+    metadata_database = true
+  }]
+  postgres_exporter_passwords = {
+    consensus = var.metadata_exporter_password
+  }
+}
+```
+
+Replace `METADATA_DB_HOST` with the metadata database's host.
+`metadata_database = true` adds the target to `externalDependencies.consensus`.
+A database a cloud provider pull watches is declared in `metadata_databases` instead, by its flavor and the provider's name for it.
+The module rolls the exporter when a password changes.
+
+The per-cloud wrappers in `materialize-terraform-self-managed` connect as the users they already hold: the metadata database's administrator and Grafana's database owner.
+On RDS and Cloud SQL, both are members of `pg_monitor` through `rds_superuser` and `cloudsqlsuperuser`, so the exporter sees every session.
+Both can also write.
+For a role that can only read statistics, create `mzmon_exporter` as described earlier, and pass it to the wrapper instead.
+
 ### Choose the database to connect to
 
 Point each target's `database` at a database whose tables you want statistics for, and leave it at `postgres` otherwise.

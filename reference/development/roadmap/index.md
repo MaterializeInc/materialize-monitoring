@@ -275,7 +275,8 @@ That contract keeps seven database flavors and five object stores from multiplyi
 | [DEP-299] An on-premise object-store adapter for MinIO, Garage and Ceph. Ceph's flavor-native rows are on `env-persist`; the `ext:objstore_*` rules and the other stores remain | 🔨 |
 | [DEP-300] Version reporting (`ext:*_version_info`) across every adapter. The `postgres` adapter records `ext:consensus_version_info`; the others remain | 🔨 |
 | [DEP-303] The `externalDependencies` values block and a `dependency-monitoring` profile | ⬜ |
-| [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus` | ⬜ |
+| [DEP-366] The per-cloud wrappers declare the metadata database in `externalDependencies.consensus`. The module's `metadata_databases` input is the way in; the wrappers remain | 🔨 |
+| [DEP-406] The Terraform module runs the postgres-exporter, for Grafana's database and any other target, and creates its credentials Secret. The wrappers remain | 🔨 |
 | [DEP-368] A metric tier for recorded series, so a filtered destination keeps `ext:*` and `ALERTS` | ⬜ |
 | [DEP-304] An `AbortIncompleteMultipartUpload` lifecycle rule on the persist bucket, in `materialize-terraform-self-managed` | ⬜ |
 
@@ -498,6 +499,7 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-364]: https://linear.app/materializeinc/issue/DEP-364
 [DEP-365]: https://linear.app/materializeinc/issue/DEP-365
 [DEP-366]: https://linear.app/materializeinc/issue/DEP-366
+[DEP-406]: https://linear.app/materializeinc/issue/DEP-406
 [DEP-368]: https://linear.app/materializeinc/issue/DEP-368
 [DEP-369]: https://linear.app/materializeinc/issue/DEP-369
 [DEP-370]: https://linear.app/materializeinc/issue/DEP-370
