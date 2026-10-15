@@ -47,7 +47,7 @@
       "enabled": false
     },
     {
-      "description": "Raise an update whose registry publishes no release timestamp instead of holding it for good. Since Renovate 42 the default, `timestamp-required`, treats a missing timestamp as too new to pass `minimumReleaseAge`. That parked every GHCR, Quay, registry.k8s.io and gcr.io image (every OCI subchart among them), the GitHub runner images, and unversioned digests such as `dtolnay/rust-toolchain@stable` under Pending Status Checks indefinitely. Releases that do carry a timestamp still wait out `minimumReleaseAge`. In a dry run none of the updates this releases matched an automerge rule, so each still waits for review. The top-level `logLevelRemap` quiets the warning this logs on every run, which would otherwise sit under Repository Problems on the dashboard.",
+      "description": "Raise an update whose registry publishes no release timestamp instead of holding it for good. Since Renovate 42 the default, `timestamp-required`, treats a missing timestamp as too new to pass `minimumReleaseAge`. That parked every GHCR, Quay, registry.k8s.io and gcr.io image (every OCI subchart among them), the GitHub runner images, and unversioned digests such as `dtolnay/rust-toolchain@stable` under Pending Status Checks indefinitely. Releases that do carry a timestamp still wait out `minimumReleaseAge`. An update this releases gets no soak time: if it matches an automerge rule, as a GHCR image's minor or patch bump does, it merges once its checks pass. The top-level `logLevelRemap` quiets the warning this logs on every run, which would otherwise sit under Repository Problems on the dashboard.",
       "matchPackageNames": ["*"],
       "minimumReleaseAgeBehaviour": "timestamp-optional"
     },
@@ -126,6 +126,11 @@
       "sourceUrl": "https://github.com/grafana/grafana-operator"
     },
     {
+      "description": "Merge through Renovate rather than GitHub's native automerge, for every update that automerges. Native automerge waits for the required checks alone, the `*-gate` jobs, so it merges past a failing check outside them, such as `zizmor` or `security-gate`. Renovate also turns it on when it opens the PR, so it ignores `automergeSchedule` and merges at any hour. Renovate-based automerge merges only once every check on the branch is green, and only inside the `schedule:automergeDaily` window, at the cost of waiting for the next Renovate run in that window.",
+      "matchPackageNames": ["*"],
+      "platformAutomerge": false
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["!devDependencies"],
       "matchCurrentVersion": "!/^0/",
@@ -145,7 +150,7 @@
       "automerge": false
     },
     {
-      "description": "Crates automerge on every update type, including the 0.x minors the rule above skips and the majors the top-level `major` block holds back. Cargo treats both as breaking, and the build is what catches a break: an API change fails to compile, and a behavior change shows up as drift in the renders CI regenerates and diffs (dashboards, pipelines, rules). That is only a gate if the merge waits for those checks. GitHub's native automerge waits for the required checks alone, and `dashboards-gate` and `pipelines-gate` are not required on main, so `platformAutomerge` is off here and Renovate merges only once every check on the branch is green. Covers Cargo.lock maintenance too.",
+      "description": "Crates automerge on every update type, including the 0.x minors the rule above skips and the majors the top-level `major` block holds back. Cargo treats both as breaking, and the build is what catches a break: an API change fails to compile, and a behavior change shows up as drift in the renders CI regenerates and diffs (dashboards, pipelines, rules). That is only a gate if the merge waits for those checks, which the `platformAutomerge` rule above makes sure of. Covers Cargo.lock maintenance too.",
       "matchManagers": ["cargo"],
       "automerge": true,
       "platformAutomerge": false
