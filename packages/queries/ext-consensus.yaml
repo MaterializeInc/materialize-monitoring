@@ -319,6 +319,8 @@ rules:
         ordinary role is refused. Connections to every database on the
         instance count, not only Materialize's, because they share the
         ceiling.
+        While a rollout runs two exporter pods, each probes the database, and
+        their copies are counted once.
     query:
       id: ext.consensus.postgres.connections_used_ratio
       stability: experimental
@@ -328,7 +330,7 @@ rules:
       promQL: |
         max by (resource) (
           label_replace(
-            sum by (target) (pg_stat_activity_count{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}", backend_type="client backend"})
+            sum by (target) (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}", backend_type="client backend"}))
             / on (target) (
                 max by (target) (pg_settings_max_connections{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"})
               - on (target) max by (target) (pg_settings_superuser_reserved_connections{job="postgres-exporter", target=~"(?i)%%{consensusPostgresResources}"})

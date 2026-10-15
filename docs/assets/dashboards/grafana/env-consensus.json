@@ -3329,10 +3329,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "(\n  sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  / (\n      sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n    + sum by (datname) (rate(pg_stat_database_blks_read{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  )\n) >= 0\n",
+                        "expr": "(\n  sum by (datname) (max without (pod) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])))\n  / (\n      sum by (datname) (max without (pod) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])))\n    + sum by (datname) (max without (pod) (rate(pg_stat_database_blks_read{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])))\n  )\n) >= 0\n",
                         "legendFormat": "{{datname}}",
                         "qryType": 1,
-                        "query": "(\n  sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  / (\n      sum by (datname) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n    + sum by (datname) (rate(pg_stat_database_blks_read{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))\n  )\n) >= 0\n"
+                        "query": "(\n  sum by (datname) (max without (pod) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])))\n  / (\n      sum by (datname) (max without (pod) (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])))\n    + sum by (datname) (max without (pod) (rate(pg_stat_database_blks_read{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])))\n  )\n) >= 0\n"
                       },
                       "version": "v0"
                     },
@@ -3399,10 +3399,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname, usename) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}) > 0\n",
+                        "expr": "sum by (datname, usename) (max without (pod) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})) > 0\n",
                         "legendFormat": "{{datname}} ({{usename}})",
                         "qryType": 1,
-                        "query": "sum by (datname, usename) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}) > 0\n"
+                        "query": "sum by (datname, usename) (max without (pod) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})) > 0\n"
                       },
                       "version": "v0"
                     },
@@ -3491,10 +3491,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (state) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n",
+                        "expr": "sum by (state) (max without (pod) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}))\n",
                         "legendFormat": "{{state}}",
                         "qryType": 1,
-                        "query": "sum by (state) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n"
+                        "query": "sum by (state) (max without (pod) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}))\n"
                       },
                       "version": "v0"
                     },
@@ -3562,10 +3562,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum(pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n/ (\n    max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - (\n      max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n      or vector(0)\n    )\n)\n",
+                        "expr": "sum (max without (pod) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}))\n/ (\n    max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - (\n      max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n      or vector(0)\n    )\n)\n",
                         "legendFormat": "used",
                         "qryType": 1,
-                        "query": "sum(pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"})\n/ (\n    max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - (\n      max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n      or vector(0)\n    )\n)\n"
+                        "query": "sum (max without (pod) (pg_stat_activity_count{job=\"postgres-exporter\", target=\"$postgresTarget\", backend_type=\"client backend\"}))\n/ (\n    max(pg_settings_max_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - max(pg_settings_superuser_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n  - (\n      max(pg_settings_reserved_connections{job=\"postgres-exporter\", target=\"$postgresTarget\"})\n      or vector(0)\n    )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3874,10 +3874,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname, mode) (pg_locks_count{job=\"postgres-exporter\", target=\"$postgresTarget\"}) > 0\n",
+                        "expr": "sum by (datname, mode) (max without (pod) (pg_locks_count{job=\"postgres-exporter\", target=\"$postgresTarget\"})) > 0\n",
                         "legendFormat": "{{datname}} {{mode}}",
                         "qryType": 1,
-                        "query": "sum by (datname, mode) (pg_locks_count{job=\"postgres-exporter\", target=\"$postgresTarget\"}) > 0\n"
+                        "query": "sum by (datname, mode) (max without (pod) (pg_locks_count{job=\"postgres-exporter\", target=\"$postgresTarget\"})) > 0\n"
                       },
                       "version": "v0"
                     },
@@ -4128,10 +4128,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname) (rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "expr": "sum by (datname) (max without (pod) (rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n",
                         "legendFormat": "{{datname}} inserted",
                         "qryType": 1,
-                        "query": "sum by (datname) (rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                        "query": "sum by (datname) (max without (pod) (rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n"
                       },
                       "version": "v0"
                     },
@@ -4149,10 +4149,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname) (rate(pg_stat_database_tup_updated{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "expr": "sum by (datname) (max without (pod) (rate(pg_stat_database_tup_updated{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n",
                         "legendFormat": "{{datname}} updated",
                         "qryType": 1,
-                        "query": "sum by (datname) (rate(pg_stat_database_tup_updated{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                        "query": "sum by (datname) (max without (pod) (rate(pg_stat_database_tup_updated{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n"
                       },
                       "version": "v0"
                     },
@@ -4170,10 +4170,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname) (rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "expr": "sum by (datname) (max without (pod) (rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n",
                         "legendFormat": "{{datname}} deleted",
                         "qryType": 1,
-                        "query": "sum by (datname) (rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                        "query": "sum by (datname) (max without (pod) (rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n"
                       },
                       "version": "v0"
                     },
@@ -4310,10 +4310,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname) (rate(pg_stat_database_xact_commit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "expr": "sum by (datname) (max without (pod) (rate(pg_stat_database_xact_commit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n",
                         "legendFormat": "{{datname}} committed",
                         "qryType": 1,
-                        "query": "sum by (datname) (rate(pg_stat_database_xact_commit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                        "query": "sum by (datname) (max without (pod) (rate(pg_stat_database_xact_commit{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n"
                       },
                       "version": "v0"
                     },
@@ -4331,10 +4331,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (datname) (rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n",
+                        "expr": "sum by (datname) (max without (pod) (rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n",
                         "legendFormat": "{{datname}} rolled back",
                         "qryType": 1,
-                        "query": "sum by (datname) (rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval])) > 0\n"
+                        "query": "sum by (datname) (max without (pod) (rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\", target=\"$postgresTarget\", datname!=\"\"}[$__rate_interval]))) > 0\n"
                       },
                       "version": "v0"
                     },

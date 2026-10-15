@@ -273,6 +273,65 @@ tests:
       - failedTemplate:
           errorPattern: 'postgres-exporter.targets\[1\].name "consensus" is used by an earlier target'
 
+  # The recording rules match target names with `(?i)`, so declaring one of
+  # these as the metadata database would record both.
+  - it: rejects two targets whose names differ only in case
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: Consensus, host: a.example.com}
+        - {name: consensus, host: b.example.com}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[1\].name "consensus" is used by an earlier target, ignoring case'
+
+  # A falsy value is a mistake, not a request for the default; letting it
+  # through would quietly connect somewhere else.
+  - it: rejects a port of zero rather than defaulting it
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, port: 0}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].port is 0; it is a port number'
+
+  - it: rejects a false database rather than defaulting it
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, database: false}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].database is false; it is a name'
+
+  - it: rejects an empty auth module rather than defaulting it
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, authModule: ""}
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: 'postgres-exporter.targets\[0\].authModule is ""; it is a name'
+
+  # `null` is how Helm records a cleared value, so it means "use the default".
+  - it: takes the defaults for null optional fields
+    set:
+      tags.postgres-exporter: true
+      postgres-exporter.targets:
+        - {name: consensus, host: db.example.com, port: null, database: null, authModule: null}
+    template: templates/scrapers/monitor-postgres-exporter.yaml
+    asserts:
+      - equal:
+          path: spec.endpoints[0].params
+          value:
+            target: ["db.example.com:5432/postgres"]
+            auth_module: ["consensus"]
+
   - it: rejects a target with no host
     set:
       tags.postgres-exporter: true

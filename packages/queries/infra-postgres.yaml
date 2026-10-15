@@ -31,6 +31,10 @@ description: |
   covers only the database the exporter connects to, and `relname` is the
   table.
 
+  While a rollout runs two exporter pods, each probes every target, so each
+  series arrives twice with a different `pod`. Every query that sums takes
+  `max without (pod)` first, so the copies count once.
+
   `pg_stat_database_*` counters do not end in `_total`, so Grafana marks every
   `rate()` over one with Prometheus's "metric might not be a counter" notice.
   They are counters, and the notice is harmless.
@@ -88,7 +92,7 @@ queries:
         instance count against it, not only Materialize's. A managed service's
         own maintenance connections count too.
     promQL: |
-      sum(pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"})
+      sum (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"}))
       / (
           max(pg_settings_max_connections{job="postgres-exporter", target="$postgresTarget"})
         - max(pg_settings_superuser_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
@@ -201,7 +205,7 @@ queries:
         Connections tab, and should match its line here.
     promQL:
       - |
-        sum by (datname, usename) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"}) > 0
+        sum by (datname, usename) (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"})) > 0
       - |
         max(pg_settings_max_connections{job="postgres-exporter", target="$postgresTarget"})
         - max(pg_settings_superuser_reserved_connections{job="postgres-exporter", target="$postgresTarget"})
@@ -225,7 +229,7 @@ queries:
         different fault from too many connections, and the fix is in the
         client that opened it.
     promQL: |
-      sum by (state) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"})
+      sum by (state) (max without (pod) (pg_stat_activity_count{job="postgres-exporter", target="$postgresTarget", backend_type="client backend"}))
 
   - id: infra.postgres.connections.oldest_transaction
     stability: experimental
@@ -257,7 +261,7 @@ queries:
         which holder is blocking which waiter. The exporter reports each mode
         in lowercase. Compare with commit latency on the Operations tab.
     promQL: |
-      sum by (datname, mode) (pg_locks_count{job="postgres-exporter", target="$postgresTarget"}) > 0
+      sum by (datname, mode) (max without (pod) (pg_locks_count{job="postgres-exporter", target="$postgresTarget"})) > 0
 
   # --- Activity ---------------------------------------------------------------
   - id: infra.postgres.activity.transactions
@@ -277,9 +281,9 @@ queries:
         counted by Materialize.
     promQL:
       - |
-        sum by (datname) (rate(pg_stat_database_xact_commit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+        sum by (datname) (max without (pod) (rate(pg_stat_database_xact_commit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
       - |
-        sum by (datname) (rate(pg_stat_database_xact_rollback{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+        sum by (datname) (max without (pod) (rate(pg_stat_database_xact_rollback{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
 
   - id: infra.postgres.activity.rows
     stability: experimental
@@ -297,11 +301,11 @@ queries:
         competing for the same disk.
     promQL:
       - |
-        sum by (datname) (rate(pg_stat_database_tup_inserted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+        sum by (datname) (max without (pod) (rate(pg_stat_database_tup_inserted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
       - |
-        sum by (datname) (rate(pg_stat_database_tup_updated{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+        sum by (datname) (max without (pod) (rate(pg_stat_database_tup_updated{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
       - |
-        sum by (datname) (rate(pg_stat_database_tup_deleted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})) > 0
+        sum by (datname) (max without (pod) (rate(pg_stat_database_tup_deleted{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))) > 0
 
   - id: infra.postgres.activity.cache_hit
     stability: experimental
@@ -318,10 +322,10 @@ queries:
         smaller than the working set.
     promQL: |
       (
-        sum by (datname) (rate(pg_stat_database_blks_hit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))
+        sum by (datname) (max without (pod) (rate(pg_stat_database_blks_hit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})))
         / (
-            sum by (datname) (rate(pg_stat_database_blks_hit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))
-          + sum by (datname) (rate(pg_stat_database_blks_read{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval}))
+            sum by (datname) (max without (pod) (rate(pg_stat_database_blks_hit{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})))
+          + sum by (datname) (max without (pod) (rate(pg_stat_database_blks_read{job="postgres-exporter", target="$postgresTarget", datname!=""}%%{interval})))
         )
       ) >= 0
 

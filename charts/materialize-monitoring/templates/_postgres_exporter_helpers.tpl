@@ -34,8 +34,8 @@ Usage:
   {{- if kindIs "slice" $targets }}
     {{- range $targets }}
       {{- if and ( kindIs "map" . ) ( include "mzmon.postgresExporter.validName" .name ) ( kindIs "string" .host ) .host }}
-        {{- if not ( has .name $seen ) }}
-          {{- $seen = append $seen .name }}
+        {{- if not ( has ( lower .name ) $seen ) }}
+          {{- $seen = append $seen ( lower .name ) }}
           {{- $out = append $out ( dict
               "name" .name
               "host" .host
@@ -87,25 +87,34 @@ Returns `errors` and `warnings` lists, as YAML.
             {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].%s is not a field; a target has %s." $i $key ( join ", " $fields ) ) }}
           {{- end }}
         {{- end }}
+        {{- /* Compared ignoring case, because the recording rules match target
+               names with `(?i)`: two names differing only in case would both be
+               recorded when either is declared a metadata database. */}}
         {{- if not ( include "mzmon.postgresExporter.validName" $t.name ) }}
           {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].name is %s; it is letters, digits and hyphens, and becomes the target's `target` label." $i ( toJson $t.name ) ) }}
-        {{- else if has $t.name $names }}
-          {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].name %q is used by an earlier target; each target's name is its identity." $i $t.name ) }}
+        {{- else if has ( lower $t.name ) $names }}
+          {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].name %q is used by an earlier target, ignoring case; each target's name is its identity." $i $t.name ) }}
         {{- else }}
-          {{- $names = append $names $t.name }}
+          {{- $names = append $names ( lower $t.name ) }}
         {{- end }}
         {{- if not ( and ( kindIs "string" $t.host ) $t.host ) }}
           {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].host is %s; it is the database host the exporter connects to." $i ( toJson $t.host ) ) }}
         {{- end }}
-        {{- with $t.port }}
-          {{- if not ( and ( or ( kindIs "float64" . ) ( kindIs "int64" . ) ( kindIs "int" . ) ) ( ge ( int . ) 1 ) ( le ( int . ) 65535 ) ( eq ( float64 . ) ( float64 ( int . ) ) ) ) }}
-            {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].port is %s; it is a port number." $i ( toJson . ) ) }}
+        {{- /* An optional field that is present is checked even when it is
+               falsy: `with` would skip a `0` or a `false`, and the targets helper
+               would then quietly put the default in its place. Only an absent or
+               `null` field takes the default. */}}
+        {{- $port := index $t "port" }}
+        {{- if and ( hasKey $t "port" ) ( not ( typeIs "<nil>" $port ) ) }}
+          {{- if not ( and ( or ( kindIs "float64" $port ) ( kindIs "int64" $port ) ( kindIs "int" $port ) ) ( ge ( int $port ) 1 ) ( le ( int $port ) 65535 ) ( eq ( float64 $port ) ( float64 ( int $port ) ) ) ) }}
+            {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].port is %s; it is a port number." $i ( toJson $port ) ) }}
           {{- end }}
         {{- end }}
         {{- range $key := list "database" "authModule" }}
-          {{- with get $t $key }}
-            {{- if not ( and ( kindIs "string" . ) ( regexMatch "^[^/?#&=\\s]+$" . ) ) }}
-              {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].%s is %s; it is a name, and may not contain whitespace or any of / ? # & =." $i $key ( toJson . ) ) }}
+          {{- $v := index $t $key }}
+          {{- if and ( hasKey $t $key ) ( not ( typeIs "<nil>" $v ) ) }}
+            {{- if not ( and ( kindIs "string" $v ) ( regexMatch "^[^/?#&=\\s]+$" $v ) ) }}
+              {{- $errors = append $errors ( printf "postgres-exporter.targets[%d].%s is %s; it is a name, and may not contain whitespace or any of / ? # & =." $i $key ( toJson $v ) ) }}
             {{- end }}
           {{- end }}
         {{- end }}
