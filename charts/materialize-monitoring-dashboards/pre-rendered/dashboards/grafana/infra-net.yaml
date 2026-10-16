@@ -1065,7 +1065,7 @@ spec:
         description: |-
           **Every Service in the cluster that has a cloud load balancer, and the address it was given.**
 
-          **Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.
+          **Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it. None on an AWS install from the Terraform wrappers, which make the Network Load Balancer themselves and attach it with TargetGroupBindings rather than a LoadBalancer Service.
 
           **Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.
 
@@ -1085,7 +1085,7 @@ spec:
                   align: auto
                   filterable: true
                   inspect: false
-                noValue: No Service in this cluster has a cloud load balancer.
+                noValue: No LoadBalancer Service. A load balancer made outside Kubernetes, such as the AWS wrappers' Network Load Balancer, has no row here; its provider rows are below.
               overrides: []
             options:
               cellHeight: sm
@@ -4143,7 +4143,7 @@ spec:
         description: |-
           **Every Service in the cluster that has a cloud load balancer, and the address it was given.**
 
-          **Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.
+          **Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it. None on an AWS install from the Terraform wrappers, which make the Network Load Balancer themselves and attach it with TargetGroupBindings rather than a LoadBalancer Service.
 
           **Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.
 
@@ -5281,7 +5281,7 @@ spec:
                             kind: ElementReference
                             name: cloud-load-balancers
                       maxColumnCount: 1
-                      rowHeightMode: tall
+                      rowHeightMode: standard
                   title: Load Balancers
               - kind: RowsLayoutRow
                 spec:

@@ -108,12 +108,12 @@ fn not_pulled() -> NoValue {
 // --- Kubernetes ----------------------------------------------------------
 
 /// The half that every cluster has.
+///
+/// Standard height, not tall: a cluster has a handful of LoadBalancer Services
+/// at most, and a load balancer Terraform made has none, so a tall table opened
+/// the tab on a screen of empty space with the provider rows below the fold.
 fn load_balancers(q: &Queries) -> Row {
-    Row::new("Load Balancers").grid(
-        AutoGrid::new(1)
-            .row_height(RowHeight::Tall)
-            .panel("cloud-load-balancers", lb_table(q)),
-    )
+    Row::new("Load Balancers").grid(AutoGrid::new(1).panel("cloud-load-balancers", lb_table(q)))
 }
 
 fn lb_table(q: &Queries) -> dashboardv2::PanelKind {
@@ -121,8 +121,12 @@ fn lb_table(q: &Queries) -> dashboardv2::PanelKind {
         // `table_format`, or each Service arrives as its own frame and the panel
         // renders a frame picker rather than a table.
         .query(q.get("infra.net.cloud.load_balancers").table_format())
+        // The AWS wrappers make the Network Load Balancer in Terraform and attach
+        // it with TargetGroupBindings, so no Service there has type LoadBalancer.
         .no_value(NoValue::Custom(
-            "No Service in this cluster has a cloud load balancer.".to_string(),
+            "No LoadBalancer Service. A load balancer made outside Kubernetes, such as the \
+             AWS wrappers' Network Load Balancer, has no row here; its provider rows are below."
+                .to_string(),
         ))
         // `hostname` beside `ip`: a load balancer is reached by address on GCP
         // and Azure and by DNS name on AWS, and Kubernetes reports whichever

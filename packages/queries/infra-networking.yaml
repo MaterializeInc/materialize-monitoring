@@ -689,7 +689,10 @@ queries:
         address it was given.
       nominal: |
         One per Service intended to be reachable from outside — typically
-        Grafana, and `balancerd` where a deployment exposes it.
+        Grafana, and `balancerd` where a deployment exposes it. None on an AWS
+        install from the Terraform wrappers, which make the Network Load
+        Balancer themselves and attach it with TargetGroupBindings rather than
+        a LoadBalancer Service.
       degraded: |
         **A LoadBalancer Service with no row here has not been given an address
         yet.** That is normal for a minute after creation and a fault after
