@@ -417,20 +417,26 @@ spec:
                   kind: DataQuery
                   spec:
                     expr: |
-                      max without (ruler_replica, instance, tenant_id, cluster, audience) (
+                      max without (ruler_replica, tenant_id, cluster, audience) (
                         label_replace(
-                          ALERTS{component="loki"},
-                          "job", "", "job", "thanos-ruler|loki-ruler"
+                          label_replace(
+                            ALERTS{component="loki"},
+                            "job", "", "job", "thanos-ruler|loki-ruler"
+                          ),
+                          "instance", "", "instance", "thanos-ruler|loki-ruler"
                         )
                       )
                     format: table
                     instant: true
                     qryType: 2
                     query: |
-                      max without (ruler_replica, instance, tenant_id, cluster, audience) (
+                      max without (ruler_replica, tenant_id, cluster, audience) (
                         label_replace(
-                          ALERTS{component="loki"},
-                          "job", "", "job", "thanos-ruler|loki-ruler"
+                          label_replace(
+                            ALERTS{component="loki"},
+                            "job", "", "job", "thanos-ruler|loki-ruler"
+                          ),
+                          "instance", "", "instance", "thanos-ruler|loki-ruler"
                         )
                       )
                   version: v0
@@ -465,7 +471,7 @@ spec:
 
           `ALERTS` carries a rule's labels and not its annotations, so the summary and the advice are a click away: each alert name links to its entry under Common Alerts. `alloy-log-drops` is here rather than on the Alloy dashboard because its usual cause is Loki refusing writes.
 
-          A rule that names no `job` of its own is given the ruler's, which says nothing about the alert, so that cell reads as empty.
+          A rule that names no `job` or `instance` of its own is given the ruler's, which says nothing about the alert, so those cells read as empty. One that keeps its own, such as a node's `instance`, shows it.
         id: 1006
         links: []
         title: Alerts
@@ -564,12 +570,24 @@ spec:
                         unless on ()
                         (
                           (
-                            time()
-                            - max(
-                              loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
-                                app="loki",
-                                container="ruler"
-                              }
+                            max(
+                              (
+                                time()
+                                - max by (rule_group, user) (
+                                  loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+                                    app="loki",
+                                    container="ruler"
+                                  }
+                                  > 0
+                                )
+                              )
+                              - on (rule_group, user)
+                              max by (rule_group, user) (
+                                loki_prometheus_rule_group_interval_seconds{
+                                  app="loki",
+                                  container="ruler"
+                                }
+                              )
                             )
                             >= 300
                           )
@@ -594,6 +612,7 @@ spec:
                           )
                         )
                       )
+                    instant: true
                     legendFormat: alerts
                     qryType: 1
                     query: |
@@ -638,12 +657,24 @@ spec:
                         unless on ()
                         (
                           (
-                            time()
-                            - max(
-                              loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
-                                app="loki",
-                                container="ruler"
-                              }
+                            max(
+                              (
+                                time()
+                                - max by (rule_group, user) (
+                                  loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+                                    app="loki",
+                                    container="ruler"
+                                  }
+                                  > 0
+                                )
+                              )
+                              - on (rule_group, user)
+                              max by (rule_group, user) (
+                                loki_prometheus_rule_group_interval_seconds{
+                                  app="loki",
+                                  container="ruler"
+                                }
+                              )
                             )
                             >= 300
                           )
@@ -679,7 +710,7 @@ spec:
 
           **Unhealthy:** Any. _Alerts_ below names each one, and links to what it means.
 
-          Reads zero only while the Thanos ruler has evaluated a rule and written its results back within five minutes, and so has the Loki ruler where one runs. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either would read as no alerts. An empty reading means the alert path itself needs checking: the Thanos dashboard's Ruler tab covers the Thanos ruler, and the Logs tab here covers the Loki ruler.
+          Reads zero only while the Thanos ruler has evaluated a rule and written its results back within five minutes. Where a Loki ruler runs, every Loki rule group also has to be no more than five minutes overdue, and written back: the Loki rulers divide the groups between them, so one stalled ruler leaves its groups unevaluated while the others carry on. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either would read as no alerts. An instant query, because over a range the last zero from before a ruler went silent would still be shown. An empty reading means the alert path itself needs checking: the Thanos dashboard's Ruler tab covers the Thanos ruler, and the Logs tab here covers the Loki ruler.
         id: 1000
         links: []
         title: Loki Alerts Firing
@@ -711,7 +742,7 @@ spec:
               overrides: []
             options:
               colorMode: background
-              graphMode: area
+              graphMode: none
               justifyMode: auto
               orientation: auto
               percentChangeColorMode: standard

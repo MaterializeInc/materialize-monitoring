@@ -1668,6 +1668,15 @@
   labels:
   - app
   - container
+  name: loki_prometheus_rule_group_interval_seconds
+  usage:
+  - infra.alloy.health.alerts_firing
+  - infra.loki.health.alerts_firing
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
   name: loki_prometheus_rule_group_last_evaluation_timestamp_seconds
   usage:
   - infra.alloy.health.alerts_firing

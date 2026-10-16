@@ -326,6 +326,13 @@
   labels:
   - app
   - container
+  name: loki_prometheus_rule_group_interval_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
   name: loki_prometheus_rule_group_last_evaluation_timestamp_seconds
   usage:
   - materialize.health.alerts_firing

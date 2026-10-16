@@ -22,6 +22,7 @@
 //! `component` for the registry's, a namespace for an environment's.
 
 use mzmon_lib::grafana::generated::dashboardv2;
+use mzmon_lib::grafana::generated::stat::BigValueGraphMode;
 use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
@@ -58,8 +59,14 @@ pub struct Alerts {
 
 impl Alerts {
     /// The firing count, for the verdict row.
+    ///
+    /// The registry marks the query instant, so the stat has no sparkline. Over
+    /// a range, Grafana's last-non-null reduction would keep showing the zero
+    /// from before a ruler went silent, which is the reading this panel exists
+    /// to withhold. The history beside the table is the range view.
     pub fn firing(&self, q: &Queries) -> dashboardv2::PanelKind {
         zero_is_healthy(&self.firing_title())
+            .graph_mode(BigValueGraphMode::None)
             .query(q.get(&self.id("alerts_firing")).legend("alerts"))
             .thresholds(threshold::errors(1.0, 3.0).build())
             .unit("short")
@@ -223,6 +230,37 @@ mod tests {
     }
 
     #[test]
+    fn the_firing_count_is_a_current_value() {
+        // Over a range, the stat's last-non-null reduction would keep the zero
+        // from before a ruler went silent for the rest of the window.
+        let q = &test_queries();
+        for (name, alerts) in all() {
+            let json = serde_json::to_string(&alerts.firing(q)).expect("serialize");
+            assert!(json.contains(r#""instant":true"#), "{name}: {json}");
+            assert!(json.contains(r#""graphMode":"none""#), "{name}: {json}");
+        }
+    }
+
+    #[test]
+    fn the_table_keeps_an_instance_the_rule_named() {
+        // `environmentd-cpu-throttled` keeps the node's `instance`. Dropping the
+        // label merged two throttled containers into one row; only the value
+        // the gateway stamps on a result without one says nothing.
+        let q = &test_queries();
+        for (name, alerts) in all() {
+            if !alerts.common_alerts {
+                continue;
+            }
+            let expr = expression(&alerts.table(q));
+            assert!(!expr.contains("ruler_replica, instance"), "{name}: {expr}");
+            assert!(
+                expr.contains(r#""instance", "", "instance", "thanos-ruler|loki-ruler""#),
+                "{name}: {expr}"
+            );
+        }
+    }
+
+    #[test]
     fn the_firing_count_does_not_claim_zero_from_a_silent_ruler() {
         // `or vector(0)` would read zero with the alert path down. The zero has
         // to come from a ruler that is evaluating, and that is writing its
@@ -277,6 +315,261 @@ mod tests {
                 alerts.common_alerts,
                 "{name}: {json}"
             );
+        }
+    }
+
+    /// A panel's one rendered expression, with the dashboard variables the
+    /// alert queries read set to the values the series below carry.
+    fn expression(panel: &dashboardv2::PanelKind) -> String {
+        let json = serde_json::to_value(panel).expect("serialize");
+        json["spec"]["data"]["spec"]["queries"][0]["spec"]["query"]["spec"]["expr"]
+            .as_str()
+            .expect("expr")
+            .replace("$mzNamespaceList", "materialize-environment")
+            .replace("$thanosNamespace", "monitoring")
+    }
+
+    /// One input series for `promtool test rules`.
+    fn series(series: &str, values: &str) -> serde_json::Value {
+        serde_json::json!({ "series": series, "values": values })
+    }
+
+    /// A ruler metric's series, on the pod and rule group given.
+    fn ruler(metric: &str, labels: &str, values: &str) -> serde_json::Value {
+        series(
+            &format!(r#"{metric}{{container="ruler", namespace="monitoring", {labels}}}"#),
+            values,
+        )
+    }
+
+    /// Both rulers healthy: every rule group evaluated each minute, and every
+    /// remote-write queue sent up to its newest sample. Values are timestamps
+    /// in seconds, so `0+60x20` is a group evaluated on schedule.
+    fn healthy_rulers() -> Vec<serde_json::Value> {
+        let mut out = vec![
+            ruler(
+                "prometheus_rule_group_last_evaluation_timestamp_seconds",
+                r#"app="thanos", pod="thanos-ruler-0", rule_group="r.yaml;g""#,
+                "0+60x20",
+            ),
+            ruler(
+                "prometheus_remote_storage_highest_timestamp_in_seconds",
+                r#"app="thanos", pod="thanos-ruler-0""#,
+                "0+60x20",
+            ),
+            ruler(
+                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
+                r#"app="thanos", pod="thanos-ruler-0""#,
+                "0+60x20",
+            ),
+        ];
+        for (pod, group) in [("loki-ruler-0", "panics"), ("loki-ruler-1", "correctness")] {
+            let group =
+                format!(r#"app="loki", pod="{pod}", rule_group="l.yaml;{group}", user="loki""#);
+            out.push(ruler(
+                "loki_prometheus_rule_group_last_evaluation_timestamp_seconds",
+                &group,
+                "0+60x20",
+            ));
+            out.push(ruler(
+                "loki_prometheus_rule_group_interval_seconds",
+                &group,
+                "60x20",
+            ));
+            let queue = format!(r#"app="loki", pod="{pod}", tenant="loki""#);
+            for metric in [
+                "loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds",
+                "loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
+            ] {
+                out.push(ruler(metric, &queue, "0+60x20"));
+            }
+        }
+        out
+    }
+
+    /// Replace the values of every input series whose text contains each key.
+    fn with(mut input: Vec<serde_json::Value>, changes: &[(&str, &str)]) -> Vec<serde_json::Value> {
+        for (needle, values) in changes {
+            let mut found = false;
+            for s in &mut input {
+                if s["series"]
+                    .as_str()
+                    .is_some_and(|text| text.contains(needle))
+                {
+                    s["values"] = serde_json::json!(values);
+                    found = true;
+                }
+            }
+            assert!(found, "no input series contains {needle}");
+        }
+        input
+    }
+
+    /// Run expression tests through `promtool test rules`, or skip when it is
+    /// not installed. CI installs it for the cargo tests.
+    fn promtool(name: &str, tests: Vec<serde_json::Value>) {
+        use std::process::Command;
+        if Command::new("promtool").arg("--version").output().is_err() {
+            eprintln!("skipping {name}: `promtool` not found on PATH");
+            return;
+        }
+        // JSON is YAML, so the document needs no serializer of its own.
+        let doc = serde_json::json!({
+            "rule_files": [],
+            "evaluation_interval": "1m",
+            "tests": tests,
+        });
+        let path = std::env::temp_dir().join(format!(
+            "mzmon-dashboards-{name}-{}.test.yaml",
+            std::process::id()
+        ));
+        std::fs::write(&path, doc.to_string()).expect("write the promtool test");
+        let output = Command::new("promtool")
+            .args(["test", "rules"])
+            .arg(&path)
+            .output()
+            .expect("run promtool");
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            output.status.success(),
+            "{name}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    #[test]
+    fn the_firing_count_reads_zero_only_from_rulers_that_deliver() {
+        // Each case is the rendered expression against synthetic rulers,
+        // evaluated at 15m. `Some(n)` is the count shown; `None` is the empty
+        // panel that says the alert path is down.
+        let q = &test_queries();
+        let stalled = "0+60x5 300x15";
+        let firing = [
+            series(
+                r#"ALERTS{alertname="ThanosCompactHalted", alertstate="firing", job="thanos-compact"}"#,
+                "1x20",
+            ),
+            series(
+                r#"ALERTS{alertname="loki-panics", alertstate="firing", component="loki", namespace="monitoring"}"#,
+                "1x20",
+            ),
+            series(
+                r#"ALERTS{alertname="clusterd-metrics-missing", alertstate="firing", component="monitoring", namespace="materialize-environment"}"#,
+                "1x20",
+            ),
+        ];
+        let loki_ruler_only = |s: &serde_json::Value| {
+            s["series"]
+                .as_str()
+                .is_some_and(|text| !text.contains(r#"app="loki""#))
+        };
+
+        for (name, alerts) in all() {
+            let waits_on_loki = alerts.common_alerts;
+            let loki = |stale: Option<f64>| if waits_on_loki { stale } else { Some(0.0) };
+            let cases: Vec<(&str, Vec<serde_json::Value>, Option<f64>)> = vec![
+                ("both rulers healthy", healthy_rulers(), Some(0.0)),
+                (
+                    "no Loki ruler",
+                    healthy_rulers()
+                        .into_iter()
+                        .filter(loki_ruler_only)
+                        .collect(),
+                    Some(0.0),
+                ),
+                (
+                    "Thanos ruler stopped evaluating",
+                    with(
+                        healthy_rulers(),
+                        &[(
+                            "prometheus_rule_group_last_evaluation_timestamp_seconds{container=\"ruler\", namespace=\"monitoring\", app=\"thanos\"",
+                            stalled,
+                        )],
+                    ),
+                    None,
+                ),
+                (
+                    "Thanos ruler's write-back stalled",
+                    with(
+                        healthy_rulers(),
+                        &[(
+                            "prometheus_remote_storage_queue_highest_sent_timestamp_seconds{container=\"ruler\", namespace=\"monitoring\", app=\"thanos\"",
+                            stalled,
+                        )],
+                    ),
+                    None,
+                ),
+                (
+                    "one Loki ruler's groups stalled while the other runs",
+                    with(healthy_rulers(), &[("correctness\", user", stalled)]),
+                    loki(None),
+                ),
+                (
+                    "one Loki ruler's write-back stalled",
+                    with(
+                        healthy_rulers(),
+                        &[(
+                            "queue_highest_sent_timestamp_seconds{container=\"ruler\", namespace=\"monitoring\", app=\"loki\", pod=\"loki-ruler-1\"",
+                            stalled,
+                        )],
+                    ),
+                    loki(None),
+                ),
+                (
+                    "a Loki group loaded and not yet evaluated",
+                    {
+                        let mut input = healthy_rulers();
+                        input.push(ruler(
+                            "loki_prometheus_rule_group_last_evaluation_timestamp_seconds",
+                            r#"app="loki", pod="loki-ruler-0", rule_group="l.yaml;new", user="loki""#,
+                            "0x20",
+                        ));
+                        input
+                    },
+                    Some(0.0),
+                ),
+                (
+                    "a restarted Loki ruler's previous series still in the lookback",
+                    {
+                        let mut input = healthy_rulers();
+                        input.push(ruler(
+                            "loki_prometheus_rule_group_last_evaluation_timestamp_seconds",
+                            r#"app="loki", pod="loki-ruler-1", rule_group="l.yaml;correctness", user="loki", instance="old""#,
+                            "300x20",
+                        ));
+                        input
+                    },
+                    Some(0.0),
+                ),
+                (
+                    "an alert firing",
+                    healthy_rulers().into_iter().chain(firing.clone()).collect(),
+                    Some(1.0),
+                ),
+            ];
+
+            let expr = expression(&alerts.firing(q));
+            let tests = cases
+                .into_iter()
+                .map(|(case, input, want)| {
+                    let samples = match want {
+                        Some(value) => serde_json::json!([{ "labels": "{}", "value": value }]),
+                        None => serde_json::json!([]),
+                    };
+                    serde_json::json!({
+                        "name": case,
+                        "interval": "1m",
+                        "input_series": input,
+                        "promql_expr_test": [{
+                            "expr": expr,
+                            "eval_time": "15m",
+                            "exp_samples": samples,
+                        }],
+                    })
+                })
+                .collect();
+            promtool(name, tests);
         }
     }
 
