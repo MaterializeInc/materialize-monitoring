@@ -115,6 +115,47 @@ alerts:
           max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
         ) > 600
 
+  - alert: cluster-lag-spike
+    group: freshness
+    stability: best-effort
+    for: 2m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster's collections have been over 60s behind for 2m.
+      degraded: |
+        The early form of cluster-falling-behind: the same lag, read without
+        its 15m average, so it fires minutes sooner and on shorter spikes.
+        Look where cluster-falling-behind says to look.
+      notes: |
+        Backtested on 30 days of one Cloud region, it caught nearly every
+        degradation cluster-falling-behind did, a median 7m sooner, at about
+        twice its rate on healthy clusters. Most degradations came on clusters
+        that had already degraded in the previous day, so this is most worth
+        selecting for clusters with that history. Not in the default set, for
+        the reasons cluster-falling-behind gives.
+    query:
+      id: materialize.clusters.lag_spike
+      stability: best-effort
+      description:
+        summary: Per user cluster, the worst current lag of any collection, on its freshest replica.
+      promQL:
+        template: |
+          max by (namespace, materialize_cloud_organization_name, instance_id) (
+            min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+              mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"u.*", %%{excludeEnvironmentFilter}}
+            ) < 1e18
+          ) > 60
+        functions:
+          - name: mzClusterName
+            args: ["instance_id"]
+      # As cluster-falling-behind: the worst replica, sentinel included.
+      datadogQuery: |
+        min(last_2m):(
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:u*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        ) > 60
+
   # --- hydration -----------------------------------------------------------
   - alert: cluster-hydration-stuck
     group: hydration
@@ -250,6 +291,49 @@ alerts:
           max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:u*, %%{excludeEnvironmentFilter}} by {namespace,pod}
           / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
         ) > 40
+  - alert: cluster-memory-limiter-high
+    group: cluster_resources
+    stability: best-effort
+    for: 1m
+    labels:
+      severity: warning
+      component: clusterd
+    description:
+      summary: A cluster replica has peaked above 70% of its memory limiter's limit in the last 15m.
+      degraded: |
+        Replicas that die of memory usually sit at this level for an hour or
+        more first, so there is time to act: size the cluster up, or find what
+        is growing in `mz_internal.mz_dataflow_arrangement_sizes`, before the
+        limiter kills the replica and it rehydrates from scratch.
+      notes: |
+        The limiter's own view (RSS plus swap against the limit it enforces) is
+        the earliest warning of a kill. Backtested on 30 days of one Cloud
+        region it fired ahead of roughly half of all memory deaths, most of
+        them an hour early, on about 1% of healthy replica-hours. The heap
+        ratio of cluster-memory-near-limit fired ahead of none. Not in the
+        default set until it has run beside the existing rules.
+    query:
+      id: materialize.clusters.memory_limiter_high
+      stability: best-effort
+      description:
+        summary: Per user cluster replica, peak memory-limiter usage as a percentage of its limit over 15m.
+      promQL:
+        template: |
+          100 * (
+            max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+              max_over_time(mz_memory_limiter_memory_usage_bytes{cluster_environmentd_materialize_cloud_cluster_id=~"u.*", %%{excludeEnvironmentFilter}}[15m])
+            )
+            / on (namespace, pod) group_left ()
+            max by (namespace, pod) (mz_memory_limiter_memory_limit_bytes != 0)
+          ) > 70
+        functions:
+          - name: mzClusterName
+            args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+      datadogQuery: |
+        max(last_15m):100 * (
+          max:mz_memory_limiter_memory_usage_bytes{cluster_environmentd_materialize_cloud_cluster_id:u*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          / max:mz_memory_limiter_memory_limit_bytes{*} by {namespace,pod}
+        ) > 70
   - alert: cluster-cpu-high
     group: cluster_resources
     stability: best-effort

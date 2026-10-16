@@ -1152,6 +1152,16 @@ rules:
     - materialize
     enabledByDefault: false
     minImportance: essential
+  cluster-lag-spike:
+    file: prometheus/materialize-workload-alerts.yaml
+    engine: promql
+    group: freshness
+    severity: warning
+    audience: workload
+    requires:
+    - materialize
+    enabledByDefault: false
+    minImportance: essential
   cluster-hydration-stuck:
     file: prometheus/materialize-workload-alerts.yaml
     engine: promql
@@ -1180,6 +1190,16 @@ rules:
     audience: workload
     requires:
     - materialize
+    enabledByDefault: false
+    minImportance: essential
+  cluster-memory-limiter-high:
+    file: prometheus/materialize-workload-alerts.yaml
+    engine: promql
+    group: cluster_resources
+    severity: warning
+    audience: workload
+    requires:
+    - memory-limiter
     enabledByDefault: false
     minImportance: essential
   cluster-cpu-high:

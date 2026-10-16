@@ -139,6 +139,64 @@ groups:
 
         Not in the default set, for the reasons cluster-falling-behind gives.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-stale
+  - alert: cluster-lag-spike
+    expr: |-
+      (
+      (
+      max by (namespace, materialize_cloud_organization_name, instance_id) (
+        min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+          mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"u.*", namespace!~"__mzmon_excluded_namespaces__"}
+        ) < 1e18
+      ) > 60
+      )
+      * on (namespace, instance_id) group_left(cluster_name)
+      (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, instance_id)
+      (
+      count by (namespace, instance_id) (
+      group by (namespace, instance_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "instance_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, instance_id)
+      (
+      max by (namespace, materialize_cloud_organization_name, instance_id) (
+        min by (namespace, materialize_cloud_organization_name, instance_id, collection_id) (
+          mz_dataflow_wallclock_lag_seconds{quantile="1", instance_id=~"u.*", namespace!~"__mzmon_excluded_namespaces__"}
+        ) < 1e18
+      ) > 60
+      )
+    for: 2m
+    labels:
+      severity: warning
+      component: clusterd
+      audience: workload
+    annotations:
+      summary: A cluster's collections have been over 60s behind for 2m.
+      description: |-
+        The early form of cluster-falling-behind: the same lag, read without
+        its 15m average, so it fires minutes sooner and on shorter spikes.
+        Look where cluster-falling-behind says to look.
+
+        Backtested on 30 days of one Cloud region, it caught nearly every
+        degradation cluster-falling-behind did, a median 7m sooner, at about
+        twice its rate on healthy clusters. Most degradations came on clusters
+        that had already degraded in the previous day, so this is most worth
+        selecting for clusters with that history. Not in the default set, for
+        the reasons cluster-falling-behind gives.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-lag-spike
 - name: hydration
   rules:
   - alert: cluster-hydration-stuck
@@ -335,6 +393,69 @@ groups:
         has against its RAM, which varies by deployment, so evaluate it against
         your sizes before selecting it.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-memory-high
+  - alert: cluster-memory-limiter-high
+    expr: |-
+      (
+      (
+      100 * (
+        max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+          max_over_time(mz_memory_limiter_memory_usage_bytes{cluster_environmentd_materialize_cloud_cluster_id=~"u.*", namespace!~"__mzmon_excluded_namespaces__"}[15m])
+        )
+        / on (namespace, pod) group_left ()
+        max by (namespace, pod) (mz_memory_limiter_memory_limit_bytes != 0)
+      ) > 70
+      )
+      * on (namespace, cluster_environmentd_materialize_cloud_cluster_id) group_left(cluster_name)
+      (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      and on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      count by (namespace, cluster_environmentd_materialize_cloud_cluster_id) (
+      group by (namespace, cluster_environmentd_materialize_cloud_cluster_id, cluster_name) (
+      label_replace(
+      label_replace(last_over_time(mz_cluster_info[1h]), "cluster_environmentd_materialize_cloud_cluster_id", "$1", "cluster_id", "(.*)"),
+      "cluster_name", "$1", "name", "(.*)"
+      )
+      )
+      ) == 1
+      )
+      )
+      )
+      or on (namespace, cluster_environmentd_materialize_cloud_cluster_id)
+      (
+      100 * (
+        max by (namespace, materialize_cloud_organization_name, cluster_environmentd_materialize_cloud_cluster_id, cluster_environmentd_materialize_cloud_replica_id, pod) (
+          max_over_time(mz_memory_limiter_memory_usage_bytes{cluster_environmentd_materialize_cloud_cluster_id=~"u.*", namespace!~"__mzmon_excluded_namespaces__"}[15m])
+        )
+        / on (namespace, pod) group_left ()
+        max by (namespace, pod) (mz_memory_limiter_memory_limit_bytes != 0)
+      ) > 70
+      )
+    for: 1m
+    labels:
+      severity: warning
+      component: clusterd
+      audience: workload
+    annotations:
+      summary: A cluster replica has peaked above 70% of its memory limiter's limit in the last 15m.
+      description: |-
+        Replicas that die of memory usually sit at this level for an hour or
+        more first, so there is time to act: size the cluster up, or find what
+        is growing in `mz_internal.mz_dataflow_arrangement_sizes`, before the
+        limiter kills the replica and it rehydrates from scratch.
+
+        The limiter's own view (RSS plus swap against the limit it enforces) is
+        the earliest warning of a kill. Backtested on 30 days of one Cloud
+        region it fired ahead of roughly half of all memory deaths, most of
+        them an hour early, on about 1% of healthy replica-hours. The heap
+        ratio of cluster-memory-near-limit fired ahead of none. Not in the
+        default set until it has run beside the existing rules.
+      runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-memory-limiter-high
   - alert: cluster-cpu-high
     expr: |-
       (

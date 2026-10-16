@@ -111,6 +111,44 @@ tests:
         eval_time: 45m
         exp_samples: []
 
+  # --- cluster-memory-limiter-high: the limiter's own usage and limit -------
+  - name: cluster-memory-limiter-high fires on a peak above 70% of the limiter limit
+    interval: 1m
+    input_series:
+      # u1: one 80% peak inside the last 15m. Fires.
+      - series: 'mz_memory_limiter_memory_usage_bytes{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u1", cluster_environmentd_materialize_cloud_replica_id="u1", materialize_cloud_organization_name="main"}'
+        values: "50x10 80 50x9"
+      - series: 'mz_memory_limiter_memory_limit_bytes{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u1"}'
+        values: "100x20"
+      # u2: steady at 60%. Quiet.
+      - series: 'mz_memory_limiter_memory_usage_bytes{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u2", cluster_environmentd_materialize_cloud_replica_id="u2", materialize_cloud_organization_name="main"}'
+        values: "60x20"
+      - series: 'mz_memory_limiter_memory_limit_bytes{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", cluster_environmentd_materialize_cloud_cluster_id="u2"}'
+        values: "100x20"
+    promql_expr_test:
+      - expr: count by (cluster_environmentd_materialize_cloud_cluster_id) (ALERTS{alertname="cluster-memory-limiter-high", alertstate="firing"})
+        eval_time: 15m
+        exp_samples:
+          - labels: '{cluster_environmentd_materialize_cloud_cluster_id="u1"}'
+            value: 1
+
+  # --- cluster-lag-spike: raw lag on the freshest replica -------------------
+  - name: cluster-lag-spike fires on 2m of lag and ignores a one-sample blip
+    interval: 1m
+    input_series:
+      # u1: 90s behind from 10m on. Fires.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u1", replica_id="u1", collection_id="u10", quantile="1"}'
+        values: "2x9 90x10"
+      # u2: one 90s sample. Quiet.
+      - series: 'mz_dataflow_wallclock_lag_seconds{namespace="materialize-environment", materialize_cloud_organization_name="main", instance_id="u2", replica_id="u2", collection_id="u20", quantile="1"}'
+        values: "2x9 90 2x9"
+    promql_expr_test:
+      - expr: count by (instance_id) (ALERTS{alertname="cluster-lag-spike", alertstate="firing"})
+        eval_time: 14m
+        exp_samples:
+          - labels: '{instance_id="u1"}'
+            value: 1
+
   # --- cluster-cpu-high: a user replica's CPU against its own limit ----------
   #
   # The cluster id comes from the replica's pod name, since cAdvisor series
