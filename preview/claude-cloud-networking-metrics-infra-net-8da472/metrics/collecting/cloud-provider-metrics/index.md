@@ -186,7 +186,7 @@ The load balancer and NAT gateway pulls do too.
 |---|---|---|
 | `cloudwatch` | `aws_networkelb_*`, such as `aws_networkelb_healthy_host_count_minimum` | `dimension_LoadBalancer` (`net/<name>/<id>`), and `dimension_TargetGroup` (`targetgroup/<name>/<id>`) on the health families |
 | `cloudwatch` | `aws_natgateway_*`, such as `aws_natgateway_error_port_allocation_sum` | `dimension_NatGatewayId` |
-| `gcp` | `stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_*` and `stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_*` | `forwarding_rule_name`, and the client's country or network |
+| `gcp` | `stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_*` and `stackdriver_internal_{tcp,udp}_lb_rule_loadbalancing_googleapis_com_l_3_internal_*` | `forwarding_rule_name`, and the client's country or network |
 | `gcp` | `stackdriver_nat_gateway_router_googleapis_com_nat_*` | `gateway_name`, and `reason` on the drops |
 | `azure` | `azure_microsoft_network_loadbalancers_*` | `resourceName` (`kubernetes` or `kubernetes-internal`), `resourceGroup` (the node resource group), and the frontend address |
 | `azure` | `azure_microsoft_network_natgateways_*` | `resourceName` |

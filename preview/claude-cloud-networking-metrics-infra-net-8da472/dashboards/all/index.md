@@ -375,7 +375,7 @@ A NAT gateway out of source ports makes a Materialize source stall and reconnect
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-cloud-networking-metrics-infra-net-8da472/dashboards/grafana/infra-net.json?xxhash=c488c8c1f2e3d6c9" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-cloud-networking-metrics-infra-net-8da472/dashboards/grafana/infra-net.json?xxhash=1fb4681ea5f297fc" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
         <br /><small>UID <code>mz-mon-infra-net</code></small>
       </td>
       <td>
