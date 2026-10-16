@@ -120,7 +120,8 @@ Channels in the docs for worked examples.
   `route` options. Empty means no alert reaches anybody.
 - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
   of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
-  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+  `audience` label, `platform`, `workload` or `development`, which is the usual thing an extra
+  route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
 - `default_templates` — make the chart's notification templates every receiver's default (the

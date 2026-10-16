@@ -3546,7 +3546,7 @@
               "transformations": []
             }
           },
-          "description": "**Log lines per second a pipeline guard discarded before delivery, split by reason.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. `too large` is a single line above the pipeline's size limit. Each of these lines is lost.\n\nExcludes the debug tap's sampling and its echo suppression, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
+          "description": "**Log lines per second a pipeline guard discarded before delivery, split by reason.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** `ratelimit_drop_stage` is a namespace writing faster than the gateway's per-namespace rate limit allows. `backlog > 2hr` and `processed time > 2hr old` are lines older than the store accepts, most often a backlog draining after an outage. Each of these lines is lost.\n\nExcludes the debug tap's sampling and its echo suppression, which drop copies that were never bound for a store. A reason not listed above is new, and counts as a loss until it is classified.\n\nA flat zero means the collectors reported and there was nothing to show. No data means nothing was collected at all.",
           "id": 1022,
           "links": [],
           "title": "Lines Discarded by Guards",
@@ -3601,10 +3601,10 @@
                       "group": "prometheus",
                       "kind": "DataQuery",
                       "spec": {
-                        "expr": "sum by (pod) (\n  rate(\n    loki_process_cri_lines_truncated_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
-                        "legendFormat": "{{pod}}",
+                        "expr": "sum by (pod, field) (\n  label_replace(\n    rate(\n      loki_process_cri_lines_truncated_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    ),\n    \"field\", \"cri_reassembly\", \"\", \"\"\n  )\n  or\n  rate(\n    loki_process_truncated_fields_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n",
+                        "legendFormat": "{{pod}} {{field}}",
                         "qryType": 1,
-                        "query": "sum by (pod) (\n  rate(\n    loki_process_cri_lines_truncated_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
+                        "query": "sum by (pod, field) (\n  label_replace(\n    rate(\n      loki_process_cri_lines_truncated_total{\n        app=~\"$alloyRole\",\n        namespace=~\"$alloyNamespace\",\n        pod=~\"$alloyPod\"\n      }\n      [$__rate_interval]\n    ),\n    \"field\", \"cri_reassembly\", \"\", \"\"\n  )\n  or\n  rate(\n    loki_process_truncated_fields_total{\n      app=~\"$alloyRole\",\n      namespace=~\"$alloyNamespace\",\n      pod=~\"$alloyPod\"\n    }\n    [$__rate_interval]\n  )\n)\n"
                       },
                       "version": "v0"
                     },
@@ -3616,7 +3616,7 @@
               "transformations": []
             }
           },
-          "description": "**Container log lines per second the agents truncated while reassembling lines the container runtime had split.**\n\n**Nominal:** Zero.\n\n**Degraded:** A steady rate from one workload. It is writing lines longer than the agent reassembles, and the tail of each is lost.",
+          "description": "**Cuts per second the pipelines made to log lines and their fields, split by Alloy pod and by what was cut.**\n\n**Nominal:** Zero.\n\n**Degraded:** A steady rate. Some workload writes lines longer than a limit, and the tail of each is lost.\n\n`cri_reassembly` is an agent cutting a line the container runtime had split, when the reassembled line is longer than the agent reassembles. `line`, `label`, and `structured_metadata` are a size limit cutting a value, and the cut line ends in a suffix naming the rule: `[TRUNCATED:SAFETYCLAMP]` for the 1MiB clamp on the agent and the gateway, `[TRUNCATED:LINE]` for the gateway's line limit, and `[TRUNCATED:FIELDS]` for its fixed backstop. A line the clamp and the line limit both cut counts twice.",
           "id": 1023,
           "links": [],
           "title": "Truncated Lines",
