@@ -287,7 +287,10 @@ fn gcp_lb_throughput(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-const FRONTEND: &str = "{{frontend}}";
+/// A frontend address and its load balancer's resource group, which is the AKS
+/// cluster's node resource group: two clusters' internal frontends can share
+/// an address.
+const FRONTEND: &str = "{{frontend}} ({{resourceGroup}})";
 
 fn azure_load_balancers(q: &Queries) -> Row {
     Row::new("Azure Load Balancer: Health and Traffic")
@@ -346,7 +349,10 @@ fn azure_lb_throughput(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Throughput")
         .query(q.legended(
             "infra.net.cloud.azure_lb.throughput",
-            &["in {{frontend}}", "out {{frontend}}"],
+            &[
+                "in {{frontend}} ({{resourceGroup}})",
+                "out {{frontend}} ({{resourceGroup}})",
+            ],
         ))
         .unit("Bps")
         .min(0.0)
@@ -516,7 +522,9 @@ fn gcp_nat_connections(q: &Queries) -> dashboardv2::PanelKind {
         .build(0)
 }
 
-const AZURE_NAT_NAME: &str = "{{resourceName}}";
+/// NAT gateway names are unique only within a resource group, and the pull
+/// collects every gateway of a listed name.
+const AZURE_NAT_NAME: &str = "{{resourceName}} ({{resourceGroup}})";
 
 fn azure_nat(q: &Queries) -> Row {
     Row::new("Azure NAT Gateway: Ports and Connections")
@@ -534,7 +542,10 @@ fn azure_nat_snat(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("SNAT Connections (per 5 min)")
         .query(q.legended(
             "infra.net.cloud.azure_nat.snat_connections",
-            &["attempted {{resourceName}}", "failed {{resourceName}}"],
+            &[
+                "attempted {{resourceName}} ({{resourceGroup}})",
+                "failed {{resourceName}} ({{resourceGroup}})",
+            ],
         ))
         .unit("short")
         .min(0.0)

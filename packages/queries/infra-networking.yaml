@@ -889,19 +889,25 @@ queries:
         only traffic, and writes nothing for a minute that carried none. A
         rule with no line has carried nothing recently. GKE names each rule `a`
         followed by its Service's UID without dashes, and the rule's
-        description in the console names the Service.
+        description in the console names the Service. Internal rules are
+        published per protocol, TCP and UDP, and both are read; an external
+        rule's series carry the protocol as a label.
     promQL:
       - |
-        sum by (forwarding_rule_name) (
+        sum by (region, forwarding_rule_name) (
           (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
           or
           (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+          or
+          (idelta(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
         ) / 60
       - |
-        sum by (forwarding_rule_name) (
+        sum by (region, forwarding_rule_name) (
           (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
           or
           (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+          or
+          (idelta(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
         ) / 60
 
   - id: infra.net.cloud.gcp_lb.throughput
@@ -914,16 +920,20 @@ queries:
         Read the same way as _Packets_.
     promQL:
       - |
-        sum by (forwarding_rule_name) (
+        sum by (region, forwarding_rule_name) (
           (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
           or
           (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+          or
+          (idelta(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
         ) / 60
       - |
-        sum by (forwarding_rule_name) (
+        sum by (region, forwarding_rule_name) (
           (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
           or
           (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+          or
+          (idelta(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
         ) / 60
 
   - id: infra.net.cloud.azure_lb.availability
@@ -940,7 +950,7 @@ queries:
         Azure probes the frontend from inside the region, so this does not see
         a firewall or route between a client and Azure.
     promQL: |
-      min by (frontend) (
+      min by (resourceGroup, resourceName, frontend) (
         label_replace(
           last_over_time(azure_microsoft_network_loadbalancers_vipavailability_average_count[15m]),
           "frontend", "$1", "dimension", "(.*)"
@@ -963,11 +973,13 @@ queries:
         inside.
       notes: |
         The frontend address is the Service's external IP in _Load Balancer
-        Services_ above. Azure's own average health-probe percentage reads
+        Services_ above. Each is named with its load balancer's resource group,
+        the cluster's node resource group, since two clusters' internal
+        frontends can share an address. Azure's own average health-probe percentage reads
         17% for a healthy Service on six nodes, which is why this counts
         backends instead.
     promQL: |
-      sum by (frontend) (
+      sum by (resourceGroup, resourceName, frontend) (
         label_replace(
           last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]),
           "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
@@ -981,7 +993,7 @@ queries:
         Connections clients opened to each load balancer frontend address per
         second, counted as inbound SYN packets in the newest minute.
     promQL: |
-      sum by (frontend) (
+      sum by (resourceGroup, resourceName, frontend) (
         label_replace(
           last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m]),
           "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
@@ -996,14 +1008,14 @@ queries:
         in the newest minute.
     promQL:
       - |
-        sum by (frontend) (
+        sum by (resourceGroup, resourceName, frontend) (
           label_replace(
             last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m]),
             "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
           )
         ) / 60
       - |
-        sum by (frontend) (
+        sum by (resourceGroup, resourceName, frontend) (
           label_replace(
             last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m]),
             "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
@@ -1094,7 +1106,7 @@ queries:
         the cluster it looks like a Materialize source that stalls and
         reconnects with no cause of its own.
     promQL: |
-      max by (gateway_name) (
+      max by (region, router_id, gateway_name) (
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed[15m])
       )
 
@@ -1110,7 +1122,7 @@ queries:
         static allocation, as the Terraform wrappers configure it, that is 64
         unless the gateway was given more.
     promQL: |
-      max by (gateway_name) (
+      max by (region, router_id, gateway_name) (
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_port_usage[15m])
       )
 
@@ -1119,7 +1131,7 @@ queries:
     description:
       summary: Connections open through each Cloud NAT gateway.
     promQL: |
-      sum by (gateway_name) (
+      sum by (region, router_id, gateway_name) (
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_open_connections[15m])
       )
 
@@ -1136,7 +1148,7 @@ queries:
         destination from one NAT address and port, which endpoint-independent
         mapping cannot tell apart.
     promQL: |
-      sum by (gateway_name, reason) (
+      sum by (region, router_id, gateway_name, reason) (
         (idelta(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[15m]) >= 0)
         or
         last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[10m])
@@ -1153,7 +1165,7 @@ queries:
         Below 100% is the gateway itself failing to carry traffic, which is
         Azure's to fix.
     promQL: |
-      min by (resourceName) (
+      min by (resourceGroup, resourceName) (
         last_over_time(azure_microsoft_network_natgateways_datapathavailability_average_count[15m])
       ) / 100
 
@@ -1175,11 +1187,11 @@ queries:
         minutes, so read the failures as "any", not "how many".
     promQL:
       - |
-        max by (resourceName) (
+        max by (resourceGroup, resourceName) (
           last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Attempted"}[15m])
         )
       - |
-        max by (resourceName) (
+        max by (resourceGroup, resourceName) (
           last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Failed"}[15m])
         )
 
@@ -1191,7 +1203,7 @@ queries:
       notes: |
         Read as "any", for the reason _SNAT Connections_ gives.
     promQL: |
-      max by (resourceName) (
+      max by (resourceGroup, resourceName) (
         last_over_time(azure_microsoft_network_natgateways_packetdropcount_total_count[15m])
       )
 

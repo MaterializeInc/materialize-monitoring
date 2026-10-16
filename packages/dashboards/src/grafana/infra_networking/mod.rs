@@ -375,6 +375,67 @@ mod tests {
         }
     }
 
+    /// Every PromQL expression on the dashboard.
+    fn expressions(resource: &Resource) -> Vec<String> {
+        let json = serde_json::to_value(&resource.spec.elements).expect("serialize");
+        let mut out = Vec::new();
+        for element in json.as_object().expect("elements").values() {
+            for query in element["spec"]["data"]["spec"]["queries"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                if let Some(expr) = query["spec"]["query"]["spec"]["expr"].as_str() {
+                    out.push(expr.to_string());
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn no_provider_aggregation_merges_two_resources() {
+        // Each family's resource name is unique only within something wider:
+        // an Azure frontend address within its cluster, an Azure NAT gateway
+        // name within its resource group, a forwarding rule within its region,
+        // and a Cloud NAT name within its router. An aggregation that drops the
+        // wider label adds two resources together, and a frontend with no
+        // healthy backend can read healthy.
+        let keys = [
+            ("azure_microsoft_network_loadbalancers_", "resourceGroup"),
+            ("azure_microsoft_network_natgateways_", "resourceGroup"),
+            ("_l_3_external_", "region"),
+            ("stackdriver_nat_gateway_", "router_id"),
+        ];
+        let exprs = expressions(&built());
+        for (family, key) in keys {
+            let reading: Vec<&String> = exprs.iter().filter(|e| e.contains(family)).collect();
+            assert!(!reading.is_empty(), "no panel reads {family}");
+            for expr in reading {
+                for clause in expr.split(" by (").skip(1) {
+                    let labels = clause.split(')').next().unwrap_or_default();
+                    assert!(
+                        labels.contains(key),
+                        "an aggregation over {family} drops {key}: by ({labels})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn internal_load_balancers_are_read_for_both_protocols() {
+        // The pull collects internal rules of either protocol, so a panel that
+        // reads one would show a listed UDP rule as carrying nothing.
+        for expr in expressions(&built()) {
+            assert_eq!(
+                expr.contains("internal_tcp_lb_rule"),
+                expr.contains("internal_udp_lb_rule"),
+                "reads one internal protocol only: {expr}"
+            );
+        }
+    }
+
     #[test]
     fn no_provider_counter_is_rated_over_the_dashboard_interval() {
         // `$__rate_interval` is sized from the datasource's scrape interval,
