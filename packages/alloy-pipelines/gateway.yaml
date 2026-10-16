@@ -24,6 +24,11 @@ description: |
   the thread and source location as structured metadata. Both are commented
   where they sit.
 
+  inputProcessor never drops a line for its size. It clamps every entry to
+  PIPELINE_LOG_LINE_SAFETY_CLAMP (1MiB) on intake, and its last stage cuts the
+  line, labels, and structured metadata to fit Loki's limits, the last on a
+  per-entry budget. Each truncation leaves a suffix saying which rule cut it.
+
   Metrics: this file also carries a metrics pipeline, processed primarily in
   otelcol and converted back to Prometheus only on the way out. prometheus
   .receive_http (pushed remote-write) and prometheus.operator.{podmonitors,
@@ -447,9 +452,10 @@ blocks:
         #   * Merging first also makes a 22-line panic cost the limiter one
         #     entry rather than 22, so the burst a crash produces stops
         #     competing with ordinary logs for the same budget.
-        #   * The `longer_than: "1MB"` drop still applies, to the merged entry.
-        #     That is deliberate: it is what discards the separate pathological
-        #     panic that dumps multi-MiB lines, which we do not try to carry.
+        #   * The safety clamp below applies to the merged entry, not to its
+        #     lines. A pathological panic that dumps multi-MiB lines keeps its
+        #     first 1MiB — the header and the message — rather than being lost,
+        #     and the size limits at the end of this pipeline cut it again.
         #
         # `max_wait_time` is the mechanism that actually delivers a panic, not
         # a timeout that rarely fires. While a container is alive each new
@@ -482,13 +488,35 @@ blocks:
                   max_lines: 128
                   max_wait_time: "3s"
 
-        # --- global drops and rate limit ------------------------------------
+        # --- global drop, safety clamp, and rate limit ----------------------
         - stage.drop:
             drop_counter_reason: "backlog > 2hr"
             older_than: "2h"
-        - stage.drop:
-            drop_counter_reason: "too large"
-            longer_than: "1MB"
+        # Safety clamp: no entry goes further than this at more than 1MiB. The
+        # agent clamps its own lines to the same size, but the agent is not the
+        # only sender — OTLP, Kubernetes events, the agent sidechannel, and any
+        # Loki push client arrive here unclamped — and the merge above can join
+        # lines into an entry longer than any one of them.
+        #
+        # It clamps rather than drops, which keeps the start of a pathological
+        # line: usually the part that says what it is. The cost is parsing. A
+        # clamped JSON or logfmt line no longer parses below, so it arrives
+        # without its fields; the heuristic level scan can still find a level
+        # near the start of the line.
+        #
+        # This bounds what the stages below work on, not what Loki stores; the
+        # size limits at the end of this pipeline do that. Shares
+        # PIPELINE_LOG_LINE_SAFETY_CLAMP with the agent, which needs a unit
+        # (`1MiB`, `512KiB`): a bare number fails the config load.
+        - stage.truncate:
+            blocks:
+              - rule:
+                  limit:
+                    function: coalesce
+                    arguments:
+                      - env: PIPELINE_LOG_LINE_SAFETY_CLAMP
+                      - "1MiB"
+                  suffix: "[TRUNCATED:SAFETYCLAMP]"
         - stage.limit:
             rate: 25000
             burst: 100000
@@ -1250,7 +1278,8 @@ blocks:
               cluster: ""
               stream: ""
               pod_ready: ""
-              msg: ""
+        # `msg` is promoted after the size limits below, which give it a
+        # budget of its own.
         # The Kubernetes-derived labels, deliberately few. Not the whole label
         # set -- `level`, `component`, `job` and `service_name` are applied by
         # earlier stages, and journal logs carry `unit` instead of `namespace` --
@@ -1274,6 +1303,137 @@ blocks:
               namespace: namespace
               app: app
               container: container
+
+        # --- size limits for Loki -------------------------------------------
+        #
+        # Loki refuses an entry rather than shortening it, and the entry is
+        # lost: `loki.write` does not retry a 400. These stages shorten instead,
+        # last, so nothing after them can lengthen a value again. Measured on
+        # Loki 3.7.8 with its default limits, the refusals are a line over
+        # 256KiB (262,144 bytes), a label value over 2,048 bytes, and an entry
+        # whose structured metadata totals over 64KiB (65,536 bytes), key names
+        # included.
+        #
+        # Line: GATEWAY_LOG_LINE_SIZE_LIMIT is the limit to tune; it needs a
+        # unit, like the safety clamp. Every stage above has already parsed the
+        # whole line, so a line under the clamp still yields its level,
+        # timestamp, and fields; only what Loki stores as the line is cut. The
+        # 250KiB rule after it is a fixed backstop that holds whatever that
+        # variable says. Set it above 250KiB and the backstop cuts instead, so
+        # the suffix tells you which fired.
+        #
+        # Labels: 2KiB is Loki's own limit. The labels this pipeline sets are
+        # short Kubernetes names, so this catches what a push client brings.
+        #
+        # Structured metadata: the 64KiB is a total, so it is split into a
+        # budget rather than capped per value. Every key this pipeline sets gets
+        # 512B, `msg` gets 16KiB, and 16KiB is left for structured metadata a
+        # Loki push client sends itself. `loki.source.api` keeps what a client
+        # sends, and Alloy has no stage that drops keys by pattern or bounds a
+        # key's name or the number of keys, so the gateway cannot bound it; a
+        # client sending more than 16KiB of its own can still be refused.
+        # `tests/gateway_loki_limits.rs` in mzmon-lib redoes the sum, reserve
+        # included, from this file, so a key that breaks it fails the build.
+        # Every value here except the Kubernetes metadata is a copy of part of
+        # the line, which keeps it in full, so a cut loses convenience rather
+        # than data.
+        #
+        # The 512B rule names its keys rather than catching every key, so that
+        # a `msg` arriving as structured metadata, from a chained gateway or
+        # another push client, keeps the 16KiB a re-extracted one would get.
+        # The 16KiB rule after it catches everything else: `msg`, and whatever
+        # keys a client adds. A key added to this pipeline belongs in the
+        # 512B list; the test names any that is missing.
+        #
+        # `msg` is promoted between the two, then cut as structured metadata
+        # rather than in the extracted map, because Alloy silently skips
+        # promoting a value that is not valid UTF-8 and a byte-wise cut can
+        # split a character.
+        - stage.truncate:
+            blocks:
+              - rule:
+                  limit:
+                    function: coalesce
+                    arguments:
+                      - env: GATEWAY_LOG_LINE_SIZE_LIMIT
+                      - "240KiB"
+                  suffix: "[TRUNCATED:LINE]"
+              - rule:
+                  limit: "250KiB"
+                  suffix: "[TRUNCATED:FIELDS]"
+              - rule:
+                  limit: "2KiB"
+                  source_type: label
+                  suffix: "[TRUNCATED:FIELDS]"
+              - rule:
+                  limit: "512B"
+                  source_type: structured_metadata
+                  sources:
+                    - cluster
+                    - container
+                    - container_id
+                    - controller
+                    - count
+                    - drop_reason_desc
+                    - environment_name
+                    - error
+                    - flow
+                    - frontegg_webhook_error
+                    - frontegg_webhook_event
+                    - frontegg_webhook_tenant
+                    - frontegg_webhook_tenant_blocked
+                    - frontegg_webhook_tenant_creation_reason
+                    - frontegg_webhook_tenant_trial_expires_at
+                    - frontegg_webhook_user
+                    - instance_type
+                    - kind
+                    - latency
+                    - length
+                    - levelheuristic
+                    - logger
+                    - method
+                    - name
+                    - node
+                    - node_workload
+                    - nodepool
+                    - organization_id
+                    - organization_name
+                    - panic_location
+                    - panic_thread
+                    - path
+                    - pod
+                    - pod_id
+                    - pod_ready
+                    - prehook_result
+                    - prehook_success
+                    - query
+                    - reason
+                    - region
+                    - reportingcontroller
+                    - request_header_host
+                    - resource_name
+                    - response_header_content_type
+                    - service_name
+                    - source
+                    - span_id
+                    - status_code
+                    - stream
+                    - target
+                    - target_namespace
+                    - tenant
+                    - trace_id
+                    - verdict
+                    - zone
+                  suffix: "[TRUNCATED:FIELDS]"
+        - stage.structured_metadata:
+            values:
+              msg: ""
+        - stage.truncate:
+            blocks:
+              - rule:
+                  limit: "16KiB"
+                  source_type: structured_metadata
+                  suffix: "[TRUNCATED:FIELDS]"
 
   # Outbound resource management: cap memory, then batch before handing off to
   # the egress seam.

@@ -55,9 +55,10 @@ pub const COMMON_ALERTS_URL: &str =
 pub const SEVERITIES: &[&str] = &["critical", "warning", "notice"];
 
 /// Who an alert is for, as its `audience` label: `platform` is whoever runs the
-/// deployment, `workload` whoever runs what is on it. A route matches on it to
-/// send the two to different people.
-pub const AUDIENCES: &[&str] = &["platform", "workload"];
+/// deployment, `workload` whoever runs what is on it, and `development` whoever
+/// writes the software emitting the signal, for a condition the stack already
+/// contains. A route matches on it to send each to different people.
+pub const AUDIENCES: &[&str] = &["platform", "workload", "development"];
 
 /// The ruler that evaluates a rule, which follows from its query's language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

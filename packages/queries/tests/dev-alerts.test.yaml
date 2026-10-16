@@ -1,0 +1,52 @@
+# promtool unit tests for the rules rendered from dev-alerts.yaml.
+#
+# Run by `make rules-check`; see materialize-alerts.test.yaml for how the rule
+# files beside this one are produced and which placeholder values they carry.
+rule_files:
+  - dev-alerts.yaml
+evaluation_interval: 1m
+tests:
+  # --- oversized-log-lines: the first cut after a restart --------------------
+  #
+  # Alloy creates `loki_process_truncated_fields_total` at its first cut, so a
+  # new series starts at 1. `increase()` over it reads 0 until a second cut, so
+  # on its own the rule missed the first oversized line after every restart,
+  # which for a rare condition is most of them.
+  - name: oversized-log-lines fires on a gateway's first cut, an agent's later cut, and nothing else
+    interval: 1m
+    input_series:
+      # Gateway restarted at 90m and cut one line at once: a series born at 1.
+      - series: 'loki_process_truncated_fields_total{namespace="monitoring", app="alloy-gateway", pod="alloy-gateway-b", component_id="loki.process.inputProcessor", field="line"}'
+        values: "_x90 1x30"
+      # Agent running since the start, cutting one more line at 100m.
+      - series: 'loki_process_truncated_fields_total{namespace="monitoring", app="alloy-agent", pod="alloy-agent-a", component_id="loki.process.pod_logs", field="line"}'
+        values: "3x100 4x20"
+      # Agent whose last cut was more than an hour before the evaluation.
+      - series: 'loki_process_truncated_fields_total{namespace="monitoring", app="alloy-agent", pod="alloy-agent-c", component_id="loki.process.node_logs", field="line"}'
+        values: "0x10 1x110"
+      # Structured metadata cut on every entry: routine, and not this alert's.
+      - series: 'loki_process_truncated_fields_total{namespace="monitoring", app="alloy-gateway", pod="alloy-gateway-b", component_id="loki.process.inputProcessor", field="structured_metadata"}'
+        values: "0+100x120"
+    promql_expr_test:
+      - expr: count by (app, component_id) (ALERTS{alertname="oversized-log-lines", alertstate="firing"})
+        eval_time: 2h
+        exp_samples:
+          - labels: '{app="alloy-gateway", component_id="loki.process.inputProcessor"}'
+            value: 1
+          - labels: '{app="alloy-agent", component_id="loki.process.pod_logs"}'
+            value: 1
+
+  - name: oversized-log-lines resolves an hour after the last cut
+    interval: 1m
+    input_series:
+      - series: 'loki_process_truncated_fields_total{namespace="monitoring", app="alloy-gateway", pod="alloy-gateway-b", component_id="loki.process.inputProcessor", field="line"}'
+        values: "1x10 2x200"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="oversized-log-lines", alertstate="firing"})
+        eval_time: 30m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: count(ALERTS{alertname="oversized-log-lines", alertstate="firing"})
+        eval_time: 2h
+        exp_samples: []

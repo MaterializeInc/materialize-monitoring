@@ -2374,9 +2374,9 @@ rules:
   # ```
   #
   # `severity` must stay one of `critical`, `warning` and `notice`, and
-  # `audience` one of `platform` and `workload`, so the routes still match. An
-  # unknown alert name fails the render, and an override for a rule that is
-  # not installed renders with a warning.
+  # `audience` one of `platform`, `workload` and `development`, so the routes
+  # still match. An unknown alert name fails the render, and an override for a
+  # rule that is not installed renders with a warning.
   # @default -- `{}`
   overrides: {}
 

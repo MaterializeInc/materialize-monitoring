@@ -13,9 +13,11 @@ description: |
 
   A few values are configurable:
     - pod_logs `cluster` static label comes from sys.env("CLUSTER_NAME").
-    - pod_logs `stage.limit` rate/burst are plain literals, tunable in place.
-    - loki.write.gateway is a static stub for now (endpoint will gain richer
-      configuration later).
+    - pod_logs `stage.limit` rate/burst come from AGENT_POD_LOG_RATE_LIMIT and
+      AGENT_POD_LOG_BURST.
+    - Every outgoing line is clamped to PIPELINE_LOG_LINE_SAFETY_CLAMP (default
+      1MiB), the same variable the gateway's intake clamp reads.
+    - The egress seam and write destination live in agent-dest-stub.yaml.
 
 logging:
   level: info
@@ -44,6 +46,25 @@ blocks:
               # HOSTNAME is passed from the Alloy agent daemonset
               node:
                 env: HOSTNAME
+        # Safety clamp: no line leaves the agent longer than 1MiB. This bounds
+        # the push to the gateway, not what Loki stores; the gateway cuts lines
+        # far shorter before they reach Loki. Clamping rather than dropping keeps
+        # the start of a pathological line, which is usually what explains it.
+        # The cost is that a clamped JSON or logfmt line no longer parses at the
+        # gateway, so it arrives without its fields.
+        #
+        # PIPELINE_LOG_LINE_SAFETY_CLAMP is shared with the gateway's clamp and
+        # needs a unit (`1MiB`, `512KiB`): a bare number fails the config load.
+        # The suffix counts toward the limit.
+        - stage.truncate: &safety_clamp
+            blocks:
+              - rule:
+                  limit:
+                    function: coalesce
+                    arguments:
+                      - env: PIPELINE_LOG_LINE_SAFETY_CLAMP
+                      - "1MiB"
+                  suffix: "[TRUNCATED:SAFETYCLAMP]"
 
   # Read the host's systemd journal.
   - loki.source.journal:
@@ -203,6 +224,10 @@ blocks:
             values:
               cluster:
                 env: CLUSTER_NAME
+        # The same safety clamp as node_logs. It comes after `stage.cri`, which
+        # reassembles a line the container runtime split, so it clamps the
+        # whole line.
+        - stage.truncate: *safety_clamp
 
   # Tail the pod log files discovered above.
   - loki.source.file:

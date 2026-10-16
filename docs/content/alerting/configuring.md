@@ -66,8 +66,10 @@ Every bundled rule carries an `audience` label saying who acts on it.
 |---|---|
 | `platform` | The Materialize deployment, its system clusters, and the Kubernetes platform under it |
 | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+| `development` | Conditions the stack has already contained, for the people who write the software behind them, such as log lines too long to store. Bundled as `severity: notice` |
 
 An [extra route](../channels/#extra-routes) on `audience="workload"` sends the second group to the people who own the clusters.
+One on `audience="development"` sends the third to a development channel.
 
 `rules.overrides` changes an installed rule's `for` and labels, and never its expression.
 A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.

@@ -39,8 +39,10 @@ $defs:
         description: |
           Labels every alert in this file carries unless it sets the same label
           itself. The file-level home for `audience`: which people an alert is
-          for, `platform` (whoever runs the deployment) or `workload` (whoever
-          runs what is on it), so a route can send each to the right place.
+          for, `platform` (whoever runs the deployment), `workload` (whoever
+          runs what is on it), or `development` (whoever writes the software
+          behind a condition the stack already contains), so a route can send
+          each to the right place.
         $ref: "#/$defs/labelMap"
     anyOf:
       - type: object

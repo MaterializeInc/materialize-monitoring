@@ -323,6 +323,8 @@ pub enum StageBlock {
     Multiline(StageMultilineBlock),
     #[serde(rename = "stage.tenant")]
     Tenant(StageTenantBlock),
+    #[serde(rename = "stage.truncate")]
+    Truncate(StageTruncateBlock),
     #[serde(rename = "raw")]
     Raw(Block),
 }
@@ -345,6 +347,7 @@ impl_to_block_dispatch!(StageBlock {
     Cri,
     Multiline,
     Tenant,
+    Truncate,
     Raw
 });
 
@@ -950,6 +953,95 @@ impl ToBlock for StageTenantBlock {
         }
         Ok(Block {
             component: "stage.tenant".into(),
+            label: None,
+            attributes,
+            ..Default::default()
+        })
+    }
+}
+
+// ----- stage.truncate (+ rule sub-block) -----
+
+/// `stage.truncate` — cuts lines, labels, structured metadata, or extracted
+/// values longer than a size limit, keeping the entry.
+///
+/// Alloy counts the suffix inside the limit, so a truncated value is exactly
+/// `limit` bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageTruncateBlock {
+    pub blocks: Vec<TruncateSubBlock>,
+}
+
+impl ToBlock for StageTruncateBlock {
+    fn to_block(&self) -> Result<Block> {
+        let blocks = self
+            .blocks
+            .iter()
+            .map(ToBlock::to_block)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Block {
+            component: "stage.truncate".into(),
+            label: None,
+            attributes: IndexMap::new(),
+            blocks,
+        })
+    }
+}
+
+/// Sub-block under a `stage.truncate` body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TruncateSubBlock {
+    #[serde(rename = "rule")]
+    Rule(TruncateRuleBlock),
+    #[serde(rename = "raw")]
+    Raw(Block),
+}
+impl_to_block_dispatch!(TruncateSubBlock { Rule, Raw });
+
+/// A `rule` inside `stage.truncate`: one size limit on one kind of value.
+///
+/// `limit` is `Expressable` so the size can come from the environment; it
+/// needs a unit (`1MiB`), and a bare number is refused only at load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TruncateRuleBlock {
+    /// Maximum size, suffix included (e.g. `240KiB`).
+    pub limit: Expressable<String>,
+    /// `line` (alloy default), `label`, `structured_metadata`, or `extracted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_type: Option<String>,
+    /// Keys to cut; empty cuts every key of `source_type`. Refused on `line`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
+    /// Appended to a truncated value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suffix: Option<String>,
+}
+
+impl ToBlock for TruncateRuleBlock {
+    fn to_block(&self) -> Result<Block> {
+        let mut attributes = IndexMap::new();
+        attributes.insert("limit".into(), self.limit.to_attribute_value()?);
+        if let Some(v) = &self.source_type {
+            attributes.insert("source_type".into(), AttributeValue::String(v.clone()));
+        }
+        if !self.sources.is_empty() {
+            attributes.insert(
+                "sources".into(),
+                AttributeValue::Array(
+                    self.sources
+                        .iter()
+                        .map(|s| AttributeValue::String(s.clone()))
+                        .collect(),
+                ),
+            );
+        }
+        if let Some(v) = &self.suffix {
+            attributes.insert("suffix".into(), AttributeValue::String(v.clone()));
+        }
+        Ok(Block {
+            component: "rule".into(),
             label: None,
             attributes,
             ..Default::default()
@@ -1789,6 +1881,141 @@ mod tests {
                 "}\n",
             ),
         );
+    }
+
+    #[test]
+    fn stage_truncate_renders_rules_in_order() {
+        // An env-driven line limit, then a literal backstop per source type.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.truncate:
+                        blocks:
+                          - rule:
+                              limit:
+                                function: coalesce
+                                arguments:
+                                  - env: GATEWAY_LOG_LINE_SIZE_LIMIT
+                                  - "240KiB"
+                              suffix: "[TRUNCATED:LINE]"
+                          - rule:
+                              limit: "250KiB"
+                              source_type: structured_metadata
+                              suffix: "[TRUNCATED:FIELDS]"
+            "#,
+        )
+        .unwrap();
+        assert_renders(
+            pipeline.render(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.truncate {\n",
+                "\t\trule {\n",
+                "\t\t\tlimit  = coalesce(sys.env(\"GATEWAY_LOG_LINE_SIZE_LIMIT\"), \"240KiB\")\n",
+                "\t\t\tsuffix = \"[TRUNCATED:LINE]\"\n",
+                "\t\t}\n",
+                "\n",
+                "\t\trule {\n",
+                "\t\t\tlimit       = \"250KiB\"\n",
+                "\t\t\tsource_type = \"structured_metadata\"\n",
+                "\t\t\tsuffix      = \"[TRUNCATED:FIELDS]\"\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_truncate_names_sources() {
+        // `sources` is a multi-line array, which trips the renderer's alignment
+        // quirk; byte-checked rather than held to `alloy fmt`.
+        let pipeline = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.truncate:
+                        blocks:
+                          - rule:
+                              limit: "2KiB"
+                              source_type: label
+                              sources: ["app"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            pipeline.render().unwrap(),
+            concat!(
+                "loki.process {\n",
+                "\tforward_to = [\n",
+                "\t\tloki.write.gateway.receiver,\n",
+                "\t]\n",
+                "\n",
+                "\tstage.truncate {\n",
+                "\t\trule {\n",
+                "\t\t\tlimit = \"2KiB\"\n",
+                "\t\t\tsource_type = \"label\"\n",
+                "\t\t\tsources = [\n",
+                "\t\t\t\t\"app\",\n",
+                "\t\t\t]\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn stage_truncate_refuses_sources_on_a_line_rule() {
+        // Alloy refuses this only when it loads the config; `alloy validate`
+        // passes it. Both spellings of a line rule are covered: the default and
+        // an explicit `source_type: line`.
+        for source_type in ["", "source_type: line"] {
+            let yaml = format!(
+                r#"
+                blocks:
+                  - loki.process:
+                      forward_to: ["loki.write.gateway.receiver"]
+                      blocks:
+                        - stage.truncate:
+                            blocks:
+                              - rule:
+                                  limit: "1KiB"
+                                  sources: ["msg"]
+                                  {source_type}
+                "#
+            );
+            assert!(
+                Pipeline::from_yaml_str(&yaml).is_err(),
+                "accepted sources on a line rule ({source_type:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn stage_truncate_refuses_a_limit_without_a_unit() {
+        let err = Pipeline::from_yaml_str(
+            r#"
+            blocks:
+              - loki.process:
+                  forward_to: ["loki.write.gateway.receiver"]
+                  blocks:
+                    - stage.truncate:
+                        blocks:
+                          - rule:
+                              limit: "1048576"
+            "#,
+        );
+        assert!(err.is_err(), "accepted a limit with no unit");
     }
 
     #[test]

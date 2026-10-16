@@ -31,9 +31,11 @@ The agent collects node-local data and forwards it to the gateway with minimal p
 - **Sources:** `loki.source.journal` (host systemd journal) and `loki.source.file` over pods discovered with `discovery.kubernetes` (role `pod`, filtered to the local node).
 - **Relabeling:** `discovery.relabel` normalizes Kubernetes metadata into stable label names (`namespace`, `pod`, `container`, `node`, `app`, `component`) and node attributes (`region`, `zone`, `instance_type`, `nodepool`, …), and builds the `__path__` to the pod log files.
 - **Light processing:** `stage.cri` parses CRI-formatted lines; `stage.limit` applies a per-node rate cap; `stage.static_labels` tags the `cluster`.
+- **Safety clamp:** `stage.truncate` cuts any line longer than `PIPELINE_LOG_LINE_SAFETY_CLAMP` before it leaves the agent.
+  See [Size limits](#size-limits).
 - **Forward:** `loki.write` to the gateway at `http://alloy-gateway.$namespace.svc:3100/loki/api/v1/push`.
 
-Tunable inputs: `AGENT_POD_LOG_RATE_LIMIT` (default `5000`), `AGENT_POD_LOG_BURST` (default `20000`), `CLUSTER_NAME`, `HOSTNAME`.
+Tunable inputs: `AGENT_POD_LOG_RATE_LIMIT` (default `5000`), `AGENT_POD_LOG_BURST` (default `20000`), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `CLUSTER_NAME`, `HOSTNAME`.
 
 ## Gateway pipeline
 
@@ -53,7 +55,9 @@ The `raw:` escape (see [Authoring](../authoring/)) remains available and is curr
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
 
 - **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
-- **Drops and limits.** Lines older than the ingestion backlog window or larger than the per-line ceiling are dropped; per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
+- **Drops and limits.** Lines older than the ingestion backlog window are dropped.
+  Oversized lines are cut rather than dropped, as [Size limits](#size-limits) describes.
+  Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
 - **Label families.** Only a small, stable set is promoted to **Loki labels**: `level`, `app`, `container`, `namespace`, `component`, `job` and `service_name`, plus `unit` on node journal logs (which carry no `namespace`) and `environment_id` for environment namespaces. Everything else identifying — `pod`, `node`, `pod_id`, `container_id`, `region`, `zone`, `nodepool`, `trace_id`, `span_id`, `error`, `msg`, … — is routed to **structured metadata** so it stays queryable without inflating stream cardinality. The `k8s_`-prefixed aliases (`k8s_namespace`, `k8s_app`, `k8s_container`, `k8s_pod`) were **removed**: the first three duplicated the unprefixed labels exactly, and `k8s_pod` was the only stream label a pod name ever had — a pod name is unbounded and changes on every restart, so it belonged in structured metadata from the start. Asserted by `loki::gateway_labels` in the e2e suite, which fails if any of them returns.
 - **Two log formats.** `environmentd` and `clusterd` log tracing JSON. `balancerd` and `materialize-operator` log tracing's plain text layer, `<ts> LEVEL <spans>: <target>: <message>`, which carries no `level=` pair for the heuristic scan to find and so needs a parser of its own. Both families are handled; a new Materialize binary belongs in one of them.
 - **Timestamps.** Parsed from the source line (`ts`/`timestamp`) as `RFC3339`/`RFC3339Nano` where the application provides one.
@@ -93,7 +97,7 @@ Three ordering constraints hold the placement in the pipeline.
 |---|---|
 | Merge ahead of `stage.limit` | The limiter drops entries. A limiter that sheds continuation lines leaves a backtrace with holes in it, which reads as complete and is not |
 | Merge ahead of the per-level rate limits | A merged panic costs the limiter one entry rather than twenty, so a crash stops competing with ordinary logs for the same budget |
-| Keep `longer_than` after the merge | The ceiling then applies to the merged entry. That is what discards the separate pathological panic that emits multi-MiB lines, which this pipeline does not carry |
+| Keep the safety clamp after the merge | The clamp then applies to the merged entry. A pathological panic that emits multi-MiB lines keeps its first 1MiB, header and message included, rather than being lost |
 
 `max_wait_time` is the mechanism that delivers a panic rather than a timeout that rarely fires.
 While a process is alive, each new `firstline` match flushes its predecessor immediately.
@@ -112,6 +116,80 @@ That level is exempt from both per-level rate limits.
 Classification runs after the per-application blocks, because those set `msg` from JSON that a panic does not contain.
 The regular expression is anchored at the start of the entry, so a log line that merely quotes a panic is not mistaken for one.
 
+### Size limits
+
+Neither pipeline drops a line for its size.
+Each cuts the line with `stage.truncate` instead, and appends a suffix that names the rule that cut it.
+Alloy counts the suffix inside the limit, so a cut value is exactly the limit long.
+A cut is by byte, so it can split a multi-byte character, which Loki's API returns as `�`.
+
+The following table lists the rules in the order an entry meets them:
+
+| Where | Cuts | Limit | Suffix |
+|---|---|---|---|
+| Agent, last stage of `node_logs` and `pod_logs` | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
+| Gateway, `inputProcessor`, after the multi-line merge | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
+| Gateway, last stage of `inputProcessor` | The line | `GATEWAY_LOG_LINE_SIZE_LIMIT`, default `240KiB` | `[TRUNCATED:LINE]` |
+| Gateway, last stage of `inputProcessor` | The line | `250KiB`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, last stage of `inputProcessor` | Every label value | `2KiB`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, last stage of `inputProcessor` | Each structured metadata value the gateway sets, except `msg` | `512B`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, after `inputProcessor` promotes `msg` | Every other structured metadata value: `msg`, and keys a push client sends | `16KiB`, fixed | `[TRUNCATED:FIELDS]` |
+
+The safety clamp bounds what the pipelines carry and work on.
+The gateway clamps as well as the agent, because OTLP, Kubernetes events, the agent sidechannel, and other Loki push clients reach the gateway unclamped.
+The multi-line merge can also join lines into an entry longer than any one of them.
+Clamping keeps the start of a pathological line, which usually says what it is.
+A clamped JSON or logfmt line no longer parses, so it reaches Loki without its fields.
+
+A line under the clamp parses in full, because the gateway parses before its last stages cut anything.
+A JSON line of 500KiB therefore still yields its level, timestamp, and fields, and only the stored line is cut to the line limit.
+The structured metadata budget later on this page still applies to those fields.
+
+The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
+Measured on Loki 3.7.8, the version the chart deploys, with its default limits, Loki refuses the following:
+
+- A line longer than 256KiB (262,144 bytes).
+- A label value longer than 2,048 bytes.
+- An entry whose structured metadata totals more than 64KiB (65,536 bytes), key names included.
+
+The fixed `250KiB` rule holds whatever `GATEWAY_LOG_LINE_SIZE_LIMIT` says, so the line always fits.
+If you set the variable above `250KiB`, the fixed rule cuts instead, with the `[TRUNCATED:FIELDS]` suffix.
+The `2KiB` label rule is Loki's own label limit.
+The labels the gateway sets are short Kubernetes names, so the rule catches labels a Loki push client brings.
+
+The structured metadata limit is a total, so the gateway splits it into a budget rather than capping each value:
+
+- Each key the gateway sets, except `msg`, gets `512B`.
+- `msg` gets `16KiB`, because the event feeds on the dashboards display it.
+- `16KiB` is held back for structured metadata a Loki push client sends itself.
+
+Every value the gateway sets, except the Kubernetes metadata, is a copy of part of the line, and the line keeps it in full, so a cut loses convenience rather than data.
+
+The reserve exists because `loki.source.api` keeps the structured metadata a client sends, and the gateway can't bound it.
+Alloy has no stage that drops structured metadata by pattern, or that limits a key's name or the number of keys.
+A push client whose own structured metadata totals more than `16KiB` can still take an entry past Loki's limit, and Loki refuses that entry.
+Keep a push client's own structured metadata under the reserve, or drop it at the client.
+
+The `512B` rule names the keys the gateway sets rather than matching every key.
+A `msg` that arrives as structured metadata, from a chained gateway or another push client, then keeps `16KiB` even when the gateway can't extract a `msg` from the line again.
+The `16KiB` rule that follows matches every key, so it bounds `msg` and any key a client adds.
+
+`msg` is promoted between the two rules and cut as structured metadata.
+Alloy silently skips promoting a value that isn't valid UTF-8, so cutting `msg` in the extracted map first could lose it entirely.
+
+`packages/mzmon-lib/tests/gateway_loki_limits.rs` walks `inputProcessor` in order and redoes the sum, reserve included.
+The test fails in the following cases:
+
+- A structured metadata key is promoted after the limits run.
+- A key the gateway sets is missing from the `512B` rule's `sources`.
+- The total, with the reserve, exceeds 64KiB.
+- A rule cuts an incoming `msg` below its own limit.
+
+Both variables need a unit, such as `1MiB` or `512KiB`.
+A bare number fails the configuration load.
+Every cut increments `loki_process_truncated_fields_total`, labeled by `field`.
+The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the people who write the software emitting them.
+
 ### Destinations
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
@@ -120,7 +198,7 @@ The regular expression is anchored at the start of the entry, so a log line that
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
 
 ## Attribution and adoption status
 

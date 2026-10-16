@@ -212,7 +212,7 @@ fn truncated(q: &Queries) -> dashboardv2::PanelKind {
     Panel::timeseries("Truncated Lines")
         .query(
             q.get("infra.alloy.log_pipeline.truncated")
-                .legend("{{pod}}"),
+                .legend("{{pod}} {{field}}"),
         )
         .unit(LINES_PER_SECOND)
         .min(0.0)
@@ -233,7 +233,6 @@ mod tests {
     const GUARD_REASONS: &[&str] = &[
         "backlog > 2hr",
         "processed time > 2hr old",
-        "too large",
         "ratelimit_drop_stage",
     ];
 

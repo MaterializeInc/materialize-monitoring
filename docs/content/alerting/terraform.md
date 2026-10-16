@@ -100,7 +100,7 @@ module "monitoring" {
 }
 ```
 
-Every bundled alert carries an `audience` label, `platform` or `workload`, which is what the extra route matches.
+Every bundled alert carries an `audience` label, `platform`, `workload`, or `development`, which is what the extra route matches.
 A matcher is an Alertmanager string, so the quotes inside it are escaped in HCL.
 
 | Attribute | Chart value | Notes |
@@ -193,7 +193,7 @@ module "monitoring" {
 
 An override's duration is `for_duration`, the rule's `for`.
 HCL reads `{ for = "6h" }` as a `for` expression, so the attribute has a name of its own.
-An override's `severity` MUST stay `critical`, `warning` or `notice`, and its `audience` `platform` or `workload`, so the routes still match.
+An override's `severity` MUST stay `critical`, `warning` or `notice`, and its `audience` `platform`, `workload`, or `development`, so the routes still match.
 
 ## Checking the result
 

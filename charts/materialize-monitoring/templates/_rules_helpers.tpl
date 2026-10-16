@@ -519,8 +519,8 @@ Validation for the rules surface.
           {{- $errors = append $errors ( printf "rules.overrides.%s.labels.%s must be a string." $name $label ) }}
         {{- else if and ( eq $label "severity" ) ( not ( has $value ( list "critical" "warning" "notice" ) ) ) }}
           {{- $errors = append $errors ( printf "rules.overrides.%s.labels.severity is %q; the routing presets route critical, warning and notice." $name $value ) }}
-        {{- else if and ( eq $label "audience" ) ( not ( has $value ( list "platform" "workload" ) ) ) }}
-          {{- $errors = append $errors ( printf "rules.overrides.%s.labels.audience is %q; it is platform or workload." $name $value ) }}
+        {{- else if and ( eq $label "audience" ) ( not ( has $value ( list "platform" "workload" "development" ) ) ) }}
+          {{- $errors = append $errors ( printf "rules.overrides.%s.labels.audience is %q; it is platform, workload or development." $name $value ) }}
         {{- end }}
       {{- end }}
     {{- end }}
