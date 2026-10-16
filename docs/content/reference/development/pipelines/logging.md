@@ -132,8 +132,8 @@ The following table lists the rules in the order an entry meets them:
 | Gateway, last stage of `inputProcessor` | The line | `GATEWAY_LOG_LINE_SIZE_LIMIT`, default `240KiB` | `[TRUNCATED:LINE]` |
 | Gateway, last stage of `inputProcessor` | The line | `250KiB`, fixed | `[TRUNCATED:FIELDS]` |
 | Gateway, last stage of `inputProcessor` | Every label value | `2KiB`, fixed | `[TRUNCATED:FIELDS]` |
-| Gateway, last stage of `inputProcessor` | Every structured metadata value except `msg` | `512B`, fixed | `[TRUNCATED:FIELDS]` |
-| Gateway, after `inputProcessor` promotes `msg` | The `msg` structured metadata value | `32KiB`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, last stage of `inputProcessor` | Each structured metadata value the gateway sets, except `msg` | `512B`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, after `inputProcessor` promotes `msg` | Every other structured metadata value: `msg`, and keys a push client sends | `16KiB`, fixed | `[TRUNCATED:FIELDS]` |
 
 The safety clamp bounds what the pipelines carry and work on.
 The gateway clamps as well as the agent, because OTLP, Kubernetes events, the agent sidechannel, and other Loki push clients reach the gateway unclamped.
@@ -157,18 +157,33 @@ If you set the variable above `250KiB`, the fixed rule cuts instead, with the `[
 The `2KiB` label rule is Loki's own label limit.
 The labels the gateway sets are short Kubernetes names, so the rule catches labels a Loki push client brings.
 
-The structured metadata limit is a total, so the gateway splits it into a budget rather than capping each value.
-`msg` gets `32KiB`, because the event feeds on the dashboards display it.
-Every other value gets `512B`.
-With every key `inputProcessor` can set at its limit, names included, the total stays under 64KiB.
-The remainder leaves room for a few keys a push client adds.
-Every value except the Kubernetes metadata is a copy of part of the line, and the line keeps it in full, so a cut loses convenience rather than data.
+The structured metadata limit is a total, so the gateway splits it into a budget rather than capping each value:
 
-`msg` is promoted only after the `512B` rule has run, and is then cut to its own limit as structured metadata.
+- Each key the gateway sets, except `msg`, gets `512B`.
+- `msg` gets `16KiB`, because the event feeds on the dashboards display it.
+- `16KiB` is held back for structured metadata a Loki push client sends itself.
+
+Every value the gateway sets, except the Kubernetes metadata, is a copy of part of the line, and the line keeps it in full, so a cut loses convenience rather than data.
+
+The reserve exists because `loki.source.api` keeps the structured metadata a client sends, and the gateway can't bound it.
+Alloy has no stage that drops structured metadata by pattern, or that limits a key's name or the number of keys.
+A push client whose own structured metadata totals more than `16KiB` can still take an entry past Loki's limit, and Loki refuses that entry.
+Keep a push client's own structured metadata under the reserve, or drop it at the client.
+
+The `512B` rule names the keys the gateway sets rather than matching every key.
+A `msg` that arrives as structured metadata, from a chained gateway or another push client, then keeps `16KiB` even when the gateway can't extract a `msg` from the line again.
+The `16KiB` rule that follows matches every key, so it bounds `msg` and any key a client adds.
+
+`msg` is promoted between the two rules and cut as structured metadata.
 Alloy silently skips promoting a value that isn't valid UTF-8, so cutting `msg` in the extracted map first could lose it entirely.
 
-`packages/mzmon-lib/tests/gateway_loki_limits.rs` walks `inputProcessor` in order and redoes the sum.
-If you add a structured metadata key that the budget can't hold, or one promoted after the limits run, the test fails.
+`packages/mzmon-lib/tests/gateway_loki_limits.rs` walks `inputProcessor` in order and redoes the sum, reserve included.
+The test fails in the following cases:
+
+- A structured metadata key is promoted after the limits run.
+- A key the gateway sets is missing from the `512B` rule's `sources`.
+- The total, with the reserve, exceeds 64KiB.
+- A rule cuts an incoming `msg` below its own limit.
 
 Both variables need a unit, such as `1MiB` or `512KiB`.
 A bare number fails the configuration load.

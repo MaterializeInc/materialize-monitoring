@@ -10,6 +10,11 @@
 //! The walk is conservative. A key promoted inside a `stage.match` counts as
 //! present, and only an unconditional `stage.truncate` rule with a literal
 //! limit bounds anything.
+//!
+//! Structured metadata a Loki push client sends itself cannot be walked: it
+//! arrives with the entry, under names this pipeline does not know, and no
+//! Alloy stage drops keys by pattern or bounds a name or the number of keys.
+//! The budget holds back a fixed reserve for it instead.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -25,6 +30,13 @@ const LOKI_MAX_LINE: u64 = 262_144;
 const LOKI_MAX_LABEL_VALUE: u64 = 2_048;
 const LOKI_MAX_STRUCTURED_METADATA: u64 = 65_536;
 const LOKI_MAX_STRUCTURED_METADATA_ENTRIES: usize = 128;
+
+/// Structured metadata, key names included, left for what a push client sends
+/// itself. `loki.source.api` keeps it, and the gateway cannot bound it.
+const PUSH_CLIENT_RESERVE: u64 = 16_384;
+
+/// The limit on every structured metadata value the gateway sets, except `msg`.
+const SHORT_VALUE: u64 = 512;
 
 /// Bytes in a literal `stage.truncate` limit, read as Alloy reads it: base 2,
 /// whether spelled `KiB` or `KB`.
@@ -143,9 +155,10 @@ impl Bounds {
             .iter()
             .map(|(key, bound)| key.len() as u64 + bound.unwrap_or(0))
             .sum();
-        if total > LOKI_MAX_STRUCTURED_METADATA {
+        if total + PUSH_CLIENT_RESERVE > LOKI_MAX_STRUCTURED_METADATA {
             out.push(format!(
-                "structured metadata can total {total} bytes over {} keys, above {LOKI_MAX_STRUCTURED_METADATA}",
+                "structured metadata can total {total} bytes over {} keys, which with the \
+                 {PUSH_CLIENT_RESERVE}-byte push-client reserve is above {LOKI_MAX_STRUCTURED_METADATA}",
                 self.structured_metadata.len(),
             ));
         }
@@ -157,6 +170,31 @@ impl Bounds {
         }
         out
     }
+}
+
+/// The literal limits of every unconditional structured metadata rule that can
+/// cut `key`, wherever the key came from, including a push client.
+fn limits_reaching(process: &LokiProcessBlock, key: &str) -> Vec<u64> {
+    let mut out = Vec::new();
+    for stage in &process.blocks {
+        let StageBlock::Truncate(t) = stage else {
+            continue;
+        };
+        for rule in &t.blocks {
+            let TruncateSubBlock::Rule(rule) = rule else {
+                continue;
+            };
+            let Expressable::Literal(limit) = &rule.limit else {
+                continue;
+            };
+            if rule.source_type.as_deref() == Some("structured_metadata")
+                && (rule.sources.is_empty() || rule.sources.iter().any(|s| s == key))
+            {
+                out.push(bytes(limit));
+            }
+        }
+    }
+    out
 }
 
 fn min(a: Option<u64>, b: Option<u64>) -> Option<u64> {
@@ -184,13 +222,45 @@ fn input_processor(yaml: &str) -> LokiProcessBlock {
 fn gateway_entries_fit_lokis_limits() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../alloy-pipelines/gateway.yaml");
     let yaml = std::fs::read_to_string(&path).expect("read gateway.yaml");
-    let bounds = Bounds::of(&input_processor(&yaml));
+    let process = input_processor(&yaml);
+    let bounds = Bounds::of(&process);
     assert!(
         bounds.structured_metadata.contains_key("msg"),
         "the walk found no structured metadata; it is not reading the pipeline"
     );
     let violations = bounds.violations();
     assert!(violations.is_empty(), "{violations:#?}");
+
+    // The 512B rule names its keys, so a key added to the pipeline and not to
+    // that list falls through to the larger catch-all.
+    let loose: Vec<_> = bounds
+        .structured_metadata
+        .iter()
+        .filter(|(key, bound)| *key != "msg" && bound.is_some_and(|b| b > SHORT_VALUE))
+        .map(|(key, _)| key.as_str())
+        .collect();
+    assert!(
+        loose.is_empty(),
+        "add {loose:?} to the `sources` of the {SHORT_VALUE}B rule in gateway.yaml"
+    );
+}
+
+#[test]
+fn an_incoming_msg_keeps_its_own_limit() {
+    // A `msg` that arrives as structured metadata, from a chained gateway or
+    // another push client, is promoted again only when this gateway extracts
+    // one from the line. When it does not, the first rule to reach it is the
+    // last word, so no rule may cut it below the limit a re-extracted `msg`
+    // gets.
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../alloy-pipelines/gateway.yaml");
+    let yaml = std::fs::read_to_string(&path).expect("read gateway.yaml");
+    let process = input_processor(&yaml);
+    let limit = Bounds::of(&process).structured_metadata["msg"].expect("msg is bounded");
+    let reaching = limits_reaching(&process, "msg");
+    assert!(
+        reaching.iter().all(|&l| l >= limit),
+        "a rule cuts an incoming msg to {reaching:?}, below its {limit}-byte limit"
+    );
 }
 
 #[test]
@@ -244,4 +314,28 @@ fn a_budget_over_the_total_is_caught() {
     ));
     assert_eq!(bounds.violations().len(), 1, "{:?}", bounds.violations());
     assert!(bounds.violations()[0].contains("65544 bytes"));
+}
+
+#[test]
+fn the_reserve_counts_against_the_total() {
+    // 49,155 bytes on its own fits; with the push-client reserve it is three
+    // bytes over.
+    let bounds = Bounds::of(&input_processor(
+        r#"
+        blocks:
+          - loki.process:
+              label: inputProcessor
+              forward_to: ["loki.write.out.receiver"]
+              blocks:
+                - stage.structured_metadata:
+                    values: {a: "", b: "", c: ""}
+                - stage.truncate:
+                    blocks:
+                      - rule: {limit: "250KiB"}
+                      - rule: {limit: "2KiB", source_type: label}
+                      - rule: {limit: "16KiB", source_type: structured_metadata}
+        "#,
+    ));
+    assert_eq!(bounds.violations().len(), 1, "{:?}", bounds.violations());
+    assert!(bounds.violations()[0].contains("49155 bytes"));
 }

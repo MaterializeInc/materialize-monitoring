@@ -1856,9 +1856,66 @@ loki.process "inputProcessor" {
 		}
 
 		rule {
-			limit       = "512B"
+			limit = "512B"
 			source_type = "structured_metadata"
-			suffix      = "[TRUNCATED:FIELDS]"
+			sources = [
+				"cluster",
+				"container",
+				"container_id",
+				"controller",
+				"count",
+				"drop_reason_desc",
+				"environment_name",
+				"error",
+				"flow",
+				"frontegg_webhook_error",
+				"frontegg_webhook_event",
+				"frontegg_webhook_tenant",
+				"frontegg_webhook_tenant_blocked",
+				"frontegg_webhook_tenant_creation_reason",
+				"frontegg_webhook_tenant_trial_expires_at",
+				"frontegg_webhook_user",
+				"instance_type",
+				"kind",
+				"latency",
+				"length",
+				"levelheuristic",
+				"logger",
+				"method",
+				"name",
+				"node",
+				"node_workload",
+				"nodepool",
+				"organization_id",
+				"organization_name",
+				"panic_location",
+				"panic_thread",
+				"path",
+				"pod",
+				"pod_id",
+				"pod_ready",
+				"prehook_result",
+				"prehook_success",
+				"query",
+				"reason",
+				"region",
+				"reportingcontroller",
+				"request_header_host",
+				"resource_name",
+				"response_header_content_type",
+				"service_name",
+				"source",
+				"span_id",
+				"status_code",
+				"stream",
+				"target",
+				"target_namespace",
+				"tenant",
+				"trace_id",
+				"verdict",
+				"zone",
+			]
+			suffix = "[TRUNCATED:FIELDS]"
 		}
 	}
 
@@ -1870,12 +1927,9 @@ loki.process "inputProcessor" {
 
 	stage.truncate {
 		rule {
-			limit = "32KiB"
+			limit       = "16KiB"
 			source_type = "structured_metadata"
-			sources = [
-				"msg",
-			]
-			suffix = "[TRUNCATED:FIELDS]"
+			suffix      = "[TRUNCATED:FIELDS]"
 		}
 	}
 }

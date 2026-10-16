@@ -1317,27 +1317,38 @@ blocks:
         # Line: GATEWAY_LOG_LINE_SIZE_LIMIT is the limit to tune; it needs a
         # unit, like the safety clamp. Every stage above has already parsed the
         # whole line, so a line under the clamp still yields its level,
-        # timestamp, and fields; only what Loki stores as the line is cut. The 250KiB rule after it is a fixed
-        # backstop that holds whatever that variable says. Set it above 250KiB
-        # and the backstop cuts instead, so the suffix tells you which fired.
+        # timestamp, and fields; only what Loki stores as the line is cut. The
+        # 250KiB rule after it is a fixed backstop that holds whatever that
+        # variable says. Set it above 250KiB and the backstop cuts instead, so
+        # the suffix tells you which fired.
         #
         # Labels: 2KiB is Loki's own limit. The labels this pipeline sets are
         # short Kubernetes names, so this catches what a push client brings.
         #
         # Structured metadata: the 64KiB is a total, so it is split into a
-        # budget rather than capped per value. `msg` gets 32KiB and every other
-        # value 512B. With every key this pipeline sets at its limit, names
-        # included, the total stays under 64KiB with room for a few keys a push
-        # client adds. `tests/gateway_loki_limits.rs` in mzmon-lib redoes that
-        # sum from this file, so adding a key that breaks it fails the build.
+        # budget rather than capped per value. Every key this pipeline sets gets
+        # 512B, `msg` gets 16KiB, and 16KiB is left for structured metadata a
+        # Loki push client sends itself. `loki.source.api` keeps what a client
+        # sends, and Alloy has no stage that drops keys by pattern or bounds a
+        # key's name or the number of keys, so the gateway cannot bound it; a
+        # client sending more than 16KiB of its own can still be refused.
+        # `tests/gateway_loki_limits.rs` in mzmon-lib redoes the sum, reserve
+        # included, from this file, so a key that breaks it fails the build.
         # Every value here except the Kubernetes metadata is a copy of part of
         # the line, which keeps it in full, so a cut loses convenience rather
         # than data.
         #
-        # `msg` is promoted only after the 512B rule, then cut to its own
-        # limit. It is cut as structured metadata rather than in the extracted
-        # map because Alloy silently skips promoting a value that is not valid
-        # UTF-8, and a byte-wise cut can split a character.
+        # The 512B rule names its keys rather than catching every key, so that
+        # a `msg` arriving as structured metadata, from a chained gateway or
+        # another push client, keeps the 16KiB a re-extracted one would get.
+        # The 16KiB rule after it catches everything else: `msg`, and whatever
+        # keys a client adds. A key added to this pipeline belongs in the
+        # 512B list; the test names any that is missing.
+        #
+        # `msg` is promoted between the two, then cut as structured metadata
+        # rather than in the extracted map, because Alloy silently skips
+        # promoting a value that is not valid UTF-8 and a byte-wise cut can
+        # split a character.
         - stage.truncate:
             blocks:
               - rule:
@@ -1357,6 +1368,62 @@ blocks:
               - rule:
                   limit: "512B"
                   source_type: structured_metadata
+                  sources:
+                    - cluster
+                    - container
+                    - container_id
+                    - controller
+                    - count
+                    - drop_reason_desc
+                    - environment_name
+                    - error
+                    - flow
+                    - frontegg_webhook_error
+                    - frontegg_webhook_event
+                    - frontegg_webhook_tenant
+                    - frontegg_webhook_tenant_blocked
+                    - frontegg_webhook_tenant_creation_reason
+                    - frontegg_webhook_tenant_trial_expires_at
+                    - frontegg_webhook_user
+                    - instance_type
+                    - kind
+                    - latency
+                    - length
+                    - levelheuristic
+                    - logger
+                    - method
+                    - name
+                    - node
+                    - node_workload
+                    - nodepool
+                    - organization_id
+                    - organization_name
+                    - panic_location
+                    - panic_thread
+                    - path
+                    - pod
+                    - pod_id
+                    - pod_ready
+                    - prehook_result
+                    - prehook_success
+                    - query
+                    - reason
+                    - region
+                    - reportingcontroller
+                    - request_header_host
+                    - resource_name
+                    - response_header_content_type
+                    - service_name
+                    - source
+                    - span_id
+                    - status_code
+                    - stream
+                    - target
+                    - target_namespace
+                    - tenant
+                    - trace_id
+                    - verdict
+                    - zone
                   suffix: "[TRUNCATED:FIELDS]"
         - stage.structured_metadata:
             values:
@@ -1364,9 +1431,8 @@ blocks:
         - stage.truncate:
             blocks:
               - rule:
-                  limit: "32KiB"
+                  limit: "16KiB"
                   source_type: structured_metadata
-                  sources: ["msg"]
                   suffix: "[TRUNCATED:FIELDS]"
 
   # Outbound resource management: cap memory, then batch before handing off to
