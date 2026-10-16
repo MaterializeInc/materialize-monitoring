@@ -1,0 +1,181 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: adhoc, s3-compatible and no-storage-class profiles
+release:
+  name: t
+  namespace: test-monitoring
+tests:
+  # --- adhoc: renders on its own ---------------------------------------------
+  # The point of the profile is one file. These cases load nothing else, so a
+  # key it forgets to set fails here rather than during someone's install.
+  - it: adhoc runs Receive as one replica with a matching replication factor
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/thanos/templates/receive/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=1
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --receive.replication-factor=3
+      # No zone labels on the cluster is the case this profile exists for.
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: adhoc claims no volume for Store Gateway
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/thanos/templates/storegateway/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  - it: adhoc claims no volume for the Compactor
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  - it: adhoc runs one Thanos Query with no autoscaler
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/thanos/templates/query/hpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: adhoc runs one Alertmanager with no volume and no zone spread
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/alertmanager/templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: adhoc runs Loki as one single binary with no volume
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/loki/templates/monolithic/workload.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - notExists:
+          path: spec.volumeClaimTemplates
+
+  - it: adhoc leaves the distributed Loki ruler off
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # Each NetworkPolicy switch the profile lists. One assertion per renderer, so
+  # a subchart that renames its key shows up as the one case that fails.
+  - it: adhoc renders none of the umbrella's NetworkPolicies
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: networkpolicies.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: adhoc renders no Loki NetworkPolicy
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/loki/templates/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: adhoc renders no Thanos NetworkPolicy
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/thanos/templates/receive/networkpolicy.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # --- s3-compatible: composes over adhoc ------------------------------------
+  # adhoc names filesystem in four places Loki checks against each other, and
+  # this profile has to replace every one of them.
+  - it: s3-compatible over adhoc hands Loki its keys from the Secret
+    values:
+      - ../profiles/adhoc.values.yaml
+      - ../profiles/s3-compatible.values.yaml
+    set:
+      loki.loki.storage.bucketNames.chunks: test-loki
+      loki.loki.storage.bucketNames.ruler: test-loki
+      loki.loki.storage.object_store.s3.endpoint: rgw.example.internal:7480
+    template: ../charts/loki/templates/monolithic/workload.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: loki-objstore-credentials
+
+  - it: s3-compatible keeps the keys out of the rendered Loki config
+    values:
+      - ../profiles/adhoc.values.yaml
+      - ../profiles/s3-compatible.values.yaml
+    set:
+      loki.loki.storage.bucketNames.chunks: test-loki
+      loki.loki.storage.bucketNames.ruler: test-loki
+      loki.loki.storage.object_store.s3.endpoint: rgw.example.internal:7480
+    template: ../charts/loki/templates/config.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "object_store: s3"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: filesystem
+      # The Loki chart renders the key as `null` when values carry none.
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: "secret_access_key: [^n]"
+
+  # --- no-storage-class: the standard topology without PVCs -------------------
+  - it: no-storage-class drops the Compactor's claim
+    values:
+      - ../profiles/no-storage-class.values.yaml
+    set:
+      thanos.global.objstore.createSecret: false
+      loki.loki.storage.bucketNames.chunks: test-chunks
+      loki.loki.storage.bucketNames.ruler: test-ruler
+      loki.networkPolicy.enabled: false
+    template: ../charts/thanos/templates/compactor/statefulset.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests["ephemeral-storage"]
+          value: 10Gi
+
+  - it: no-storage-class drops the Loki ruler's claim
+    values:
+      - ../profiles/no-storage-class.values.yaml
+    set:
+      thanos.global.objstore.createSecret: false
+      loki.loki.storage.bucketNames.chunks: test-chunks
+      loki.loki.storage.bucketNames.ruler: test-ruler
+      loki.networkPolicy.enabled: false
+    template: ../charts/loki/templates/ruler/workload.yaml
+    asserts:
+      - notExists:
+          path: spec.volumeClaimTemplates

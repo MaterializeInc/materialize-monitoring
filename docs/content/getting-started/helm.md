@@ -67,7 +67,13 @@ Without a cloud identity provider there is no workload identity to bind, so cred
 - Loki takes them under `loki.loki.storage.object_store.<backend>`; prefer supplying the values through `loki.<component>.extraEnvFrom` (a `secretRef`) over inlining them, since inline values render into a ConfigMap in plaintext.
 - Thanos takes them inside `thanos.global.objstore.config`, which becomes a Secret when `createSecret: true`.
 
-Any S3-compatible endpoint works — set `object_storage.endpoint` in Loki's config and `endpoint` in Thanos's. The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs) this way, so a self-hosted MinIO, Ceph, or rustfs is a supported shape rather than an untested one.
+Any S3-compatible endpoint works, including Ceph RGW, MinIO, and rustfs.
+The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs).
+
+`profiles/s3-compatible.values.yaml` sets up both backends for one of these stores.
+Its header has the commands that create the two Secrets it reads: the Thanos objstore document, and a pair of environment variables for Loki.
+Write the endpoint as `HOST:PORT` with no scheme, because the objstore client rejects one.
+Set `insecure: true` for a store that serves plain HTTP.
 
 > [!WARNING]
 >  The chart's validators grade credential handling and will tell you when a cloud backend has neither an identity annotation nor inline credentials — at which point the component falls back to ambient node credentials, which usually means it silently works in one cluster and fails in another. Read the render output rather than assuming silence.
@@ -78,8 +84,7 @@ The `materialize-monitoring` Helm chart is designed to be highly customizable, s
 
 Typically, you would want to create a values.yaml file that has your
 specific configurations.
-You may start fresh or you can copy a preset from
-the `charts/materialize-monitoring/profiles/` directory in this repository.
+You can start fresh, or start from the profiles in the chart's `profiles/` directory.
 
 > [!WARNING]
 >  Be aware that when merging examples together that you do not have
@@ -99,6 +104,20 @@ chart, so you only need to specify the values that are different from the defaul
 >    subcomponent:
 >      key: value
 >  ```
+
+### Get the profiles {#get-the-profiles}
+
+The profiles ship inside the chart package, so you don't need to download them one at a time.
+Pull the chart and unpack it:
+
+```bash
+helm pull oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --version VERSION --untar
+```
+
+Replace `VERSION` with the chart version you install.
+
+Every profile is then at `materialize-monitoring/profiles/`, and you can pass each one with `-f`.
+Pull the same version you install, because a profile can name values that exist only in that version.
 
 ### Choosing which components run, via tags
 
@@ -166,7 +185,10 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
+| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads on `emptyDir` and requests node disk for them instead |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
+| `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
+| `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Install an ad-hoc stack](#adhoc-install) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
@@ -282,7 +304,20 @@ helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitori
   --timeout 15m
 ```
 
-Pin `--version` on both. The two charts have deliberately separate lifecycles, so they do not share a version — see [Compatibility](../../reference/compatibility/) for which pairs are tested together.
+The dashboards are a third chart, and the main chart doesn't install them.
+Without this release, Grafana comes up with its data sources and folders but no dashboards:
+
+```bash
+helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
+  --namespace monitoring \
+  --version X.Y.Z
+```
+
+Its defaults match a `materialize-monitoring` release named `mzmon`.
+For a different release name, see [Importing dashboards via Grafana Operator](../../dashboards/grafana/grafana-operator/#importing-dashboards-via-grafana-operator).
+
+Pin `--version` on each. The charts have separate lifecycles, so they don't share a version.
+For the pairs that are tested together, see [Compatibility](../../reference/compatibility/).
 
 A few flags earn their place:
 
@@ -311,6 +346,106 @@ The admin credentials are in the `grafana` Secret (keys `admin-user` and `admin-
 >  The chart generates that password and **reuses it across `helm upgrade`**, because the Grafana chart looks the existing Secret up before generating.
 >
 >  That lookup returns nothing during `helm template` and `--dry-run`, so any render-only pipeline — most [GitOps](../gitops/) setups — regenerates the password on **every sync**. Supply your own Secret and set `grafana.grafana.admin.existingSecret` there. The Terraform module does exactly this, for exactly this reason.
+
+## Install an ad-hoc stack for troubleshooting {#adhoc-install}
+
+Use `profiles/adhoc.values.yaml` when you need a Grafana with metrics in it on a cluster you don't run day to day.
+Typical cases are a day-1 install, an on-premises cluster you haven't seen before, or a node pool that Materialize already fills.
+
+The profile is one file that covers the whole stack:
+
+- Every component runs one replica, with a replication factor of 1.
+- Nothing claims a PersistentVolume, so the cluster doesn't need a StorageClass.
+- Loki runs as one process on its own filesystem, so it needs no bucket.
+- Topology spread constraints are removed, so pods schedule on nodes with no zone labels.
+- NetworkPolicies are off.
+
+Losing a pod loses that pod's data, so don't run this profile in production.
+
+Thanos still needs object storage, because it has no local-disk mode that works across its components.
+
+1. Pull the chart, which includes the profiles:
+
+   ```bash
+   helm pull oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --version VERSION --untar
+   ```
+
+1. Create the Secret that Thanos reads its bucket from.
+   For S3 or an S3-compatible store:
+
+   ```bash
+   kubectl create namespace monitoring
+   kubectl create secret generic thanos-objstore-config --namespace monitoring \
+     --from-file=objstore.yml=/dev/stdin <<'EOF'
+   type: S3
+   config:
+     bucket: BUCKET
+     endpoint: HOST:PORT
+     access_key: ACCESS_KEY
+     secret_key: SECRET_KEY
+     insecure: true
+   EOF
+   ```
+
+   Replace the following:
+
+   - `BUCKET`: the bucket for Thanos blocks.
+   - `HOST:PORT`: the store's endpoint, with no scheme.
+   - `ACCESS_KEY` and `SECRET_KEY`: the store's credentials.
+
+   Set `insecure: false` when the store serves HTTPS.
+
+1. Install the CRDs, the chart, and the dashboards:
+
+   ```bash
+   helm install mzmon-crds oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-crds \
+     --namespace monitoring --version VERSION --wait
+   ```
+
+   ```bash
+   helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
+     --namespace monitoring --skip-crds --version VERSION \
+     -f materialize-monitoring/profiles/adhoc.values.yaml \
+     --timeout 15m
+   ```
+
+   ```bash
+   helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
+     --namespace monitoring --version VERSION
+   ```
+
+   Replace `VERSION` with each chart's version.
+
+1. Reach Grafana.
+   A port-forward works, but it drops connections under the load of a dashboard full of panels.
+   A NodePort Service is steadier on a cluster whose nodes you can reach:
+
+   ```bash
+   kubectl expose service grafana --namespace monitoring --name grafana-nodeport --type NodePort
+   kubectl get service grafana-nodeport --namespace monitoring -o jsonpath='{.spec.ports[0].nodePort}'
+   ```
+
+   Open `http://NODE_IP:NODE_PORT`, where `NODE_IP` is the address of any node.
+   Delete the `grafana-nodeport` Service when you're done; Helm doesn't manage it.
+
+The profile marks each setting you're likely to change with `SWITCH`:
+
+NetworkPolicies
+: Each key that renders one is listed, so you can turn a single component's policy back on.
+
+DNS Service name
+: Loki's gateway resolves through a Service named `kube-dns`.
+  Set `loki.global.dnsService` when the cluster names it something else.
+  For more information, see [the troubleshooting entry](../../operating/o11y-troubleshooting/#host-not-found-in-resolver).
+
+metrics-server
+: Turn it off when the cluster already runs one.
+
+Loki
+: Turn it off when the cluster can't fit one more pod.
+  Also turn off the Alloy gateway's Loki destination, which the profile lists beside it.
+
+Add `-f materialize-monitoring/profiles/s3-compatible.values.yaml` after `adhoc` to put Loki on the same object store as Thanos.
 
 ## After changing values
 
