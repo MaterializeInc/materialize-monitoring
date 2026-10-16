@@ -4203,7 +4203,7 @@ A database a cloud provider pull watches is declared in `metadata_databases` ins
 The module rolls the exporter when a password changes.
 
 The per-cloud wrappers in `materialize-terraform-self-managed` connect as the users they already hold: the metadata database's administrator and Grafana's database owner.
-On RDS and Cloud SQL, both are members of `pg_monitor` through `rds_superuser` and `cloudsqlsuperuser`, so the exporter sees every session.
+On RDS, Cloud SQL, and Azure Database for PostgreSQL, both hold `pg_monitor` through the service's administrator role (`rds_superuser`, `cloudsqlsuperuser`, or `azure_pg_admin`), so the exporter sees every session.
 Both can also write.
 For a role that can only read statistics, create `mzmon_exporter` as described earlier, and pass it to the wrapper instead.
 
@@ -12196,7 +12196,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.6.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.15.1 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
@@ -17766,7 +17766,7 @@ that holds Loki's own HTTP port at phase 2.
   "pullPolicy": "IfNotPresent",
   "registry": "ghcr.io",
   "repository": "jkroepke/access-log-exporter",
-  "tag": "0.5.0"
+  "tag": "0.5.1"
 }</pre>
 </td>
       <td class="helm-value-desc">The access-log exporter sidecar, which turns the gateway's request log into Prometheus metrics.
@@ -21826,6 +21826,13 @@ as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
 }</pre>
 </td>
       <td class="helm-value-desc">The Secret holding `postgres_exporter.yml`, which you create. See the section introduction for its shape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.logLevel</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"warn"</code></td>
+      <td class="helm-value-desc">Exporter log level. `warn`, because at `info` every probe logs a new connection and the server's version, two lines per target per scrape. A target that cannot connect is logged at `error`, so nothing worth reading is lost.
 </td>
     </tr>
     <tr>
