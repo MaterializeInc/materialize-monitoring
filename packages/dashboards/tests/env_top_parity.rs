@@ -68,16 +68,39 @@ const ALLOWED: &[(&str, &str)] = &[
 ///
 /// Keep this short. A long list means the baseline has stopped describing the
 /// dashboard, and the comparison stops being worth running.
-const ADDED_PANELS: &[(&str, &str)] = &[(
-    "freshness-lag-total-by-cluster",
-    "total lag beside the worst case: the max is pinned to whichever collection \
-     is furthest behind and barely moves while the rest converge, so it cannot \
-     show rehydration finishing",
-)];
+const ADDED_PANELS: &[(&str, &str)] = &[
+    (
+        "freshness-lag-total-by-cluster",
+        "total lag beside the worst case: the max is pinned to whichever collection \
+         is furthest behind and barely moves while the rest converge, so it cannot \
+         show rehydration finishing",
+    ),
+    (
+        "summary-alerts-firing",
+        "firing alerts lead a summary, as on every Overview since infra-thanos: \
+         a rule's conclusion is read before the evidence for it",
+    ),
+    ("summary-alerts", "the table behind the firing count"),
+    ("summary-alert-history", "the history beside that table"),
+];
 
 /// Whether a panel postdates the baseline.
 fn is_added(name: &str) -> bool {
     ADDED_PANELS.iter().any(|(panel, _)| panel == &name)
+}
+
+/// Whether a row postdates the baseline: every panel in it does.
+fn is_added_row(row: &serde_json::Value) -> bool {
+    let items = row["spec"]["layout"]["spec"]["items"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    !items.is_empty()
+        && items.iter().all(|item| {
+            item["spec"]["element"]["name"]
+                .as_str()
+                .is_some_and(is_added)
+        })
 }
 
 /// Panels retitled after the port, each with the title it carries now.
@@ -522,7 +545,8 @@ fn the_tab_and_row_skeleton_matches_the_baseline() {
 /// Counting them would report every row that gained one as a divergence, which
 /// is the thing [`ADDED_PANELS`] exists to say is intentional. Discounting them
 /// keeps the check meaningful for everything else — a row losing a baseline
-/// panel, or changing its column cap, still fails.
+/// panel, or changing its column cap, still fails. A row made only of added
+/// panels is left out whole.
 fn skeleton(layout: &serde_json::Value) -> Vec<String> {
     let mut out = Vec::new();
     for tab in layout["spec"]["tabs"].as_array().into_iter().flatten() {
@@ -532,6 +556,7 @@ fn skeleton(layout: &serde_json::Value) -> Vec<String> {
             .as_array()
             .into_iter()
             .flatten()
+            .filter(|row| !is_added_row(row))
         {
             let grid = &row["spec"]["layout"]["spec"];
             let items = grid["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
@@ -794,9 +819,15 @@ fn the_layout_matches_the_baseline_for_ported_tabs() {
     let want_rows = want_tab["spec"]["layout"]["spec"]["rows"]
         .as_array()
         .expect("rows");
-    assert_eq!(got_rows.spec.rows.len(), want_rows.len());
+    let got_rows: Vec<_> = got_rows
+        .spec
+        .rows
+        .iter()
+        .filter(|row| !is_added_row(&serde_json::to_value(row).expect("serialize")))
+        .collect();
+    assert_eq!(got_rows.len(), want_rows.len());
 
-    for (got, want) in got_rows.spec.rows.iter().zip(want_rows) {
+    for (got, want) in got_rows.into_iter().zip(want_rows) {
         assert_eq!(got.spec.title.as_deref(), want["spec"]["title"].as_str());
         let dashboardv2::RowsLayoutRowSpecLayout::AutoGridLayoutKind(grid) = &got.spec.layout
         else {
@@ -823,6 +854,7 @@ fn the_layout_matches_the_baseline_for_ported_tabs() {
             .items
             .iter()
             .map(|i| i.spec.element.name.as_str())
+            .filter(|name| !is_added(name))
             .collect();
         let want_names: Vec<&str> = want_grid["items"]
             .as_array()

@@ -360,7 +360,7 @@
                 "defaults": {
                   "decimals": 0,
                   "min": 0,
-                  "noValue": "No Thanos alert fired in this range",
+                  "noValue": "No alert about Thanos fired in this range",
                   "unit": "short"
                 },
                 "overrides": []
@@ -459,37 +459,13 @@
                     "filterable": true,
                     "inspect": false
                   },
-                  "noValue": "No Thanos alert is firing or pending, or none reached Thanos. The Ruler tab's Evaluation and Write-back rows say which."
+                  "noValue": "No alert about Thanos is firing or pending, or none reached Thanos. Thanos Alerts Firing says which."
                 },
                 "overrides": [
                   {
                     "matcher": {
-                      "id": "byName",
-                      "options": "severity"
-                    },
-                    "properties": [
-                      {
-                        "id": "noValue",
-                        "value": "—"
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "job"
-                    },
-                    "properties": [
-                      {
-                        "id": "noValue",
-                        "value": "—"
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "pod"
+                      "id": "byType",
+                      "options": "string"
                     },
                     "properties": [
                       {
@@ -561,7 +537,7 @@
                 "defaults": {
                   "decimals": 0,
                   "min": 0,
-                  "noValue": "No ruler has evaluated and written back in five minutes, so no alert can show. Check the Ruler tab.",
+                  "noValue": "Alerts are not reaching Thanos, so none can show. The Ruler tab's Evaluation and Write-back rows say why.",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [

@@ -38,6 +38,21 @@ pub fn by_name(field: &str) -> Builder {
     }
 }
 
+/// Match every field of one type: `string`, `number`, `time` or `boolean`.
+///
+/// For a table whose columns are not known in advance, such as the labels of
+/// whichever alerts are firing. Like `byName`, the option is a bare string.
+pub fn by_type(field_type: &str) -> Builder {
+    Builder {
+        matcher: dashboardv2::MatcherConfig {
+            id: "byType".to_string(),
+            options: Some(serde_json::json!(field_type)),
+            scope: None,
+        },
+        properties: Vec::new(),
+    }
+}
+
 /// An override under construction.
 pub struct Builder {
     matcher: dashboardv2::MatcherConfig,

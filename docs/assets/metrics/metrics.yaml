@@ -2,11 +2,22 @@
   labels:
   - alertname
   - alertstate
+  - component
+  - namespace
   name: ALERTS
   usage:
+  - infra.alloy.health.alert_history
+  - infra.alloy.health.alerts
+  - infra.alloy.health.alerts_firing
+  - infra.loki.health.alert_history
+  - infra.loki.health.alerts
+  - infra.loki.health.alerts_firing
   - infra.thanos.health.alert_history
   - infra.thanos.health.alerts
   - infra.thanos.health.alerts_firing
+  - materialize.health.alert_history
+  - materialize.health.alerts
+  - materialize.health.alerts_firing
 - importance: essential
   labels:
   - app
@@ -658,6 +669,16 @@
   - infra.loki.panics
 - importance: essential
   labels:
+  - app
+  - field
+  - namespace
+  - pod
+  name: loki_process_truncated_fields_total
+  usage:
+  - dev.log_pipeline.oversized_lines
+  - infra.alloy.log_pipeline.truncated
+- importance: essential
+  labels:
   - app_instance
   - container
   - namespace
@@ -1122,10 +1143,13 @@
   - pod
   name: prometheus_remote_storage_highest_timestamp_in_seconds
   usage:
+  - infra.alloy.health.alerts_firing
   - infra.alloy.metric_pipeline.send_delay
   - infra.alloy.metric_pipeline.send_delay.worst
+  - infra.loki.health.alerts_firing
   - infra.thanos.health.alerts_firing
   - infra.thanos.rule.remote_write_lag
+  - materialize.health.alerts_firing
 - importance: essential
   labels:
   - app
@@ -1134,10 +1158,13 @@
   - pod
   name: prometheus_remote_storage_queue_highest_sent_timestamp_seconds
   usage:
+  - infra.alloy.health.alerts_firing
   - infra.alloy.metric_pipeline.send_delay
   - infra.alloy.metric_pipeline.send_delay.worst
+  - infra.loki.health.alerts_firing
   - infra.thanos.health.alerts_firing
   - infra.thanos.rule.remote_write_lag
+  - materialize.health.alerts_firing
 - importance: essential
   labels:
   - app
@@ -1180,7 +1207,10 @@
   - namespace
   name: prometheus_rule_group_last_evaluation_timestamp_seconds
   usage:
+  - infra.alloy.health.alerts_firing
+  - infra.loki.health.alerts_firing
   - infra.thanos.health.alerts_firing
+  - materialize.health.alerts_firing
 - importance: essential
   labels:
   - app
@@ -1636,11 +1666,38 @@
   - infra.alloy.log_pipeline.guard_drops
 - importance: recommended
   labels:
+  - app
+  - container
+  name: loki_prometheus_rule_group_last_evaluation_timestamp_seconds
+  usage:
+  - infra.alloy.health.alerts_firing
+  - infra.loki.health.alerts_firing
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
   - app_instance
   - namespace
   name: loki_query_frontend_queries_in_progress
   usage:
   - infra.loki.read.queries_in_flight
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds
+  usage:
+  - infra.alloy.health.alerts_firing
+  - infra.loki.health.alerts_firing
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+  usage:
+  - infra.alloy.health.alerts_firing
+  - infra.loki.health.alerts_firing
+  - materialize.health.alerts_firing
 - importance: recommended
   labels:
   - app

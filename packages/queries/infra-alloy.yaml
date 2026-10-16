@@ -488,6 +488,147 @@ queries:
           )
         )
 
+  # --- overview: alerts --------------------------------------------------------
+  # Selected by the rules' `component` label rather than by name, so a new rule
+  # appears without a dashboard change. `monitoring` is collection: a scrape
+  # target lost, a gateway refusing what it scraped, Loki receiving nothing.
+  # `alloy` is the collectors' own software. The rules' selectors span every
+  # namespace, so neither collector picker can narrow these.
+  - id: infra.alloy.health.alerts_firing
+    stability: experimental
+    description:
+      summary: |
+        Alerts about collection that are firing now.
+      nominal: Zero.
+      unhealthy: |
+        Any. _Alerts_ below names each one, and links to what it means.
+      notes: |
+        Reads zero only while the Thanos ruler has evaluated a rule and written
+        its results back within five minutes, and so has the Loki ruler where
+        one runs. A ruler that has stopped evaluating fires nothing, and one
+        whose write-back has stalled fires alerts that never reach Thanos, so
+        either would read as no alerts. The Loki ruler matters here more than
+        anywhere: `alloy-gateway-refusing-scrapes` is matched in the gateway's
+        log, because a gateway in that state discards its own metrics too.
+    promQL: |
+      count(
+        max without (ruler_replica) (
+          ALERTS{component=~"alloy|monitoring", alertstate="firing"}
+        )
+      )
+      or
+      0 * (
+        (
+          (
+            time()
+            - max(
+              prometheus_rule_group_last_evaluation_timestamp_seconds{
+                app="thanos",
+                container="ruler"
+              }
+            )
+            < 300
+          )
+          and on ()
+          (
+            min(
+              max by (pod) (
+                prometheus_remote_storage_highest_timestamp_in_seconds{
+                  app="thanos",
+                  container="ruler"
+                }
+              )
+              - on (pod)
+              max by (pod) (
+                prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                  app="thanos",
+                  container="ruler"
+                }
+              )
+            )
+            < 300
+          )
+        )
+        unless on ()
+        (
+          (
+            time()
+            - max(
+              loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+                app="loki",
+                container="ruler"
+              }
+            )
+            >= 300
+          )
+          or on ()
+          (
+            max(
+              max by (pod, tenant) (
+                loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{
+                  app="loki",
+                  container="ruler"
+                }
+              )
+              - on (pod, tenant)
+              max by (pod, tenant) (
+                loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                  app="loki",
+                  container="ruler"
+                }
+              )
+            )
+            >= 300
+          )
+        )
+      )
+
+  - id: infra.alloy.health.alerts
+    stability: experimental
+    description:
+      summary: |
+        Every alert about collection that is firing or pending now, with the
+        target or collector it is about.
+      nominal: Empty.
+      unhealthy: |
+        Any firing row. A pending row has met its condition and is waiting out
+        its `for` duration; it fires if the condition holds.
+      notes: |
+        `ALERTS` carries a rule's labels and not its annotations, so the
+        summary and the advice are a click away: each alert name links to its
+        entry under Common Alerts. Alloy dropping log lines is on the Loki
+        dashboard instead, as `alloy-log-drops`, because its usual cause is
+        Loki refusing writes.
+
+        An alert about a collector names it by `pod`; an alert about a scrape
+        target names the target's `job`. A rule that names no `job` of its own
+        is given the ruler's, which says nothing about the alert, so that cell
+        reads as empty.
+    instant: true
+    promQL: |
+      max without (ruler_replica, instance, tenant_id, cluster, audience) (
+        label_replace(
+          ALERTS{component=~"alloy|monitoring"},
+          "job", "", "job", "thanos-ruler|loki-ruler"
+        )
+      )
+
+  - id: infra.alloy.health.alert_history
+    stability: experimental
+    description:
+      summary: |
+        Which alerts about collection were firing over the selected time range.
+      nominal: Empty.
+      notes: |
+        A line is the number of firing instances of that alert. Read it beside
+        the tab that alert is about to see what changed when it started.
+    promQL: |
+      count by (alertname) (
+        max without (ruler_replica) (
+          ALERTS{component=~"alloy|monitoring", alertstate="firing"}
+        )
+      )
+
   # --- log pipeline: node -> agent -> gateway -> Loki --------------------------
   - id: infra.alloy.log_pipeline.read
     stability: experimental

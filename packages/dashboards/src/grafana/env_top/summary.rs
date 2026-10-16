@@ -7,12 +7,17 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! The Summary tab: is the environment healthy, and where do I go next.
+//! The Summary tab: is the environment healthy, is anything about it alerting,
+//! and where do I go next.
 //!
 //! Every panel here is a pointer. It answers a question in one number and names
 //! the tab that explains it, which is why the panels borrow their shades from the
 //! tabs they point at rather than having one of their own — see
 //! [`super::theme`].
+//!
+//! The Alerts row is the exception, and sits directly under the health numbers
+//! for that reason: a firing alert is a conclusion somebody's rule already
+//! reached, and its name links to what it means rather than to a tab.
 
 use mzmon_lib::grafana::generated::{dashboardv2, stat};
 use mzmon_lib::grafana::layout::{AutoGrid, Row, RowHeight};
@@ -20,20 +25,47 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
 use super::theme;
+use crate::grafana::alerts::Alerts;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
+/// Every alert whose `namespace` is the environment's, whoever wrote the rule:
+/// Materialize's own, the workload rules, and the platform rules about the pods
+/// there.
+pub(crate) const ALERTS: Alerts = Alerts {
+    queries: "materialize.health",
+    subject: "Environment",
+    about: "this environment",
+    columns: &[
+        ("severity", "severity"),
+        ("component", "component"),
+        ("materialize_cloud_organization_name", "environment"),
+        ("cluster_name", "cluster"),
+        ("pod", "pod"),
+        ("namespace", "namespace"),
+    ],
+    hidden: &[],
+    silent: "The Thanos Meta Monitoring dashboard's Ruler tab says why.",
+    common_alerts: true,
+};
+
 /// The Summary tab's rows.
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![environment_health(q), environment_info(q)]
+    vec![
+        environment_health(q),
+        ALERTS.row(q, "summary"),
+        environment_info(q),
+    ]
 }
 
-/// Health at a glance: is it up, has it been up, and is anything behind.
+/// Health at a glance: is it up, is anything alerting, has it been up, and is
+/// anything behind.
 fn environment_health(q: &Queries) -> Row {
     Row::new("Environment Health").grid(
         AutoGrid::new(3)
             .row_height(RowHeight::Short)
             .panel("is-healthy", is_healthy(q))
+            .panel("summary-alerts-firing", ALERTS.firing(q))
             .panel("availability-percent", availability_percent(q))
             .panel("last-restart", last_restart(q))
             .panel(
@@ -205,10 +237,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tab_has_both_rows_and_all_ten_panels() {
+    fn the_tab_has_all_three_rows_and_thirteen_panels() {
         let q = &crate::grafana::queries::test_queries();
         let rows = rows(q);
-        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.len(), 3);
         // Panel count is checked end to end against the golden in
         // tests/env_top_parity.rs; this just guards the row split.
         let json = serde_json::to_value(
@@ -219,7 +251,7 @@ mod tests {
         )
         .expect("serialize");
         let text = json.to_string();
-        assert_eq!(text.matches("ElementReference").count(), 10);
+        assert_eq!(text.matches("ElementReference").count(), 13);
     }
 
     #[test]
@@ -252,6 +284,26 @@ mod tests {
         // Three panels borrow a shade in the baseline; if that drops to zero the
         // assertion above would pass vacuously.
         assert_eq!(shaded, 3, "expected three borrowed shades");
+    }
+
+    #[test]
+    fn the_alerts_sit_between_the_health_numbers_and_the_info() {
+        // The habit `infra-thanos` set for every Overview: a firing alert is
+        // the first thing below the verdict, not something found by scrolling.
+        let q = &crate::grafana::queries::test_queries();
+        let layout = serde_json::to_string(
+            &mzmon_lib::grafana::layout::Layout::rows(rows(q))
+                .assemble()
+                .expect("assemble")
+                .layout,
+        )
+        .expect("serialize");
+        let health = layout
+            .find(r#""title":"Environment Health""#)
+            .expect("health");
+        let alerts = layout.find(r#""title":"Alerts""#).expect("alerts");
+        let info = layout.find(r#""title":"Environment Info""#).expect("info");
+        assert!(health < alerts && alerts < info, "{layout}");
     }
 
     #[test]

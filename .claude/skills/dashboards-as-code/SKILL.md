@@ -57,8 +57,8 @@ Frequently needed deep links into the Style Guidelines:
 - [orchestratord reconciliation metrics](../../../docs/content/reference/development/dashboard/style-guidelines.md#orchestratord-reconciliation-metrics)
   — the outcome vocabulary, and why `abandoned` is not a failure signal
 - [Firing alerts lead an Overview tab](../../../docs/content/reference/development/dashboard/style-guidelines.md#firing-alerts-lead-an-overview-tab)
-  — the habit `infra-thanos` set: the alerts row sits under the verdict, and the firing count's zero comes from a ruler
-  that is evaluating and writing its results back
+  — the habit `infra-thanos` set and `grafana/alerts.rs` now draws on four dashboards: the alerts row sits under the
+  verdict, and the firing count's zero comes from every ruler that is evaluating and writing its results back
 - [Known metric quirks and gotchas](../../../docs/content/reference/development/dashboard/style-guidelines.md#known-metric-quirks-and-gotchas)
 - [PromQL recipes](../../../docs/content/reference/development/dashboard/style-guidelines.md#promql-recipes)
 - [Shared constants and helpers](../../../docs/content/reference/development/dashboard/style-guidelines.md#shared-constants-and-helpers)
@@ -170,9 +170,11 @@ Generated from the rendered artifact; regenerate rather than hand-editing when t
 
 **Summary**
 
-1. Environment Health — Environment Status, Environment Availability (Select Time Range), Last Restart Time, Currently
-   Hydrating, Worst Freshness (Select Time Range), Current CPU Usage (5 min), Current Memory Usage
-2. Environment Info — Materialize Version, Total CPU Capacity, Total Memory
+1. Environment Health — Environment Status, Environment Alerts Firing, Environment Availability (Select Time Range),
+   Last Restart Time, Currently Hydrating, Worst Freshness (Select Time Range), Current CPU Usage (5 min), Current
+   Memory Usage
+2. Alerts — Alerts, Alerts Firing Over Time
+3. Environment Info — Materialize Version, Total CPU Capacity, Total Memory
 
 **Kubernetes Workloads**
 
@@ -392,11 +394,13 @@ something the stack watches.
 
 Filed under **`Folder::MetaO11y`**, which it is the first occupant of, and the first to carry `tags::content::META`.
 
-Three things about it are not re-derivable by reading the modules:
+These things about it are not re-derivable by reading the modules:
 
 - **An empty panel here is ambiguous in a way it is not elsewhere**, because the instrument can go down with its
-  subject. So Overview leads with scrape health *before* any measurement, and every panel writes its own `no_value`
-  text — a test enforces the second.
+  subject. So Overview leads with its alerts and scrape health *before* any measurement, and every panel writes its
+  own `no_value` text. A test enforces the second.
+- **Its alerts are the registry's `component="loki"` rules**, which include `alloy-log-drops`. Alloy's drops show
+  here rather than on `infra-alloy` because the rule's label says Loki, whose refused writes are the usual cause.
 - **`$lokiComponent` scopes both engines**, matched against `container` on a metric and `component` on a log line. The
   rule for when that is allowed is in the style guide under
   [One picker across two engines](../../../docs/content/reference/development/dashboard/style-guidelines.md#one-picker-across-two-engines).
@@ -428,7 +432,7 @@ test holds that pair as the only one.
 
 Queries are `packages/queries/infra-alloy.yaml`, which absorbed the six panel-less `infra.loki.pipeline.*` queries.
 
-Six things about it are not re-derivable by reading the modules:
+These things about it are not re-derivable by reading the modules:
 
 - **Everything on it travels through the gateway.** The gateway scrapes Alloy's metrics and forwards Alloy's logs, so
   a gateway outage empties the whole dashboard. The verdict counts use the registry's `sum(A) or 0 * sum(B)` form so
@@ -440,6 +444,9 @@ Six things about it are not re-derivable by reading the modules:
 - **Events match on the involved object's `name`**, which reaches every object named after a role, plus the
   pre-install validation Jobs by a second pattern, `.+-validate-(agent|gateway)`, since those are named after the
   release. That second pattern ignores the role picker.
+- **Overview's alerts are `component=~"alloy|monitoring"`**, and the firing count waits on the Loki ruler as well as
+  the Thanos ruler, because `alloy-gateway-refusing-scrapes` is matched in the gateway's log: a gateway in that state
+  discards its own metrics too.
 - **Ingest reads three vantage points.** The gateway's request counters, the senders' own queues, and the gateway's
   log for refused TLS handshakes. Each sees a failure the others miss, which is why the TLS panel lives there and
   not on Overview.
@@ -472,7 +479,7 @@ These things about it are not re-derivable by reading the modules:
   [style guide's convention](../../../docs/content/reference/development/dashboard/style-guidelines.md#firing-alerts-lead-an-overview-tab).
   The rules are the upstream mixin's, installed by the Thanos subchart as `PrometheusRule/thanos-rules`, and labelled
   with nothing but `severity`, so the panels select `alertname=~"Thanos.*"` and are exempt from the namespace test.
-  DEP-391 retrofits the convention onto `infra-loki` and `infra-alloy`.
+  `infra-loki`, `infra-alloy` and `env-top`'s Summary follow the convention too, through `grafana/alerts.rs`.
 - **`$thanosComponent` only reaches panels that span processes.** A panel about one process names its container, and a
   test holds every metric query to one or the other.
 - **The rulers' `rule_group` label is the generated file's path, a semicolon, then the group**, so every group panel
@@ -482,8 +489,8 @@ These things about it are not re-derivable by reading the modules:
 - **The upstream mixin dashboards were read and not ported.** They run without recording rules, but scope by job
   alone and read five metric names Thanos 0.42 does not publish. The module doc of `infra_thanos/mod.rs` lists them.
 
-At 235 KB rendered, it took the dashboards release to 87% of the Secret ceiling; DEP-392 tracks the room the next
-dashboards need.
+At 235 KB rendered, it took the dashboards release to 87% of the Secret ceiling. The alerts rows on `infra-loki`,
+`infra-alloy` and `env-top` took it from 90% to 92%; DEP-392 tracks the room the next dashboards need.
 
 ## The external-dependency dashboards
 

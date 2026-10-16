@@ -1344,46 +1344,85 @@ When a dashboard's subject has alerting rules, its Overview tab shows what is fi
 A reader who arrived from a notification lands on the alert, and a reader who arrived cold learns that someone's rule already reached a conclusion.
 The rest of the tab is evidence for or against it.
 
-The shape, as `infra-thanos` draws it:
+The shape, which `packages/dashboards/src/grafana/alerts.rs` draws for every dashboard that has it:
 
 1. A count of firing alerts in the verdict row, with health colors.
 2. An **Alerts** row directly below the verdict, above Collection Health: a table of every alert firing or pending now, beside a timeseries of firing alerts over the range.
 
+A dashboard supplies the three registry queries and the table's columns.
+The following table lists the dashboards that draw the alerts, and what each selects them by:
+
+| Dashboard | Selects | Why |
+|---|---|---|
+| `infra-thanos` | `alertname=~"Thanos.*"` | The upstream Thanos mixin's rules carry only `severity` |
+| `infra-loki` | `component="loki"` | The registry's rules carry `component` |
+| `infra-alloy` | `component=~"alloy\|monitoring"` | `monitoring` is collection, and `alloy` is the collectors' own software |
+| `env-top`, on Summary | `namespace=~"$mzNamespaceList"` | Rules about an environment group by its namespace, whoever wrote them |
+
 The rules that keep those panels honest:
 
 - **Select by a label the rules carry, not by alert names written into the dashboard.**
-  The registry's rules carry `component`, so a new rule appears without a dashboard change.
-  Fall back to a name prefix only where the rules carry nothing else; the upstream Thanos mixin's carry only `severity`, so `infra-thanos` selects `alertname=~"Thanos.*"`.
-- **Deduplicate across rulers** with `max by (alertname, job, pod)` before counting.
-  Two ruler replicas evaluate the same rule.
-- **Draw the count's zero from a ruler that is evaluating and delivering**, never from `or vector(0)`.
+  A new rule then appears without a dashboard change.
+  Fall back to a name prefix only where the rules carry nothing else.
+- **Deduplicate across ruler replicas** with `max without (ruler_replica)` before counting.
+  Both Thanos ruler replicas evaluate every rule, and `ruler_replica` is the only label that tells their series apart.
+  `infra-thanos` predates this and uses `max by (alertname, job, pod)`, which suits the mixin's fixed label set.
+- **Draw the count's zero from every ruler that is evaluating and delivering**, never from `or vector(0)`.
   A ruler that has stopped evaluating fires nothing.
   A ruler whose write-back has stalled keeps evaluating, but its `ALERTS` series go stale in Thanos while its own metrics stay fresh.
-  "No alerts" from either is the reading most worth avoiding:
+  "No alerts" from either is the reading most worth avoiding.
+  The registry's log-derived rules are the Loki ruler's, so a count that can draw them also waits on the Loki ruler, where one runs:
 
   ```promql
-  count(max by (alertname, job, pod) (ALERTS{alertname=~"Thanos.*", alertstate="firing"}))
+  count(max without (ruler_replica) (ALERTS{component="loki", alertstate="firing"}))
   or
   0 * (
-    (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{container="ruler"}) < 300)
-    and on ()
     (
-      min(
-        max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{container="ruler"})
-        - on (pod)
-        max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{container="ruler"})
-      ) < 300
+      (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{app="thanos", container="ruler"}) < 300)
+      and on ()
+      (
+        min(
+          max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{app="thanos", container="ruler"})
+          - on (pod)
+          max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{app="thanos", container="ruler"})
+        ) < 300
+      )
+    )
+    unless on ()
+    (
+      (time() - max(loki_prometheus_rule_group_last_evaluation_timestamp_seconds{app="loki", container="ruler"}) >= 300)
+      or on ()
+      (
+        max(
+          max by (pod, tenant) (loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{app="loki", container="ruler"})
+          - on (pod, tenant)
+          max by (pod, tenant) (loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{app="loki", container="ruler"})
+        ) >= 300
+      )
     )
   )
   ```
 
+  The Loki half is an `unless`, so an install with no Loki ruler still reads zero.
+  It takes the worst Loki ruler pod rather than the best.
+  The Loki rulers divide the rule groups between them, so each group has one evaluator.
 - **The table is a table of current facts**, so it is an instant query with `table_format`; see
   [A table of current facts is an instant query](#a-table-of-current-facts-is-an-instant-query).
   Drop `Value`, which is always 1 on an `ALERTS` series.
+- **Keep every label an alert carries.**
+  Each rule groups by its own labels, so the table names the columns that matter first and Grafana appends the rest.
+  Drop the labels that say nothing about the alert: `ruler_replica`, `instance`, `tenant_id`, `cluster`, and `audience`.
+  A rule whose result has no `job` is given the ruler's, `thanos-ruler` or `loki-ruler`, on the way into Thanos, so `label_replace` blanks those.
+- **Override the empty cell with a dash by type, not by name.**
+  Grafana puts the panel's empty-state text into every empty cell, which reads as "no alerts" beside a firing one.
+  Which label columns arrive depends on which alerts are firing, so a `byType` `string` matcher is the only one that covers them.
+- **Link a registry alert's name to its entry under Common Alerts**, which its `runbook_url` points at too.
+  `ALERTS` carries a rule's labels and not its annotations, so the summary and the advice can't be columns.
 - **Know which ruler wrote the series.**
-  `ALERTS` reaches Thanos from the Thanos ruler, through the gateway, so a gateway outage delays it.
-  Check that a log-derived rule's alerts reach Thanos before drawing them; the Loki ruler evaluates those.
-- **Exempt the alert panels from namespace-scoping tests by name**, and assert the exemption in both directions, as `infra-thanos` does.
+  `ALERTS` reaches Thanos from both rulers by remote write, through the gateway, so a gateway outage delays it.
+  The Loki ruler's carry `job="loki-ruler"` unless the rule names a `job` of its own.
+- **Exempt the alert panels from namespace-scoping tests by name**, and assert the exemption in both directions.
+  `infra-thanos`, `infra-loki`, and `infra-alloy` do.
   An alert's labels come from its rule, and a rule's selector may span every namespace.
 
 ## PromQL recipes

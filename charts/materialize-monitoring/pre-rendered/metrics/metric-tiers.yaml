@@ -228,7 +228,10 @@ recommended:
 - loki_objstore_bucket_operations_total
 - loki_process_cri_lines_truncated_total
 - loki_process_dropped_lines_total
+- loki_prometheus_rule_group_last_evaluation_timestamp_seconds
 - loki_query_frontend_queries_in_progress
+- loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds
+- loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds
 - loki_source_api_entries_written
 - loki_source_api_request_duration_seconds_count
 - loki_source_file_files_active_total

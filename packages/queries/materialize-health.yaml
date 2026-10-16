@@ -95,6 +95,147 @@ queries:
       ) * 100
     datadogQuery: |
       avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}} * 100
+  # --- alerts --------------------------------------------------------------
+  # Every alert whose `namespace` is one of the selected environments', whoever
+  # wrote the rule: the Materialize rules, the workload rules, and the platform
+  # rules about the pods there. An alert about every environment at once, such
+  # as `environmentd-not-scraped`, carries no namespace and is not drawn. No
+  # Datadog form: Datadog alerts are monitors, not a series.
+  - id: materialize.health.alerts_firing
+    stability: experimental
+    description:
+      summary: |
+        Alerts about the environment that are firing now.
+      nominal: Zero.
+      unhealthy: |
+        Any. _Alerts_ below names each one, and links to what it means.
+      notes: |
+        Reads zero only while the Thanos ruler has evaluated a rule and written
+        its results back within five minutes, and so has the Loki ruler where
+        one runs. A ruler that has stopped evaluating fires nothing, and one
+        whose write-back has stalled fires alerts that never reach Thanos, so
+        either would read as no alerts. An empty reading means the alert path
+        itself needs checking, on the Thanos Meta Monitoring dashboard's Ruler
+        tab.
+    promQL: |
+      count(
+        max without (ruler_replica) (
+          ALERTS{namespace=~"%%{mzNamespaceList}", alertstate="firing"}
+        )
+      )
+      or
+      0 * (
+        (
+          (
+            time()
+            - max(
+              prometheus_rule_group_last_evaluation_timestamp_seconds{
+                app="thanos",
+                container="ruler"
+              }
+            )
+            < 300
+          )
+          and on ()
+          (
+            min(
+              max by (pod) (
+                prometheus_remote_storage_highest_timestamp_in_seconds{
+                  app="thanos",
+                  container="ruler"
+                }
+              )
+              - on (pod)
+              max by (pod) (
+                prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                  app="thanos",
+                  container="ruler"
+                }
+              )
+            )
+            < 300
+          )
+        )
+        unless on ()
+        (
+          (
+            time()
+            - max(
+              loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+                app="loki",
+                container="ruler"
+              }
+            )
+            >= 300
+          )
+          or on ()
+          (
+            max(
+              max by (pod, tenant) (
+                loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{
+                  app="loki",
+                  container="ruler"
+                }
+              )
+              - on (pod, tenant)
+              max by (pod, tenant) (
+                loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+                  app="loki",
+                  container="ruler"
+                }
+              )
+            )
+            >= 300
+          )
+        )
+      )
+
+  - id: materialize.health.alerts
+    stability: experimental
+    description:
+      summary: |
+        Every alert about the environment that is firing or pending now, with
+        the cluster or pod it is about.
+      nominal: Empty.
+      unhealthy: |
+        Any firing row. A pending row has met its condition and is waiting out
+        its `for` duration; it fires if the condition holds.
+      notes: |
+        `ALERTS` carries a rule's labels and not its annotations, so the
+        summary and the advice are a click away: each alert name links to its
+        entry under Common Alerts. `component` says which part of the
+        environment the rule watches, and `audience` is left out: it says who a
+        notification goes to, not what is wrong.
+
+        Rows are matched by namespace, so where two environments share one, an
+        alert about either shows under both. A rule that groups by environment
+        names it in the `environment` column.
+    instant: true
+    promQL: |
+      max without (ruler_replica, instance, tenant_id, cluster, audience) (
+        label_replace(
+          ALERTS{namespace=~"%%{mzNamespaceList}"},
+          "job", "", "job", "thanos-ruler|loki-ruler"
+        )
+      )
+
+  - id: materialize.health.alert_history
+    stability: experimental
+    description:
+      summary: |
+        Which alerts about the environment were firing over the selected time
+        range.
+      nominal: Empty.
+      notes: |
+        A line is the number of firing instances of that alert. Read it beside
+        the tab that alert is about to see what changed when it started.
+    promQL: |
+      count by (alertname) (
+        max without (ruler_replica) (
+          ALERTS{namespace=~"%%{mzNamespaceList}", alertstate="firing"}
+        )
+      )
+
   - id: materialize.health.environment.availability.percentage
     stability: best-effort
     description:

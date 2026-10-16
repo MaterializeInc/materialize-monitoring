@@ -21,8 +21,8 @@ use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::{palette, threshold};
 
 use super::{not_collected, theme};
+use crate::grafana::alerts::Alerts;
 use crate::grafana::dependency::{value_map, zero_is_healthy};
-use crate::grafana::field_override;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
@@ -31,8 +31,26 @@ const SHADE: &str = theme::OVERVIEW.shade;
 /// Grafana has no unit for samples, so this is its custom-suffix form.
 pub(super) const SAMPLES_PER_SECOND: &str = "suffix:samples/s";
 
+/// The upstream Thanos mixin's alerts, selected by name because its rules carry
+/// nothing but `severity`. The mixin's runbook, not Common Alerts, explains
+/// them, so their names do not link.
+pub(crate) const ALERTS: Alerts = Alerts {
+    queries: "infra.thanos.health",
+    subject: "Thanos",
+    about: "Thanos",
+    columns: &[("severity", "severity"), ("job", "job"), ("pod", "pod")],
+    hidden: &[],
+    silent: "The Ruler tab's Evaluation and Write-back rows say why.",
+    common_alerts: false,
+};
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![verdict(q), alerts(q), collection(q), throughput(q)]
+    vec![
+        verdict(q),
+        ALERTS.row(q, "overview"),
+        collection(q),
+        throughput(q),
+    ]
 }
 
 /// The six numbers worth reading before anything else.
@@ -44,21 +62,12 @@ fn verdict(q: &Queries) -> Row {
         AutoGrid::new(6)
             .column_width(ColumnWidth::Narrow)
             .row_height(RowHeight::Short)
-            .panel("overview-alerts-firing", alerts_firing(q))
+            .panel("overview-alerts-firing", ALERTS.firing(q))
             .panel("overview-components-down", components_down(q))
             .panel("overview-write-errors", write_errors(q))
             .panel("overview-query-errors", query_errors(q))
             .panel("overview-rule-failures", rule_failures(q))
             .panel("overview-compactor", compactor(q)),
-    )
-}
-
-fn alerts(q: &Queries) -> Row {
-    Row::new("Alerts").grid(
-        AutoGrid::new(2)
-            .column_width(ColumnWidth::Wide)
-            .panel("overview-alerts", alert_table(q))
-            .panel("overview-alert-history", alert_history(q)),
     )
 }
 
@@ -78,30 +87,6 @@ fn throughput(q: &Queries) -> Row {
             .panel("overview-samples-ingested", samples_ingested(q))
             .panel("overview-query-rate", query_rate(q)),
     )
-}
-
-/// What the alert panels show when the alert path itself is silent.
-///
-/// The firing count and the table can both be empty for the healthy reason and
-/// for the broken one, so the text names both.
-fn no_alerts() -> NoValue {
-    NoValue::Custom(
-        "No Thanos alert is firing or pending, or none reached Thanos. The Ruler tab's Evaluation and Write-back rows say which."
-            .to_string(),
-    )
-}
-
-fn alerts_firing(q: &Queries) -> dashboardv2::PanelKind {
-    zero_is_healthy("Thanos Alerts Firing")
-        .query(q.get("infra.thanos.health.alerts_firing").legend("alerts"))
-        .thresholds(threshold::errors(1.0, 3.0).build())
-        .unit("short")
-        .decimals(0.0)
-        .no_value(NoValue::Custom(
-            "No ruler has evaluated and written back in five minutes, so no alert can show. Check the Ruler tab."
-                .to_string(),
-        ))
-        .build(0)
 }
 
 fn components_down(q: &Queries) -> dashboardv2::PanelKind {
@@ -175,53 +160,6 @@ fn compactor(q: &Queries) -> dashboardv2::PanelKind {
                 .build(),
         )
         .no_value(NoValue::Custom("Compactor not collected".to_string()))
-        .build(0)
-}
-
-/// Every Thanos alert firing or pending now.
-///
-/// `table_format` and a dropped `Time` and `Value`, for the reason
-/// `infra-loki`'s Scrape Health gives. The value of an `ALERTS` series is
-/// always 1, so it carries nothing the state column does not.
-///
-/// One query, and still sparse: an alert about a whole component, such as
-/// `ThanosCompactHasNotRun`, carries no `pod`. Grafana puts the panel's
-/// empty-state text into every empty cell, so the label columns override it
-/// with a dash.
-pub(super) fn alert_table(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::table("Alerts")
-        .query(q.get("infra.thanos.health.alerts").table_format())
-        .transformations(vec![transform::organize_full(
-            &["Time", "Value"],
-            &["alertname", "alertstate", "severity", "job", "pod"],
-            &[("alertname", "alert"), ("alertstate", "state")],
-        )])
-        .overrides(
-            ["severity", "job", "pod"]
-                .into_iter()
-                .map(|field| {
-                    field_override::by_name(field)
-                        .property("noValue", serde_json::json!("—"))
-                        .build()
-                })
-                .collect(),
-        )
-        .no_value(no_alerts())
-        .build(0)
-}
-
-pub(super) fn alert_history(q: &Queries) -> dashboardv2::PanelKind {
-    Panel::timeseries("Alerts Firing Over Time")
-        .query(
-            q.get("infra.thanos.health.alert_history")
-                .legend("{{alertname}}"),
-        )
-        .unit("short")
-        .decimals(0.0)
-        .min(0.0)
-        .no_value(NoValue::Custom(
-            "No Thanos alert fired in this range".to_string(),
-        ))
         .build(0)
 }
 
@@ -330,7 +268,7 @@ mod tests {
     #[test]
     fn the_tables_of_current_facts_are_instant_and_render_as_one_table() {
         let q = &test_queries();
-        for panel in [alert_table(q), scrape_health(q), restarts(q), versions(q)] {
+        for panel in [scrape_health(q), restarts(q), versions(q)] {
             let json = serde_json::to_string(&panel).expect("serialize");
             assert!(json.contains(r#""instant":true"#), "{json}");
             assert!(json.contains(r#""format":"table""#), "{json}");
@@ -338,39 +276,10 @@ mod tests {
     }
 
     #[test]
-    fn an_alert_without_a_pod_does_not_read_as_no_alerts() {
-        // Seen on a live install: the component-wide alert's empty `pod` cell
-        // read "No Thanos alert is firing or pending" beside a firing alert.
-        let q = &test_queries();
-        let json = serde_json::to_string(&alert_table(q)).expect("serialize");
-        assert!(json.contains(r#""options":"pod""#), "{json}");
-        assert!(json.contains(r#""value":"—""#), "{json}");
-    }
-
-    #[test]
-    fn the_firing_count_does_not_claim_zero_from_a_silent_ruler() {
-        // `or vector(0)` would read zero with the alert path down. The zero
-        // has to come from a ruler that is evaluating.
-        let q = &test_queries();
-        let json = serde_json::to_string(&alerts_firing(q)).expect("serialize");
-        assert!(!json.contains("vector(0)"), "{json}");
-        assert!(
-            json.contains("prometheus_rule_group_last_evaluation_timestamp_seconds"),
-            "{json}"
-        );
-        // Nor from a ruler that evaluates and cannot deliver: its `ALERTS`
-        // would go stale in Thanos while its own metrics stay fresh.
-        assert!(
-            json.contains("prometheus_remote_storage_queue_highest_sent_timestamp_seconds"),
-            "{json}"
-        );
-    }
-
-    #[test]
     fn the_verdict_uses_health_colours() {
         let q = &test_queries();
         for panel in [
-            alerts_firing(q),
+            ALERTS.firing(q),
             components_down(q),
             write_errors(q),
             query_errors(q),

@@ -20,8 +20,9 @@
 //! two readings call for opposite responses. Three consequences run through the
 //! whole dashboard:
 //!
-//! * **The Overview tab leads with scrape health**, before any measurement. A
-//!   Loki component at `up == 0` makes every panel about it empty, and an empty
+//! * **The Overview tab leads with alerts and scrape health**, before any
+//!   measurement. A firing alert is a conclusion already reached. A Loki
+//!   component at `up == 0` makes every panel about it empty, and an empty
 //!   panel is indistinguishable from a healthy quiet one.
 //! * **The canary outranks everything else.** It is the only end-to-end signal:
 //!   it writes a line and reads it back, so it is wrong only when the store
@@ -246,12 +247,17 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_metric_query_is_scoped_to_one_loki() {
-        // Two `materialize-monitoring` releases on one cluster would otherwise
-        // read as a single store, and every count on the dashboard would be the
-        // sum of two unrelated ones.
-        let resource = built();
+    /// Panels whose series no namespace picker can narrow: the alert panels,
+    /// which read `ALERTS` for rules whose selectors span every namespace.
+    const UNSCOPED: &[&str] = &[
+        "overview-alerts-firing",
+        "overview-alerts",
+        "overview-alert-history",
+    ];
+
+    /// Every metrics query's expression, keyed by element name.
+    fn metric_expressions(resource: &Resource) -> Vec<(String, String)> {
+        let mut out = Vec::new();
         for (name, element) in &resource.spec.elements {
             let mzmon_lib::grafana::generated::dashboardv2::Element::PanelKind(panel) = element
             else {
@@ -259,14 +265,47 @@ mod tests {
             };
             for query in &panel.spec.data.spec.queries {
                 if query.spec.query.group == "loki" {
-                    // Log queries carry it too, asserted in `logs.rs` against the
-                    // stream selector rather than against the string.
+                    // Log queries carry the namespace too, asserted in `logs.rs`
+                    // against the stream selector rather than against the string.
                     continue;
                 }
                 let expr = query.spec.query.spec.as_ref().expect("spec")["expr"]
                     .as_str()
                     .expect("expr");
-                assert!(expr.contains("$lokiNamespace"), "{name}: {expr}");
+                out.push((name.clone(), expr.to_string()));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn every_metric_query_is_scoped_to_one_loki() {
+        // Two `materialize-monitoring` releases on one cluster would otherwise
+        // read as a single store, and every count on the dashboard would be the
+        // sum of two unrelated ones.
+        let resource = built();
+        for (name, expr) in metric_expressions(&resource) {
+            if UNSCOPED.contains(&name.as_str()) {
+                continue;
+            }
+            assert!(expr.contains("$lokiNamespace"), "{name}: {expr}");
+        }
+    }
+
+    #[test]
+    fn unscoped_panels_are_exactly_the_declared_ones() {
+        // The exemption above is a list, so it has to stay true in both
+        // directions: each exempt panel exists, and reads only Loki's alerts.
+        let resource = built();
+        let exprs = metric_expressions(&resource);
+        for exempt in UNSCOPED {
+            let found: Vec<_> = exprs.iter().filter(|(n, _)| n == exempt).collect();
+            assert!(!found.is_empty(), "{exempt} is not on the dashboard");
+            for (_, expr) in found {
+                assert!(
+                    expr.contains(r#"ALERTS{component="loki""#),
+                    "{exempt}: {expr}"
+                );
             }
         }
     }
