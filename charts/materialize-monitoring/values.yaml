@@ -5447,7 +5447,7 @@ grafana:
   image:
     registry: docker.io
     repository: grafana/grafana
-    tag: "13.2.3"
+    tag: "13.2.4"
     pullPolicy: IfNotPresent
 
   # -- Number of Grafana replicas.
