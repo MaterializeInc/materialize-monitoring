@@ -5226,7 +5226,10 @@ Selecting it will show the current version.
 
 The high-level summary, and the one to open first.
 Its six tabs — Summary, Kubernetes Workloads, Connections / Activity, Cluster Objects / Replicas, Compute Objects, and Sources and Sinks — are there to catch the more obvious problems and point at what needs a closer look, rather than to answer any one of them in depth.
-It reads metrics only, and scopes to one environment at a time, with further pickers for namespace, cluster, and replica.
+The Summary tab counts the alerts firing about the environment beside its health numbers.
+Below them, it lists every alert firing or pending in the environment's namespace.
+Each alert's name links to its entry under [Common Alerts]({{< relref "../reference/common-alerts.md" >}}).
+It reads metrics only, and scopes to one environment at a time, with further pickers for cluster and replica.
 
 {{< download-dashboards name="env-top" >}}
 
@@ -5372,11 +5375,13 @@ It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpe
 These dashboards watch the monitoring stack rather than anything it collects.
 Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
 Every panel states its own empty-state text for that reason.
+An alert count reads zero only while the rulers that evaluate its alerts are evaluating and writing back, and is empty otherwise.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
 Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
-The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+The Overview tab leads with any alert about Loki firing or pending now, then with scrape health and with the canary.
+The canary writes a line and reads it back, and is the only end-to-end check on the store.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="infra-loki" >}}
@@ -5384,6 +5389,7 @@ It needs both a metrics and a logs datasource.
 ### Alloy Meta Monitoring (`infra-alloy`)
 
 Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
@@ -26081,46 +26087,109 @@ When a dashboard's subject has alerting rules, its Overview tab shows what is fi
 A reader who arrived from a notification lands on the alert, and a reader who arrived cold learns that someone's rule already reached a conclusion.
 The rest of the tab is evidence for or against it.
 
-The shape, as `infra-thanos` draws it:
+The shape, which `packages/dashboards/src/grafana/alerts.rs` draws for every dashboard that has it:
 
 1. A count of firing alerts in the verdict row, with health colors.
 2. An **Alerts** row directly below the verdict, above Collection Health: a table of every alert firing or pending now, beside a timeseries of firing alerts over the range.
 
+A dashboard supplies the three registry queries and the table's columns.
+The following table lists the dashboards that draw the alerts, and what each selects them by:
+
+| Dashboard | Selects | Why |
+|---|---|---|
+| `infra-thanos` | `alertname=~"Thanos.*"` | The upstream Thanos mixin's rules carry only `severity` |
+| `infra-loki` | `component="loki"` | The registry's rules carry `component` |
+| `infra-alloy` | `component=~"alloy\|monitoring"` | `monitoring` is collection, and `alloy` is the collectors' own software |
+| `env-top`, on Summary | `namespace=~"$mzNamespaceList"` | Rules about an environment group by its namespace, whoever wrote them |
+
 The rules that keep those panels honest:
 
 - **Select by a label the rules carry, not by alert names written into the dashboard.**
-  The registry's rules carry `component`, so a new rule appears without a dashboard change.
-  Fall back to a name prefix only where the rules carry nothing else; the upstream Thanos mixin's carry only `severity`, so `infra-thanos` selects `alertname=~"Thanos.*"`.
-- **Deduplicate across rulers** with `max by (alertname, job, pod)` before counting.
-  Two ruler replicas evaluate the same rule.
-- **Draw the count's zero from a ruler that is evaluating and delivering**, never from `or vector(0)`.
+  A new rule then appears without a dashboard change.
+  Fall back to a name prefix only where the rules carry nothing else.
+- **Deduplicate across ruler replicas** with `max without (ruler_replica)` before counting.
+  Both Thanos ruler replicas evaluate every rule, and `ruler_replica` is the only label that tells their series apart.
+  `infra-thanos` predates this and uses `max by (alertname, job, pod)`, which suits the mixin's fixed label set.
+- **Draw the count's zero from every ruler that is evaluating and delivering**, never from `or vector(0)`.
   A ruler that has stopped evaluating fires nothing.
   A ruler whose write-back has stalled keeps evaluating, but its `ALERTS` series go stale in Thanos while its own metrics stay fresh.
-  "No alerts" from either is the reading most worth avoiding:
+  "No alerts" from either is the reading most worth avoiding.
+  The registry's log-derived rules are the Loki ruler's, so a count that can draw them also waits on the Loki ruler, where one runs:
 
   ```promql
-  count(max by (alertname, job, pod) (ALERTS{alertname=~"Thanos.*", alertstate="firing"}))
+  count(max without (ruler_replica) (ALERTS{component="loki", alertstate="firing"}))
   or
   0 * (
-    (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{container="ruler"}) < 300)
-    and on ()
     (
-      min(
-        max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{container="ruler"})
-        - on (pod)
-        max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{container="ruler"})
-      ) < 300
+      (time() - max(prometheus_rule_group_last_evaluation_timestamp_seconds{app="thanos", container="ruler"}) < 300)
+      and on ()
+      (
+        min(
+          max by (pod) (prometheus_remote_storage_highest_timestamp_in_seconds{app="thanos", container="ruler"})
+          - on (pod)
+          max by (pod) (prometheus_remote_storage_queue_highest_sent_timestamp_seconds{app="thanos", container="ruler"})
+        ) < 300
+      )
+    )
+    unless on ()
+    (
+      (
+        max(
+          (time() - max by (rule_group, user) (loki_prometheus_rule_group_last_evaluation_timestamp_seconds{app="loki", container="ruler"} > 0))
+          - on (rule_group, user)
+          max by (rule_group, user) (loki_prometheus_rule_group_interval_seconds{app="loki", container="ruler"})
+        ) >= 300
+      )
+      or on ()
+      (
+        max(
+          max by (pod, tenant) (loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{app="loki", container="ruler"})
+          - on (pod, tenant)
+          max by (pod, tenant) (loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{app="loki", container="ruler"})
+        ) >= 300
+      )
     )
   )
   ```
 
+  The Loki half is an `unless`, so an install with no Loki ruler still reads zero.
+  The two rulers are checked differently, because they divide their work differently:
+
+  - **Thanos ruler:** every replica evaluates every rule group, so one replica evaluating recently is enough, and `max` asks only that.
+    It also evaluates every `PrometheusRule` it imports, customers' included, so a check on each group would let an unrelated group blank the count.
+  - **Loki ruler:** the rulers divide the rule groups between them, so one stalled ruler leaves its groups unevaluated while the others carry on.
+    Each group has to be no more than five minutes overdue, measured from its own interval.
+    The newest timestamp per group comes first,
+    because a restarted ruler's previous series stays in the lookback for a few minutes beside its new one.
+    A group reports 0 between being loaded and its first evaluation, and `> 0` leaves it out.
+    On the reference installs, a plain `min` over the groups blanked the count for 5 to 7 minutes a week, through those last two cases alone.
+
+  `the_firing_count_reads_zero_only_from_rulers_that_deliver` in `alerts.rs` runs each count through `promtool`
+  against healthy, stalled, and restarted rulers.
+- **The count is an instant query.**
+  A stat reduces a range query with `lastNotNull`,
+  so over a range the zero from before a ruler went silent stays on the panel for the rest of the window.
+  The history panel is the range view.
 - **The table is a table of current facts**, so it is an instant query with `table_format`; see
   [A table of current facts is an instant query](#a-table-of-current-facts-is-an-instant-query).
   Drop `Value`, which is always 1 on an `ALERTS` series.
+- **Keep every label an alert carries.**
+  Each rule groups by its own labels, so the table names the columns that matter first and Grafana appends the rest.
+  Drop the labels that are the same on every alert a rule raises: `ruler_replica`, `tenant_id`, `cluster`, and `audience`.
+  A rule whose result has no `job` or `instance` is given the ruler's, `thanos-ruler` or `loki-ruler`, on the way into Thanos,
+  so `label_replace` blanks those two values.
+  Keep the labels themselves.
+  `environmentd-cpu-throttled` keeps each node's `instance`, and dropping it would merge two throttled containers into one row.
+- **Override the empty cell with a dash by type, not by name.**
+  Grafana puts the panel's empty-state text into every empty cell, which reads as "no alerts" beside a firing one.
+  Which label columns arrive depends on which alerts are firing, so a `byType` `string` matcher is the only one that covers them.
+- **Link a registry alert's name to its entry under Common Alerts**, which its `runbook_url` points at too.
+  `ALERTS` carries a rule's labels and not its annotations, so the summary and the advice can't be columns.
 - **Know which ruler wrote the series.**
-  `ALERTS` reaches Thanos from the Thanos ruler, through the gateway, so a gateway outage delays it.
-  Check that a log-derived rule's alerts reach Thanos before drawing them; the Loki ruler evaluates those.
-- **Exempt the alert panels from namespace-scoping tests by name**, and assert the exemption in both directions, as `infra-thanos` does.
+  `ALERTS` reaches Thanos from both rulers by remote write, through the gateway, so a gateway outage delays it.
+  The Loki ruler's carry `job="loki-ruler"` unless the rule names a `job` of its own.
+- **Exempt the alert panels from namespace-scoping tests by name**, and assert the exemption in both directions.
+  `infra-thanos`, `infra-loki`, and `infra-alloy` do.
   An alert's labels come from its rule, and a rule's selector may span every namespace.
 
 ## PromQL recipes
@@ -26522,9 +26591,9 @@ The three external-dependency dashboards — `env-persist` (122 KB), `env-consen
 (122 KB) — took it to 683,928 bytes, 65%, measured the same way.
 `infra-autoscaling` (153 KB) and `infra-karpenter` (137 KB) took it from 691,288 to 794,244 bytes, 76%.
 By the time `infra-thanos` (235 KB) landed, other changes had taken the release to 840,860 bytes, and `infra-thanos` took it to 914,352, 87%, measured the same way.
-That leaves about 134 KB of headroom, which is less than two more dashboards of that size need.
-Other changes had since taken the release to 943,628 bytes, 90%.
-Filling `infra-net`'s Cloud Networking tab took `infra-net` from 143 KB to 226 KB and the release to 966,076 bytes, 92%, measured the same way.
+Other changes then took it to 943,776, and the alerts rows on `infra-loki`, `infra-alloy`, and `env-top` took it to 966,728, 92%.
+Filling `infra-net`'s Cloud Networking tab took `infra-net` from 143 KB to 230 KB and the release to 990,664 bytes, 94%, measured the same way.
+That leaves about 58 KB of headroom, which is less than one more dashboard the size of `infra-thanos` needs.
 For the options, see [the issue tracking the dashboards release size](https://linear.app/materializeinc/issue/DEP-392).
 `selected` is what an operator narrows to hold one back.
 
