@@ -148,8 +148,8 @@ pub fn build(sql_metric_prefix: &str, registry: &QueryRegistry) -> dashboard::Re
         .description(
             "How traffic moves through the cluster Materialize runs on, and what stops it.\n\n\
              Pod and Service networking, the CNI underneath — discovered rather than \
-             configured — the nodes' own interfaces, and the NetworkPolicy objects that \
-             decide what is allowed.",
+             configured — the nodes' own interfaces, the cloud load balancers and NAT \
+             gateways around them, and the NetworkPolicy objects that decide what is allowed.",
         )
         .tags([tags::INFRA, tags::MZMON, tags::content::NETWORK])
         .folder(Folder::Infra)
@@ -221,8 +221,8 @@ mod tests {
         out
     }
 
-    /// The title and variable-condition of every conditionally rendered row.
-    fn conditioned(resource: &Resource) -> Vec<(String, String, String)> {
+    /// The title and condition of every row rendered on `variable`.
+    fn conditioned(resource: &Resource, variable: &str) -> Vec<(String, String, String)> {
         rows(resource)
             .iter()
             .filter_map(|row| {
@@ -232,7 +232,9 @@ mod tests {
                     .pointer("/conditionalRendering/spec/items/0")?
                     .get("spec")?;
                 // Skips a time-range condition, which carries no variable.
-                item.get("variable")?;
+                if item.get("variable")?.as_str()? != variable {
+                    return None;
+                }
                 Some((
                     title,
                     item.get("operator")?.as_str()?.to_string(),
@@ -281,7 +283,7 @@ mod tests {
         // must carry a `matches` on the discovery variable, or it renders on a
         // cluster running something else and shows nothing but empty panels.
         let resource = built();
-        let conditions = conditioned(&resource);
+        let conditions = conditioned(&resource, variable::extra::NETWORK_COMPONENT_LIST);
         let vendor_rows: Vec<&(String, String, String)> = conditions
             .iter()
             .filter(|(_, op, _)| op == "matches")
@@ -305,14 +307,15 @@ mod tests {
         // has to name every vendor that has rows -- otherwise it renders
         // *beside* a vendor's panels and contradicts them.
         let resource = built();
-        let fallbacks: Vec<&(String, String, String)> = conditioned(&resource)
-            .iter()
-            .filter(|(_, op, _)| op == "notMatches")
-            .cloned()
-            .collect::<Vec<_>>()
-            .leak()
-            .iter()
-            .collect();
+        let fallbacks: Vec<&(String, String, String)> =
+            conditioned(&resource, variable::extra::NETWORK_COMPONENT_LIST)
+                .iter()
+                .filter(|(_, op, _)| op == "notMatches")
+                .cloned()
+                .collect::<Vec<_>>()
+                .leak()
+                .iter()
+                .collect();
         assert_eq!(fallbacks.len(), 1, "{fallbacks:?}");
         let (_, _, pattern) = &fallbacks[0];
         for vendor in [cni::AWS, cni::CILIUM] {
@@ -320,6 +323,143 @@ mod tests {
                 pattern.contains(vendor),
                 "the fallback does not cover {vendor}: {pattern}"
             );
+        }
+    }
+
+    #[test]
+    fn the_cloud_rows_are_rendered_on_their_pull() {
+        // A provider row without a condition renders on every cluster and
+        // shows nothing but empty panels on the ones that do not pull it.
+        let resource = built();
+        let conditions = conditioned(&resource, variable::extra::CLOUD_NETWORK_PULL_LIST);
+        let pulls = [
+            cloud::AWS_LB,
+            cloud::GCP_LB,
+            cloud::AZURE_LB,
+            cloud::AWS_NAT,
+            cloud::GCP_NAT,
+            cloud::AZURE_NAT,
+        ];
+        let when: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "matches")
+            .collect();
+        assert_eq!(when.len(), pulls.len(), "{conditions:?}");
+        for (title, _, value) in &when {
+            assert!(
+                pulls.contains(&value.as_str()),
+                "{title} renders on {value}"
+            );
+        }
+        // One fallback for load balancers and one for NAT gateways, each
+        // negating every pull of its half and none of the other's.
+        let fallbacks: Vec<_> = conditions
+            .iter()
+            .filter(|(_, op, _)| op == "notMatches")
+            .map(|(_, _, pattern)| pattern.as_str())
+            .collect();
+        assert_eq!(fallbacks.len(), 2, "{conditions:?}");
+        let lb = [cloud::AWS_LB, cloud::GCP_LB, cloud::AZURE_LB];
+        let nat = [cloud::AWS_NAT, cloud::GCP_NAT, cloud::AZURE_NAT];
+        for (covers, excludes) in [(lb, nat), (nat, lb)] {
+            let pattern = fallbacks
+                .iter()
+                .find(|p| p.contains(covers[0]))
+                .unwrap_or_else(|| panic!("no fallback covers {}", covers[0]));
+            for pull in covers {
+                assert!(pattern.contains(pull), "{pattern} misses {pull}");
+            }
+            for pull in excludes {
+                assert!(!pattern.contains(pull), "{pattern} hides on {pull}");
+            }
+        }
+    }
+
+    /// Every PromQL expression on the dashboard.
+    fn expressions(resource: &Resource) -> Vec<String> {
+        let json = serde_json::to_value(&resource.spec.elements).expect("serialize");
+        let mut out = Vec::new();
+        for element in json.as_object().expect("elements").values() {
+            for query in element["spec"]["data"]["spec"]["queries"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                if let Some(expr) = query["spec"]["query"]["spec"]["expr"].as_str() {
+                    out.push(expr.to_string());
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn no_provider_aggregation_merges_two_resources() {
+        // Each family's resource name is unique only within something wider:
+        // an Azure frontend address within its cluster, an Azure NAT gateway
+        // name within its resource group, a forwarding rule within its region,
+        // and a Cloud NAT name within its router. An aggregation that drops the
+        // wider label adds two resources together, and a frontend with no
+        // healthy backend can read healthy.
+        let keys = [
+            ("azure_microsoft_network_loadbalancers_", "resourceGroup"),
+            ("azure_microsoft_network_natgateways_", "resourceGroup"),
+            ("_l_3_external_", "region"),
+            ("stackdriver_nat_gateway_", "router_id"),
+        ];
+        let exprs = expressions(&built());
+        for (family, key) in keys {
+            let reading: Vec<&String> = exprs.iter().filter(|e| e.contains(family)).collect();
+            assert!(!reading.is_empty(), "no panel reads {family}");
+            for expr in reading {
+                for clause in expr.split(" by (").skip(1) {
+                    let labels = clause.split(')').next().unwrap_or_default();
+                    assert!(
+                        labels.contains(key),
+                        "an aggregation over {family} drops {key}: by ({labels})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn internal_load_balancers_are_read_for_both_protocols() {
+        // The pull collects internal rules of either protocol, so a panel that
+        // reads one would show a listed UDP rule as carrying nothing.
+        for expr in expressions(&built()) {
+            assert_eq!(
+                expr.contains("internal_tcp_lb_rule"),
+                expr.contains("internal_udp_lb_rule"),
+                "reads one internal protocol only: {expr}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_provider_counter_is_rated_over_the_dashboard_interval() {
+        // `$__rate_interval` is sized from the datasource's scrape interval,
+        // which is far shorter than a five-minute pull: a `rate()` over it
+        // sees one sample and draws nothing.
+        let resource = built();
+        let json = serde_json::to_string(&resource.spec.elements).expect("serialize");
+        for family in [
+            "stackdriver_",
+            "aws_networkelb_",
+            "aws_natgateway_",
+            "azure_",
+        ] {
+            let mut rest = json.as_str();
+            while let Some(pos) = rest.find(family) {
+                let tail = &rest[pos..];
+                let end = tail.find(')').unwrap_or(tail.len());
+                assert!(
+                    !tail[..end].contains("$__rate_interval"),
+                    "a provider family is rated over the dashboard interval: {}",
+                    &tail[..end]
+                );
+                rest = &rest[pos + 1..];
+            }
         }
     }
 

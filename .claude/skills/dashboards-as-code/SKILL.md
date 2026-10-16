@@ -367,7 +367,7 @@ The third of the `infra-*` family, and the first dashboard here whose layout is 
 | 5 | Cloud Networking | `cloud.rs` |
 | 6 | Security | `security.rs` |
 
-Three things about it are not re-derivable by reading the modules:
+Four things about it are not re-derivable by reading the modules:
 
 - **The CNI and Security vendor rows render on a discovered variable.** The mechanism, and the rules for using it
   again, are in the style guide under
@@ -376,8 +376,10 @@ Three things about it are not re-derivable by reading the modules:
   `node-debug.yaml` unchanged across the fleet. Nothing here may scope a `node` label with it; a test asserts that.
 - **Host-network pods are excluded from every cAdvisor rollup**, via `%%{excludeHostNetworkPods}`. Left in, a
   cluster-wide sum over-counts by an order of magnitude — see the header of `packages/queries/infra-networking.yaml`.
-
-Cloud Networking is half-stubbed on purpose; the two text rows name the provider metrics that would fill them.
+- **Cloud Networking renders per pull, not per provider.** The gateway's load balancer and NAT pulls stamp
+  `provider_pull` on every series, `$cloudNetworkPullList` reads it off `up`, and each provider row matches its own
+  pull's token, with one fallback for load balancers and one for NAT. `infra-cloud`'s `$cloudProviderList` would
+  render the rows on any install pulling its database from the same provider.
 
 ## `infra-loki` tabs
 

@@ -246,15 +246,15 @@ const SOURCES: &[(&str, MetricSource)] = &[
     // broad: the AWS Load Balancer Controller publishes `aws_api_*` from inside
     // the cluster.
     (
-        "aws_(rds|s3|ec2|autoscaling|usage)_.+",
+        "aws_(rds|s3|ec2|autoscaling|usage|networkelb|natgateway)_.+",
         MetricSource::Capability(Capability::Cloudwatch),
     ),
     (
-        "stackdriver_(cloudsql_database|gcs_bucket|compute_googleapis_com_location)_.+",
+        "stackdriver_(cloudsql_database|gcs_bucket|compute_googleapis_com_location|loadbalancing_googleapis_com_external_network_load_balancer_rule|internal_(tcp|udp)_lb_rule|nat_gateway)_.+",
         MetricSource::Capability(Capability::CloudMonitoring),
     ),
     (
-        "azure_microsoft_(dbforpostgresql_flexibleservers|storage_storageaccounts_blobservices|containerservice_managedclusters|compute_virtualmachinescalesets)_.+",
+        "azure_microsoft_(dbforpostgresql_flexibleservers|storage_storageaccounts_blobservices|containerservice_managedclusters|compute_virtualmachinescalesets|network_loadbalancers|network_natgateways)_.+",
         MetricSource::Capability(Capability::AzureMonitor),
     ),
     // postgres_exporter, whichever database it watches.
@@ -332,6 +332,15 @@ mod tests {
             ("container_memory_working_set_bytes", C(Cadvisor)),
             ("kube_pod_status_phase", C(KubeStateMetrics)),
             ("aws_rds_free_storage_space_minimum", C(Cloudwatch)),
+            ("aws_natgateway_error_port_allocation_sum", C(Cloudwatch)),
+            (
+                "stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed",
+                C(CloudMonitoring),
+            ),
+            (
+                "azure_microsoft_network_loadbalancers_vipavailability_average_count",
+                C(AzureMonitor),
+            ),
             (
                 "stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up",
                 C(CloudMonitoring),

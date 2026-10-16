@@ -9,8 +9,8 @@ named in `pipeline.metrics.provider.*`: the shape is the pipeline's, and the
 count is the chart's.
 
 A `declare` body cannot repeat a block, so a component takes one resource
-(CloudWatch RDS and S3) or one service's worth of resources (EKS, GCP and
-Azure, whose filters name them all). Each instance is a flat block of arguments, and `alloy validate` rejects
+(CloudWatch RDS, S3, load balancers, target groups and NAT gateways) or one
+service's worth of resources (EKS, GCP and Azure, whose filters name them all). Each instance is a flat block of arguments, and `alloy validate` rejects
 an argument the component does not declare, so these instances are checked
 against the module's contract at install by the pre-validate job, and at build
 by `gateway-provider-stub.yaml`.
@@ -33,6 +33,19 @@ Usage:
 */}}
 {{- define "mzmon.alloyGateway.provider.label" }}
   {{- printf "%s_%s" ( index . 0 ) ( regexReplaceAll "[^A-Za-z0-9_]" ( index . 1 ) "_" ) }}
+{{- end }}
+
+{{- /*
+A CloudWatch Elastic Load Balancing dimension from an ARN or from the dimension
+itself: the part of the ARN after the account, for a target group, or after
+`loadbalancer/`, for a load balancer. Anything else is returned unchanged, for
+the validator to refuse.
+
+Usage:
+  {{- include "mzmon.alloyGateway.provider.elbDimension" $arn }}
+*/}}
+{{- define "mzmon.alloyGateway.provider.elbDimension" }}
+  {{- regexReplaceAll "^arn:[^:]+:elasticloadbalancing:[^:]*:[^:]*:(loadbalancer/)?" ( . | toString ) "" }}
 {{- end }}
 
 {{- /*
@@ -72,6 +85,42 @@ provider_cloudwatch_s3 {{ include "mzmon.alloyGateway.provider.label" ( list "s3
 
 provider_cloudwatch_eks "provider" {
     clusters        = {{ $clusters | toJson }}
+    region          = {{ $cw.region | default "" | quote }}
+    scrape_interval = {{ $cw.scrapeInterval | quote }}
+    scrape_timeout  = {{ $cw.scrapeTimeout | quote }}
+    forward_to      = {{ $forwardTo }}
+}
+    {{- end }}
+    {{- /* An entry that is not a map is left to the validator to explain. */}}
+    {{- range $lb := dig "nlb" "loadBalancers" list $cw }}
+      {{- if kindIs "map" $lb }}
+      {{- $lbDim := include "mzmon.alloyGateway.provider.elbDimension" ( $lb.arn | default "" ) }}
+
+provider_cloudwatch_nlb {{ include "mzmon.alloyGateway.provider.label" ( list "nlb" $lbDim ) | quote }} {
+    load_balancer   = {{ $lbDim | quote }}
+    region          = {{ $cw.region | default "" | quote }}
+    scrape_interval = {{ $cw.scrapeInterval | quote }}
+    scrape_timeout  = {{ $cw.scrapeTimeout | quote }}
+    forward_to      = {{ $forwardTo }}
+}
+      {{- range $tg := $lb.targetGroups | default list }}
+        {{- $tgDim := include "mzmon.alloyGateway.provider.elbDimension" $tg }}
+
+provider_cloudwatch_nlb_target_group {{ include "mzmon.alloyGateway.provider.label" ( list "nlb" $tgDim ) | quote }} {
+    load_balancer   = {{ $lbDim | quote }}
+    target_group    = {{ $tgDim | quote }}
+    region          = {{ $cw.region | default "" | quote }}
+    scrape_interval = {{ $cw.scrapeInterval | quote }}
+    scrape_timeout  = {{ $cw.scrapeTimeout | quote }}
+    forward_to      = {{ $forwardTo }}
+}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- range $id := dig "natGateway" "ids" list $cw }}
+
+provider_cloudwatch_nat_gateway {{ include "mzmon.alloyGateway.provider.label" ( list "nat" $id ) | quote }} {
+    nat_gateway_id  = {{ $id | quote }}
     region          = {{ $cw.region | default "" | quote }}
     scrape_interval = {{ $cw.scrapeInterval | quote }}
     scrape_timeout  = {{ $cw.scrapeTimeout | quote }}
@@ -124,6 +173,30 @@ provider_gcp_compute_quota "provider" {
     forward_to       = {{ $forwardTo }}
 }
     {{- end }}
+    {{- $rules := dig "loadBalancing" "forwardingRules" list $gcp }}
+    {{- if $rules }}
+
+provider_gcp_load_balancing "provider" {
+    project_id       = {{ $project | quote }}
+    forwarding_rules = {{ $rules | toJson }}
+    request_interval = {{ $gcp.requestInterval | quote }}
+    scrape_interval  = {{ $gcp.scrapeInterval | quote }}
+    scrape_timeout   = {{ $gcp.scrapeTimeout | quote }}
+    forward_to       = {{ $forwardTo }}
+}
+    {{- end }}
+    {{- $nats := dig "cloudNat" "gateways" list $gcp }}
+    {{- if $nats }}
+
+provider_gcp_cloud_nat "provider" {
+    project_id       = {{ $project | quote }}
+    gateways         = {{ $nats | toJson }}
+    request_interval = {{ $gcp.requestInterval | quote }}
+    scrape_interval  = {{ $gcp.scrapeInterval | quote }}
+    scrape_timeout   = {{ $gcp.scrapeTimeout | quote }}
+    forward_to       = {{ $forwardTo }}
+}
+    {{- end }}
   {{- end }}
 
   {{- $az := $provider.azure | default dict }}
@@ -165,6 +238,30 @@ provider_azure_aks "provider" {
     forward_to        = {{ $forwardTo }}
 }
     {{- end }}
+    {{- $lbClusters := dig "loadBalancer" "clusters" list $az }}
+    {{- if $lbClusters }}
+
+provider_azure_load_balancer "provider" {
+    subscription_id   = {{ $subscription | quote }}
+    clusters          = {{ $lbClusters | toJson }}
+    cloud_environment = {{ $az.cloudEnvironment | quote }}
+    scrape_interval   = {{ $az.scrapeInterval | quote }}
+    scrape_timeout    = {{ $az.scrapeTimeout | quote }}
+    forward_to        = {{ $forwardTo }}
+}
+    {{- end }}
+    {{- $natNames := dig "natGateway" "names" list $az }}
+    {{- if $natNames }}
+
+provider_azure_nat_gateway "provider" {
+    subscription_id   = {{ $subscription | quote }}
+    gateways          = {{ $natNames | toJson }}
+    cloud_environment = {{ $az.cloudEnvironment | quote }}
+    scrape_interval   = {{ $az.scrapeInterval | quote }}
+    scrape_timeout    = {{ $az.scrapeTimeout | quote }}
+    forward_to        = {{ $forwardTo }}
+}
+    {{- end }}
   {{- end }}
 {{- end }}
 
@@ -192,9 +289,9 @@ Usage:
 
   {{- /* Which families each provider produces, by its Prometheus name prefix. */}}
   {{- $families := dict
-        "cloudwatch" ( list "aws_rds_.*" "aws_s3_.*" "aws_ec2_.*" "aws_autoscaling_.*" "aws_usage_.*" )
-        "gcp" ( list "stackdriver_cloudsql_database_.*" "stackdriver_gcs_bucket_.*" "stackdriver_compute_googleapis_com_location_.*" )
-        "azure" ( list "azure_microsoft_dbforpostgresql_flexibleservers_.*" "azure_microsoft_storage_storageaccounts_blobservices_.*" "azure_microsoft_containerservice_managedclusters_.*" "azure_microsoft_compute_virtualmachinescalesets_.*" ) }}
+        "cloudwatch" ( list "aws_rds_.*" "aws_s3_.*" "aws_ec2_.*" "aws_autoscaling_.*" "aws_usage_.*" "aws_networkelb_.*" "aws_natgateway_.*" )
+        "gcp" ( list "stackdriver_cloudsql_database_.*" "stackdriver_gcs_bucket_.*" "stackdriver_compute_googleapis_com_location_.*" "stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_.*" "stackdriver_internal_(tcp|udp)_lb_rule_.*" "stackdriver_nat_gateway_.*" )
+        "azure" ( list "azure_microsoft_dbforpostgresql_flexibleservers_.*" "azure_microsoft_storage_storageaccounts_blobservices_.*" "azure_microsoft_containerservice_managedclusters_.*" "azure_microsoft_compute_virtualmachinescalesets_.*" "azure_microsoft_network_loadbalancers_.*" "azure_microsoft_network_natgateways_.*" ) }}
 
   {{- if has $floor $levels }}
     {{- $floorRank := 0 }}
@@ -302,8 +399,54 @@ Usage:
     {{- $instances := dig "rds" "instances" list $cw }}
     {{- $buckets := dig "s3" "buckets" list $cw }}
     {{- $clusters := dig "eks" "clusters" list $cw }}
-    {{- if and ( not $instances ) ( not $buckets ) ( not $clusters ) }}
-      {{- $errors = append $errors "pipeline.metrics.provider.cloudwatch.enabled is true but lists no resources. Set rds.instances, s3.buckets or eks.clusters; resources are named, never discovered." }}
+    {{- $loadBalancers := dig "nlb" "loadBalancers" list $cw }}
+    {{- $natIds := dig "natGateway" "ids" list $cw }}
+    {{- if and ( not $instances ) ( not $buckets ) ( not $clusters ) ( not $loadBalancers ) ( not $natIds ) }}
+      {{- $errors = append $errors "pipeline.metrics.provider.cloudwatch.enabled is true but lists no resources. Set rds.instances, s3.buckets, eks.clusters, nlb.loadBalancers or natGateway.ids; resources are named, never discovered." }}
+    {{- end }}
+    {{- /* A load balancer and its target groups become CloudWatch dimensions,
+           which must match exactly or the pull returns nothing. ARNs also name
+           a region, and CloudWatch is regional, so one in another region would
+           pull nothing as well. */}}
+    {{- $elbLabels := list }}
+    {{- range $lb := $loadBalancers }}
+      {{- if not ( kindIs "map" $lb ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.nlb.loadBalancers entry %v is not a map. Give each load balancer as `arn`, with its `targetGroups` beside it." $lb ) }}
+      {{- else }}
+        {{- $arn := $lb.arn | default "" | toString }}
+        {{- $lbDim := include "mzmon.alloyGateway.provider.elbDimension" $arn }}
+        {{- if not ( regexMatch "^net/[A-Za-z0-9-]{1,32}/[0-9a-f]{16}$" $lbDim ) }}
+          {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.nlb.loadBalancers entry arn %q is not a Network Load Balancer. Give its ARN, or the end of it, net/<name>/<id>; Application Load Balancers are not pulled." $arn ) }}
+        {{- end }}
+        {{- $elbLabels = append $elbLabels ( list $arn ( include "mzmon.alloyGateway.provider.label" ( list "nlb" $lbDim ) ) ) }}
+        {{- range $tg := $lb.targetGroups | default list }}
+          {{- $tgDim := include "mzmon.alloyGateway.provider.elbDimension" ( $tg | toString ) }}
+          {{- if not ( regexMatch "^targetgroup/[A-Za-z0-9-]{1,32}/[0-9a-f]{16}$" $tgDim ) }}
+            {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.nlb.loadBalancers target group %q is not a target group. Give its ARN, or the end of it, targetgroup/<name>/<id>." ( $tg | toString ) ) }}
+          {{- end }}
+          {{- $elbLabels = append $elbLabels ( list ( $tg | toString ) ( include "mzmon.alloyGateway.provider.label" ( list "nlb" $tgDim ) ) ) }}
+        {{- end }}
+        {{- range $a := prepend ( $lb.targetGroups | default list ) $arn }}
+          {{- $parts := splitList ":" ( $a | toString ) }}
+          {{- if and ( hasPrefix "arn:" ( $a | toString ) ) ( ge ( len $parts ) 4 ) $cw.region ( ne ( index $parts 3 ) ( $cw.region | toString ) ) }}
+            {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.nlb.loadBalancers names %q, which is in %s, but region is %s. CloudWatch is regional, so the pull would return nothing." ( $a | toString ) ( index $parts 3 ) ( $cw.region | toString ) ) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- $seenElb := dict }}
+    {{- range $pair := $elbLabels }}
+      {{- if hasKey $seenElb ( index $pair 1 ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.nlb.loadBalancers lists %q twice. List each load balancer and target group once." ( index $pair 0 ) ) }}
+      {{- end }}
+      {{- $_ := set $seenElb ( index $pair 1 ) true }}
+    {{- end }}
+    {{- range $natIds }}
+      {{- if not ( kindIs "string" . ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.natGateway.ids entry %v is a %s, not a string. Quote it." . ( kindOf . ) ) }}
+      {{- else if not ( regexMatch "^nat-[0-9a-f]{8,17}$" . ) }}
+        {{- $errors = append $errors ( printf "pipeline.metrics.provider.cloudwatch.natGateway.ids entry %q is not a NAT gateway ID. List the ID, nat-<hex>, not its name or ARN." . ) }}
+      {{- end }}
     {{- end }}
     {{- /* The names are joined into an anchored regex for the tag filters, so
            a character outside EKS's own naming rule would change what it
@@ -317,7 +460,7 @@ Usage:
     {{- end }}
     {{- /* Each resource becomes a component, and two components cannot share a
            label: the gateway would refuse its whole config at load. */}}
-    {{- range $kind := list ( list "rds" "rds.instances" $instances ) ( list "s3" "s3.buckets" $buckets ) }}
+    {{- range $kind := list ( list "rds" "rds.instances" $instances ) ( list "s3" "s3.buckets" $buckets ) ( list "nat" "natGateway.ids" $natIds ) }}
       {{- $seen := dict }}
       {{- range $name := index $kind 2 }}
         {{- $label := include "mzmon.alloyGateway.provider.label" ( list ( index $kind 0 ) $name ) }}
@@ -339,8 +482,20 @@ Usage:
     {{- end }}
     {{- $instances := dig "cloudSql" "instances" list $gcp }}
     {{- $regions := dig "compute" "regions" list $gcp }}
-    {{- if and ( not $instances ) ( not ( dig "gcs" "buckets" list $gcp ) ) ( not $regions ) }}
-      {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but lists no resources. Set cloudSql.instances, gcs.buckets or compute.regions; resources are named, never discovered." }}
+    {{- $rules := dig "loadBalancing" "forwardingRules" list $gcp }}
+    {{- $nats := dig "cloudNat" "gateways" list $gcp }}
+    {{- if and ( not $instances ) ( not ( dig "gcs" "buckets" list $gcp ) ) ( not $regions ) ( not $rules ) ( not $nats ) }}
+      {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but lists no resources. Set cloudSql.instances, gcs.buckets, compute.regions, loadBalancing.forwardingRules or cloudNat.gateways; resources are named, never discovered." }}
+    {{- end }}
+    {{- /* Both go into a Cloud Monitoring `one_of` between double quotes, and
+           a name the filter does not match is a pull that silently returns
+           nothing. Both are Compute Engine resource names. */}}
+    {{- range $kind := list ( list "loadBalancing.forwardingRules" "forwarding rule" $rules ) ( list "cloudNat.gateways" "Cloud NAT gateway" $nats ) }}
+      {{- range index $kind 2 }}
+        {{- if not ( regexMatch "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$" ( . | toString ) ) }}
+          {{- $errors = append $errors ( printf "pipeline.metrics.provider.gcp.%s entry %q is not a %s name. List the name alone — lowercase letters, digits and hyphens — not its URL or IP address." ( index $kind 0 ) ( . | toString ) ( index $kind 1 ) ) }}
+        {{- end }}
+      {{- end }}
     {{- end }}
     {{- /* A region goes into a Cloud Monitoring regex that also matches its
            zones, so a zone would match nothing and silently pull nothing. */}}
@@ -387,8 +542,10 @@ Usage:
     {{- $servers := dig "postgres" "servers" list $az }}
     {{- $accounts := dig "blob" "storageAccounts" list $az }}
     {{- $clusters := dig "aks" "clusters" list $az }}
-    {{- if and ( not $servers ) ( not $accounts ) ( not $clusters ) }}
-      {{- $errors = append $errors ( printf "%s.enabled is true but lists no resources. Set postgres.servers, blob.storageAccounts or aks.clusters; resources are named, never discovered." $path ) }}
+    {{- $lbClusters := dig "loadBalancer" "clusters" list $az }}
+    {{- $natNames := dig "natGateway" "names" list $az }}
+    {{- if and ( not $servers ) ( not $accounts ) ( not $clusters ) ( not $lbClusters ) ( not $natNames ) }}
+      {{- $errors = append $errors ( printf "%s.enabled is true but lists no resources. Set postgres.servers, blob.storageAccounts, aks.clusters, loadBalancer.clusters or natGateway.names; resources are named, never discovered." $path ) }}
     {{- end }}
     {{- /* The names go into a Kusto filter between single quotes, and a name the
            filter does not match is a pull that silently returns nothing. Both
@@ -413,11 +570,20 @@ Usage:
         {{- $errors = append $errors ( printf "%s.blob.storageAccounts entry %q is not a storage account name. List the name alone — lowercase letters and digits — not its endpoint or resource ID." $path . ) }}
       {{- end }}
     {{- end }}
-    {{- range $clusters }}
+    {{- range $kind := list ( list "aks.clusters" $clusters ) ( list "loadBalancer.clusters" $lbClusters ) }}
+      {{- range index $kind 1 }}
+        {{- if not ( kindIs "string" . ) }}
+          {{- $errors = append $errors ( printf "%s.%s entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path ( index $kind 0 ) . ( kindOf . ) ) }}
+        {{- else if not ( regexMatch "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$" . ) }}
+          {{- $errors = append $errors ( printf "%s.%s entry %q is not an AKS cluster name. List the name alone — letters, digits, hyphens and underscores — not its resource ID." $path ( index $kind 0 ) . ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- range $natNames }}
       {{- if not ( kindIs "string" . ) }}
-        {{- $errors = append $errors ( printf "%s.aks.clusters entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path . ( kindOf . ) ) }}
-      {{- else if not ( regexMatch "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$" . ) }}
-        {{- $errors = append $errors ( printf "%s.aks.clusters entry %q is not an AKS cluster name. List the name alone — letters, digits, hyphens and underscores — not its resource ID." $path . ) }}
+        {{- $errors = append $errors ( printf "%s.natGateway.names entry %v is a %s, not a string. Quote it: YAML does not keep a numeric name as written." $path . ( kindOf . ) ) }}
+      {{- else if not ( regexMatch "^[A-Za-z0-9]([A-Za-z0-9._-]{0,78}[A-Za-z0-9_])?$" . ) }}
+        {{- $errors = append $errors ( printf "%s.natGateway.names entry %q is not a NAT gateway name. List the name alone, not its resource ID or public IP." $path . ) }}
       {{- end }}
     {{- end }}
     {{- /* Like CloudWatch, and unlike GCP, the credential is resolved on the first

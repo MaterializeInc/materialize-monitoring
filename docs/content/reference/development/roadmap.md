@@ -307,7 +307,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-384] `infra-net`'s Cloud Networking rows, from the provider pull | ⬜ |
+| [DEP-384] `infra-net`'s Cloud Networking rows, from the provider pull. The load balancer and NAT gateway pulls and their rows are in the chart; the per-cloud wrappers' read grants remain | 🔨 |
 | [DEP-115] A Datadog dashboard set | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |

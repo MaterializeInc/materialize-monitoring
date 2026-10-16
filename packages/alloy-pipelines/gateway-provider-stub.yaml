@@ -49,6 +49,37 @@ blocks:
         scrape_timeout: 2m
 
   - custom:
+      component: provider_cloudwatch_nlb
+      label: nlb_example_nlb
+      attributes:
+        load_balancer: net/example-nlb/0123456789abcdef
+        region: us-east-1
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_cloudwatch_nlb_target_group
+      label: nlb_target_group_example_tg
+      attributes:
+        load_balancer: net/example-nlb/0123456789abcdef
+        target_group: targetgroup/example-tg/0123456789abcdef
+        region: us-east-1
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_cloudwatch_nat_gateway
+      label: nat_gateway_nat_0123456789abcdef0
+      attributes:
+        nat_gateway_id: nat-0123456789abcdef0
+        region: us-east-1
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
       component: provider_gcp_cloudsql
       label: provider
       attributes:
@@ -82,6 +113,28 @@ blocks:
         scrape_timeout: 2m
 
   - custom:
+      component: provider_gcp_load_balancing
+      label: provider
+      attributes:
+        project_id: example-project
+        forwarding_rules: ["a0123456789abcdef0123456789abcde"]
+        request_interval: 10m
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_gcp_cloud_nat
+      label: provider
+      attributes:
+        project_id: example-project
+        gateways: ["example-nat"]
+        request_interval: 10m
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
       component: provider_azure_postgres
       label: provider
       attributes:
@@ -109,6 +162,28 @@ blocks:
       attributes:
         subscription_id: 00000000-0000-0000-0000-000000000000
         clusters: ["example-aks"]
+        cloud_environment: azurecloud
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_azure_load_balancer
+      label: provider
+      attributes:
+        subscription_id: 00000000-0000-0000-0000-000000000000
+        clusters: ["example-aks"]
+        cloud_environment: azurecloud
+        forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
+        scrape_interval: 5m
+        scrape_timeout: 2m
+
+  - custom:
+      component: provider_azure_nat_gateway
+      label: provider
+      attributes:
+        subscription_id: 00000000-0000-0000-0000-000000000000
+        gateways: ["example-nat"]
         cloud_environment: azurecloud
         forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
         scrape_interval: 5m
