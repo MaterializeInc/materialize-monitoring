@@ -600,7 +600,7 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-zip-9-x/dashboards/grafana/infra-alloy.json?xxhash=8cb9672b042d3952" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-zip-9-x/dashboards/grafana/infra-alloy.json?xxhash=47258ac1bc23eeba" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
       </td>
       <td>
