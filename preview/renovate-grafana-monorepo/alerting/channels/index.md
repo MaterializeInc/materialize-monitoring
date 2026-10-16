@@ -434,7 +434,7 @@ alerting:
 Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
 A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
 
-Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it.
+Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it, and `development` for conditions the stack has already contained, which the people who write the software can remove.
 Here the workload alerts, such as a user cluster falling behind or running out of memory, reach `data-team`.
 Because the route continues, they also reach whichever receivers the preset names for their severity.
 

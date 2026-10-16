@@ -741,16 +741,28 @@ by reason.
 <h4 id="infra.alloy.log_pipeline.truncated">infra.alloy.log_pipeline.truncated
   <a class="anchor" href="#infra.alloy.log_pipeline.truncated">#</a>
 </h4>
-Container log lines per second the agents truncated while reassembling
-lines the container runtime had split.
+Cuts per second the pipelines made to log lines and their fields, split
+by Alloy pod and by what was cut.
 <div class="book-tabs">
   <input type="radio" class="toggle" name="infra.alloy.log_pipeline.truncated-tabs" id="infra.alloy.log_pipeline.truncated-tab-0" checked>
   <label for="infra.alloy.log_pipeline.truncated-tab-0">PromQL</label>
   <div class="book-tabs-content markdown-inner">
           
-<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, field<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      loki_process_cri_lines_truncated_total{
+</span></span><span style="display:flex;"><span>        app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
+</span></span><span style="display:flex;"><span>        namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
+</span></span><span style="display:flex;"><span>        pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;
+</span></span><span style="display:flex;"><span>      }
+</span></span><span style="display:flex;"><span>      <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='interval' title='interval'>[5m]</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">field</span>&#34;, &#34;<span style="color:#e6db74">cri_reassembly</span>&#34;, &#34;&#34;, &#34;&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">rate</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    loki_process_cri_lines_truncated_total{
+</span></span><span style="display:flex;"><span>    loki_process_truncated_fields_total{
 </span></span><span style="display:flex;"><span>      app<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyRole</span>&#34;,
 </span></span><span style="display:flex;"><span>      namespace<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyNamespace</span>&#34;,
 </span></span><span style="display:flex;"><span>      pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">$alloyPod</span>&#34;

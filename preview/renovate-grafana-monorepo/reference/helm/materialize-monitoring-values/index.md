@@ -40,7 +40,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.1 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.15.1 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
@@ -3611,9 +3611,9 @@ rules:
 ```
 
 `severity` must stay one of `critical`, `warning` and `notice`, and
-`audience` one of `platform` and `workload`, so the routes still match. An
-unknown alert name fails the render, and an override for a rule that is
-not installed renders with a warning.
+`audience` one of `platform`, `workload` and `development`, so the routes
+still match. An unknown alert name fails the render, and an override for a
+rule that is not installed renders with a warning.
 </td>
     </tr>
     <tr>
