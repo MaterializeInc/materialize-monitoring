@@ -40,8 +40,8 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-agent) | 1.13.1 |
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 13.6.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.16.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.0 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.16.1 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
@@ -9670,6 +9670,13 @@ as one, name it in `externalDependencies.consensus` with `flavor: postgres`.
 }</pre>
 </td>
       <td class="helm-value-desc">The Secret holding `postgres_exporter.yml`, which you create. See the section introduction for its shape.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">postgres-exporter<wbr>.config<wbr>.logLevel</td>
+      <td class="helm-value-type">string</td>
+      <td class="helm-value-default"><code>"warn"</code></td>
+      <td class="helm-value-desc">Exporter log level. `warn`, because at `info` every probe logs a new connection and the server's version, two lines per target per scrape. A target that cannot connect is logged at `error`, so nothing worth reading is lost.
 </td>
     </tr>
     <tr>
