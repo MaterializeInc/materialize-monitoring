@@ -462,7 +462,9 @@ groups:
       (
       max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
         label_replace(
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"},
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}
+          or
+          kube_pod_container_status_last_terminated_exitcode{container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"} == 167,
           "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
         )
       )
@@ -494,7 +496,9 @@ groups:
       (
       max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
         label_replace(
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"},
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}
+          or
+          kube_pod_container_status_last_terminated_exitcode{container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"} == 167,
           "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
         )
       )
@@ -523,7 +527,9 @@ groups:
       (
       max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
         label_replace(
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"},
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}
+          or
+          kube_pod_container_status_last_terminated_exitcode{container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"} == 167,
           "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
         )
       )
@@ -555,7 +561,9 @@ groups:
       (
       max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
         label_replace(
-          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"},
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"}
+          or
+          kube_pod_container_status_last_terminated_exitcode{container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", namespace=~"__mzmon_environment_namespaces__", namespace!~"__mzmon_excluded_namespaces__"} == 167,
           "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
         )
       )
@@ -569,12 +577,17 @@ groups:
       component: clusterd
       audience: workload
     annotations:
-      summary: A cluster replica was OOM-killed in the last 10m.
+      summary: A cluster replica was killed for running out of memory in the last 10m.
       description: |-
         The replica outgrew its memory and swap and is rehydrating from
         scratch. Size the cluster up, or find what grew in
         `mz_internal.mz_dataflow_arrangement_sizes`. Repeated kills leave the
         cluster unable to finish hydrating.
+
+        Covers both ways a replica dies of memory: the kernel's OOM kill, and
+        clusterd's own memory limiter, which exits with code 167 before the
+        kernel would act and is recorded as `Error`, not `OOMKilled`. On swap
+        clusters the limiter is the usual one.
       runbook_url: https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#cluster-replica-oomkilled
 - name: sources
   rules:

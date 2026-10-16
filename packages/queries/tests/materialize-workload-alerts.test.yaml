@@ -111,6 +111,26 @@ tests:
         eval_time: 45m
         exp_samples: []
 
+  # The memory limiter exits with 167 before the kernel acts, and Kubernetes
+  # records that as `Error`. An intentional halt (166) is not a memory death.
+  - name: cluster-replica-oomkilled fires on a memory-limiter exit and not on a halt
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd"}'
+        values: "167x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u1-replica-u1-gen-1-0", container="clusterd"}'
+        values: "0x9 1x20"
+      - series: 'kube_pod_container_status_last_terminated_exitcode{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd"}'
+        values: "166x30"
+      - series: 'kube_pod_container_status_restarts_total{namespace="materialize-environment", pod="mz-cluster-u2-replica-u2-gen-1-0", container="clusterd"}'
+        values: "0x9 1x20"
+    promql_expr_test:
+      - expr: count by (pod) (ALERTS{alertname="cluster-replica-oomkilled", alertstate="firing"})
+        eval_time: 14m
+        exp_samples:
+          - labels: '{pod="mz-cluster-u1-replica-u1-gen-1-0"}'
+            value: 1
+
   # --- cluster-cpu-high: a user replica's CPU against its own limit ----------
   #
   # The cluster id comes from the replica's pod name, since cAdvisor series
