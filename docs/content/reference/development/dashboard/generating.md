@@ -158,9 +158,9 @@ The three external-dependency dashboards — `env-persist` (122 KB), `env-consen
 (122 KB) — took it to 683,928 bytes, 65%, measured the same way.
 `infra-autoscaling` (153 KB) and `infra-karpenter` (137 KB) took it from 691,288 to 794,244 bytes, 76%.
 By the time `infra-thanos` (235 KB) landed, other changes had taken the release to 840,860 bytes, and `infra-thanos` took it to 914,352, 87%, measured the same way.
-That leaves about 134 KB of headroom, which is less than two more dashboards of that size need.
-Other changes had since taken the release to 943,628 bytes, 90%.
-Filling `infra-net`'s Cloud Networking tab took `infra-net` from 143 KB to 226 KB and the release to 966,076 bytes, 92%, measured the same way.
+Other changes then took it to 943,776, and the alerts rows on `infra-loki`, `infra-alloy`, and `env-top` took it to 966,728, 92%.
+Filling `infra-net`'s Cloud Networking tab took `infra-net` from 143 KB to 230 KB and the release to 990,664 bytes, 94%, measured the same way.
+That leaves about 58 KB of headroom, which is less than one more dashboard the size of `infra-thanos` needs.
 For the options, see [the issue tracking the dashboards release size](https://linear.app/materializeinc/issue/DEP-392).
 `selected` is what an operator narrows to hold one back.
 

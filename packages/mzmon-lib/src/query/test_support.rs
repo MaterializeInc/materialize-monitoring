@@ -121,18 +121,18 @@ mod tests {
     #[test]
     fn corpus_loads_all_queries() {
         let registry = corpus_registry();
-        // 123 queries across the eight files: 74 Materialize plus 49
+        // 126 queries across the eight files: 77 Materialize plus 49
         // node-exporter. The Materialize count is two above the Python loader's
         // 71: the exporter-including capacity variants the Kubernetes Workloads
         // tab needs have no Python equivalent. The node count gained the two
         // summed-across-interfaces throughput queries `infra-nodes` reads for its
         // Rx and Tx stats; the Materialize count gained the total-lag companion to
-        // the freshness max.
-        assert_eq!(registry.len(), 123);
+        // the freshness max, and the three alert queries on `env-top`'s Summary.
+        assert_eq!(registry.len(), 126);
         // A representative spread of engines / shapes is present.
         assert!(registry.get("materialize.clusters.count").is_some());
         assert!(registry.get("node.cpu.utilization").is_some());
-        assert_eq!(registry.iter_metric_queries().count(), 123);
+        assert_eq!(registry.iter_metric_queries().count(), 126);
         assert_eq!(registry.iter_log_queries(false).count(), 0);
     }
 

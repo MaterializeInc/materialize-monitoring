@@ -30,7 +30,10 @@ Selecting it will show the current version.
 
 The high-level summary, and the one to open first.
 Its six tabs — Summary, Kubernetes Workloads, Connections / Activity, Cluster Objects / Replicas, Compute Objects, and Sources and Sinks — are there to catch the more obvious problems and point at what needs a closer look, rather than to answer any one of them in depth.
-It reads metrics only, and scopes to one environment at a time, with further pickers for namespace, cluster, and replica.
+The Summary tab counts the alerts firing about the environment beside its health numbers.
+Below them, it lists every alert firing or pending in the environment's namespace.
+Each alert's name links to its entry under [Common Alerts]({{< relref "../reference/common-alerts.md" >}}).
+It reads metrics only, and scopes to one environment at a time, with further pickers for cluster and replica.
 
 {{< download-dashboards name="env-top" >}}
 
@@ -176,11 +179,13 @@ It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpe
 These dashboards watch the monitoring stack rather than anything it collects.
 Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
 Every panel states its own empty-state text for that reason.
+An alert count reads zero only while the rulers that evaluate its alerts are evaluating and writing back, and is empty otherwise.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
 Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
-The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+The Overview tab leads with any alert about Loki firing or pending now, then with scrape health and with the canary.
+The canary writes a line and reads it back, and is the only end-to-end check on the store.
 It needs both a metrics and a logs datasource.
 
 {{< download-dashboards name="infra-loki" >}}
@@ -188,6 +193,7 @@ It needs both a metrics and a logs datasource.
 ### Alloy Meta Monitoring (`infra-alloy`)
 
 Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.

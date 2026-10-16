@@ -355,7 +355,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No Thanos alert fired in this range
+                noValue: No alert about Thanos fired in this range
                 unit: short
               overrides: []
             options:
@@ -439,23 +439,11 @@ spec:
                   align: auto
                   filterable: true
                   inspect: false
-                noValue: No Thanos alert is firing or pending, or none reached Thanos. The Ruler tab's Evaluation and Write-back rows say which.
+                noValue: No alert about Thanos is firing or pending, or none reached Thanos. Thanos Alerts Firing says which.
               overrides:
               - matcher:
-                  id: byName
-                  options: severity
-                properties:
-                - id: noValue
-                  value: —
-              - matcher:
-                  id: byName
-                  options: job
-                properties:
-                - id: noValue
-                  value: —
-              - matcher:
-                  id: byName
-                  options: pod
+                  id: byType
+                  options: string
                 properties:
                 - id: noValue
                   value: —
@@ -526,6 +514,7 @@ spec:
                           < 300
                         )
                       )
+                    instant: true
                     legendFormat: alerts
                     qryType: 1
                     query: |
@@ -580,7 +569,7 @@ spec:
 
           **Unhealthy:** Any. _Alerts_ below names each one. The upstream Thanos mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name.
 
-          Reads zero only while a ruler has evaluated a rule in the last five minutes and written its results back within five minutes. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either reads as no alerts. An empty reading means the alert path itself needs checking: _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.
+          Reads zero only while a ruler has evaluated a rule in the last five minutes and written its results back within five minutes. An instant query, because over a range the last zero from before a ruler went silent would still be shown. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either reads as no alerts. An empty reading means the alert path itself needs checking: _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.
         id: 1000
         links: []
         title: Thanos Alerts Firing
@@ -592,7 +581,7 @@ spec:
               defaults:
                 decimals: 0
                 min: 0
-                noValue: No ruler has evaluated and written back in five minutes, so no alert can show. Check the Ruler tab.
+                noValue: Alerts are not reaching Thanos, so none can show. The Ruler tab's Evaluation and Write-back rows say why.
                 thresholds:
                   mode: absolute
                   steps:
@@ -612,7 +601,7 @@ spec:
               overrides: []
             options:
               colorMode: background
-              graphMode: area
+              graphMode: none
               justifyMode: auto
               orientation: auto
               percentChangeColorMode: standard

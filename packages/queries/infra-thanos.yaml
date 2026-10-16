@@ -94,11 +94,14 @@ queries:
         section for each alert name.
       notes: |
         Reads zero only while a ruler has evaluated a rule in the last five
-        minutes and written its results back within five minutes. A ruler that
+        minutes and written its results back within five minutes. An instant
+        query, because over a range the last zero from before a ruler went
+        silent would still be shown. A ruler that
         has stopped evaluating fires nothing, and one whose write-back has
         stalled fires alerts that never reach Thanos, so either reads as no
         alerts. An empty reading means the alert path itself needs checking:
         _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.
+    instant: true
     promQL: |
       count(
         max by (alertname, job, pod) (
