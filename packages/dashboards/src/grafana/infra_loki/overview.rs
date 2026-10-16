@@ -7,19 +7,23 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! The Overview tab: is the log store working, and is this dashboard even
-//! looking at it.
+//! The Overview tab: is the log store working, is anything about it alerting,
+//! and is this dashboard even looking at it.
 //!
-//! Two questions, in that order, and the second is not rhetorical. Every panel on
-//! the other four tabs reads a metric that arrives by being scraped, so a
-//! collection failure and a healthy quiet render identically. The scrape row is
-//! here to tell them apart, and it earns its place at the top: the fault it
-//! catches is the one that had been live on every mTLS install until the
-//! plaintext-exporter split landed.
+//! The alerts row sits under the verdict, above Collection Health, because a
+//! firing alert is a conclusion somebody already reached and the rest of the
+//! tab is evidence for or against it.
 //!
-//! The canary leads because it is the only signal here that is end-to-end. Every
-//! other panel measures one stage and infers the rest; the canary writes a line
-//! and reads it back, so it is wrong only when the store really is.
+//! The last question is not rhetorical. Every panel on the other four tabs reads
+//! a metric that arrives by being scraped, so a collection failure and a healthy
+//! quiet render identically. The scrape row is here to tell them apart, and it
+//! earns its place near the top: the fault it catches is the one that had been
+//! live on every mTLS install until the plaintext-exporter split landed.
+//!
+//! The canary leads the measurements because it is the only signal here that is
+//! end-to-end. Every other panel measures one stage and infers the rest; the
+//! canary writes a line and reads it back, so it is wrong only when the store
+//! really is.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::generated::stat::BigValueGraphMode;
@@ -27,6 +31,7 @@ use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 
 use super::theme;
+use crate::grafana::alerts::Alerts;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
@@ -35,21 +40,48 @@ const SHADE: &str = theme::OVERVIEW.shade;
 /// Grafana has no unit for log lines, so these are its custom-suffix form.
 pub(super) const LINES_PER_SECOND: &str = "suffix:lines/s";
 
+/// The registry's alerts labelled `component: loki`.
+///
+/// `component` is constant here, so the table hides it. `job` names the Loki
+/// process, `route` the endpoint, and `reason` why Alloy dropped what it sent.
+pub(crate) const ALERTS: Alerts = Alerts {
+    queries: "infra.loki.health",
+    subject: "Loki",
+    about: "Loki",
+    columns: &[
+        ("severity", "severity"),
+        ("job", "job"),
+        ("route", "route"),
+        ("reason", "reason"),
+        ("namespace", "namespace"),
+    ],
+    hidden: &["component"],
+    silent: "The Thanos dashboard's Ruler tab covers the Thanos ruler, and the Logs tab here the Loki ruler.",
+    common_alerts: true,
+};
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![verdict(q), collection(q), requests(q), canary(q)]
+    vec![
+        verdict(q),
+        ALERTS.row(q, "overview"),
+        collection(q),
+        requests(q),
+        canary(q),
+    ]
 }
 
-/// The five numbers worth reading before anything else.
+/// The six numbers worth reading before anything else.
 ///
 /// Header hidden: this row is the dashboard's answer, not a section of it.
 /// Half height, because these are read at a glance and at full height they push
-/// the scrape row below the fold — which is the one thing that has to be seen
+/// the alerts and the scrape row below the fold, and those have to be seen
 /// before any of the rest is believed.
 fn verdict(q: &Queries) -> Row {
     Row::new("End to End").hide_header().grid(
-        AutoGrid::new(5)
+        AutoGrid::new(6)
             .column_width(ColumnWidth::Narrow)
             .row_height(RowHeight::Short)
+            .panel("overview-alerts-firing", ALERTS.firing(q))
             .panel("overview-canary-missing", canary_missing(q))
             .panel("overview-canary-latency", canary_latency_stat(q))
             .panel("overview-ingest", ingest(q))
@@ -83,8 +115,8 @@ fn canary(q: &Queries) -> Row {
     )
 }
 
-/// The headline. Zero is the only healthy reading, so it is not shaded with the
-/// tab colour — a health number gets health colours.
+/// The headline measurement. Zero is the only healthy reading, so it is not
+/// shaded with the tab colour — a health number gets health colours.
 fn canary_missing(q: &Queries) -> dashboardv2::PanelKind {
     Panel::stat("Canary Lines Lost")
         .query(q.get("infra.loki.health.canary.missing").legend("lost/s"))
@@ -262,8 +294,24 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 11);
+        assert_eq!(assembled.elements.len(), 14);
         assert!(q.failures().is_empty(), "{:?}", q.failures());
+    }
+
+    #[test]
+    fn the_alerts_sit_above_collection_health() {
+        // The habit `infra-thanos` set for every Overview: a firing alert is
+        // the first thing below the verdict, not something found by scrolling.
+        let q = &test_queries();
+        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
+            .assemble()
+            .expect("assemble");
+        let layout = serde_json::to_string(&assembled.layout).expect("serialize");
+        let alerts = layout.find(r#""title":"Alerts""#).expect("alerts row");
+        let collection = layout
+            .find(r#""title":"Collection Health""#)
+            .expect("collection row");
+        assert!(alerts < collection, "{layout}");
     }
 
     #[test]

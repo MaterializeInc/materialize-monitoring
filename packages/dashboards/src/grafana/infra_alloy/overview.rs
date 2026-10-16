@@ -7,17 +7,19 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
-//! The Overview tab: is collection working, and is this dashboard hearing from
-//! the collectors at all.
+//! The Overview tab: is collection working, is anything about it alerting, and
+//! is this dashboard hearing from the collectors at all.
 //!
-//! The verdict row is six counts that are zero on a healthy install, each built
-//! so that zero and absent read differently. Three are about the collectors
-//! themselves, and three about data being lost: log lines and samples the
-//! collectors failed to deliver, and pushes the gateway refused to take.
+//! The verdict row is seven counts that are zero on a healthy install, each
+//! built so that zero and absent read differently. The first is the alerts
+//! firing about collection. Three are about the collectors themselves, and
+//! three about data being lost: log lines and samples the collectors failed to
+//! deliver, and pushes the gateway refused to take.
 //!
-//! Collection Health follows, because it is what says whether the verdict can
-//! be believed: a collector the gateway cannot scrape contributes nothing to
-//! any count above it.
+//! The alerts row comes next, because a firing alert is a conclusion somebody
+//! already reached. Collection Health follows it, because it is what says
+//! whether the verdict can be believed: a collector the gateway cannot scrape
+//! contributes nothing to any count above it.
 
 use mzmon_lib::grafana::generated::dashboardv2;
 use mzmon_lib::grafana::generated::stat::BigValueGraphMode;
@@ -25,6 +27,7 @@ use mzmon_lib::grafana::layout::{AutoGrid, ColumnWidth, Row, RowHeight};
 use mzmon_lib::grafana::panel::{NoValue, Panel};
 use mzmon_lib::grafana::threshold;
 
+use crate::grafana::alerts::Alerts;
 use crate::grafana::queries::Queries;
 use crate::grafana::transform;
 
@@ -43,19 +46,47 @@ pub(super) fn not_collected() -> NoValue {
     NoValue::Custom("No data from the collectors. Check that the gateway is running.".to_string())
 }
 
+/// The registry's alerts labelled `component: alloy` or `component: monitoring`.
+///
+/// `monitoring` is collection, whichever target it lost; `alloy` is the
+/// collectors' own software. An alert about a collector names its `pod`, and
+/// one about a scrape target names the target's `job` and `app`.
+pub(crate) const ALERTS: Alerts = Alerts {
+    queries: "infra.alloy.health",
+    subject: "Collection",
+    about: "collection",
+    columns: &[
+        ("severity", "severity"),
+        ("component", "component"),
+        ("pod", "pod"),
+        ("job", "job"),
+        ("app", "app"),
+        ("namespace", "namespace"),
+    ],
+    hidden: &[],
+    silent: "The Thanos dashboard's Ruler tab covers the Thanos ruler, and the Loki dashboard's Logs tab the Loki ruler.",
+    common_alerts: true,
+};
+
 pub fn rows(q: &Queries) -> Vec<Row> {
-    vec![verdict(q), collection(q), throughput(q)]
+    vec![
+        verdict(q),
+        ALERTS.row(q, "overview"),
+        collection(q),
+        throughput(q),
+    ]
 }
 
-/// The six numbers worth reading before anything else.
+/// The seven numbers worth reading before anything else.
 ///
 /// Header hidden and half height, as on `infra-loki`: this row is the answer,
-/// and Collection Health beneath it has to stay above the fold.
+/// and the alerts and Collection Health beneath it have to stay above the fold.
 fn verdict(q: &Queries) -> Row {
     Row::new("Verdict").hide_header().grid(
-        AutoGrid::new(6)
+        AutoGrid::new(7)
             .column_width(ColumnWidth::Narrow)
             .row_height(RowHeight::Short)
+            .panel("overview-alerts-firing", ALERTS.firing(q))
             .panel("overview-agents-missing", agents_missing(q))
             .panel("overview-unhealthy-components", unhealthy_components(q))
             .panel("overview-config-failed", config_failed(q))
@@ -246,11 +277,27 @@ mod tests {
         let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
             .assemble()
             .expect("assemble");
-        assert_eq!(assembled.elements.len(), 11);
+        assert_eq!(assembled.elements.len(), 14);
         // The TLS panel moved to the Ingest tab, beside the listeners it is
         // about, and a refusals stat took its place in the verdict.
         assert!(!assembled.elements.contains_key("overview-tls-rejections"));
         assert!(q.failures().is_empty(), "{:?}", q.failures());
+    }
+
+    #[test]
+    fn the_alerts_sit_above_collection_health() {
+        // The habit `infra-thanos` set for every Overview: a firing alert is
+        // the first thing below the verdict, not something found by scrolling.
+        let q = &test_queries();
+        let assembled = mzmon_lib::grafana::layout::Layout::rows(rows(q))
+            .assemble()
+            .expect("assemble");
+        let layout = serde_json::to_string(&assembled.layout).expect("serialize");
+        let alerts = layout.find(r#""title":"Alerts""#).expect("alerts row");
+        let collection = layout
+            .find(r#""title":"Collection Health""#)
+            .expect("collection row");
+        assert!(alerts < collection, "{layout}");
     }
 
     #[test]

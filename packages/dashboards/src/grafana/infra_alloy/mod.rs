@@ -25,8 +25,11 @@
 //! series reads 0, because the component that would write it is the one that is
 //! down. The consequences are the ones `infra-loki` draws, applied harder:
 //!
-//! * **Overview leads with whether the collectors are being heard from**, and
-//!   every panel writes its own empty-state text. A test enforces the second.
+//! * **Overview leads with the alerts about collection and whether the
+//!   collectors are being heard from**, and every panel writes its own
+//!   empty-state text. A test enforces the second. One of those alerts,
+//!   `alloy-gateway-refusing-scrapes`, is matched in the gateway's log by the
+//!   Loki ruler, because a gateway in that state discards its own metrics too.
 //! * **Counts that should be zero are built to distinguish zero from absent.**
 //!   The registry's `sum(A) or 0 * sum(B)` form, described at the top of
 //!   `infra-alloy.yaml`, reads zero only when the collectors reported.
@@ -260,9 +263,13 @@ mod tests {
     }
 
     /// Panels whose series belong to something other than a collector: the
-    /// targets the gateway scrapes, and the senders that remote-write into it.
-    /// No collector picker can narrow them.
+    /// targets the gateway scrapes, the senders that remote-write into it, and
+    /// the alerts, whose rules' selectors span every namespace. No collector
+    /// picker can narrow them.
     const UNSCOPED: &[&str] = &[
+        "overview-alerts-firing",
+        "overview-alerts",
+        "overview-alert-history",
         "metrics-flow-targets-down",
         "metrics-scrape-down",
         "metrics-heavy-slowest",

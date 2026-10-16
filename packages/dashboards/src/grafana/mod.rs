@@ -15,6 +15,7 @@
 //! [`ALL`] is the registry the renderer walks, so adding a dashboard is a module
 //! plus one entry — nothing in the CLI needs to know their names.
 
+pub(crate) mod alerts;
 pub(crate) mod dependency;
 pub mod env_consensus;
 pub mod env_logs;

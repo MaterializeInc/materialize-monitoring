@@ -315,6 +315,43 @@
   - node.swap.activity
 - importance: recommended
   labels:
+  - alertstate
+  - namespace
+  name: ALERTS
+  usage:
+  - materialize.health.alert_history
+  - materialize.health.alerts
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: loki_prometheus_rule_group_interval_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: loki_prometheus_rule_group_last_evaluation_timestamp_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
   - materialize_cloud_organization_name
   name: mz_active_sessions
   usage:
@@ -868,6 +905,27 @@
   name: node_vmstat_pgsteal_kswapd
   usage:
   - node.debug.memory.reclaim
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: prometheus_remote_storage_highest_timestamp_in_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+  usage:
+  - materialize.health.alerts_firing
+- importance: recommended
+  labels:
+  - app
+  - container
+  name: prometheus_rule_group_last_evaluation_timestamp_seconds
+  usage:
+  - materialize.health.alerts_firing
 - importance: recommended
   labels:
   - job
