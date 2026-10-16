@@ -8,9 +8,57 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.4.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.5.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.4.0
+
+* Update grafana monorepo
+    * [materialize-monitoring#531](https://github.com/MaterializeInc/materialize-monitoring/pull/531)
+    * [`v13.2.4`](https://redirect.github.com/grafana/grafana/blob/HEAD/CHANGELOG.md#1324-2026-10-13)
+    * [`v14.0.1`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-14.0.1)
+* Truncate oversized log lines and add a development alert tier
+    * [materialize-monitoring#549](https://github.com/MaterializeInc/materialize-monitoring/pull/549)
+    * Oversized log lines are cut rather than dropped, and the cut line ends in a suffix that names the rule: `[TRUNCATED:SAFETYCLAMP]`, `[TRUNCATED:LINE]`, or `[TRUNCATED:FIELDS]`.
+        * The agent and the gateway clamp every line to `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`). The gateway then cuts lines to `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), with a fixed `250KiB` backstop. Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
+        * The gateway cuts label values to `2KiB` and structured metadata to a per-entry budget: `512B` for each key it sets, `16KiB` for `msg` and for keys a Loki push client sends, and `16KiB` held back for a push client's own structured metadata. Entries then fit Loki's default limits rather than being refused, as long as a push client's own structured metadata stays under `16KiB`.
+        * A clamped JSON or logfmt line no longer parses, so it reaches Loki without its extracted fields.
+    * `loki_process_dropped_lines_total` no longer reports the `too large` reason. Cuts count in `loki_process_truncated_fields_total`, labeled by `field`, which the default metric tier keeps.
+    * Alloy Meta Monitoring: the **Truncated Lines** panel counts those cuts by `field`, beside the agents' CRI reassembly cuts.
+    * Alerts can carry `audience: development`, for conditions the stack has already contained that the people who write the software can remove. An extra route on `audience="development"` sends them to a development channel, and `rules.overrides` accepts the value.
+        * `oversized-log-lines` (`severity: notice`, not in the default set) fires when Alloy cut a log line in the past hour. Select it with `rules.selected`.
+* postgres-exporter: log at warn, and note Azure's pg_monitor
+    * [materialize-monitoring#546](https://github.com/MaterializeInc/materialize-monitoring/pull/546)
+    * The postgres-exporter logs at `warn` by default (`postgres-exporter.config.logLevel`). Set it to `info` to see each probe's connection again.
+* Update grafana Helm Chart to v14
+    * [materialize-monitoring#544](https://github.com/MaterializeInc/materialize-monitoring/pull/544)
+    * [`v14.0.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-14.0.0)
+    * [`v13.7.0`](https://redirect.github.com/grafana-community/helm-charts/releases/tag/grafana-13.7.0)
+
+### Dependencies
+
+* <details><summary>Included Pipelines @ v0.12.0..v0.13.0</summary>
+
+    * Lead the Loki, Alloy and environment overviews with firing alerts
+        * [materialize-monitoring#551](https://github.com/MaterializeInc/materialize-monitoring/pull/551)
+        * Loki Meta Monitoring, Alloy Meta Monitoring, and the Summary tab of Materialize Environment Overview now count the alerts firing about their subject, and list every alert firing or pending in an **Alerts** row. Each alert's name links to its entry under Common Alerts.
+        * An alert count shows the current value. It reads zero only while the Thanos ruler, and every Loki rule group where a Loki ruler runs, are being evaluated and written back. Otherwise it's empty.
+        * The `recommended` metric tier adds `loki_prometheus_rule_group_last_evaluation_timestamp_seconds`, `loki_prometheus_rule_group_interval_seconds`, `loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds`, and `loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds`.
+    * alerts: count memory-limiter exits as replica oom kills
+        * [materialize-monitoring#555](https://github.com/MaterializeInc/materialize-monitoring/pull/555)
+        * `cluster-replica-oomkilled` now also fires when clusterd's memory limiter kills a user cluster replica (exit code 167), not only on a kernel OOM kill. Expect it to fire more often on clusters with swap enabled.
+
+  </details>
+
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Update Rust crate serde-saphyr to v2
+        * [materialize-monitoring#553](https://github.com/MaterializeInc/materialize-monitoring/pull/553)
+        * [`v2.0.0`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#200-Unreleased)
+
+  </details>
 
 ## Container Images v0.8.0 (Unreleased)
 
