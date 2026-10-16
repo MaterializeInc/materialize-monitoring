@@ -60,6 +60,27 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'declare "provider_azure_aks"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_cloudwatch_nlb"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_cloudwatch_nlb_target_group"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_cloudwatch_nat_gateway"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_gcp_load_balancing"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_gcp_cloud_nat"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_azure_load_balancer"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_azure_nat_gateway"'
 
   # --- the module's contract ---------------------------------------------------
 
@@ -91,6 +112,15 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'namespace = "AWS/Usage"\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'static "nlb" \{[^}]*namespace = "AWS/NetworkELB"\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'static "target_group" \{[^}]*namespace = "AWS/NetworkELB"\s+nil_to_zero = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'namespace = "AWS/NATGateway"\s+nil_to_zero = false'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'type = "AWS/EC2"[\s\S]*?dimension_name_requirements = \[[^\]]*\]\s+nil_to_zero = false'
@@ -153,6 +183,19 @@ tests:
           path: data["config.alloy"]
           pattern: 'provider_scrape "quota_exceeded" \{[^}]*honor_timestamps'
 
+  # Their DELTA counters are sparse. With Cloud Monitoring's stamps a counter
+  # with no new point has no new sample, and its last minute reads as current
+  # for the whole lookback; stamped at the scrape, an idle minute reads zero.
+  - it: should stamp the Cloud Monitoring network pulls at the scrape
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "load_balancing" \{[^}]*honor_timestamps = false'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "cloud_nat" \{[^}]*honor_timestamps = false'
+
   # `starts_with("europe-west1")` would also match `europe-west10`.
   - it: should match each quota region whole, with its zones
     template: templates/pipelines/cm-alloy-gateway.yaml
@@ -165,6 +208,59 @@ tests:
           pattern: 'prometheus\.exporter\.gcp "quota_exceeded" \{[^}]*monitoring\.regex\.full_match'
 
   # Per-minute DELTA; the exporter counts only the newest point per pull.
+  # The dashboard renders a networking pull's rows on this label, read off
+  # `up`. An empty value sets no label, so the older pulls' series are as they
+  # were.
+  - it: should stamp the networking pulls for the dashboard to find
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_scrape" \{[\s\S]*?argument "provider_pull" \{\s+optional = true\s+default\s+= ""'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'declare "provider_scrape" \{[\s\S]*?target_label = "provider_pull"\s+replacement\s+= argument\.provider_pull\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "nlb" \{[^}]*provider_pull\s+= "cloudwatch_nlb"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "target_group" \{[^}]*provider_pull\s+= "cloudwatch_nlb"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "nat_gateway" \{[^}]*provider_pull\s+= "cloudwatch_nat_gateway"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "load_balancing" \{[^}]*provider_pull\s+= "gcp_load_balancing"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "cloud_nat" \{[^}]*provider_pull\s+= "gcp_cloud_nat"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "traffic" \{[^}]*provider_pull\s+= "azure_load_balancer"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "connections" \{[^}]*provider_pull\s+= "azure_nat_gateway"'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "rds" \{[^}]*provider_pull'
+
+  # Each external forwarding rule's series are published under the current
+  # resource type and the legacy `tcp_lb_rule`, so without the type every sum
+  # counts its traffic twice.
+  - it: should pull each external load balancer under one resource type
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'string\.format\("loadbalancing\.googleapis\.com/l3/external:resource\.type=\\"loadbalancing\.googleapis\.com/ExternalNetworkLoadBalancerRule\\" AND resource\.labels\.forwarding_rule_name=one_of\(\\"%s\\"\)", string\.join\(argument\.forwarding_rules\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'string\.format\("loadbalancing\.googleapis\.com/l3/internal:resource\.labels\.forwarding_rule_name=one_of\(\\"%s\\"\)", string\.join\(argument\.forwarding_rules\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'string\.format\("router\.googleapis\.com/nat:resource\.labels\.gateway_name=one_of\(\\"%s\\"\)", string\.join\(argument\.gateways\.value'
+
   - it: should not pull GCS request counts
     template: templates/pipelines/cm-alloy-gateway.yaml
     asserts:
@@ -194,6 +290,23 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'prometheus\.exporter\.azure "nodes" \{[^}]*resource_graph_query_filter = string\.format\("extend nodeResourceGroup = tolower\(resourceGroup\) \| join kind=inner \(Resources \| where type =~ ''microsoft\.containerservice/managedclusters'' and name in~ \(''%s''\) \| project nodeResourceGroup = tolower\(tostring\(properties\.nodeResourceGroup\)\)\) on nodeResourceGroup", string\.join\(argument\.clusters\.value'
+      # AKS's own two load balancers, through the same join, and not the
+      # API server's.
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "availability" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''kubernetes'', ''kubernetes-internal''\) \| extend nodeResourceGroup = tolower\(resourceGroup\) \| join kind=inner \(Resources \| where type =~ ''microsoft\.containerservice/managedclusters'' and name in~ \(''%s''\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "probes" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''kubernetes'', ''kubernetes-internal''\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "traffic" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''kubernetes'', ''kubernetes-internal''\)'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "gateway" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.gateways\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "connections" \{[^}]*resource_graph_query_filter = string\.format\("where name in~ \(''%s''\)", string\.join\(argument\.gateways\.value'
 
   # The exporter copies the `owner` tag onto every series by default, and tags
   # are free text.
@@ -215,6 +328,21 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'prometheus\.exporter\.azure "nodes" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "availability" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "probes" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "traffic" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "gateway" \{[^}]*included_resource_tags = \[\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.exporter\.azure "connections" \{[^}]*included_resource_tags = \[\]'
 
   # Every aggregation is requested for every metric, so the keep is what holds
   # the Postgres pull to one or two series per metric. It must also pass the
@@ -238,6 +366,16 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'prometheus\.relabel "autoscaler" \{[\s\S]*?action = "keep"[\s\S]*?regex = "azure_microsoft_containerservice_managedclusters_cluster_autoscaler_\([^"]*\)_\[a-z\]\+\|up\|scrape_\.\+"'
+
+  - it: should keep only the chosen NAT gateway aggregations, and the scrape health
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "gateway" \{[^}]*forward_to\s+= prometheus\.relabel\.gateway\.receiver'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'prometheus\.relabel "gateway" \{[\s\S]*?action = "keep"[\s\S]*?regex = "azure_microsoft_network_natgateways_\([^"]*\)_\[a-z\]\+\|up\|scrape_\.\+"'
 
   # Two targets from one component, so each needs its own `instance`, or their
   # `up` series collide.
@@ -266,6 +404,40 @@ tests:
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'provider_scrape "quota_exceeded" \{[^}]*instance\s+= "compute_quota_exceeded"'
+
+  - it: should give each Azure network pull its own instance
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "availability" \{[^}]*instance\s+= "lb_availability"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "probes" \{[^}]*instance\s+= "lb_probes"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "traffic" \{[^}]*instance\s+= "lb_traffic"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "gateway" \{[^}]*instance\s+= "nat_gateway"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "connections" \{[^}]*instance\s+= "nat_connections"'
+
+  # One target per CloudWatch resource, pinned to the dimension itself, which
+  # is unique within the pull's job.
+  - it: should pin each CloudWatch network pull to its resource
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "nlb" \{[^}]*instance\s+= argument\.load_balancer\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "target_group" \{[^}]*instance\s+= argument\.target_group\.value'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_scrape "nat_gateway" \{[^}]*instance\s+= argument\.nat_gateway_id\.value'
 
   # --- CloudWatch instances ------------------------------------------------------
 
@@ -325,6 +497,37 @@ tests:
       - notMatchRegex:
           path: data["config.alloy"]
           pattern: '(?m)^provider_cloudwatch_eks "'
+
+  # CloudWatch names a load balancer by the end of its ARN, and its target
+  # groups' health by the pair, so each target group names its load balancer.
+  - it: should instantiate one pull per load balancer and per target group
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set: &nlb
+      pipeline.metrics.provider.cloudwatch.enabled: true
+      pipeline.metrics.provider.cloudwatch.region: us-east-1
+      pipeline.metrics.provider.cloudwatch.nlb.loadBalancers:
+        - arn: arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/net/mz-nlb/0123456789abcdef
+          targetGroups:
+            - arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/mz-pgwire/0123456789abcdef
+            - targetgroup/mz-console/fedcba9876543210
+        - arn: net/grafana-nlb/00112233445566ff
+      pipeline.metrics.provider.cloudwatch.natGateway.ids: [nat-0123456789abcdef0]
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_nlb "nlb_net_mz_nlb_0123456789abcdef" \{\s+load_balancer\s+= "net/mz-nlb/0123456789abcdef"\s+region\s+= "us-east-1"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_nlb "nlb_net_grafana_nlb_00112233445566ff" \{\s+load_balancer\s+= "net/grafana-nlb/00112233445566ff"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_nlb_target_group "nlb_targetgroup_mz_pgwire_0123456789abcdef" \{\s+load_balancer\s+= "net/mz-nlb/0123456789abcdef"\s+target_group\s+= "targetgroup/mz-pgwire/0123456789abcdef"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_nlb_target_group "nlb_targetgroup_mz_console_fedcba9876543210" \{\s+load_balancer\s+= "net/mz-nlb/0123456789abcdef"\s+target_group\s+= "targetgroup/mz-console/fedcba9876543210"'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_cloudwatch_nat_gateway "nat_nat_0123456789abcdef0" \{\s+nat_gateway_id\s+= "nat-0123456789abcdef0"\s+region\s+= "us-east-1"'
 
   - it: should carry the interval through to every instance
     template: templates/pipelines/cm-alloy-gateway.yaml
@@ -443,6 +646,42 @@ tests:
           path: data["config.alloy"]
           pattern: '(?m)^provider_azure_aks "'
 
+  - it: should instantiate one pull per GCP network service, naming its resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.loadBalancing.forwardingRules: [a0123456789abcdef0123456789abcde, mz-ilb]
+      pipeline.metrics.provider.gcp.cloudNat.gateways: [mz-nat]
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_load_balancing "provider" \{\s+project_id\s+= "my-project"\s+forwarding_rules = \["a0123456789abcdef0123456789abcde","mz-ilb"\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_cloud_nat "provider" \{\s+project_id\s+= "my-project"\s+gateways\s+= \["mz-nat"\]'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_(cloudsql|gcs|compute_quota) "provider"'
+
+  - it: should instantiate one pull per Azure network service, naming its resources
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.metrics.provider.azure.enabled: true
+      pipeline.metrics.provider.azure.subscriptionId: 00000000-0000-0000-0000-000000000000
+      pipeline.metrics.provider.azure.loadBalancer.clusters: [mz-aks]
+      pipeline.metrics.provider.azure.natGateway.names: [mz-nat-gateway]
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_load_balancer "provider" \{\s+subscription_id\s+= "00000000-0000-0000-0000-000000000000"\s+clusters\s+= \["mz-aks"\]'
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_nat_gateway "provider" \{\s+subscription_id\s+= "00000000-0000-0000-0000-000000000000"\s+gateways\s+= \["mz-nat-gateway"\]'
+      - notMatchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_azure_(postgres|blob|aks) "provider"'
+
   - it: should carry a sovereign cloud through to every Azure instance
     template: templates/pipelines/cm-alloy-gateway.yaml
     set:
@@ -478,7 +717,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*\|stackdriver_compute_googleapis_com_location_\.\*$'
+          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*\|aws_networkelb_\.\*\|aws_natgateway_\.\*\|stackdriver_cloudsql_database_\.\*\|stackdriver_gcs_bucket_\.\*\|stackdriver_compute_googleapis_com_location_\.\*\|stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_\.\*\|stackdriver_internal_\(tcp\|udp\)_lb_rule_\.\*\|stackdriver_nat_gateway_\.\*$'
 
   - it: should admit Azure families to a destination at their tier
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -490,7 +729,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_EXTENDED
-          pattern: '\|azure_microsoft_dbforpostgresql_flexibleservers_\.\*\|azure_microsoft_storage_storageaccounts_blobservices_\.\*\|azure_microsoft_containerservice_managedclusters_\.\*\|azure_microsoft_compute_virtualmachinescalesets_\.\*$'
+          pattern: '\|azure_microsoft_dbforpostgresql_flexibleservers_\.\*\|azure_microsoft_storage_storageaccounts_blobservices_\.\*\|azure_microsoft_containerservice_managedclusters_\.\*\|azure_microsoft_compute_virtualmachinescalesets_\.\*\|azure_microsoft_network_loadbalancers_\.\*\|azure_microsoft_network_natgateways_\.\*$'
 
   - it: should keep provider families out of a stricter destination
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -502,7 +741,7 @@ tests:
     asserts:
       - notMatchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
-          pattern: 'aws_rds_|aws_s3_|aws_ec2_|aws_autoscaling_|aws_usage_'
+          pattern: 'aws_rds_|aws_s3_|aws_ec2_|aws_autoscaling_|aws_usage_|aws_networkelb_|aws_natgateway_'
 
   - it: should follow a raised importance into the stricter destination
     template: templates/pipelines/cm-alloy-gateway-env.yaml
@@ -515,7 +754,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.GATEWAY_UNFILTERED_PROM_METRICS_STRICT
-          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*$'
+          pattern: '\|aws_rds_\.\*\|aws_s3_\.\*\|aws_ec2_\.\*\|aws_autoscaling_\.\*\|aws_usage_\.\*\|aws_networkelb_\.\*\|aws_natgateway_\.\*$'
 
   # A disabled provider must not widen any allowlist with its families.
   #
@@ -576,6 +815,62 @@ tests:
       - failedTemplate:
           errorPattern: 'eks.clusters entry "mz-\.\*" is not an EKS cluster name'
 
+  # Each becomes a CloudWatch dimension, which must match exactly or the pull
+  # returns nothing.
+  - it: should refuse an Application Load Balancer
+    set:
+      <<: *nlb
+      pipeline.metrics.provider.cloudwatch.nlb.loadBalancers:
+        - arn: arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/mz-alb/0123456789abcdef
+    asserts:
+      - failedTemplate:
+          errorPattern: 'arn "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/mz-alb/0123456789abcdef" is not a Network Load Balancer'
+
+  - it: should refuse a load balancer given without its arn key
+    set:
+      <<: *nlb
+      pipeline.metrics.provider.cloudwatch.nlb.loadBalancers: [net/mz-nlb/0123456789abcdef]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'loadBalancers entry net/mz-nlb/0123456789abcdef is not a map'
+
+  - it: should refuse a target group given by name alone
+    set:
+      <<: *nlb
+      pipeline.metrics.provider.cloudwatch.nlb.loadBalancers:
+        - arn: net/mz-nlb/0123456789abcdef
+          targetGroups: [mz-pgwire]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'target group "mz-pgwire" is not a target group'
+
+  - it: should refuse a load balancer in another region
+    set:
+      <<: *nlb
+      pipeline.metrics.provider.cloudwatch.nlb.loadBalancers:
+        - arn: arn:aws:elasticloadbalancing:us-west-2:111122223333:loadbalancer/net/mz-nlb/0123456789abcdef
+    asserts:
+      - failedTemplate:
+          errorPattern: 'which is in us-west-2, but region is us-east-1'
+
+  - it: should refuse a load balancer listed twice
+    set:
+      <<: *nlb
+      pipeline.metrics.provider.cloudwatch.nlb.loadBalancers:
+        - arn: net/mz-nlb/0123456789abcdef
+        - arn: arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/net/mz-nlb/0123456789abcdef
+    asserts:
+      - failedTemplate:
+          errorPattern: 'lists "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/net/mz-nlb/0123456789abcdef" twice'
+
+  - it: should refuse a NAT gateway name in place of its ID
+    set:
+      <<: *nlb
+      pipeline.metrics.provider.cloudwatch.natGateway.ids: [mz-vpc-us-east-1a]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'natGateway.ids entry "mz-vpc-us-east-1a" is not a NAT gateway ID'
+
   - it: should refuse GCP without a project
     set:
       pipeline.metrics.provider.gcp.enabled: true
@@ -600,6 +895,24 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'compute.regions entry "us-east1-b" is not a Compute Engine region'
+
+  - it: should refuse a load balancer address in place of its forwarding rule
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.loadBalancing.forwardingRules: ["34.26.2.247"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'loadBalancing.forwardingRules entry "34.26.2.247" is not a forwarding rule name'
+
+  - it: should refuse a Cloud NAT URL in place of its name
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.cloudNat.gateways: ["projects/my-project/regions/us-east1/routers/mz-router"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'cloudNat.gateways entry "projects/my-project/regions/us-east1/routers/mz-router" is not a Cloud NAT gateway name'
 
   - it: should refuse Azure without a subscription
     set:
@@ -651,6 +964,22 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'aks.clusters entry "/subscriptions/0/resourceGroups/mz/providers/Microsoft.ContainerService/managedClusters/mz-aks" is not an AKS cluster name'
+
+  - it: should refuse an AKS resource ID in place of the cluster whose load balancers to watch
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.loadBalancer.clusters: ["/subscriptions/x/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/mz-aks"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'loadBalancer.clusters entry "/subscriptions/x/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/mz-aks" is not an AKS cluster name'
+
+  - it: should refuse a NAT gateway resource ID in place of its name
+    set:
+      <<: *azure
+      pipeline.metrics.provider.azure.natGateway.names: ["/subscriptions/x/resourceGroups/rg/providers/Microsoft.Network/natGateways/mz-nat"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'natGateway.names entry "/subscriptions/x/resourceGroups/rg/providers/Microsoft.Network/natGateways/mz-nat" is not a NAT gateway name'
 
   - it: should refuse a blob endpoint in place of an account name
     set:

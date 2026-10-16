@@ -10,18 +10,24 @@ params:
 # Cloud Provider Metrics
 
 The gateway can pull what a cloud provider's monitoring API publishes about the metadata database and the buckets a Materialize deployment depends on,
-and about whether the provider can supply the nodes its cluster asks for.
+about whether the provider can supply the nodes its cluster asks for,
+and about the load balancers in front of the cluster and the NAT gateways its traffic leaves through.
 The result is written beside every other metric, with the same retention, the same PromQL, and the same destinations.
 A provider series is therefore joinable with `mz_persist_*` in a single expression.
 A Grafana CloudWatch, Cloud Monitoring or Azure Monitor datasource cannot offer that.
 
-The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws the database and bucket pulls, and **Infrastructure Autoscaling** (`infra-autoscaling`) the node and quota pulls on its Cloud Capacity tab, each with rows for whichever provider it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
+The **Infrastructure Cloud Provider** dashboard (`infra-cloud`) draws the database and bucket pulls,
+**Infrastructure Autoscaling** (`infra-autoscaling`) the node and quota pulls on its Cloud Capacity tab,
+and **Infrastructure Networking** (`infra-net`) the load balancer and NAT gateway pulls on its Cloud Networking tab,
+each with rows for whichever provider or pull it finds; see [Available Dashboards]({{< relref "../../dashboards/all.md" >}}).
 
 Provider collection is off by default and adds to what the clients already report about the same dependencies.
 Persist, Loki and Thanos measure every request they make against the database and the bucket, at full resolution and at no cost.
 The provider adds what no client can see: CPU, memory and storage headroom, the burst credits that throttle a volume, transaction-ID consumption, and bucket growth.
 For the cluster's nodes it adds the provider's own view: host and instance health, node groups that cannot reach their desired size, compute quota,
 and on AKS the managed cluster autoscaler, which runs where nothing in the cluster can scrape it.
+For the network around the cluster it adds whether a load balancer has a healthy backend and what it carries,
+and whether a NAT gateway is running out of source ports.
 The [external-dependency design](../../../reference/development/design-docs/20260920-external-dependency-monitoring/#pulling-provider-metrics-into-the-pipeline) records the reasoning.
 
 <!--
@@ -30,6 +36,7 @@ charts/materialize-monitoring/templates/_alloy_provider_helpers.tpl renders only
 sets on this page are that file's; change them there, not here first. packages/queries/infra-cloud.yaml and
 packages/dashboards/src/grafana/infra_cloud/ draw the database and bucket pulls, and
 packages/queries/infra-autoscaling.yaml and infra_autoscaling/cloud.rs the EKS, Compute Engine and AKS
+pulls, and packages/queries/infra-networking.yaml and infra_networking/cloud.rs the load balancer and NAT
 pulls, so a metric added to a pull reaches no panel until those follow, and a metric removed leaves a panel
 empty. The numbers on this page
 (series counts, API calls, sample ages) were measured on 2026-09-26 against the wrapper-provisioned
@@ -40,6 +47,9 @@ no counter of its own. The EKS, Compute Engine quota and AKS pulls were measured
 running the rendered components under a local Alloy v1.20.0 against the same three installs' accounts,
 not in-cluster: the test installs' gateway identities hold none of the grants they need.
 No quota refusal has been observed, so `exceeded` is documented from Cloud Monitoring's descriptors.
+The load balancer and NAT gateway pulls were measured on 2026-10-16 the same way, under a local Alloy
+v1.20.0 against the three installs' accounts. None of those installs has an internal GCP load balancer,
+so the `l3/internal` half of that pull is documented from Cloud Monitoring's descriptors.
 -->
 
 ## What is pulled
@@ -59,6 +69,15 @@ No quota refusal has been observed, so `exceeded` is documented from Cloud Monit
 | `gcp` | Compute Engine region and its zones | `quota/cpus_per_vm_family` and `quota/local_ssd_total_storage_per_vm_family`: usage, limit and refusals | A few times a day; refusals as they happen |
 | `azure` | AKS cluster | `cluster_autoscaler_unschedulable_pods_count`, `cluster_autoscaler_cluster_safe_to_autoscale`, `cluster_autoscaler_scale_down_in_cooldown`, `cluster_autoscaler_unneeded_nodes_count` | One minute, summarised per five-minute bucket |
 | `azure` | AKS cluster's node scale sets | `VmAvailabilityMetric` per node VM | One minute, summarised per five-minute bucket |
+| `cloudwatch` | Network Load Balancer | `ActiveFlowCount`, and `TCP_Client_Reset_Count`, `TCP_Target_Reset_Count` and `TCP_ELB_Reset_Count` | One minute, summarised per five-minute period |
+| `cloudwatch` | Network Load Balancer | `NewFlowCount`, `ProcessedBytes` | The newest published minute |
+| `cloudwatch` | Network Load Balancer target group | `HealthyHostCount`, `UnHealthyHostCount` | One minute, summarised per five-minute period |
+| `cloudwatch` | NAT gateway | `ErrorPortAllocation`, `PacketsDropCount`, `IdleTimeoutCount`, `ConnectionAttemptCount`, `ConnectionEstablishedCount`, `ActiveConnectionCount` | One minute, summarised per five-minute period |
+| `gcp` | Load balancer forwarding rule, external or internal | `l3/external` and `l3/internal` `ingress_bytes_count`, `ingress_packets_count`, `egress_bytes_count`, `egress_packets_count` | The newest published minute |
+| `gcp` | Cloud NAT gateway | `nat_allocation_failed`, `port_usage`, `allocated_ports`, `open_connections`, `dropped_sent_packets_count` | One minute |
+| `azure` | AKS cluster's load balancers | `VipAvailability` per frontend address, `DipAvailability` per frontend and backend address | One minute, summarised per five-minute bucket |
+| `azure` | AKS cluster's load balancers | `ByteCount`, `SYNCount` per frontend address and direction | The newest minute |
+| `azure` | NAT gateway | `DatapathAvailability`, `PacketDropCount`, and `SNATConnectionCount` by connection state | One minute, summarised per five-minute bucket |
 
 The metric sets are fixed, and values only name the resources.
 Each pull is a custom component in the gateway's `gateway-provider` pipeline, so changing what is pulled is a change to that pipeline.
@@ -99,6 +118,53 @@ Each keeps the aggregation that shows the worst of its five minutes:
 the most pods waiting and the most unneeded nodes, any cooldown, and any moment it was unsafe to scale.
 The node pools are scale sets in the cluster's node resource group, which the pull finds through the cluster.
 
+### Load balancers and NAT gateways
+
+Kubernetes knows that a load balancer exists and the address it was given.
+What the load balancer is doing, and what the NAT gateway every outbound connection crosses is doing, only the provider can say.
+
+| Question | AWS | Google Cloud | Azure |
+|---|---|---|---|
+| Does the load balancer have a healthy backend | Healthy and unhealthy targets per target group | — | Each backend's health probe results, per frontend address |
+| Is the load balancer itself carrying traffic | — | — | Azure's own probe of each frontend address |
+| What does it carry | Open and new connections, bytes, and resets by sender | Packets and bytes in each direction | New connections, and bytes in each direction |
+| Is the NAT gateway out of source ports | Port allocation errors and dropped packets | Allocation failures, per-VM port use, and drops by reason | Failed SNAT connections and dropped packets |
+| What else does the NAT gateway say | Idle timeouts, open connections, and attempts against established | Open connections | Azure's own probe of its data path |
+
+**Each provider's resource is named differently, following how its monitoring API keys it.**
+
+- **AWS**: each Network Load Balancer is named by its ARN, with its target groups' ARNs beside it,
+  because CloudWatch publishes health only per target group, keyed by both.
+  Application Load Balancers are not pulled.
+  NAT gateways are named by ID.
+- **Google Cloud**: a LoadBalancer Service on GKE is a passthrough Network Load Balancer, named by its forwarding rule.
+  GKE names the rule `a` followed by the Service's UID without dashes, cut to 32 characters, and the rule's description names the Service.
+  Cloud NAT gateways are named by the NAT's name, not its Cloud Router's.
+- **Azure**: AKS puts every LoadBalancer Service behind one load balancer named `kubernetes`,
+  and internal ones behind `kubernetes-internal`, in the cluster's node resource group.
+  Every AKS cluster's are named the same, so the pull is named by the AKS cluster and finds them through it, as the AKS node pull does.
+  The API server's own load balancer is left out.
+  NAT gateways are listed by name.
+
+Three things about these pulls read differently from the others:
+
+- **Health is a count of backends, not a percentage.**
+  The Terraform wrappers create the Materialize Services with `externalTrafficPolicy: Local`,
+  so only nodes running a `balancerd` or console pod pass the health check.
+  On a six-node AKS cluster a healthy Service reads 17% on Azure's own average, so the dashboard counts the backends at 100% instead.
+- **Counts arrive in two shapes.**
+  A five-minute total ends at the pull, so its newest minutes are not yet published and it reads short.
+  The resets, NAT errors and SNAT counts keep that window, since a short burst is what they exist to catch,
+  and are read as "any" or as a ratio of two totals from the same window.
+  Bytes and new connections take the newest whole minute instead, which arrives complete, and read as a rate.
+- **Google Cloud's load balancer and NAT drop counts are per-minute DELTAs.**
+  The exporter adds the newest point of each pull to a counter, so `rate()` over it reads about a fifth of the truth at a five-minute interval.
+  The counter's last increment is one whole minute, and so is its value when the series is new or has just reset, which is how the dashboard reads it.
+  Cloud Monitoring writes nothing for a minute in which a client location sent no traffic, so these series come and go.
+  Both pulls are stamped at the scrape, which keeps each counter continuous while the exporter holds it,
+  so an idle minute reads as zero rather than as the last busy one.
+  External rules publish each series under two resource types, the current one and the legacy `tcp_lb_rule`, and the pull keeps only the current one.
+
 ### Metric names
 
 | Provider | Name shape | Example | Resource label |
@@ -118,6 +184,25 @@ The node and quota pulls follow the same shapes.
 | `azure` | `azure_microsoft_containerservice_managedclusters_cluster_autoscaler_*` | `resourceName` |
 | `azure` | `azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count` | `dimensionVmname` (`<scale set>_<index>`), `dimensionContext`, `resourceName` (the scale set) |
 
+The load balancer and NAT gateway pulls do too.
+
+| Provider | Families | Resource labels |
+|---|---|---|
+| `cloudwatch` | `aws_networkelb_*`, such as `aws_networkelb_healthy_host_count_minimum` | `dimension_LoadBalancer` (`net/<name>/<id>`), and `dimension_TargetGroup` (`targetgroup/<name>/<id>`) on the health families |
+| `cloudwatch` | `aws_natgateway_*`, such as `aws_natgateway_error_port_allocation_sum` | `dimension_NatGatewayId` |
+| `gcp` | `stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_*` and `stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_*` | `forwarding_rule_name`, and the client's country or network |
+| `gcp` | `stackdriver_nat_gateway_router_googleapis_com_nat_*` | `gateway_name`, and `reason` on the drops |
+| `azure` | `azure_microsoft_network_loadbalancers_*` | `resourceName` (`kubernetes` or `kubernetes-internal`), `resourceGroup` (the node resource group), and the frontend address |
+| `azure` | `azure_microsoft_network_natgateways_*` | `resourceName` |
+
+The Azure exporter names a split dimension `dimension<Name>` when a pull splits by two,
+such as `dimensionFrontendIPAddress` beside `dimensionBackendIPAddress`, and plain `dimension` when it splits by one.
+`VipAvailability` therefore carries the frontend address as `dimension`, and `SNATConnectionCount` its connection state.
+
+Each of these pulls also stamps every series it writes, `up` included, with `provider_pull`: `cloudwatch_nlb`,
+`cloudwatch_nat_gateway`, `gcp_load_balancing`, `gcp_cloud_nat`, `azure_load_balancer` or `azure_nat_gateway`.
+`infra-net` reads it off `up` to render a pull's rows only where that pull runs.
+
 A node joins to `kube_node_info` on its provider ID: the instance ID on EKS, and the scale set and index on AKS.
 The discovery pull also writes an `aws_<service>_info` series carrying every tag on the resource, which the pull drops, since tags are free text;
 the two tags it keeps are set by EKS and Karpenter.
@@ -135,6 +220,10 @@ Every provider series carries `job="integrations/cloudwatch"`, `job="integration
 On Cloud Monitoring series it is `cloudsql`, `gcs`, `compute_quota` or `compute_quota_exceeded`,
 since one pull covers every listed resource of a service.
 Azure series are the same, with `postgres`, `blob_capacity`, `blob_requests`, `aks_autoscaler` or `aks_nodes`.
+On the load balancer and NAT gateway pulls, CloudWatch's `instance` is the dimension it reads, `net/<name>/<id>`,
+`targetgroup/<name>/<id>` or the NAT gateway ID.
+Cloud Monitoring's is `load_balancing` or `cloud_nat`, and Azure's is `lb_availability`, `lb_probes`, `lb_traffic`,
+`nat_gateway` or `nat_connections`.
 
 ## Configuring it
 
@@ -154,6 +243,14 @@ pipeline:
           buckets: [mz-prod-storage-a1b2]
         eks:
           clusters: [mz-prod-eks]
+        nlb:
+          loadBalancers:
+            - arn: arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/net/mz-prod/0123456789abcdef
+              targetGroups:
+                - arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/mz-prod-pgwire/0123456789abcdef
+                - arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/mz-prod-console/fedcba9876543210
+        natGateway:
+          ids: [nat-0123456789abcdef0]
       gcp:
         enabled: true
         projectId: my-project
@@ -163,6 +260,10 @@ pipeline:
           buckets: [mz-prod-storage]
         compute:
           regions: [us-east1]
+        loadBalancing:
+          forwardingRules: [a0123456789abcdef0123456789abcde]
+        cloudNat:
+          gateways: [mz-prod-nat]
       azure:
         enabled: true
         subscriptionId: 00000000-0000-0000-0000-000000000000
@@ -172,6 +273,10 @@ pipeline:
           storageAccounts: [mzprodstorage]
         aks:
           clusters: [mz-prod-aks]
+        loadBalancer:
+          clusters: [mz-prod-aks]
+        natGateway:
+          names: [mz-prod-nat-gateway]
 ```
 
 A Cloud SQL entry is the instance name, not the `project:region:instance` connection name.
@@ -180,6 +285,10 @@ Both kinds of Azure name are unique across Azure, so no resource group is needed
 An EKS or AKS entry is the cluster's name, not its ARN or resource ID.
 AKS names are unique only within a resource group, so two clusters of one name in the subscription are both pulled, and told apart by `resourceGroup`.
 A Compute Engine entry is a region, such as `us-east1`; its zones are included, and a zone is refused.
+A Network Load Balancer or target group is its ARN, or the end of it that CloudWatch uses, such as `net/mz-prod/0123456789abcdef`.
+An ARN in a region other than `region` is refused, since CloudWatch is regional and the pull would return nothing.
+A forwarding rule or Cloud NAT gateway is its name, not its address or URL, and a NAT gateway ID is `nat-` and hex, not its name.
+Azure NAT gateway names are unique only within a resource group, so two gateways of one name in the subscription are both pulled.
 The chart refuses anything else at render, since the names sit inside the Resource Graph query's filter.
 `subscriptionId` is the subscription's GUID.
 On Azure Government or Azure China, set `cloudEnvironment` to `azureusgovernmentcloud` or `azurechinacloud`.
@@ -196,9 +305,9 @@ The pull runs as the gateway pod's own cloud identity, bound through `alloy-gate
 
 | Provider | Identity | Grant |
 |---|---|---|
-| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning. EKS clusters also need `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `tag:GetResources` and `autoscaling:DescribeAutoScalingGroups` |
-| `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project, which also reads its quota |
-| `azure` | Workload identity (`azure.workload.identity/client-id`, plus a pod label), or a service principal as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named server and storage account, and on each named AKS cluster and its node resource group |
+| `cloudwatch` | IRSA (`eks.amazonaws.com/role-arn`), EKS Pod Identity, or static keys as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the `mzmon-alloy-gateway-env` Secret | `cloudwatch:GetMetricStatistics`, which also covers the load balancer and NAT gateway pulls. `iam:ListAccountAliases` fills `account_alias`; without it every pull logs a warning. EKS clusters also need `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `tag:GetResources` and `autoscaling:DescribeAutoScalingGroups` |
+| `gcp` | Workload Identity (`iam.gke.io/gcp-service-account`) | `roles/monitoring.viewer` on the project, which also reads its quota, load balancers and Cloud NAT |
+| `azure` | Workload identity (`azure.workload.identity/client-id`, plus a pod label), or a service principal as `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` in the `mzmon-alloy-gateway-env` Secret | Monitoring Reader on each named server, storage account and NAT gateway, and on each named AKS cluster and its node resource group, which holds its load balancers |
 
 Azure workload identity needs two things on the gateway, not one.
 The annotation names the identity.
@@ -240,6 +349,10 @@ Provider data is minutes old when it arrives, and that decides how it can be use
 | Compute Engine quota usage and limit | Up to a day; measured at three points a day | The scrape's |
 | Compute Engine quota refusals | A few minutes | Cloud Monitoring's |
 | Azure AKS autoscaler and node VMs | About a minute | The scrape's |
+| CloudWatch Network Load Balancer and NAT gateway | A few minutes | The scrape's |
+| Cloud Monitoring load balancers | Five to seven minutes | The scrape's |
+| Cloud NAT | About four minutes | The scrape's |
+| Azure load balancers and NAT gateways | About a minute | The scrape's |
 
 CloudWatch and Azure samples are stamped at scrape time.
 Stamping a daily S3 datapoint with its own time would put it a day in the past, and the bundled Thanos Receive, which accepts no out-of-order samples, refuses samples that old.
@@ -255,7 +368,9 @@ Queries on provider families need `last_over_time(<series>[15m])` or a wider win
 Remote write forwards only samples stamped after it started, so that a restart does not resend what was already written.
 A Cloud Monitoring sample stamped before the restart is therefore never sent.
 After each restart, Cloud SQL series resume a few minutes later and GCS series over ten minutes later.
-CloudWatch and Azure samples carry the scrape's time, so they have no gap.
+CloudWatch and Azure samples carry the scrape's time, so they have no gap,
+and neither do the Cloud Monitoring load balancer and Cloud NAT pulls,
+which are stamped at the scrape for the reason [Load balancers and NAT gateways](#load-balancers-and-nat-gateways) gives.
 
 No provider signal backs a fast page.
 Provider alerts cover the slow-moving conditions — storage headroom, burst-credit exhaustion, connection ceilings — with `for:` windows well above the publication delay.
@@ -272,6 +387,10 @@ The provider bills each pull, and the bill depends on configuration, not on how 
 | `cloudwatch` EKS | One `tag:GetResources` and one `DescribeAutoScalingGroups`, one `ListMetrics` per metric, `GetMetricData` billed per metric requested, and one `GetMetricStatistics` for vCPU usage | 26 metrics requested for eight nodes and one node group, counted by `yace_cloudwatch_getmetricdata_metrics_requested_total` |
 | `gcp` quota | Four descriptor listings and four time-series listings for usage and limit, and two of each for refusals | 12 calls, counted by `stackdriver_monitoring_api_calls_total` |
 | `azure` AKS | Two Resource Graph queries, then one metrics call per cluster and one per node scale set | 5 calls for one cluster with two node pools |
+| `cloudwatch` load balancers and NAT | 6 `GetMetricStatistics` calls per Network Load Balancer, 2 per target group, and 6 per NAT gateway | Counted from the configuration, for the reason [Checking it works](#checking-it-works) gives |
+| `gcp` load balancers | Four descriptor listings, and one time-series listing per metric type found, external and internal | 12 calls, counted by `stackdriver_monitoring_api_calls_total` |
+| `gcp` Cloud NAT | Five descriptor listings and five time-series listings | 10 calls, counted by `stackdriver_monitoring_api_calls_total` |
+| `azure` load balancers and NAT | Three Resource Graph queries for the load balancers and two for the NAT gateways, then one metrics call per resource in each | 10 calls for one cluster's load balancer and one NAT gateway, counted from the exporter's code |
 
 `scrapeInterval` is the main lever, and defaults to five minutes.
 Rates change, so current provider pricing is the reference for what a call costs.
@@ -313,6 +432,11 @@ The pull does not read those types back, so it does not loop.
 | GKE node pool instance groups | `instance_group/size` has no target size beside it, so it says no more than the node count, and the group names are truncated beyond reliable matching |
 | The GKE cluster autoscaler | GKE publishes no metrics for it, only its visibility log in Cloud Logging and Kubernetes events |
 | AKS `kube_*` and `node_*` platform metrics | kube-state-metrics and node-exporter already report the same, at full resolution |
+| Application Load Balancers | The Terraform wrappers put Materialize behind Network Load Balancers |
+| Google Cloud load balancer round-trip latency | `rtt_latencies` is a distribution, which the exporter turns into a histogram per client location, and it covers only TCP |
+| NAT gateway bytes | Open connections and failures say whether egress works, and cAdvisor already reports what each pod sends |
+| Azure load balancer SNAT ports | The Terraform wrappers send outbound traffic through a NAT gateway, so the load balancer allocates none |
+| VPC flow logs and cross-zone traffic | Flow logs are logs, not metrics, and cross-zone volume is a billing question no provider publishes per cluster |
 
 ## Checking it works
 
@@ -337,6 +461,9 @@ A resource the identity cannot read is never found at all.
 | Are EKS nodes being found | `count(aws_ec2_status_check_failed_system_maximum)`, against the cluster's node count |
 | Is Compute Engine quota arriving | `count by (location) (stackdriver_compute_googleapis_com_location_compute_googleapis_com_quota_cpus_per_vm_family_usage)` |
 | Are AKS node VMs being found | `count by (resourceName) (azure_microsoft_compute_virtualmachinescalesets_vmavailabilitymetric_minimum_count)` |
+| Which load balancer and NAT pulls are running | `up{provider_pull=~".+"}` |
+| Is CloudWatch returning target health, per target group | `count by (dimension_TargetGroup) (aws_networkelb_healthy_host_count_minimum)` |
+| Is Azure finding the AKS load balancers | `count by (resourceName, resourceGroup) (azure_microsoft_network_loadbalancers_vipavailability_average_count)` |
 
 CloudWatch publishes no equivalent of the GCP error series.
 Its `yace_cloudwatch_getmetricstatistics_requests_total` counts billed calls, but it is one counter per gateway replica, and every CloudWatch target a replica owns reports it.

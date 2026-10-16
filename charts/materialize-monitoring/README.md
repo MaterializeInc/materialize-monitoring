@@ -1923,7 +1923,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "metricImportance":"extended", "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -1936,9 +1936,9 @@ records why this is a pull rather than a Grafana datasource.
 
 | Provider | Services | Alloy component |
 | --- | --- | --- |
-| `cloudwatch` | RDS instances, S3 buckets | `prometheus.exporter.cloudwatch` |
-| `gcp` | Cloud SQL instances, GCS buckets | `prometheus.exporter.gcp` |
-| `azure` | PostgreSQL Flexible Servers, Blob Storage accounts | `prometheus.exporter.azure` |
+| `cloudwatch` | RDS instances, S3 buckets, EKS nodes, Network Load Balancers, NAT gateways | `prometheus.exporter.cloudwatch` |
+| `gcp` | Cloud SQL instances, GCS buckets, Compute Engine quota, load balancer forwarding rules, Cloud NAT gateways | `prometheus.exporter.gcp` |
+| `azure` | PostgreSQL Flexible Servers, Blob Storage accounts, AKS clusters and their load balancers, NAT gateways | `prometheus.exporter.azure` |
 
 Every provider is off by default. Provider collection is an addition to
 what the clients already report about the same dependencies, not a
@@ -2063,6 +2063,45 @@ services need.
 </td>
     </tr>
     <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.nlb<wbr>.loadBalancers</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Network Load Balancers to watch, each by ARN, with the target groups behind it.
+Each entry is `arn`, the load balancer's ARN, and `targetGroups`,
+its target groups' ARNs; either may be given as the end of the ARN
+(`net/<name>/<id>`, `targetgroup/<name>/<id>`), which is how
+CloudWatch names them. The load balancer is pulled for its open
+and new connections, the bytes it carried, and the resets sent by
+clients, targets and the load balancer itself. Each target group is
+pulled for its healthy and unhealthy target counts, which
+CloudWatch publishes only per target group, so a load balancer
+listed without them has no health on the dashboard.
+
+```yaml
+loadBalancers:
+  - arn: arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/net/mz-nlb/0123456789abcdef
+    targetGroups:
+      - arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/mz-pgwire/0123456789abcdef
+```
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.cloudwatch<wbr>.natGateway<wbr>.ids</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">NAT gateway IDs to watch, such as `nat-0123456789abcdef0`.
+Each is pulled for port allocation errors and dropped packets,
+which is how exhaustion shows; connections closed for idling,
+which a long-lived source connection hits when it is quiet for
+350 seconds; open connections; and connection attempts beside
+those established.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.enabled</td>
       <td class="helm-value-type">bool</td>
       <td class="helm-value-default"><code>false</code></td>
@@ -2145,6 +2184,36 @@ a quota refused. A node pool that cannot grow for quota looks
 exactly like one that cannot grow for capacity until this says
 which. Usage and limit are published a few times a day, so each
 pull reaches back a day.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.loadBalancing<wbr>.forwardingRules</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Forwarding rule names of the passthrough Network Load Balancers to watch, external or internal.
+A LoadBalancer Service on GKE is one of these, and GKE names its
+rule `a` followed by the Service's UID without dashes, cut to 32
+characters; `gcloud compute forwarding-rules list` shows them, with
+the Service in each one's description. Each is pulled for the bytes
+and packets it carried in each direction. Cloud Monitoring
+publishes no health for these load balancers.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.cloudNat<wbr>.gateways</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">Cloud NAT gateway names to watch — the NAT's name, not its Cloud Router's.
+Each is pulled for whether a VM was refused a source port, the
+most connections any one VM holds to a single destination, which
+its share of ports limits, the ports allocated per NAT address,
+open connections, and packets dropped, by reason. Port exhaustion
+inside the cluster looks like a source that stalls and reconnects
+with no in-cluster cause.
 </td>
     </tr>
     <tr>
@@ -2235,6 +2304,36 @@ pools' scale sets, found through the cluster's node resource group,
 are pulled for Azure's own view of whether each node VM is up. The
 identity needs Monitoring Reader on the cluster and on its node
 resource group.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.loadBalancer<wbr>.clusters</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">AKS cluster names whose load balancers to watch — the name, not the resource ID.
+AKS puts a cluster's LoadBalancer Services behind `kubernetes` and,
+for internal ones, `kubernetes-internal`, in its node resource
+group. Every cluster's are named the same, so the cluster is what
+names them. Each is pulled per frontend address for Azure's own
+probe of the data path, each backend's health probe results, and
+the bytes and new connections of the newest minute. The identity
+needs Monitoring Reader on the node resource group.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.azure<wbr>.natGateway<wbr>.names</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">NAT gateway names to watch — the name, not the resource ID.
+Each is pulled for Azure's own probe of its data path, SNAT
+connections attempted and failed, and dropped packets. A failed
+SNAT connection is one the gateway could not give a source port.
+Names are unique only within a resource group, so two gateways of
+one name in the subscription are both pulled.
 </td>
     </tr>
     <tr>

@@ -544,11 +544,11 @@ $defs:
       - const: alloy
         description: The bundled Alloy collectors' own metrics.
       - const: cloudwatch
-        description: The gateway's CloudWatch pull, `pipeline.metrics.provider.cloudwatch` (`aws_rds_*`, `aws_s3_*`, and the EC2, Auto Scaling and usage families).
+        description: The gateway's CloudWatch pull, `pipeline.metrics.provider.cloudwatch` (`aws_rds_*`, `aws_s3_*`, and the EC2, Auto Scaling, usage, Network Load Balancer and NAT gateway families).
       - const: cloud-monitoring
-        description: The gateway's Cloud Monitoring pull, `pipeline.metrics.provider.gcp` (`stackdriver_cloudsql_database_*`, `stackdriver_gcs_bucket_*`, and Compute Engine quota).
+        description: The gateway's Cloud Monitoring pull, `pipeline.metrics.provider.gcp` (`stackdriver_cloudsql_database_*`, `stackdriver_gcs_bucket_*`, Compute Engine quota, load balancer forwarding rules and Cloud NAT).
       - const: azure-monitor
-        description: The gateway's Azure Monitor pull, `pipeline.metrics.provider.azure` (`azure_microsoft_dbforpostgresql_flexibleservers_*`, blob storage, AKS and scale sets).
+        description: The gateway's Azure Monitor pull, `pipeline.metrics.provider.azure` (`azure_microsoft_dbforpostgresql_flexibleservers_*`, blob storage, AKS, scale sets, load balancers and NAT gateways).
       - const: postgres-exporter
         description: The postgres-exporter subchart, `postgres-exporter.targets` (`pg_*`).
       # Set explicitly by an operator.

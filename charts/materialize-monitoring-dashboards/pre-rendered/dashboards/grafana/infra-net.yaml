@@ -28,47 +28,999 @@ spec:
   description: |-
     How traffic moves through the cluster Materialize runs on, and what stops it.
 
-    Pod and Service networking, the CNI underneath — discovered rather than configured — the nodes' own interfaces, and the NetworkPolicy objects that decide what is allowed.
+    Pod and Service networking, the CNI underneath — discovered rather than configured — the nodes' own interfaces, the cloud load balancers and NAT gateways around them, and the NetworkPolicy objects that decide what is allowed.
   editable: true
   elements:
-    cloud-egress-stub:
+    cloud-azure-lb-availability:
       kind: Panel
       spec:
         data:
           kind: QueryGroup
           spec:
-            queries: []
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_vipavailability_average_count[15m]),
+                          "frontend", "$1", "dimension", "(.*)"
+                        )
+                      ) / 100
+                    legendFormat: "{{frontend}}"
+                    qryType: 1
+                    query: |
+                      min by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_vipavailability_average_count[15m]),
+                          "frontend", "$1", "dimension", "(.*)"
+                        )
+                      ) / 100
+                  version: v0
+                refId: query-0
             queryOptions: {}
             transformations: []
-        description: What a VPC-side scrape would add here, and why it is absent.
-        id: 1036
+        description: |-
+          **The share of the last five minutes each load balancer frontend address answered Azure's own probe of its data path.**
+
+          **Nominal:** 100%.
+
+          **Degraded:** Below 100% is the load balancer itself failing to carry traffic in its region, which is Azure's to fix, whatever the backends are doing.
+
+          Azure probes the frontend from inside the region, so this does not see a firewall or route between a client and Azure.
+        id: 1044
         links: []
-        title: VPC and Egress
+        title: Data Path Availability
         vizConfig:
-          group: text
+          group: timeseries
           kind: VizConfig
           spec:
             fieldConfig:
-              defaults: {}
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 0.99
+                  - color: "#A2F49B"
+                    value: 1
+                unit: percentunit
               overrides: []
             options:
-              code:
-                language: plaintext
-                showLineNumbers: false
-                showMiniMap: false
-              content: |-
-                **VPC and egress metrics are not collected yet.**
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-azure-lb-healthy:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        ) == bool 100
+                      )
+                    legendFormat: "{{frontend}}"
+                    qryType: 1
+                    query: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_dipavailability_average_count[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        ) == bool 100
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Backends behind each load balancer frontend address that passed every health probe in the last five minutes.**
 
-                The network the cluster sits in is invisible from inside it. What a provider-side scrape would add:
+          **Nominal:** For a Service with `externalTrafficPolicy: Local`, as the Materialize Services set, the number of nodes running one of its pods, since only those pass. For any other Service, every node.
 
-                - **NAT gateway throughput, packet drops and port allocation errors.** Port exhaustion on a NAT gateway presents inside the cluster as intermittent connection failures to external sources — a Materialize source that stalls and recovers with no in-cluster cause is the classic symptom, and nothing on this dashboard can currently confirm it.
-                - **Cross-zone traffic volume**, which is both a latency and a billing question for a deployment spread across availability zones.
-                - **VPC flow logs**, for the connections that never arrived at all. These are logs rather than metrics and would belong with _Logs and Events_ rather than here.
+          **Unhealthy:** **Zero is a frontend with nowhere to send a connection**, so the endpoint is down from outside however healthy the pods look from inside.
 
-                Tracked as DEP-233 🔒.
+          The frontend address is the Service's external IP in _Load Balancer Services_ above. Azure's own average health-probe percentage reads 17% for a healthy Service on six nodes, which is why this counts backends instead.
+        id: 1043
+        links: []
+        title: Healthy Backends
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 1
+                  - color: "#A2F49B"
+                    value: 1
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-azure-lb-new:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        )
+                      ) / 60
+                    legendFormat: "{{frontend}}"
+                    qryType: 1
+                    query: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection="In"}[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Connections clients opened to each load balancer frontend address per second, counted as inbound SYN packets in the newest minute.**"
+        id: 1045
+        links: []
+        title: New Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-azure-lb-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        )
+                      ) / 60
+                    legendFormat: in {{frontend}}
+                    qryType: 1
+                    query: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="In"}[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        )
+                      ) / 60
+                    legendFormat: out {{frontend}}
+                    qryType: 1
+                    query: |
+                      sum by (frontend) (
+                        label_replace(
+                          last_over_time(azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection="Out"}[15m]),
+                          "frontend", "$1", "dimensionFrontendIPAddress", "(.*)"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: "**Bytes into and out of each load balancer frontend address per second, in the newest minute.**"
+        id: 1046
+        links: []
+        title: Throughput
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-azure-nat-availability:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_datapathavailability_average_count[15m])
+                      ) / 100
+                    legendFormat: "{{resourceName}}"
+                    qryType: 1
+                    query: |
+                      min by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_datapathavailability_average_count[15m])
+                      ) / 100
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The share of the last five minutes each Azure NAT gateway answered Azure's own probe of its data path.**
 
-                Until then, _Node Networking -> Conntrack Table_ is the nearest in-cluster signal: a node whose connection table is full fails in much the same way and for a similar reason.
-              mode: markdown
+          **Nominal:** 100%.
+
+          **Degraded:** Below 100% is the gateway itself failing to carry traffic, which is Azure's to fix.
+        id: 1058
+        links: []
+        title: Data Path Availability
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 0.99
+                  - color: "#A2F49B"
+                    value: 1
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-azure-nat-dropped:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_packetdropcount_total_count[15m])
+                      )
+                    legendFormat: "{{resourceName}}"
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_packetdropcount_total_count[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets each Azure NAT gateway dropped, per five minutes.**
+
+          **Nominal:** Zero.
+
+          Read as "any", for the reason _SNAT Connections_ gives.
+        id: 1057
+        links: []
+        title: Dropped Packets (per 5 min)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 25.75
+                  - color: "#F67E4B"
+                    value: 50.5
+                  - color: "#DD3D2D"
+                    value: 75.25
+                  - color: "#A50026"
+                    value: 100
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-azure-nat-snat:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Attempted"}[15m])
+                      )
+                    legendFormat: attempted {{resourceName}}
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Attempted"}[15m])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Failed"}[15m])
+                      )
+                    legendFormat: failed {{resourceName}}
+                    qryType: 1
+                    query: |
+                      max by (resourceName) (
+                        last_over_time(azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension="Failed"}[15m])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **SNAT connections each Azure NAT gateway attempted, and those that failed, per five minutes.**
+
+          **Nominal:** Attempts, and no failures.
+
+          **Unhealthy:** **A failed SNAT connection is one the gateway could not give a source port**, which is exhaustion: too many connections to one destination address and port. Inside the cluster it looks like a Materialize source that stalls and reconnects with no cause of its own. Each public address on the gateway adds ports.
+
+          The newest five-minute total ends at the pull and is short its last minutes, so read the failures as "any", not "how many".
+        id: 1056
+        links: []
+        title: SNAT Connections (per 5 min)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-cloud-nat-connections:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (gateway_name) (
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_open_connections[15m])
+                      )
+                    legendFormat: "{{gateway_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (gateway_name) (
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_open_connections[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Connections open through each Cloud NAT gateway.**"
+        id: 1055
+        links: []
+        title: Open Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-cloud-nat-dropped:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (gateway_name, reason) (
+                        (idelta(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[15m]) >= 0)
+                        or
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[10m])
+                      ) / 60
+                    legendFormat: "{{reason}} {{gateway_name}}"
+                    qryType: 1
+                    query: |
+                      sum by (gateway_name, reason) (
+                        (idelta(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[15m]) >= 0)
+                        or
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[10m])
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets each Cloud NAT gateway dropped per second, by reason, in the newest minute Cloud Monitoring has published.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** `OUT_OF_RESOURCES` is port exhaustion, the same failure as _Allocation Failures_. `ENDPOINT_INDEPENDENCE_CONFLICT` is two VMs reaching one destination from one NAT address and port, which endpoint-independent mapping cannot tell apart.
+        id: 1053
+        links: []
+        title: Dropped Packets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-cloud-nat-failed:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (gateway_name) (
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed[15m])
+                      )
+                    legendFormat: "{{gateway_name}}"
+                    qryType: 1
+                    query: |
+                      max by (gateway_name) (
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Whether each Cloud NAT gateway refused a VM a source port it asked for.**
+
+          **Nominal:** Never.
+
+          **Unhealthy:** **Any refusal is exhaustion**: a node wanted more connections to one destination address and port than its share of ports allows. Inside the cluster it looks like a Materialize source that stalls and reconnects with no cause of its own.
+        id: 1052
+        links: []
+        title: Allocation Failures
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 1
+                  - color: "#F67E4B"
+                    value: 1
+                  - color: "#DD3D2D"
+                    value: 1
+                  - color: "#A50026"
+                    value: 1
+                unit: bool_yes_no
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-cloud-nat-ports:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (gateway_name) (
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_port_usage[15m])
+                      )
+                    legendFormat: "{{gateway_name}}"
+                    qryType: 1
+                    query: |
+                      max by (gateway_name) (
+                        last_over_time(stackdriver_nat_gateway_router_googleapis_com_nat_port_usage[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The most connections any one VM behind each Cloud NAT gateway holds to a single destination address and port, which its share of NAT ports limits.**
+
+          **Degraded:** Near the gateway's ports per VM is a node about to be refused. With static allocation, as the Terraform wrappers configure it, that is 64 unless the gateway was given more.
+        id: 1054
+        links: []
+        title: Port Usage
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-gcp-lb-packets:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+                      ) / 60
+                    legendFormat: in {{forwarding_rule_name}}
+                    qryType: 1
+                    query: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[10m])
+                      ) / 60
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+                      ) / 60
+                    legendFormat: out {{forwarding_rule_name}}
+                    qryType: 1
+                    query: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[10m])
+                      ) / 60
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Packets into and out of each load balancer forwarding rule per second, in the newest minute Cloud Monitoring has published.**
+
+          **Nominal:** Both directions moving together: requests in, responses out.
+
+          **Degraded:** **Packets in with almost none out** is a load balancer whose backends are not answering. On GKE, with `externalTrafficPolicy: Local`, only nodes running one of the Service's pods answer, so check _Kubernetes -> Endpoints by Namespace_ for the Service.
+
+          Cloud Monitoring publishes no health for passthrough load balancers, only traffic, and writes nothing for a minute that carried none. A rule with no line has carried nothing recently. GKE names each rule `a` followed by its Service's UID without dashes, and the rule's description in the console names the Service.
+        id: 1041
+        links: []
+        title: Packets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No traffic reported. Cloud Monitoring writes nothing for a minute a rule carried none; Infrastructure Cloud Provider -> Collection shows whether the pull is being refused.
+                unit: pps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-gcp-lb-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+                      ) / 60
+                    legendFormat: in {{forwarding_rule_name}}
+                    qryType: 1
+                    query: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[10m])
+                      ) / 60
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+                      ) / 60
+                    legendFormat: out {{forwarding_rule_name}}
+                    qryType: 1
+                    query: |
+                      sum by (forwarding_rule_name) (
+                        (idelta(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[10m])
+                        or
+                        (idelta(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[15m]) >= 0) or last_over_time(stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[10m])
+                      ) / 60
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Bytes into and out of each load balancer forwarding rule per second, in the newest minute Cloud Monitoring has published.**
+
+          Read the same way as _Packets_.
+        id: 1042
+        links: []
+        title: Throughput
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No traffic reported. Cloud Monitoring writes nothing for a minute a rule carried none; Infrastructure Cloud Provider -> Collection shows whether the pull is being refused.
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
           version: ""
     cloud-load-balancers:
       kind: Panel
@@ -119,7 +1071,7 @@ spec:
 
           **Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.
 
-          This is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.
+          This is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, resets) lives at the cloud provider, and the queries below read it from the gateway's provider pulls where they are configured.
         id: 1034
         links: []
         title: Load Balancer Services
@@ -145,7 +1097,785 @@ spec:
               showHeader: true
               showTypeIcons: false
           version: ""
-    cloud-provider-stub:
+    cloud-nat-connections:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_active_connection_count_maximum[15m])
+                      )
+                    legendFormat: "{{dimension_NatGatewayId}}"
+                    qryType: 1
+                    query: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_active_connection_count_maximum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Connections open through each NAT gateway, at the busiest moment of the last five minutes.**"
+        id: 1050
+        links: []
+        title: Open Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nat-established:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_NatGatewayId) (last_over_time(aws_natgateway_connection_established_count_sum[15m]))
+                        /
+                      (max by (dimension_NatGatewayId) (last_over_time(aws_natgateway_connection_attempt_count_sum[15m])) > 0)
+                    legendFormat: "{{dimension_NatGatewayId}}"
+                    qryType: 1
+                    query: |
+                      max by (dimension_NatGatewayId) (last_over_time(aws_natgateway_connection_established_count_sum[15m]))
+                        /
+                      (max by (dimension_NatGatewayId) (last_over_time(aws_natgateway_connection_attempt_count_sum[15m])) > 0)
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **The share of connection attempts through each NAT gateway that the destination answered, over the last five minutes.**
+
+          **Nominal:** Near 100%.
+
+          **Degraded:** Lower is destinations not answering through the gateway: refused, filtered, or unreachable. It is the destination's or the route's, not the gateway's, unless _Port Exhaustion_ is also above zero.
+
+          A ratio of two totals from the same window, so the short newest minutes do not bias it.
+        id: 1049
+        links: []
+        title: Connections Established
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                max: 1
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 0.5
+                  - color: "#A2F49B"
+                    value: 0.9
+                unit: percentunit
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nat-exhaustion:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_error_port_allocation_sum[15m])
+                      )
+                    legendFormat: port allocation errors {{dimension_NatGatewayId}}
+                    qryType: 1
+                    query: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_error_port_allocation_sum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_packets_drop_count_sum[15m])
+                      )
+                    legendFormat: dropped packets {{dimension_NatGatewayId}}
+                    qryType: 1
+                    query: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_packets_drop_count_sum[15m])
+                      )
+                  version: v0
+                refId: query-1
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections each NAT gateway could not give a source port, and packets it dropped, per five minutes.**
+
+          **Nominal:** Zero.
+
+          **Unhealthy:** **Any port allocation error is exhaustion**: too many connections from the private subnets to one destination address and port. Inside the cluster it looks like a Materialize source that stalls and reconnects with no cause of its own. Each NAT gateway address adds ports, so the fix is another address or fewer connections to that destination.
+
+          The newest five-minute total ends at the pull and is short its last minutes, so read it as "any", not "how many".
+        id: 1048
+        links: []
+        title: Port Exhaustion (per 5 min)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 25.75
+                  - color: "#F67E4B"
+                    value: 50.5
+                  - color: "#DD3D2D"
+                    value: 75.25
+                  - color: "#A50026"
+                    value: 100
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nat-idle:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_idle_timeout_count_sum[15m])
+                      )
+                    legendFormat: "{{dimension_NatGatewayId}}"
+                    qryType: 1
+                    query: |
+                      max by (dimension_NatGatewayId) (
+                        last_over_time(aws_natgateway_idle_timeout_count_sum[15m])
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections each NAT gateway closed for being idle, per five minutes.**
+
+          **Nominal:** Some; any connection idle past 350 seconds is closed.
+
+          **Degraded:** A count that rises with source reconnects is a long-lived upstream connection, to Kafka or a replicated database, going quiet longer than 350 seconds. TCP keepalives shorter than that keep it open.
+        id: 1051
+        links: []
+        title: Idle Timeouts (per 5 min)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nlb-healthy:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      min by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_healthy_host_count_minimum[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: "{{target_group}}"
+                    qryType: 1
+                    query: |
+                      min by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_healthy_host_count_minimum[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Targets in each Network Load Balancer target group that passed their health check, at the worst moment of the last five minutes.**
+
+          **Nominal:** Every target the group should have: for Materialize, one for each `balancerd` or console pod.
+
+          **Degraded:** Fewer is a target the load balancer stopped sending to. _Unhealthy Targets_ says whether it is failing its check or gone.
+
+          **Unhealthy:** **Zero is a load balancer with nowhere to send a connection**, so the endpoint is down from outside however healthy the pods look from inside. When the pods are Ready, the usual causes are a security group that does not admit the health checks, or a check aimed at a port nothing listens on.
+
+          CloudWatch publishes health only per target group, so a load balancer whose target groups are not listed in values has none here.
+        id: 1035
+        links: []
+        title: Healthy Targets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No target groups are pulled. CloudWatch publishes health only per target group, so list them beside their load balancer in values.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#AB0003"
+                    value: null
+                  - color: "#F19903"
+                    value: 1
+                  - color: "#A2F49B"
+                    value: 1
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nlb-new:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_new_flow_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                    legendFormat: "{{load_balancer}}"
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_new_flow_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections each Network Load Balancer opened per second, in the newest minute CloudWatch has published.**
+
+          **Degraded:** New connections with no rise in _Open Connections_ are clients that connect and are cut off at once; _Connection Resets_ says by whom.
+        id: 1039
+        links: []
+        title: New Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: cps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nlb-open:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_active_flow_count_average[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: "{{load_balancer}}"
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_active_flow_count_average[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Connections open through each Network Load Balancer, averaged over the last five minutes.**
+
+          **Nominal:** Steady, and roughly the number of SQL sessions and console users reaching Materialize from outside the cluster.
+        id: 1038
+        links: []
+        title: Open Connections
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nlb-resets:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_client_reset_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: client {{load_balancer}}
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_client_reset_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_target_reset_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: target {{load_balancer}}
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_target_reset_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-1
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_elb_reset_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: load balancer {{load_balancer}}
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_tcp_elb_reset_count_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-2
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **TCP resets through each Network Load Balancer per five minutes, by who sent them: the client, a target, or the load balancer itself.**
+
+          **Nominal:** A few from clients and targets; connections end that way routinely.
+
+          **Degraded:** **Resets from the load balancer** are connections it ended: one idle past its timeout, 350 seconds by default, or one whose target is gone. A Materialize session that drops after a quiet spell is the first. **Resets from targets**, with healthy targets, are usually the pods refusing the load balancer's own health checks or connections.
+
+          The newest five-minute total ends at the pull and is short its last minutes, so read it as "any", not "how many".
+        id: 1037
+        links: []
+        title: Connection Resets (per 5 min)
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nlb-throughput:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_processed_bytes_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                    legendFormat: "{{load_balancer}}"
+                    qryType: 1
+                    query: |
+                      max by (load_balancer) (
+                        label_replace(
+                          last_over_time(aws_networkelb_processed_bytes_sum[15m]),
+                          "load_balancer", "$1", "dimension_LoadBalancer", "net/([^/]+)/.*"
+                        )
+                      ) / 60
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: "**Bytes each Network Load Balancer carried per second, both directions together, in the newest minute CloudWatch has published.**"
+        id: 1040
+        links: []
+        title: Throughput
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                unit: Bps
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-nlb-unhealthy:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+            - kind: PanelQuery
+              spec:
+                hidden: false
+                query:
+                  datasource:
+                    name: ${metricsDatasource}
+                  group: prometheus
+                  kind: DataQuery
+                  spec:
+                    expr: |
+                      max by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_un_healthy_host_count_maximum[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                    legendFormat: "{{target_group}}"
+                    qryType: 1
+                    query: |
+                      max by (target_group) (
+                        label_replace(
+                          last_over_time(aws_networkelb_un_healthy_host_count_maximum[15m]),
+                          "target_group", "$1", "dimension_TargetGroup", "targetgroup/([^/]+)/.*"
+                        )
+                      )
+                  version: v0
+                refId: query-0
+            queryOptions: {}
+            transformations: []
+        description: |-
+          **Targets in each target group failing their health check, at the worst moment of the last five minutes.**
+
+          **Nominal:** Zero.
+
+          **Degraded:** A target here and Ready in Kubernetes is one the load balancer cannot reach, which is almost always the network between them rather than the pod.
+        id: 1036
+        links: []
+        title: Unhealthy Targets
+        vizConfig:
+          group: timeseries
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults:
+                decimals: 0
+                min: 0
+                noValue: No data from the provider. A new pull takes a few minutes to report; Infrastructure Cloud Provider -> Collection shows whether it is being refused.
+                thresholds:
+                  mode: absolute
+                  steps:
+                  - color: "#A2F49B"
+                    value: null
+                  - color: "#FEDA8B"
+                    value: 1
+                  - color: "#FDB366"
+                    value: 3.25
+                  - color: "#F67E4B"
+                    value: 5.5
+                  - color: "#DD3D2D"
+                    value: 7.75
+                  - color: "#A50026"
+                    value: 10
+                unit: short
+              overrides: []
+            options:
+              legend:
+                calcs:
+                - max
+                - mean
+                - lastNotNull
+                displayMode: table
+                placement: bottom
+                showLegend: true
+              tooltip:
+                mode: single
+                sort: asc
+          version: ""
+    cloud-no-lb-pull:
       kind: Panel
       spec:
         data:
@@ -154,10 +1884,10 @@ spec:
             queries: []
             queryOptions: {}
             transformations: []
-        description: What a cloud-provider scrape would add here, and why it is absent.
-        id: 1035
+        description: Why this tab has no provider load balancer rows on it.
+        id: 1047
         links: []
-        title: Load Balancer Traffic and Health
+        title: No Load Balancer Metrics
         vizConfig:
           group: text
           kind: VizConfig
@@ -171,17 +1901,56 @@ spec:
                 showLineNumbers: false
                 showMiniMap: false
               content: |-
-                **Load balancer metrics are not collected yet.**
+                **No load balancer metrics are being collected.**
 
-                Kubernetes can say that a load balancer exists and what address it was given — that is the table above. Everything about what it is *doing* lives at the cloud provider:
+                The table above is what Kubernetes knows: that a load balancer exists, and its address. What it is doing — whether it has a healthy backend, what it carries, who resets its connections — is published by the cloud provider, and the gateway pulls it only for load balancers named in values. That is opt-in, because it needs a cloud identity with read access and every pull is billed by the provider.
 
-                - **AWS** — `AWS/ApplicationELB` and `AWS/NetworkELB` in CloudWatch: request and connection counts, target response time, `HealthyHostCount`, `UnHealthyHostCount`, and the 4xx/5xx families that separate a backend fault from a load balancer one.
-                - **GCP** — the `loadbalancing.googleapis.com` metrics in Cloud Monitoring.
-                - **Azure** — the Load Balancer and Application Gateway metric namespaces in Azure Monitor.
+                - **AWS**: list each Network Load Balancer's ARN, with its target groups' ARNs, under `pipeline.metrics.provider.cloudwatch.nlb.loadBalancers`.
+                - **Google Cloud**: list each Service's forwarding rule under `pipeline.metrics.provider.gcp.loadBalancing.forwardingRules`.
+                - **Azure**: list the AKS cluster under `pipeline.metrics.provider.azure.loadBalancer.clusters`.
 
-                The gateway can pull provider metrics, and the Infrastructure Cloud Provider dashboard reads them for the metadata database and the buckets, but load balancers are not among the resources it pulls. Tracked as DEP-233 🔒.
+                A pull that is configured but failing still renders its rows, empty, so this note never hides one. The Cloud Provider Metrics page of the documentation has the details.
 
-                Until then: an unreachable endpoint whose Service *does* appear above is usually a target health problem, and _Kubernetes -> Endpoints by Namespace_ is the closest in-cluster substitute — a Service with no endpoints has nothing for the load balancer to send to.
+                Without it, _Kubernetes -> Endpoints by Namespace_ is the nearest in-cluster substitute: a Service with no ready endpoints has nothing for its load balancer to send to.
+              mode: markdown
+          version: ""
+    cloud-no-nat-pull:
+      kind: Panel
+      spec:
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            queryOptions: {}
+            transformations: []
+        description: Why this tab has no NAT gateway rows on it.
+        id: 1059
+        links: []
+        title: No NAT Gateway Metrics
+        vizConfig:
+          group: text
+          kind: VizConfig
+          spec:
+            fieldConfig:
+              defaults: {}
+              overrides: []
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: |-
+                **No NAT gateway metrics are being collected.**
+
+                Pods without a public address leave the network through a NAT gateway, and when it runs out of source ports for one destination, a Materialize source stalls and reconnects with no cause anywhere in the cluster. Only the provider can say so, and the gateway pulls it only for NAT gateways named in values:
+
+                - **AWS**: `pipeline.metrics.provider.cloudwatch.natGateway.ids`.
+                - **Google Cloud**: `pipeline.metrics.provider.gcp.cloudNat.gateways`.
+                - **Azure**: `pipeline.metrics.provider.azure.natGateway.names`.
+
+                A cluster whose nodes have public addresses of their own has no NAT gateway, and nothing here applies to it.
+
+                Without it, _Node Networking -> Conntrack Table_ is the nearest in-cluster signal: a node whose connection table is full fails in much the same way and for a similar reason.
               mode: markdown
           version: ""
     cni-aws-addresses:
@@ -2380,7 +4149,7 @@ spec:
 
           **Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.
 
-          This is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, rejected requests) lives at the cloud provider and is not collected yet; see the note on the _Cloud Networking_ tab.
+          This is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, resets) lives at the cloud provider, and the queries below read it from the gateway's provider pulls where they are configured.
         id: 1004
         links: []
         title: Load Balancers
@@ -2679,7 +4448,7 @@ spec:
           **Degraded:** A step change after a deploy usually means a workload moved and its policy did not follow. The agent can log the flows it drops — enabling that is how the specific connection gets identified, since the counter alone cannot say which.
 
           Only present where the AWS VPC CNI is running with network policy enabled. Unrelated to `kube_networkpolicy_*`, which counts the policies that exist rather than the packets they stopped.
-        id: 1040
+        id: 1063
         links: []
         title: Packets Dropped by Policy
         vizConfig:
@@ -2739,7 +4508,7 @@ spec:
           **Degraded:** A step change coinciding with a deploy is a workload that moved out from under its policy. Hubble is where the specific flow is identified, when its metrics or its CLI are available.
 
           A narrowed view of the datapath drop counter on the _CNI_ tab, which carries every reason. Policy denials are pulled out here because they are the only ones that are somebody's intent rather than a fault.
-        id: 1041
+        id: 1064
         links: []
         title: Packets Dropped by Policy
         vizConfig:
@@ -2804,7 +4573,7 @@ spec:
           **Degraded:** **A namespace missing from this list has no policy at all**, which in Kubernetes means every pod in it accepts traffic from everywhere in the cluster. That is the default and it is rarely what anyone intended — _Namespaces Without Policy_ states it directly rather than by absence.
 
           Counts policies, not their effect. A namespace with twenty policies that select nothing is less protected than one with a single default-deny.
-        id: 1038
+        id: 1061
         links: []
         title: Policies by Namespace
         vizConfig:
@@ -2916,7 +4685,7 @@ spec:
           **Degraded:** A policy you did not expect to be default-deny showing zero of both is worth checking — it is the shape an incomplete edit leaves behind, and it fails closed.
 
           Rule counts, not selected pods. Kubernetes exports no metric for how many pods a policy actually matches, which is the number that would answer "is this policy doing anything"; `kubectl describe networkpolicy` is still the way to find that out.
-        id: 1039
+        id: 1062
         links: []
         title: Ingress and Egress Rules per Policy
         vizConfig:
@@ -2989,7 +4758,7 @@ spec:
           **Degraded:** Each namespace listed accepts traffic from every pod in the cluster. Whether that matters depends on what it runs, but it should be a decision rather than an oversight — which is the point of naming them.
 
           Derived by subtracting the namespaces that have policies from those that have pods, so a namespace with neither does not appear. `unless` on the namespace label is what does it; there is no metric for "has no policy".
-        id: 1037
+        id: 1060
         links: []
         title: Namespaces Without Policy
         vizConfig:
@@ -3517,25 +5286,150 @@ spec:
               - kind: RowsLayoutRow
                 spec:
                   collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch_nlb
+                          variable: cloudNetworkPullList
+                      visibility: show
                   hideHeader: false
                   layout:
                     kind: AutoGridLayout
                     spec:
-                      columnWidthMode: standard
+                      columnWidthMode: wide
                       fillScreen: false
                       items:
                       - kind: AutoGridLayoutItem
                         spec:
                           element:
                             kind: ElementReference
-                            name: cloud-provider-stub
-                      maxColumnCount: 1
-                      rowHeightMode: tall
-                  title: Load Balancer Traffic and Health
+                            name: cloud-nlb-healthy
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nlb-unhealthy
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nlb-resets
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nlb-open
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nlb-new
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nlb-throughput
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: "Network Load Balancer: Targets and Connections"
               - kind: RowsLayoutRow
                 spec:
-                  collapse: true
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp_load_balancing
+                          variable: cloudNetworkPullList
+                      visibility: show
                   hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-gcp-lb-packets
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-gcp-lb-throughput
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: "Cloud Load Balancing: Traffic"
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure_load_balancer
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-lb-healthy
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-lb-availability
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-lb-new
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-lb-throughput
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: "Azure Load Balancer: Health and Traffic"
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: cloudwatch_nlb|gcp_load_balancing|azure_load_balancer
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: true
                   layout:
                     kind: AutoGridLayout
                     spec:
@@ -3546,10 +5440,166 @@ spec:
                         spec:
                           element:
                             kind: ElementReference
-                            name: cloud-egress-stub
+                            name: cloud-no-lb-pull
                       maxColumnCount: 1
                       rowHeightMode: tall
-                  title: VPC and Egress
+                  title: No Load Balancer Metrics
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: cloudwatch_nat_gateway
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nat-exhaustion
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nat-established
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nat-connections
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-nat-idle
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: "NAT Gateway: Ports and Connections"
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: gcp_cloud_nat
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-cloud-nat-failed
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-cloud-nat-dropped
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-cloud-nat-ports
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-cloud-nat-connections
+                      maxColumnCount: 2
+                      rowHeightMode: standard
+                  title: "Cloud NAT: Ports and Connections"
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: matches
+                          value: azure_nat_gateway
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: false
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: wide
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-nat-snat
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-nat-dropped
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-azure-nat-availability
+                      maxColumnCount: 3
+                      rowHeightMode: standard
+                  title: "Azure NAT Gateway: Ports and Connections"
+              - kind: RowsLayoutRow
+                spec:
+                  collapse: false
+                  conditionalRendering:
+                    kind: ConditionalRenderingGroup
+                    spec:
+                      condition: and
+                      items:
+                      - kind: ConditionalRenderingVariable
+                        spec:
+                          operator: notMatches
+                          value: cloudwatch_nat_gateway|gcp_cloud_nat|azure_nat_gateway
+                          variable: cloudNetworkPullList
+                      visibility: show
+                  hideHeader: true
+                  layout:
+                    kind: AutoGridLayout
+                    spec:
+                      columnWidthMode: standard
+                      fillScreen: false
+                      items:
+                      - kind: AutoGridLayoutItem
+                        spec:
+                          element:
+                            kind: ElementReference
+                            name: cloud-no-nat-pull
+                      maxColumnCount: 1
+                      rowHeightMode: tall
+                  title: No NAT Gateway Metrics
           title: Cloud Networking
       - kind: TabsLayoutTab
         spec:
@@ -3789,6 +5839,35 @@ spec:
       regex: ""
       regexApplyTo: value
       skipUrlSync: false
+      sort: alphabeticalAsc
+  - kind: QueryVariable
+    spec:
+      allowCustomValue: true
+      current:
+        text: ""
+        value: ""
+      definition: label_values(up{provider_pull=~".+"}, provider_pull)
+      description: Load balancer and NAT gateway pulls the gateway was found to be running
+      hide: hideVariable
+      includeAll: true
+      label: Network Pulls
+      multi: true
+      name: cloudNetworkPullList
+      options: []
+      query:
+        datasource:
+          name: ${metricsDatasource}
+        group: prometheus
+        kind: DataQuery
+        spec:
+          expr: label_values(up{provider_pull=~".+"}, provider_pull)
+          qryType: 1
+          query: label_values(up{provider_pull=~".+"}, provider_pull)
+        version: v0
+      refresh: never
+      regex: ""
+      regexApplyTo: value
+      skipUrlSync: true
       sort: alphabeticalAsc
   - datasource:
       name: $metricsDatasource
