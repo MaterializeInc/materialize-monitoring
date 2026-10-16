@@ -4672,6 +4672,12 @@ Point the upstream gateway's writer at the downstream gateway's `:3100` (Loki pu
 - **Cluster label.** Set `clusterName`, or `cluster_name` on the Terraform module, so every collected line carries a
   stable `cluster` value. The agent stamps it on pod logs, and the gateway applies it to every line that arrives without
   one: journal logs, Kubernetes events, Alloy's own logs, and OTLP logs. It matters when several clusters write to the same log store.
+- **Line size limits.** The agent and the gateway cut a line longer than `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`) rather than dropping it.
+  The gateway then cuts any line longer than `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), so it fits Loki's line limit.
+  It parses the line first, so a line under the clamp still yields its level, timestamp, and fields.
+  A cut line ends in a suffix, such as `[TRUNCATED:LINE]`, that names the rule that cut it.
+  Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
+  For every rule, see the [logging pipeline reference](../../reference/development/pipelines/logging/#size-limits).
 - **Gateway ingress port.** The gateway's Loki push listener defaults to `3100`; override it with `ALLOY_LOKI_PORT` on the gateway.
 - **Gateway destination.** Where the gateway writes processed logs is set with `GATEWAY_LOKI_DEST` on the gateway (defaults to the in-cluster Loki push endpoint). Point it at an external Loki/OTLP destination for the [remote-only topology](../architecture/#alternative-topologies).
 - **Gateway-side policies.** Level normalization, per-level rate limits, drops, and the label-vs-structured-metadata split are all gateway-pipeline concerns. Change them through the pipeline sources rather than ad hoc, so the behavior stays attributable.
@@ -6977,8 +6983,10 @@ Every bundled rule carries an `audience` label saying who acts on it.
 |---|---|
 | `platform` | The Materialize deployment, its system clusters, and the Kubernetes platform under it |
 | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
+| `development` | Conditions the stack has already contained, for the people who write the software behind them, such as log lines too long to store. Bundled as `severity: notice` |
 
 An [extra route](../channels/#extra-routes) on `audience="workload"` sends the second group to the people who own the clusters.
+One on `audience="development"` sends the third to a development channel.
 
 `rules.overrides` changes an installed rule's `for` and labels, and never its expression.
 A deployment whose clusters normally take hours to hydrate is the usual reason for one, since `cluster-hydration-stuck` fires after an hour by default.
@@ -7624,7 +7632,7 @@ alerting:
 Each `receiver` an extra route names, at any depth, MUST be defined under `alerting.receivers`; the render fails otherwise.
 A top-level extra route that names no receiver and does not continue sends the alerts it matches to `mzmon-null`, and the render warns about it.
 
-Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it.
+Every bundled rule carries an `audience` label: `platform` for the deployment and the platform under it, `workload` for what runs on it, and `development` for conditions the stack has already contained, which the people who write the software can remove.
 Here the workload alerts, such as a user cluster falling behind or running out of memory, reach `data-team`.
 Because the route continues, they also reach whichever receivers the preset names for their severity.
 
@@ -7912,7 +7920,7 @@ module "monitoring" {
 }
 ```
 
-Every bundled alert carries an `audience` label, `platform` or `workload`, which is what the extra route matches.
+Every bundled alert carries an `audience` label, `platform`, `workload`, or `development`, which is what the extra route matches.
 A matcher is an Alertmanager string, so the quotes inside it are escaped in HCL.
 
 | Attribute | Chart value | Notes |
@@ -8005,7 +8013,7 @@ module "monitoring" {
 
 An override's duration is `for_duration`, the rule's `for`.
 HCL reads `{ for = "6h" }` as a `for` expression, so the attribute has a name of its own.
-An override's `severity` MUST stay `critical`, `warning` or `notice`, and its `audience` `platform` or `workload`, so the routes still match.
+An override's `severity` MUST stay `critical`, `warning` or `notice`, and its `audience` `platform`, `workload`, or `development`, so the routes still match.
 
 ## Checking the result
 
@@ -8379,8 +8387,8 @@ The gateway is where the dominant cost/stability lever lives, so most of the car
 
 ### Cardinality & rate control (the lever)
 
-- [x] `[chart]` The gateway promotes only a small, stable label set (`level`, `app`, `container`, `namespace` + their `k8s_`-prefixed forms, `environment_id`) and routes everything else identifying to **structured metadata**. Adding a Loki label multiplies [stream cardinality](../../o11y-glossary/#observability-foundations) — default to structured metadata.
-- [x] `[chart]` Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through; oversized and stale lines are dropped (`longer_than`, `older_than`).
+- [x] `[chart]` The gateway promotes only a small, stable label set (`level`, `app`, `container`, `namespace`, `environment_id`) and routes everything else identifying to **structured metadata**. Adding a Loki label multiplies [stream cardinality](../../o11y-glossary/#observability-foundations) — default to structured metadata.
+- [x] `[chart]` Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through; stale lines are dropped (`older_than`), and oversized lines are cut to fit Loki (`stage.truncate`).
 - [x] `[chart]` The agent applies a **per-node** pod-log rate cap (`AGENT_POD_LOG_RATE_LIMIT` / `AGENT_POD_LOG_BURST`) so one noisy node can't starve the pipeline.
 - [ ] `[operator]` Understand the backpressure semantics before tuning: `stage.limit` with `drop = false` **queues** (backpressures the sender), `drop = true` **sheds** load. The final safety limit sheds; per-node and per-level limits are the tuning surface.
 
@@ -11972,10 +11980,15 @@ An alert belongs in the file for the people who act on it.
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
 | `infra-log-alerts.yaml` | `platform` | The monitoring stack, detected in its own log lines where its metrics travel the path that is failing |
+| `dev-alerts.yaml` | `development` | Conditions the stack has already contained, for the people who write the software behind them: log lines too long to store |
 
 Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
-`gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
-A route matches on the label to send the two to different people.
+`gen-rules` rejects an alert whose `audience` is not `platform`, `workload`, or `development`.
+A route matches on the label to send each to different people.
+
+A `development` alert is for a condition with nothing to fix in the running deployment, because the stack has already contained it.
+The people who can remove the cause are the ones who write the software.
+Every alert in `dev-alerts.yaml` is `severity: notice`, set for the whole file with `alertLabels`, so no preset pages on one.
 
 Who acts on a signal can depend on the cluster it comes from.
 A user cluster falling behind is the workload owner's to fix, and a system cluster falling behind is the platform's.
@@ -12084,7 +12097,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 |---|---|
 | The name is kebab-case, and the group snake_case | Names become a committed surface |
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
-| `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
+| `audience` is `platform`, `workload`, or `development` | Routes match on it; a missing one sends the alert to no audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
 | The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
 | A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |
@@ -12197,7 +12210,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.0 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.16.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.16.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
@@ -15767,9 +15780,9 @@ rules:
 ```
 
 `severity` must stay one of `critical`, `warning` and `notice`, and
-`audience` one of `platform` and `workload`, so the routes still match. An
-unknown alert name fails the render, and an override for a rule that is
-not installed renders with a warning.
+`audience` one of `platform`, `workload` and `development`, so the routes
+still match. An unknown alert name fails the render, and an override for a
+rule that is not installed renders with a warning.
 </td>
     </tr>
     <tr>
@@ -22935,7 +22948,8 @@ Channels in the docs for worked examples.
   `route` options. Empty means no alert reaches anybody.
 - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
   of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
-  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+  `audience` label, `platform`, `workload` or `development`, which is the usual thing an extra
+  route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
 - `default_templates` — make the chart's notification templates every receiver's default (the
@@ -24215,9 +24229,11 @@ The agent collects node-local data and forwards it to the gateway with minimal p
 - **Sources:** `loki.source.journal` (host systemd journal) and `loki.source.file` over pods discovered with `discovery.kubernetes` (role `pod`, filtered to the local node).
 - **Relabeling:** `discovery.relabel` normalizes Kubernetes metadata into stable label names (`namespace`, `pod`, `container`, `node`, `app`, `component`) and node attributes (`region`, `zone`, `instance_type`, `nodepool`, …), and builds the `__path__` to the pod log files.
 - **Light processing:** `stage.cri` parses CRI-formatted lines; `stage.limit` applies a per-node rate cap; `stage.static_labels` tags the `cluster`.
+- **Safety clamp:** `stage.truncate` cuts any line longer than `PIPELINE_LOG_LINE_SAFETY_CLAMP` before it leaves the agent.
+  See [Size limits](#size-limits).
 - **Forward:** `loki.write` to the gateway at `http://alloy-gateway.$namespace.svc:3100/loki/api/v1/push`.
 
-Tunable inputs: `AGENT_POD_LOG_RATE_LIMIT` (default `5000`), `AGENT_POD_LOG_BURST` (default `20000`), `CLUSTER_NAME`, `HOSTNAME`.
+Tunable inputs: `AGENT_POD_LOG_RATE_LIMIT` (default `5000`), `AGENT_POD_LOG_BURST` (default `20000`), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `CLUSTER_NAME`, `HOSTNAME`.
 
 ## Gateway pipeline
 
@@ -24237,7 +24253,9 @@ The `raw:` escape (see [Authoring](../authoring/)) remains available and is curr
 These are the conventions a contributor must preserve when editing the gateway `loki.process` pipeline:
 
 - **Level normalization.** A per-application `stage.match` extracts the level, then a series of `stage.replace` rules normalize it to one of `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `TRACE`. A heuristic regex backfills `UNKNOWN` levels, and the success/failure of that heuristic is recorded as structured metadata.
-- **Drops and limits.** Lines older than the ingestion backlog window or larger than the per-line ceiling are dropped; per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
+- **Drops and limits.** Lines older than the ingestion backlog window are dropped.
+  Oversized lines are cut rather than dropped, as [Size limits](#size-limits) describes.
+  Per-level rate limits keep `INFO`/unknown chatter bounded while letting `ERROR`/`CRITICAL` through.
 - **Label families.** Only a small, stable set is promoted to **Loki labels**: `level`, `app`, `container`, `namespace`, `component`, `job` and `service_name`, plus `unit` on node journal logs (which carry no `namespace`) and `environment_id` for environment namespaces. Everything else identifying — `pod`, `node`, `pod_id`, `container_id`, `region`, `zone`, `nodepool`, `trace_id`, `span_id`, `error`, `msg`, … — is routed to **structured metadata** so it stays queryable without inflating stream cardinality. The `k8s_`-prefixed aliases (`k8s_namespace`, `k8s_app`, `k8s_container`, `k8s_pod`) were **removed**: the first three duplicated the unprefixed labels exactly, and `k8s_pod` was the only stream label a pod name ever had — a pod name is unbounded and changes on every restart, so it belonged in structured metadata from the start. Asserted by `loki::gateway_labels` in the e2e suite, which fails if any of them returns.
 - **Two log formats.** `environmentd` and `clusterd` log tracing JSON. `balancerd` and `materialize-operator` log tracing's plain text layer, `<ts> LEVEL <spans>: <target>: <message>`, which carries no `level=` pair for the heuristic scan to find and so needs a parser of its own. Both families are handled; a new Materialize binary belongs in one of them.
 - **Timestamps.** Parsed from the source line (`ts`/`timestamp`) as `RFC3339`/`RFC3339Nano` where the application provides one.
@@ -24277,7 +24295,7 @@ Three ordering constraints hold the placement in the pipeline.
 |---|---|
 | Merge ahead of `stage.limit` | The limiter drops entries. A limiter that sheds continuation lines leaves a backtrace with holes in it, which reads as complete and is not |
 | Merge ahead of the per-level rate limits | A merged panic costs the limiter one entry rather than twenty, so a crash stops competing with ordinary logs for the same budget |
-| Keep `longer_than` after the merge | The ceiling then applies to the merged entry. That is what discards the separate pathological panic that emits multi-MiB lines, which this pipeline does not carry |
+| Keep the safety clamp after the merge | The clamp then applies to the merged entry. A pathological panic that emits multi-MiB lines keeps its first 1MiB, header and message included, rather than being lost |
 
 `max_wait_time` is the mechanism that delivers a panic rather than a timeout that rarely fires.
 While a process is alive, each new `firstline` match flushes its predecessor immediately.
@@ -24296,6 +24314,80 @@ That level is exempt from both per-level rate limits.
 Classification runs after the per-application blocks, because those set `msg` from JSON that a panic does not contain.
 The regular expression is anchored at the start of the entry, so a log line that merely quotes a panic is not mistaken for one.
 
+### Size limits
+
+Neither pipeline drops a line for its size.
+Each cuts the line with `stage.truncate` instead, and appends a suffix that names the rule that cut it.
+Alloy counts the suffix inside the limit, so a cut value is exactly the limit long.
+A cut is by byte, so it can split a multi-byte character, which Loki's API returns as `�`.
+
+The following table lists the rules in the order an entry meets them:
+
+| Where | Cuts | Limit | Suffix |
+|---|---|---|---|
+| Agent, last stage of `node_logs` and `pod_logs` | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
+| Gateway, `inputProcessor`, after the multi-line merge | The line | `PIPELINE_LOG_LINE_SAFETY_CLAMP`, default `1MiB` | `[TRUNCATED:SAFETYCLAMP]` |
+| Gateway, last stage of `inputProcessor` | The line | `GATEWAY_LOG_LINE_SIZE_LIMIT`, default `240KiB` | `[TRUNCATED:LINE]` |
+| Gateway, last stage of `inputProcessor` | The line | `250KiB`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, last stage of `inputProcessor` | Every label value | `2KiB`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, last stage of `inputProcessor` | Each structured metadata value the gateway sets, except `msg` | `512B`, fixed | `[TRUNCATED:FIELDS]` |
+| Gateway, after `inputProcessor` promotes `msg` | Every other structured metadata value: `msg`, and keys a push client sends | `16KiB`, fixed | `[TRUNCATED:FIELDS]` |
+
+The safety clamp bounds what the pipelines carry and work on.
+The gateway clamps as well as the agent, because OTLP, Kubernetes events, the agent sidechannel, and other Loki push clients reach the gateway unclamped.
+The multi-line merge can also join lines into an entry longer than any one of them.
+Clamping keeps the start of a pathological line, which usually says what it is.
+A clamped JSON or logfmt line no longer parses, so it reaches Loki without its fields.
+
+A line under the clamp parses in full, because the gateway parses before its last stages cut anything.
+A JSON line of 500KiB therefore still yields its level, timestamp, and fields, and only the stored line is cut to the line limit.
+The structured metadata budget later on this page still applies to those fields.
+
+The last-stage rules exist because Loki refuses an entry over its limits rather than shortening it, and `loki.write` doesn't retry the refusal.
+Measured on Loki 3.7.8, the version the chart deploys, with its default limits, Loki refuses the following:
+
+- A line longer than 256KiB (262,144 bytes).
+- A label value longer than 2,048 bytes.
+- An entry whose structured metadata totals more than 64KiB (65,536 bytes), key names included.
+
+The fixed `250KiB` rule holds whatever `GATEWAY_LOG_LINE_SIZE_LIMIT` says, so the line always fits.
+If you set the variable above `250KiB`, the fixed rule cuts instead, with the `[TRUNCATED:FIELDS]` suffix.
+The `2KiB` label rule is Loki's own label limit.
+The labels the gateway sets are short Kubernetes names, so the rule catches labels a Loki push client brings.
+
+The structured metadata limit is a total, so the gateway splits it into a budget rather than capping each value:
+
+- Each key the gateway sets, except `msg`, gets `512B`.
+- `msg` gets `16KiB`, because the event feeds on the dashboards display it.
+- `16KiB` is held back for structured metadata a Loki push client sends itself.
+
+Every value the gateway sets, except the Kubernetes metadata, is a copy of part of the line, and the line keeps it in full, so a cut loses convenience rather than data.
+
+The reserve exists because `loki.source.api` keeps the structured metadata a client sends, and the gateway can't bound it.
+Alloy has no stage that drops structured metadata by pattern, or that limits a key's name or the number of keys.
+A push client whose own structured metadata totals more than `16KiB` can still take an entry past Loki's limit, and Loki refuses that entry.
+Keep a push client's own structured metadata under the reserve, or drop it at the client.
+
+The `512B` rule names the keys the gateway sets rather than matching every key.
+A `msg` that arrives as structured metadata, from a chained gateway or another push client, then keeps `16KiB` even when the gateway can't extract a `msg` from the line again.
+The `16KiB` rule that follows matches every key, so it bounds `msg` and any key a client adds.
+
+`msg` is promoted between the two rules and cut as structured metadata.
+Alloy silently skips promoting a value that isn't valid UTF-8, so cutting `msg` in the extracted map first could lose it entirely.
+
+`packages/mzmon-lib/tests/gateway_loki_limits.rs` walks `inputProcessor` in order and redoes the sum, reserve included.
+The test fails in the following cases:
+
+- A structured metadata key is promoted after the limits run.
+- A key the gateway sets is missing from the `512B` rule's `sources`.
+- The total, with the reserve, exceeds 64KiB.
+- A rule cuts an incoming `msg` below its own limit.
+
+Both variables need a unit, such as `1MiB` or `512KiB`.
+A bare number fails the configuration load.
+Every cut increments `loki_process_truncated_fields_total`, labeled by `field`.
+The `oversized-log-lines` alert in `dev-alerts.yaml` fires on line cuts, for the people who write the software emitting them.
+
 ### Destinations
 
 `inputProcessor` does not forward to a sink directly. It forwards to `loki.process.egress.receiver` — a **type-neutral passthrough seam** — plus the local debug tap. The seam and the actual sink live in `gateway-dest-stub.yaml`, split out so the destination can be swapped at chart-assembly time without editing the processing pipeline. Because `gateway.alloy` references a component it does not define, the two files are validated **jointly** (`make pipelines` concatenates them and runs `alloy validate`, the way alloy loads a config directory).
@@ -24304,7 +24396,7 @@ The regular expression is anchored at the start of the entry, so a log line that
 - **Swapping the destination.** A deployment renders its own egress tail — keeping the `loki.process "egress"` label as the contract — and points its `forward_to` at any `loki.LogsReceiver`: a different `loki.write`, an `otelcol.receiver.loki.<label>.receiver` bridge, or a fan-out to several sinks. The target must be a real component reference; it cannot be a runtime env string (`forward_to` is a capsule, so alloy rejects a string at load).
 - **Recording-rule metrics → long-term metric store.** The [Loki Ruler](../../../../logs-and-events/architecture/#ruler) remote-writes recording-rule samples back through the gateway, which forwards them to Thanos via `prometheus.remote_write` alongside the metrics pipeline (see [Metrics](../metrics/)). *(Design target — this leg is not yet wired in `gateway.yaml`.)*
 
-Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
+Tunable inputs: `ALLOY_LOKI_PORT` (default `3100`), `GATEWAY_LOKI_DEST` (default in-cluster Loki push URL), `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`), `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), `CLUSTER_NAME` (the `cluster` fallback for lines that arrive without one, default `default`).
 
 ## Attribution and adoption status
 
@@ -34046,7 +34138,7 @@ The current `inputProcessor` is one component, and the filter is a component of 
 
 | Component | Stages | Why they sit here |
 |---|---|---|
-| `loki.process.inputPrefilter` | Multi-line panic merge, the `older_than` and `longer_than` drops, the global rate limit, `stage.luhn`, the level sniff | The merge first, so a PEM block or panic message split across CRI lines is one text when scanned. The drops and the limit next, so the filter scans only lines that will be kept, which is Alloy's own performance guidance. [`stage.luhn`](#payment-card-numbers) last, since it is a stage rather than a component and has to precede parsing for the same reason the filter does |
+| `loki.process.inputPrefilter` | Multi-line panic merge, the `older_than` drop, the safety clamp, the global rate limit, `stage.luhn`, the level sniff | The merge first, so a PEM block or panic message split across CRI lines is one text when scanned. The drop, the clamp, and the limit next, so the filter scans only lines that will be kept, none longer than the clamp, which is Alloy's own performance guidance. [`stage.luhn`](#payment-card-numbers) last, since it is a stage rather than a component and has to precede parsing for the same reason the filter does |
 | Two tier splitters | Each keeps one tier and drops the other; the bulk splitter applies the `DEBUG` and `TRACE` rate limit and stamps `secretfilter="bulk"` | Alloy's `forward_to` fans out rather than routing, so a split is two components. See [Sampling the bulk tier](#sampling-the-bulk-tier) |
 | `loki.secretfilter.ingest`, `loki.secretfilter.ingestBulk` | The filter, twice | After the merge and the drops, before anything reads the text |
 | `loki.process.inputProcessor` | Everything from the `orig_entry` stash onward | Unchanged, apart from receiving redacted lines |
