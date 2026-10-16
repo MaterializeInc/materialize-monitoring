@@ -1388,7 +1388,13 @@ The rules that keep those panels honest:
     )
     unless on ()
     (
-      (time() - max(loki_prometheus_rule_group_last_evaluation_timestamp_seconds{app="loki", container="ruler"}) >= 300)
+      (
+        max(
+          (time() - max by (rule_group, user) (loki_prometheus_rule_group_last_evaluation_timestamp_seconds{app="loki", container="ruler"} > 0))
+          - on (rule_group, user)
+          max by (rule_group, user) (loki_prometheus_rule_group_interval_seconds{app="loki", container="ruler"})
+        ) >= 300
+      )
       or on ()
       (
         max(
@@ -1402,15 +1408,33 @@ The rules that keep those panels honest:
   ```
 
   The Loki half is an `unless`, so an install with no Loki ruler still reads zero.
-  It takes the worst Loki ruler pod rather than the best.
-  The Loki rulers divide the rule groups between them, so each group has one evaluator.
+  The two rulers are checked differently, because they divide their work differently:
+
+  - **Thanos ruler:** every replica evaluates every rule group, so one replica evaluating recently is enough, and `max` asks only that.
+    It also evaluates every `PrometheusRule` it imports, customers' included, so a check on each group would let an unrelated group blank the count.
+  - **Loki ruler:** the rulers divide the rule groups between them, so one stalled ruler leaves its groups unevaluated while the others carry on.
+    Each group has to be no more than five minutes overdue, measured from its own interval.
+    The newest timestamp per group comes first,
+    because a restarted ruler's previous series stays in the lookback for a few minutes beside its new one.
+    A group reports 0 between being loaded and its first evaluation, and `> 0` leaves it out.
+    On the reference installs, a plain `min` over the groups blanked the count for 5 to 7 minutes a week, through those last two cases alone.
+
+  `the_firing_count_reads_zero_only_from_rulers_that_deliver` in `alerts.rs` runs each count through `promtool`
+  against healthy, stalled, and restarted rulers.
+- **The count is an instant query.**
+  A stat reduces a range query with `lastNotNull`,
+  so over a range the zero from before a ruler went silent stays on the panel for the rest of the window.
+  The history panel is the range view.
 - **The table is a table of current facts**, so it is an instant query with `table_format`; see
   [A table of current facts is an instant query](#a-table-of-current-facts-is-an-instant-query).
   Drop `Value`, which is always 1 on an `ALERTS` series.
 - **Keep every label an alert carries.**
   Each rule groups by its own labels, so the table names the columns that matter first and Grafana appends the rest.
-  Drop the labels that say nothing about the alert: `ruler_replica`, `instance`, `tenant_id`, `cluster`, and `audience`.
-  A rule whose result has no `job` is given the ruler's, `thanos-ruler` or `loki-ruler`, on the way into Thanos, so `label_replace` blanks those.
+  Drop the labels that are the same on every alert a rule raises: `ruler_replica`, `tenant_id`, `cluster`, and `audience`.
+  A rule whose result has no `job` or `instance` is given the ruler's, `thanos-ruler` or `loki-ruler`, on the way into Thanos,
+  so `label_replace` blanks those two values.
+  Keep the labels themselves.
+  `environmentd-cpu-throttled` keeps each node's `instance`, and dropping it would merge two throttled containers into one row.
 - **Override the empty cell with a dash by type, not by name.**
   Grafana puts the panel's empty-state text into every empty cell, which reads as "no alerts" beside a firing one.
   Which label columns arrive depends on which alerts are firing, so a `byType` `string` matcher is the only one that covers them.

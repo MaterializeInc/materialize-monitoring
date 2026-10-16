@@ -2377,6 +2377,18 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="loki_prometheus_rule_group_interval_seconds">loki_prometheus_rule_group_interval_seconds
+        <details>
+            Used labels: app, container
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="loki_prometheus_rule_group_last_evaluation_timestamp_seconds">loki_prometheus_rule_group_last_evaluation_timestamp_seconds
         <details>
             Used labels: app, container

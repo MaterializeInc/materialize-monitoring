@@ -47,7 +47,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/env-top.json?xxhash=c672b8a80b724c36" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/env-top.json?xxhash=32634134048c665f" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -558,7 +558,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/infra-loki.json?xxhash=c44a9b4b78b61cd4" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/infra-loki.json?xxhash=827b126dc804ff37" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
         <br /><small>UID <code>mz-mon-infra-loki</code></small>
       </td>
       <td>
@@ -606,7 +606,7 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/infra-alloy.json?xxhash=be27d6871b0d0cd3" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/infra-alloy.json?xxhash=81db788da01e37fb" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
       </td>
       <td>
@@ -657,7 +657,7 @@ The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/infra-thanos.json?xxhash=562f9bade6b87778" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
+        <a href="/materialize-monitoring/preview/claude-dashboard-alert-information-e41ec0/dashboards/grafana/infra-thanos.json?xxhash=6688a4724f357287" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
         <br /><small>UID <code>mz-mon-infra-thanos</code></small>
       </td>
       <td>

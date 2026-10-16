@@ -2378,7 +2378,7 @@ Labels:
 <h4 id="cluster-replica-oomkilled">cluster-replica-oomkilled
   <a class="anchor" href="#cluster-replica-oomkilled">#</a>
 </h4>
-A cluster replica was OOM-killed in the last 10m.
+A cluster replica was killed for running out of memory in the last 10m.
 Labels:
 <ul>
         <li><strong>audience:</strong> workload</li>
@@ -2391,7 +2391,9 @@ Labels:
           
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>namespace, pod, cluster_environmentd_materialize_cloud_cluster_id<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
-</span></span><span style="display:flex;"><span>    kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-u[0-9]+-replica-.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>,
+</span></span><span style="display:flex;"><span>    kube_pod_container_status_last_terminated_reason{reason<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">OOMKilled</span>&#34;, container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-u[0-9]+-replica-.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>    kube_pod_container_status_last_terminated_exitcode{container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">clusterd</span>&#34;, pod<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">.*-cluster-u[0-9]+-replica-.*</span>&#34;, <span style="color:#960050;background-color:#1e0010">${mzEnvironmentNamespaceFilter</span>}, <span style="color:#960050;background-color:#1e0010">$</span>{<span style="color:#960050;background-color:#1e0010">excludeEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">==</span> <span style="color:#ae81ff">167</span>,
 </span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">cluster_environmentd_materialize_cloud_cluster_id</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">pod</span>&#34;, &#34;<span style="color:#e6db74">.*-cluster-([a-z0-9]+)-replica-.*</span>&#34;
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>

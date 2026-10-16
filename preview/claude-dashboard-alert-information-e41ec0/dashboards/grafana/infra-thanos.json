@@ -511,6 +511,7 @@
                       "kind": "DataQuery",
                       "spec": {
                         "expr": "count(\n  max by (alertname, job, pod) (\n    ALERTS{alertname=~\"Thanos.*\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  (\n    time()\n    - max(\n      prometheus_rule_group_last_evaluation_timestamp_seconds{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=\"ruler\"\n      }\n    )\n    < 300\n  )\n  and on ()\n  (\n    min(\n      max by (pod) (\n        prometheus_remote_storage_highest_timestamp_in_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n      - on (pod)\n      max by (pod) (\n        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n    )\n    < 300\n  )\n)\n",
+                        "instant": true,
                         "legendFormat": "alerts",
                         "qryType": 1,
                         "query": "count(\n  max by (alertname, job, pod) (\n    ALERTS{alertname=~\"Thanos.*\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  (\n    time()\n    - max(\n      prometheus_rule_group_last_evaluation_timestamp_seconds{\n        app=\"thanos\",\n        namespace=~\"$thanosNamespace\",\n        container=\"ruler\"\n      }\n    )\n    < 300\n  )\n  and on ()\n  (\n    min(\n      max by (pod) (\n        prometheus_remote_storage_highest_timestamp_in_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n      - on (pod)\n      max by (pod) (\n        prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n          app=\"thanos\",\n          namespace=~\"$thanosNamespace\",\n          container=\"ruler\"\n        }\n      )\n    )\n    < 300\n  )\n)\n"
@@ -525,7 +526,7 @@
               "transformations": []
             }
           },
-          "description": "**Thanos alerts firing now.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any. _Alerts_ below names each one. The upstream Thanos mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name.\n\nReads zero only while a ruler has evaluated a rule in the last five minutes and written its results back within five minutes. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either reads as no alerts. An empty reading means the alert path itself needs checking: _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.",
+          "description": "**Thanos alerts firing now.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any. _Alerts_ below names each one. The upstream Thanos mixin's runbook, <https://github.com/thanos-io/thanos/tree/main/mixin/runbook.md>, has a section for each alert name.\n\nReads zero only while a ruler has evaluated a rule in the last five minutes and written its results back within five minutes. An instant query, because over a range the last zero from before a ruler went silent would still be shown. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either reads as no alerts. An empty reading means the alert path itself needs checking: _Ruler -> Evaluation_ and _Ruler -> Write-back_ say which part.",
           "id": 1000,
           "links": [],
           "title": "Thanos Alerts Firing",
@@ -573,7 +574,7 @@
               },
               "options": {
                 "colorMode": "background",
-                "graphMode": "area",
+                "graphMode": "none",
                 "justifyMode": "auto",
                 "orientation": "auto",
                 "percentChangeColorMode": "standard",
