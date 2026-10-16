@@ -8,6 +8,10 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
+## mzmon-lib (shared library) v0.15.0 (Unreleased)
+
+_Changes Pending_
+
 ## materialize-monitoring (Helm chart + Terraform module) v1.4.0 (Unreleased)
 
 _Changes Pending_
@@ -102,9 +106,39 @@ _Changes Pending_
 * Included Prometheus Scrapers @ v0.4.0..v0.5.0
 * Included mzmon-lib (shared library) @ v0.13.0..v0.14.0
 
-## mzmon-lib (shared library) v0.14.0 (Unreleased)
+## mzmon-lib (shared library) v0.14.0
 
-_Changes Pending_
+* Lead the Loki, Alloy and environment overviews with firing alerts
+    * [materialize-monitoring#551](https://github.com/MaterializeInc/materialize-monitoring/pull/551)
+    * Loki Meta Monitoring, Alloy Meta Monitoring, and the Summary tab of Materialize Environment Overview now count the alerts firing about their subject, and list every alert firing or pending in an **Alerts** row. Each alert's name links to its entry under Common Alerts.
+    * An alert count shows the current value. It reads zero only while the Thanos ruler, and every Loki rule group where a Loki ruler runs, are being evaluated and written back. Otherwise it's empty.
+    * The `recommended` metric tier adds `loki_prometheus_rule_group_last_evaluation_timestamp_seconds`, `loki_prometheus_rule_group_interval_seconds`, `loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds`, and `loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds`.
+* Update Rust crate serde-saphyr to v2
+    * [materialize-monitoring#553](https://github.com/MaterializeInc/materialize-monitoring/pull/553)
+    * [`v2.0.0`](https://redirect.github.com/bourumir-wyngs/serde-saphyr/blob/HEAD/CHANGELOG.md#200-Unreleased)
+* Truncate oversized log lines and add a development alert tier
+    * [materialize-monitoring#549](https://github.com/MaterializeInc/materialize-monitoring/pull/549)
+    * Oversized log lines are cut rather than dropped, and the cut line ends in a suffix that names the rule: `[TRUNCATED:SAFETYCLAMP]`, `[TRUNCATED:LINE]`, or `[TRUNCATED:FIELDS]`.
+        * The agent and the gateway clamp every line to `PIPELINE_LOG_LINE_SAFETY_CLAMP` (default `1MiB`). The gateway then cuts lines to `GATEWAY_LOG_LINE_SIZE_LIMIT` (default `240KiB`), with a fixed `250KiB` backstop. Set either variable in `pipeline.env`, with a unit such as `512KiB`; a bare number stops Alloy from loading its configuration.
+        * The gateway cuts label values to `2KiB` and structured metadata to a per-entry budget: `512B` for each key it sets, `16KiB` for `msg` and for keys a Loki push client sends, and `16KiB` held back for a push client's own structured metadata. Entries then fit Loki's default limits rather than being refused, as long as a push client's own structured metadata stays under `16KiB`.
+        * A clamped JSON or logfmt line no longer parses, so it reaches Loki without its extracted fields.
+    * `loki_process_dropped_lines_total` no longer reports the `too large` reason. Cuts count in `loki_process_truncated_fields_total`, labeled by `field`, which the default metric tier keeps.
+    * Alloy Meta Monitoring: the **Truncated Lines** panel counts those cuts by `field`, beside the agents' CRI reassembly cuts.
+    * Alerts can carry `audience: development`, for conditions the stack has already contained that the people who write the software can remove. An extra route on `audience="development"` sends them to a development channel, and `rules.overrides` accepts the value.
+        * `oversized-log-lines` (`severity: notice`, not in the default set) fires when Alloy cut a log line in the past hour. Select it with `rules.selected`.
+* Terraform: run the postgres-exporter and declare metadata databases
+    * [materialize-monitoring#542](https://github.com/MaterializeInc/materialize-monitoring/pull/542)
+    * The Terraform module runs the postgres-exporter with `enable_postgres_exporter = true`. It watches Grafana's database whenever the module configures one with a password, plus any database in `postgres_exporter_targets`, with passwords from `postgres_exporter_passwords`. The module creates the exporter's `postgres-exporter` Secret and rolls the exporter when a password changes.
+    * The Terraform module takes `metadata_databases` (`flavor` and `resource_id`) for the metadata databases a provider pull watches, and a `metadata_database` flag on an exporter target. Both become `externalDependencies.consensus` entries.
+    * `node_selector` and `tolerations` reach the postgres-exporter.
+* Add a postgres_exporter subchart for the metadata and Grafana databases
+    * [materialize-monitoring#540](https://github.com/MaterializeInc/materialize-monitoring/pull/540)
+    * A `postgres-exporter` subchart (`prometheus-postgres-exporter` 8.2.0, `postgres_exporter` v0.20.1) watches PostgreSQL databases from the inside. It is off by default: enable it with `tags.postgres-exporter: true` and list the databases under `postgres-exporter.targets`. Credentials come from a `postgres-exporter` Secret you create. See the PostgreSQL exporter page for the Secret's shape and the least-privilege `pg_monitor` grant.
+    * `externalDependencies.consensus` accepts `flavor: postgres`, with an exporter target's name as `resourceId`. The new `postgres` adapter records `ext:consensus_up`, `ext:consensus_connections_used_ratio`, `ext:consensus_xid_used_ratio`, `ext:consensus_database_bytes` (with a `database` label) and `ext:consensus_version_info` (with a `version` label) for that target.
+    * `rules.capabilities` gains a derived capability, `postgres-exporter`, present when the exporter runs.
+    * The Materialize Consensus (Metadata) dashboard's Database Internals tab has a PostgreSQL section, rendered where the exporter is scraped, with a Database picker.
+* Add a Thanos meta-monitoring dashboard, with firing alerts on its Overview
+    * [materialize-monitoring#525](https://github.com/MaterializeInc/materialize-monitoring/pull/525)
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.2.0
 
