@@ -48,13 +48,22 @@ like our bundled Thanos provider.
 <ul>
     <li id="ALERTS">ALERTS
         <details>
-            Used labels: alertname, alertstate
+            Used labels: alertname, alertstate, component, namespace
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.health.alert_history">infra.alloy.health.alert_history</a></li>
+                <li><a href="../common-queries#infra.alloy.health.alerts">infra.alloy.health.alerts</a></li>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alert_history">infra.loki.health.alert_history</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts">infra.loki.health.alerts</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.health.alert_history">infra.thanos.health.alert_history</a></li>
                 <li><a href="../common-queries#infra.thanos.health.alerts">infra.thanos.health.alerts</a></li>
                 <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alert_history">materialize.health.alert_history</a></li>
+                <li><a href="../common-queries#materialize.health.alerts">materialize.health.alerts</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
             </ul>
         </details>
     </li>
@@ -942,6 +951,17 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="loki_process_truncated_fields_total">loki_process_truncated_fields_total
+        <details>
+            Used labels: app, field, namespace, pod
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#dev.log_pipeline.oversized_lines">dev.log_pipeline.oversized_lines</a></li>
+                <li><a href="../common-queries#infra.alloy.log_pipeline.truncated">infra.alloy.log_pipeline.truncated</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="loki_request_duration_seconds_count">loki_request_duration_seconds_count
         <details>
             Used labels: app_instance, container, namespace, route, status_code
@@ -1631,10 +1651,13 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
             </ul>
         </details>
     </li>
@@ -1644,10 +1667,13 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay">infra.alloy.metric_pipeline.send_delay</a></li>
                 <li><a href="../common-queries#infra.alloy.metric_pipeline.send_delay.worst">infra.alloy.metric_pipeline.send_delay.worst</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.rule.remote_write_lag">infra.thanos.rule.remote_write_lag</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
             </ul>
         </details>
     </li>
@@ -1695,7 +1721,10 @@ like our bundled Thanos provider.
             <br />
             Example queries:
             <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
                 <li><a href="../common-queries#infra.thanos.health.alerts_firing">infra.thanos.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
             </ul>
         </details>
     </li>
@@ -2348,6 +2377,30 @@ like our bundled Thanos provider.
             </ul>
         </details>
     </li>
+    <li id="loki_prometheus_rule_group_interval_seconds">loki_prometheus_rule_group_interval_seconds
+        <details>
+            Used labels: app, container
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_prometheus_rule_group_last_evaluation_timestamp_seconds">loki_prometheus_rule_group_last_evaluation_timestamp_seconds
+        <details>
+            Used labels: app, container
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
     <li id="loki_query_frontend_queries_in_progress">loki_query_frontend_queries_in_progress
         <details>
             Used labels: app_instance, namespace
@@ -2355,6 +2408,30 @@ like our bundled Thanos provider.
             Example queries:
             <ul>
                 <li><a href="../common-queries#infra.loki.read.queries_in_flight">infra.loki.read.queries_in_flight</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds">loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds
+        <details>
+            Used labels: app, container
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
+            </ul>
+        </details>
+    </li>
+    <li id="loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds">loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+        <details>
+            Used labels: app, container
+            <br />
+            Example queries:
+            <ul>
+                <li><a href="../common-queries#infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing</a></li>
+                <li><a href="../common-queries#infra.loki.health.alerts_firing">infra.loki.health.alerts_firing</a></li>
+                <li><a href="../common-queries#materialize.health.alerts_firing">materialize.health.alerts_firing</a></li>
             </ul>
         </details>
     </li>

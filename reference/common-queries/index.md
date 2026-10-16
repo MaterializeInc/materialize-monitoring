@@ -449,6 +449,140 @@ Metric samples per second the gateway delivered, split by destination.
 </span></span></code></pre></div>
   </div>
 </div>
+<h4 id="infra.alloy.health.alerts_firing">infra.alloy.health.alerts_firing
+  <a class="anchor" href="#infra.alloy.health.alerts_firing">#</a>
+</h4>
+Alerts about collection that are firing now.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.health.alerts_firing-tabs" id="infra.alloy.health.alerts_firing-tab-0" checked>
+  <label for="infra.alloy.health.alerts_firing-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{component<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">alloy|monitoring</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>            loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>              app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>              container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_prometheus_rule_group_interval_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.health.alerts">infra.alloy.health.alerts
+  <a class="anchor" href="#infra.alloy.health.alerts">#</a>
+</h4>
+Every alert about collection that is firing or pending now, with the
+target or collector it is about.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.health.alerts-tabs" id="infra.alloy.health.alerts-tab-0" checked>
+  <label for="infra.alloy.health.alerts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica, tenant_id, cluster, audience<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      ALERTS{component<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">alloy|monitoring</span>&#34;},
+</span></span><span style="display:flex;"><span>      &#34;<span style="color:#e6db74">job</span>&#34;, &#34;&#34;, &#34;<span style="color:#e6db74">job</span>&#34;, &#34;<span style="color:#e6db74">thanos-ruler|loki-ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">instance</span>&#34;, &#34;&#34;, &#34;<span style="color:#e6db74">instance</span>&#34;, &#34;<span style="color:#e6db74">thanos-ruler|loki-ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.alloy.health.alert_history">infra.alloy.health.alert_history
+  <a class="anchor" href="#infra.alloy.health.alert_history">#</a>
+</h4>
+Which alerts about collection were firing over the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.alloy.health.alert_history-tabs" id="infra.alloy.health.alert_history-tab-0" checked>
+  <label for="infra.alloy.health.alert_history-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{component<span style="color:#f92672">=~</span>&#34;<span style="color:#e6db74">alloy|monitoring</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
 <h4 id="infra.alloy.log_pipeline.read">infra.alloy.log_pipeline.read
   <a class="anchor" href="#infra.alloy.log_pipeline.read">#</a>
 </h4>
@@ -5507,6 +5641,140 @@ range.
 </span></span><span style="display:flex;"><span>    <span style="color:#960050;background-color:#1e0010"></span><span contenteditable='true' class='replaceable' data-replace='range' title='range'>[1h]</span>
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
 </span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.alerts_firing">infra.loki.health.alerts_firing
+  <a class="anchor" href="#infra.loki.health.alerts_firing">#</a>
+</h4>
+Alerts about Loki that are firing now.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.alerts_firing-tabs" id="infra.loki.health.alerts_firing-tab-0" checked>
+  <label for="infra.loki.health.alerts_firing-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{component<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>            loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>              app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>              container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_prometheus_rule_group_interval_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.alerts">infra.loki.health.alerts
+  <a class="anchor" href="#infra.loki.health.alerts">#</a>
+</h4>
+Every alert about Loki that is firing or pending now, with the process
+or route it is about.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.alerts-tabs" id="infra.loki.health.alerts-tab-0" checked>
+  <label for="infra.loki.health.alerts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica, tenant_id, cluster, audience<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      ALERTS{component<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;},
+</span></span><span style="display:flex;"><span>      &#34;<span style="color:#e6db74">job</span>&#34;, &#34;&#34;, &#34;<span style="color:#e6db74">job</span>&#34;, &#34;<span style="color:#e6db74">thanos-ruler|loki-ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">instance</span>&#34;, &#34;&#34;, &#34;<span style="color:#e6db74">instance</span>&#34;, &#34;<span style="color:#e6db74">thanos-ruler|loki-ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.loki.health.alert_history">infra.loki.health.alert_history
+  <a class="anchor" href="#infra.loki.health.alert_history">#</a>
+</h4>
+Which alerts about Loki were firing over the selected time range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.loki.health.alert_history-tabs" id="infra.loki.health.alert_history-tab-0" checked>
+  <label for="infra.loki.health.alert_history-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{component<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
@@ -11450,6 +11718,141 @@ the at-a-glance health headline for the whole environment.
   <div class="book-tabs-content markdown-inner">
             
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">avg</span><span style="color:#960050;background-color:#1e0010">:$</span>{<span style="color:#960050;background-color:#1e0010">mzSqlPrefix</span>}compute_cluster_status{<span style="color:#960050;background-color:#1e0010">${mzEnvironmentFilter</span>}<span style="color:#960050;background-color:#1e0010">}</span> <span style="color:#f92672">*</span> <span style="color:#ae81ff">100</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.health.alerts_firing">materialize.health.alerts_firing
+  <a class="anchor" href="#materialize.health.alerts_firing">#</a>
+</h4>
+Alerts about the environment that are firing now.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.health.alerts_firing-tabs" id="materialize.health.alerts_firing-tab-0" checked>
+  <label for="materialize.health.alerts_firing-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{namespace<span style="color:#f92672">=~</span>&#34;<span contenteditable='true' class='replaceable' data-replace='mzNamespaceList' title='mzNamespaceList'>materialize-environment</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">0</span> <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>          app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>          container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">and</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">min</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">thanos</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">unless</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#66d9ef">time</span><span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">-</span> <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>            loki_prometheus_rule_group_last_evaluation_timestamp_seconds{
+</span></span><span style="display:flex;"><span>              app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>              container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>          <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>rule_group, user<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_prometheus_rule_group_interval_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">or</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">()</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#66d9ef">max</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">-</span> <span style="color:#66d9ef">on</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>pod, tenant<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>          loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+</span></span><span style="display:flex;"><span>            app<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">loki</span>&#34;,
+</span></span><span style="display:flex;"><span>            container<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">ruler</span>&#34;
+</span></span><span style="display:flex;"><span>          }
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">300</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.health.alerts">materialize.health.alerts
+  <a class="anchor" href="#materialize.health.alerts">#</a>
+</h4>
+Every alert about the environment that is firing or pending now, with
+the cluster or pod it is about.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.health.alerts-tabs" id="materialize.health.alerts-tab-0" checked>
+  <label for="materialize.health.alerts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica, tenant_id, cluster, audience<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>      ALERTS{namespace<span style="color:#f92672">=~</span>&#34;<span contenteditable='true' class='replaceable' data-replace='mzNamespaceList' title='mzNamespaceList'>materialize-environment</span>&#34;},
+</span></span><span style="display:flex;"><span>      &#34;<span style="color:#e6db74">job</span>&#34;, &#34;&#34;, &#34;<span style="color:#e6db74">job</span>&#34;, &#34;<span style="color:#e6db74">thanos-ruler|loki-ruler</span>&#34;
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">instance</span>&#34;, &#34;&#34;, &#34;<span style="color:#e6db74">instance</span>&#34;, &#34;<span style="color:#e6db74">thanos-ruler|loki-ruler</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="materialize.health.alert_history">materialize.health.alert_history
+  <a class="anchor" href="#materialize.health.alert_history">#</a>
+</h4>
+Which alerts about the environment were firing over the selected time
+range.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="materialize.health.alert_history-tabs" id="materialize.health.alert_history-tab-0" checked>
+  <label for="materialize.health.alert_history-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">count</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>alertname<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">max</span> <span style="color:#66d9ef">without</span> <span style="color:#f92672">(</span>ruler_replica<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    ALERTS{namespace<span style="color:#f92672">=~</span>&#34;<span contenteditable='true' class='replaceable' data-replace='mzNamespaceList' title='mzNamespaceList'>materialize-environment</span>&#34;, alertstate<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">firing</span>&#34;}
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
 </span></span></code></pre></div>
   </div>
 </div>
