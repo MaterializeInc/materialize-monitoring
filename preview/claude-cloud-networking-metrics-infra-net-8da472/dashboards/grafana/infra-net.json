@@ -1199,7 +1199,7 @@
               ]
             }
           },
-          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\n**Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, resets) lives at the cloud provider, and the queries below read it from the gateway's provider pulls where they are configured.",
+          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it. None on an AWS install from the Terraform wrappers, which make the Network Load Balancer themselves and attach it with TargetGroupBindings rather than a LoadBalancer Service.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\n**Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, resets) lives at the cloud provider, and the queries below read it from the gateway's provider pulls where they are configured.",
           "id": 1034,
           "links": [],
           "title": "Load Balancer Services",
@@ -1214,7 +1214,7 @@
                     "filterable": true,
                     "inspect": false
                   },
-                  "noValue": "No Service in this cluster has a cloud load balancer."
+                  "noValue": "No LoadBalancer Service. A load balancer made outside Kubernetes, such as the AWS wrappers' Network Load Balancer, has no row here; its provider rows are below."
                 },
                 "overrides": []
               },
@@ -4639,7 +4639,7 @@
               "transformations": []
             }
           },
-          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\n**Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, resets) lives at the cloud provider, and the queries below read it from the gateway's provider pulls where they are configured.",
+          "description": "**Every Service in the cluster that has a cloud load balancer, and the address it was given.**\n\n**Nominal:** One per Service intended to be reachable from outside — typically Grafana, and `balancerd` where a deployment exposes it. None on an AWS install from the Terraform wrappers, which make the Network Load Balancer themselves and attach it with TargetGroupBindings rather than a LoadBalancer Service.\n\n**Degraded:** **A LoadBalancer Service with no row here has not been given an address yet.** That is normal for a minute after creation and a fault after several: the usual causes are subnets missing the required tags, exhausted public addresses, or a controller without permission to create one.\n\n**Two address columns, and a given row fills in one of them.** A cloud load balancer is reached by IP on GCP and Azure and by DNS name on AWS, where an ELB's address is a hostname that resolves to addresses which change underneath it. Kubernetes models both, so the metric carries an `ip` label and a `hostname` label and populates whichever applies — Prometheus drops the empty one, so a row with a blank IP is an AWS load balancer rather than one that failed to get an address.\n\nThis is the Kubernetes side of the load balancer — that one exists, and its address. What it is *doing* (connections, healthy targets, resets) lives at the cloud provider, and the queries below read it from the gateway's provider pulls where they are configured.",
           "id": 1004,
           "links": [],
           "title": "Load Balancers",
@@ -6153,7 +6153,7 @@
                               }
                             ],
                             "maxColumnCount": 1,
-                            "rowHeightMode": "tall"
+                            "rowHeightMode": "standard"
                           }
                         },
                         "title": "Load Balancers"
