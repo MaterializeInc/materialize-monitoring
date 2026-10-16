@@ -123,7 +123,7 @@ The dashboards are a **separate chart**, `materialize-monitoring-dashboards`, in
 Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
 
 ```bash
-helm install mzmon-dashboards materialize/materialize-monitoring-dashboards \
+helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
   --namespace monitoring
 ```
 

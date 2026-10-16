@@ -1,0 +1,85 @@
+# S3-compatible object storage with static keys: Ceph RGW, MinIO, rustfs.
+#
+# Compose after the sizing profiles, or after `adhoc` to move its Loki off the
+# pod filesystem:
+#   -f profiles/s3-compatible.values.yaml
+#
+# Replace each <PLACEHOLDER>. The endpoint is `host[:port]` with **no scheme**;
+# the objstore client rejects one. Keep `insecure: true` for plain HTTP (RGW
+# often listens on 7480 or 80) and set it false for HTTPS. Path-style addressing
+# is automatic for any host that is not AWS, so the store needs no wildcard DNS.
+#
+# Credentials stay out of values. Create both Secrets before you install:
+#
+#   kubectl create secret generic thanos-objstore-config -n monitoring \
+#     --from-file=objstore.yml=/dev/stdin <<'EOF'
+#   type: S3
+#   config:
+#     bucket: <THANOS_BUCKET>
+#     endpoint: <HOST>:<PORT>
+#     access_key: <ACCESS_KEY>
+#     secret_key: <SECRET_KEY>
+#     insecure: true
+#   EOF
+#
+#   kubectl create secret generic loki-objstore-credentials -n monitoring \
+#     --from-literal=AWS_ACCESS_KEY_ID=<ACCESS_KEY> \
+#     --from-literal=AWS_SECRET_ACCESS_KEY=<SECRET_KEY>
+#
+# Loki reads its keys from the environment: with none in its s3 block, the
+# objstore client falls back to `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`,
+# so the keys never reach the Loki config ConfigMap.
+#
+# For a self-signed certificate, add `http_config: {insecure_skip_verify: true}`
+# to the Thanos Secret and `http: {insecure_skip_verify: true}` under
+# `loki.loki.storage.object_store.s3` below.
+
+loki:
+  loki:
+    storage:
+      bucketNames:
+        chunks: <LOKI_BUCKET>
+        ruler: <LOKI_BUCKET>
+      # Every backend name below says s3, so this composes over `adhoc`, which
+      # names filesystem in the same four places.
+      type: s3
+      use_thanos_objstore: true
+      object_store:
+        type: s3
+        s3:
+          endpoint: <HOST>:<PORT>
+          insecure: true
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: s3
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    compactor:
+      delete_request_store: s3
+
+  # Every Loki component: write, read, backend, ruler, compactor, single binary.
+  defaults:
+    extraEnvFrom:
+      - secretRef:
+          name: loki-objstore-credentials
+
+  # Read only while `loki.networkPolicy.enabled` is true. Add the store's port
+  # when it is not 443 or 80; RGW often listens on 7480.
+  networkPolicy:
+    externalStorage:
+      ports:
+        - 443
+        - 80
+      cidrs:
+        - "0.0.0.0/0"
+
+thanos:
+  global:
+    objstore:
+      createSecret: false
+      secretName: thanos-objstore-config
+      secretKey: objstore.yml
