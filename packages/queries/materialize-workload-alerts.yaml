@@ -298,17 +298,22 @@ alerts:
       severity: warning
       component: clusterd
     description:
-      summary: A cluster replica was OOM-killed in the last 10m.
+      summary: A cluster replica was killed for running out of memory in the last 10m.
       degraded: |
         The replica outgrew its memory and swap and is rehydrating from
         scratch. Size the cluster up, or find what grew in
         `mz_internal.mz_dataflow_arrangement_sizes`. Repeated kills leave the
         cluster unable to finish hydrating.
+      notes: |
+        Covers both ways a replica dies of memory: the kernel's OOM kill, and
+        clusterd's own memory limiter, which exits with code 167 before the
+        kernel would act and is recorded as `Error`, not `OOMKilled`. On swap
+        clusters the limiter is the usual one.
     query:
       id: materialize.clusters.replica_oomkilled
       stability: best-effort
       description:
-        summary: User cluster replicas that restarted in the last 10m after an OOM kill.
+        summary: User cluster replicas that restarted in the last 10m after an OOM kill or a memory-limiter exit.
       promQL:
         # The last termination reason outlives the restart it describes, so on
         # its own this would fire until the pod is replaced. Pairing it with a
@@ -316,7 +321,9 @@ alerts:
         template: |
           max by (namespace, pod, cluster_environmentd_materialize_cloud_cluster_id) (
             label_replace(
-              kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}},
+              kube_pod_container_status_last_terminated_reason{reason="OOMKilled", container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}}
+              or
+              kube_pod_container_status_last_terminated_exitcode{container="clusterd", pod=~".*-cluster-u[0-9]+-replica-.*", %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}} == 167,
               "cluster_environmentd_materialize_cloud_cluster_id", "$1", "pod", ".*-cluster-([a-z0-9]+)-replica-.*"
             )
           )
@@ -327,11 +334,13 @@ alerts:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
           - name: mzEnvironmentName
             args: ["namespace"]
-      # The restart-in-window condition is a join, so it is the second query
-      # here: combine the two in a composite monitor (a && b).
+      # The restart-in-window condition is a join, so it is the last query
+      # here: combine the three in a composite monitor ((a || b) && c).
       datadogQuery:
         - |
           max(last_10m):max:kube_pod_container_status_last_terminated_reason{reason:oomkilled, container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod} > 0
+        - |
+          max(last_10m):max:kube_pod_container_status_last_terminated_exitcode{container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod} == 167
         - |
           sum(last_10m):(
             sum:kube_pod_container_status_restarts_total{container:clusterd, pod:*-cluster-u*-replica-*} by {namespace,pod}.as_count()
