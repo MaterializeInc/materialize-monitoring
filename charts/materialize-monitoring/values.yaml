@@ -3889,7 +3889,7 @@ loki:
     image:
       registry: docker.io
       repository: nginxinc/nginx-unprivileged
-      tag: 1.31.6-alpine-slim
+      tag: 1.31.7-alpine-slim
       pullPolicy: IfNotPresent
 
     # -- Resource requests.
