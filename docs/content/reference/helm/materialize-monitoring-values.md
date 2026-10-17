@@ -5542,7 +5542,7 @@ query frontend, and Grafana then shows no Loki rules.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "nginxinc/nginx-unprivileged",
-  "tag": "1.31.6-alpine-slim"
+  "tag": "1.31.7-alpine-slim"
 }</pre>
 </td>
       <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
