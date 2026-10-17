@@ -30,7 +30,10 @@ Selecting it will show the current version.
 
 The high-level summary, and the one to open first.
 Its six tabs — Summary, Kubernetes Workloads, Connections / Activity, Cluster Objects / Replicas, Compute Objects, and Sources and Sinks — are there to catch the more obvious problems and point at what needs a closer look, rather than to answer any one of them in depth.
-It reads metrics only, and scopes to one environment at a time, with further pickers for namespace, cluster, and replica.
+The Summary tab counts the alerts firing about the environment beside its health numbers.
+Below them, it lists every alert firing or pending in the environment's namespace.
+Each alert's name links to its entry under [Common Alerts](/materialize-monitoring/preview/renovate-loki-18-x/reference/common-alerts/).
+It reads metrics only, and scopes to one environment at a time, with further pickers for cluster and replica.
 
 <table class="download-dashboards">
   <thead>
@@ -44,7 +47,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/env-top.json?xxhash=204980476eb7d58d" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/env-top.json?xxhash=32634134048c665f" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -534,11 +537,13 @@ It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpe
 These dashboards watch the monitoring stack rather than anything it collects.
 Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
 Every panel states its own empty-state text for that reason.
+An alert count reads zero only while the rulers that evaluate its alerts are evaluating and writing back, and is empty otherwise.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
 Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
-The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+The Overview tab leads with any alert about Loki firing or pending now, then with scrape health and with the canary.
+The canary writes a line and reads it back, and is the only end-to-end check on the store.
 It needs both a metrics and a logs datasource.
 
 <table class="download-dashboards">
@@ -553,7 +558,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/infra-loki.json?xxhash=421483051414961b" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/infra-loki.json?xxhash=827b126dc804ff37" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
         <br /><small>UID <code>mz-mon-infra-loki</code></small>
       </td>
       <td>
@@ -579,6 +584,7 @@ It needs both a metrics and a logs datasource.
 ### Alloy Meta Monitoring (`infra-alloy`)
 
 Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
@@ -600,7 +606,7 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/infra-alloy.json?xxhash=47258ac1bc23eeba" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/infra-alloy.json?xxhash=81db788da01e37fb" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
       </td>
       <td>
@@ -651,7 +657,7 @@ The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/infra-thanos.json?xxhash=b9f52ef81c6dfa94" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-loki-18-x/dashboards/grafana/infra-thanos.json?xxhash=6688a4724f357287" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
         <br /><small>UID <code>mz-mon-infra-thanos</code></small>
       </td>
       <td>
