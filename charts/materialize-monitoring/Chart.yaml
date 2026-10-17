@@ -109,7 +109,7 @@ dependencies:
       - pipeline
       - alloy-gateway
   - name: loki
-    version: "18.15.1"
+    version: "18.17.1"
     repository: oci://ghcr.io/grafana-community/helm-charts
     condition: loki.enabled
     tags:
