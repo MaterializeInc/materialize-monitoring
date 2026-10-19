@@ -253,10 +253,12 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'string\.format\("loadbalancing\.googleapis\.com/l3/external:resource\.type=\\"loadbalancing\.googleapis\.com/ExternalNetworkLoadBalancerRule\\" AND resource\.labels\.forwarding_rule_name=one_of\(\\"%s\\"\)", string\.join\(argument\.forwarding_rules\.value'
+          pattern: 'string\.format\("loadbalancing\.googleapis\.com/l3/external:resource\.type=\\"loadbalancing\.googleapis\.com/ExternalNetworkLoadBalancerRule\\" AND \(resource\.labels\.forwarding_rule_name=one_of\(\\"%s\\"\) OR resource\.labels\.backend_network_name=one_of\(\\"%s\\"\)\)", string\.join\(argument\.forwarding_rules\.value, "\\",\\""\), string\.join\(argument\.networks\.value'
+      # Internal rules name the network differently, and the alternation is
+      # parenthesised so it cannot widen the metric type it is ANDed onto.
       - matchRegex:
           path: data["config.alloy"]
-          pattern: 'string\.format\("loadbalancing\.googleapis\.com/l3/internal:resource\.labels\.forwarding_rule_name=one_of\(\\"%s\\"\)", string\.join\(argument\.forwarding_rules\.value'
+          pattern: 'string\.format\("loadbalancing\.googleapis\.com/l3/internal:\(resource\.labels\.forwarding_rule_name=one_of\(\\"%s\\"\) OR resource\.labels\.network_name=one_of\(\\"%s\\"\)\)", string\.join\(argument\.forwarding_rules\.value, "\\",\\""\), string\.join\(argument\.networks\.value'
       - matchRegex:
           path: data["config.alloy"]
           pattern: 'string\.format\("router\.googleapis\.com/nat:resource\.labels\.gateway_name=one_of\(\\"%s\\"\)", string\.join\(argument\.gateways\.value'
@@ -663,6 +665,28 @@ tests:
       - notMatchRegex:
           path: data["config.alloy"]
           pattern: 'provider_gcp_(cloudsql|gcs|compute_quota) "provider"'
+
+  # A network alone is enough, and an absent list is passed empty, which the
+  # filter matches nothing with.
+  - it: should instantiate the load balancing pull for a network alone
+    template: templates/pipelines/cm-alloy-gateway.yaml
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.loadBalancing.networks: [mz-network]
+    asserts:
+      - matchRegex:
+          path: data["config.alloy"]
+          pattern: 'provider_gcp_load_balancing "provider" \{\s+project_id\s+= "my-project"\s+forwarding_rules = \[\]\s+networks\s+= \["mz-network"\]'
+
+  - it: should refuse a network URL in place of its name
+    set:
+      pipeline.metrics.provider.gcp.enabled: true
+      pipeline.metrics.provider.gcp.projectId: my-project
+      pipeline.metrics.provider.gcp.loadBalancing.networks: ["projects/my-project/global/networks/mz-network"]
+    asserts:
+      - failedTemplate:
+          errorPattern: 'loadBalancing.networks entry "projects/my-project/global/networks/mz-network" is not a VPC network name'
 
   - it: should instantiate one pull per Azure network service, naming its resources
     template: templates/pipelines/cm-alloy-gateway.yaml

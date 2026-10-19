@@ -118,6 +118,7 @@ blocks:
       attributes:
         project_id: example-project
         forwarding_rules: ["a0123456789abcdef0123456789abcde"]
+        networks: ["example-network"]
         request_interval: 10m
         forward_to: {ref: otelcol.receiver.prometheus.inputBridge.receiver}
         scrape_interval: 5m

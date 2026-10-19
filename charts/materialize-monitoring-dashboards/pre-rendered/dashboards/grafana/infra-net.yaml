@@ -1922,7 +1922,7 @@ spec:
                 The table above is what Kubernetes knows: that a load balancer exists, and its address. What it is doing — whether it has a healthy backend, what it carries, who resets its connections — is published by the cloud provider, and the gateway pulls it only for load balancers named in values. That is opt-in, because it needs a cloud identity with read access and every pull is billed by the provider.
 
                 - **AWS**: list each Network Load Balancer's ARN, with its target groups' ARNs, under `pipeline.metrics.provider.cloudwatch.nlb.loadBalancers`.
-                - **Google Cloud**: list each Service's forwarding rule under `pipeline.metrics.provider.gcp.loadBalancing.forwardingRules`.
+                - **Google Cloud**: list the cluster's VPC network under `pipeline.metrics.provider.gcp.loadBalancing.networks`, or each forwarding rule under `.forwardingRules`.
                 - **Azure**: list the AKS cluster under `pipeline.metrics.provider.azure.loadBalancer.clusters`.
 
                 A pull that is configured but failing still renders its rows, empty, so this note never hides one. The Cloud Provider Metrics page of the documentation has the details.

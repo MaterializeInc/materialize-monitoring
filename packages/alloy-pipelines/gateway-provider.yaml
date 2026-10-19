@@ -644,10 +644,19 @@ blocks:
               scrape_interval: {ref: argument.scrape_interval.value}
               scrape_timeout: {ref: argument.scrape_timeout.value}
 
-  # Every listed passthrough Network Load Balancer in one project, by
-  # forwarding rule: the bytes and packets each one carried in and out. A
-  # LoadBalancer Service on GKE is one of these, external or internal. GKE
-  # names its rules `a` and the Service's UID without dashes, cut to 32.
+  # Every listed passthrough Network Load Balancer in one project: the bytes
+  # and packets each one carried in and out. A LoadBalancer Service on GKE is
+  # one of these, external or internal.
+  #
+  # A rule is named, or found by the VPC network its backends are in. GKE
+  # names a rule only once it makes it: `a` and the Service's UID without
+  # dashes for an external rule, `k8s2-` and a hash for an internal one under
+  # L4 ILB subsetting. So a rule cannot be named before the Service exists,
+  # and a Service the same release creates, such as Grafana's, cannot be named
+  # at all; the network can. It reaches every passthrough load balancer in it,
+  # whoever made it. External rules carry the network as `backend_network_name`
+  # and internal ones as `network_name`. A rule matches if either list names
+  # it, and an empty list matches nothing.
   #
   # Cloud Monitoring publishes no health for these, only traffic, and every
   # series is a per-minute DELTA, so it becomes a counter that grows by the
@@ -673,7 +682,14 @@ blocks:
         - argument: *project_id
         - argument:
             label: forwarding_rules
+            optional: true
+            default: []
             comment: Forwarding rule names.
+        - argument:
+            label: networks
+            optional: true
+            default: []
+            comment: VPC network names, for every passthrough load balancer whose backends are in them.
         - argument: *request_interval
         - argument: *forward_to
         - argument: *scrape_interval
@@ -690,16 +706,22 @@ blocks:
             extra_filters:
               - function: string.format
                 arguments:
-                  - 'loadbalancing.googleapis.com/l3/external:resource.type="loadbalancing.googleapis.com/ExternalNetworkLoadBalancerRule" AND resource.labels.forwarding_rule_name=one_of("%s")'
+                  - 'loadbalancing.googleapis.com/l3/external:resource.type="loadbalancing.googleapis.com/ExternalNetworkLoadBalancerRule" AND (resource.labels.forwarding_rule_name=one_of("%s") OR resource.labels.backend_network_name=one_of("%s"))'
                   - &forwarding_rule_names
                     function: string.join
                     arguments:
                       - {ref: argument.forwarding_rules.value}
                       - '","'
+                  - &network_names
+                    function: string.join
+                    arguments:
+                      - {ref: argument.networks.value}
+                      - '","'
               - function: string.format
                 arguments:
-                  - 'loadbalancing.googleapis.com/l3/internal:resource.labels.forwarding_rule_name=one_of("%s")'
+                  - 'loadbalancing.googleapis.com/l3/internal:(resource.labels.forwarding_rule_name=one_of("%s") OR resource.labels.network_name=one_of("%s"))'
                   - *forwarding_rule_names
+                  - *network_names
             request_interval: {ref: argument.request_interval.value}
             ingest_delay: true
 
