@@ -709,12 +709,13 @@ like our bundled Thanos provider.
     </li>
     <li id="kube_pod_container_status_last_terminated_exitcode">kube_pod_container_status_last_terminated_exitcode
         <details>
-            Used labels: container, pod
+            Used labels: container, namespace, pod
             <br />
             Example queries:
             <ul>
                 <li><a href="../common-queries#materialize.clusterd.error_kill">materialize.clusterd.error_kill</a></li>
                 <li><a href="../common-queries#materialize.clusterd.system_cluster_terminated">materialize.clusterd.system_cluster_terminated</a></li>
+                <li><a href="../common-queries#materialize.clusters.replica_oomkilled">materialize.clusters.replica_oomkilled</a></li>
                 <li><a href="../common-queries#materialize.environmentd.terminated">materialize.environmentd.terminated</a></li>
             </ul>
         </details>
