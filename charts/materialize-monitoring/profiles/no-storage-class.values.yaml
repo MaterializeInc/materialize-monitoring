@@ -1,16 +1,21 @@
-# No-StorageClass profile: the four PersistentVolumeClaims, turned into emptyDir.
+# No-StorageClass profile: every PersistentVolumeClaim, turned into emptyDir.
 #
-# Compose after the sizing profiles:
+# Compose last, after the sizing profiles and any Grafana profile:
 #   -f profiles/no-storage-class.values.yaml
 #
-# For clusters with no StorageClass, or none that the nodes can attach. Every
-# other workload in the stack is already volumeless; these four are not, and
-# their pods stay Pending on an unbound claim. `storage-class.values.yaml` is the
-# other half of the same choice: it names a class rather than dropping the
-# volumes.
+# For clusters with no StorageClass, or none that the nodes can attach. Most of
+# the stack is already volumeless; the workloads below are not, and their pods
+# stay Pending on an unbound claim. `storage-class.values.yaml` is the other half
+# of the same choice: it names a class rather than dropping the volumes.
 #
 # What each one gives up:
 #
+#   * **Grafana** — keeps its settings only until it restarts. Users, API keys,
+#     annotations, and anything else changed in the UI are lost. The dashboards,
+#     data sources, and folders this chart installs come back on their own.
+#     Grafana is on emptyDir at the chart default; it is listed so this profile
+#     wins over `grafana-pvc.values.yaml` composed before it.
+#     `grafana-postgres.values.yaml` keeps the state without a volume.
 #   * **Alertmanager** — silences and the notification log, lost on restart.
 #     The only loss here that nothing else can reconstruct.
 #   * **The Loki ruler** — its remote-write WAL. Recording-rule samples buffered
@@ -28,6 +33,10 @@
 # A pod Pending on `Insufficient ephemeral-storage` needs a smaller request here.
 # Changing this on an existing install does not move data: the old PVCs stay
 # behind until you delete them.
+
+grafana:
+  persistence:
+    enabled: false
 
 alertmanager:
   persistence:

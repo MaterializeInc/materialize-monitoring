@@ -179,3 +179,34 @@ tests:
     asserts:
       - notExists:
           path: spec.volumeClaimTemplates
+
+  # Grafana is on emptyDir at the chart default, so the profile only earns its
+  # Grafana entry when it overrides a profile that turned persistence on.
+  - it: no-storage-class wins over grafana-pvc composed before it
+    values:
+      - ../profiles/grafana-pvc.values.yaml
+      - ../profiles/no-storage-class.values.yaml
+    set:
+      thanos.global.objstore.createSecret: false
+      loki.loki.storage.bucketNames.chunks: test-chunks
+      loki.loki.storage.bucketNames.ruler: test-ruler
+      loki.networkPolicy.enabled: false
+    template: ../charts/grafana/templates/pvc.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # Control: grafana-pvc alone does claim a volume, so the case above fails for
+  # the right reason.
+  - it: grafana-pvc alone claims a volume
+    values:
+      - ../profiles/grafana-pvc.values.yaml
+    set:
+      thanos.global.objstore.createSecret: false
+      loki.loki.storage.bucketNames.chunks: test-chunks
+      loki.loki.storage.bucketNames.ruler: test-ruler
+      loki.networkPolicy.enabled: false
+    template: ../charts/grafana/templates/pvc.yaml
+    asserts:
+      - hasDocuments:
+          count: 1

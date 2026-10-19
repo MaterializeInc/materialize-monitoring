@@ -54,7 +54,7 @@
 #   * Loki is on. Turn it off if the cluster cannot fit even one more pod.
 #
 # Dashboards are a separate chart, `materialize-monitoring-dashboards`, and this
-# profile does not install them. See Getting started > Helm.
+# profile does not install them. See Getting started > Ad-hoc install.
 
 # ---------------------------------------------------------------------------
 # NetworkPolicies — SWITCH
