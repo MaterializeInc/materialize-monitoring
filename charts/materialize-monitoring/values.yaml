@@ -1977,6 +1977,14 @@ connections:
   # -- (h4) How to talk to a grafana instance
   # @notationType -- (sectionstart) Grafana connection configuration
   grafana:
+    # -- Create the `Grafana` resource that grafana-operator reconciles this
+    # chart's folders, datasources, and dashboards into.
+    # Turn it off when no grafana-operator acts on this release, or when
+    # `dashboards.config.grafana.manifest.instanceSelector` points them at a
+    # `Grafana` resource you manage. The chart then creates none, whatever the
+    # `mode`, and refuses to render folders or datasources that still select it.
+    enabled: true
+
     # -- How this establishes its connection to Grafana.
     # `bundled` (default) targets the Grafana deployed by the bundled `grafana`
     # subchart; the URL and admin-credential Secret are derived from it.

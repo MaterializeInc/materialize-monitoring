@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+#
+# The `noop` profile: a release that creates no resources.
+#
+# The suite asserts over every template the release renders, subcharts
+# included, rather than a list of the ones known to render today. A template
+# added later that renders by default fails the first test here until the
+# profile turns it off.
+#
+# `NOTES.txt` is excluded because it always renders, and is not a resource. The
+# exclusion is suite-wide, so assertions on the notes belong in another suite.
+suite: noop profile
+chart:
+  version: 1.2.3
+release:
+  name: test-mon
+  namespace: test-monitoring
+excludeTemplates:
+  - NOTES.txt
+tests:
+  - it: renders no resources
+    values:
+      - ../profiles/noop.values.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # Materialize Cloud layers the profile over `split-namespace`, which moves
+  # several objects that render without a subchart into namespaces of their own.
+  - it: renders no resources over split-namespace
+    values:
+      - ../profiles/split-namespace.values.yaml
+      - ../profiles/noop.values.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The profile is a base to turn components back on over, one tag at a time.
+  - it: brings back one subchart when its tag is turned on over it
+    values:
+      - ../profiles/noop.values.yaml
+    set:
+      tags.kube-state-metrics: true
+    template: ../charts/kube-state-metrics/templates/deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: keeps the Grafana datasources off when a backend comes back
+    values:
+      - ../profiles/noop.values.yaml
+    set:
+      tags.loki: true
+      loki.loki.storage.bucketNames.chunks: test-chunks
+      loki.loki.storage.bucketNames.ruler: test-ruler
+      loki.networkPolicy.enabled: false
+    template: templates/grafana-datasources.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -142,7 +142,7 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
     {{- end }}
   {{- end }}
   Watch scope: {{ $watchNamespace | default "all namespaces in the cluster" }}
-  {{- if has $mode ( list "bundled" "external" "operator" ) }}
+  {{- if and $.Values.connections.grafana.enabled ( has $mode ( list "bundled" "external" "operator" ) ) }}
 
   Target instance ({{ $mode }}):
     Resource: {{ printf "%s-grafana" ( include "mzmon.fullname" $ ) }} (namespace {{ $instanceNamespace }})

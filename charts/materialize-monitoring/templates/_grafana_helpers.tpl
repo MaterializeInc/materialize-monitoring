@@ -519,9 +519,53 @@ Usage:
     {{- end }}
   {{- end }}
 
-  {{- $res := include "mzmon.grafana.validate.datasources" $ | fromYaml }}
-  {{- $errors = concat $errors $res.errors | default list }}
-  {{- $warnings = concat $warnings $res.warnings | default list }}
+  {{- range $name := list "datasources" "instance" }}
+    {{- $res := include ( printf "mzmon.grafana.validate.%s" $name ) $ | fromYaml }}
+    {{- $errors = concat $errors $res.errors | default list }}
+    {{- $warnings = concat $warnings $res.warnings | default list }}
+  {{- end }}
+
+  {{- /* final output */}}
+  {{- dict "errors" $errors "warnings" $warnings | toYaml }}
+{{- end }}
+
+{{- /*
+Validate that nothing selects a `Grafana` resource the chart was told not to
+create.
+
+The folders and datasources select the chart's own instance by its labels unless
+`dashboards.config.grafana.manifest.instanceSelector` names another. With
+`connections.grafana.enabled: false` that instance does not exist, and
+grafana-operator reports `the instanceSelector can't find matching grafana` on
+each of them rather than failing anything.
+
+Usage:
+  {{- $res := include "mzmon.grafana.validate.instance" $ | fromYaml }}
+*/}}
+{{- define "mzmon.grafana.validate.instance" }}
+  {{- $errors := list }}
+  {{- $warnings := list }}
+  {{- $dashboards := $.Values.dashboards.config.grafana }}
+
+  {{- if and ( not $.Values.connections.grafana.enabled ) ( not $dashboards.manifest.instanceSelector ) }}
+    {{- $selecting := list }}
+    {{- /* Mirrors the gate in grafana-folders.yaml. */}}
+    {{- if and $dashboards.enabled ( eq $dashboards.mode "operator" ) }}
+      {{- range $key, $folder := $dashboards.folders }}
+        {{- if and ( kindIs "map" $folder ) ( dig "create" true $folder ) }}
+          {{- $selecting = append $selecting ( printf "dashboards.config.grafana.folders.%s" $key ) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- range $name := list "thanos" "loki" "alertmanager" }}
+      {{- if ( include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" $name ) ) }}
+        {{- $selecting = append $selecting ( printf "connections.datasources.%s" $name ) }}
+      {{- end }}
+    {{- end }}
+    {{- if $selecting }}
+      {{- $errors = append $errors ( printf "connections.grafana.enabled is false, so this chart creates no Grafana resource, but these still select it: %s. Turn them off, or point them at a Grafana resource you manage with dashboards.config.grafana.manifest.instanceSelector." ( join ", " $selecting ) ) }}
+    {{- end }}
+  {{- end }}
 
   {{- /* final output */}}
   {{- dict "errors" $errors "warnings" $warnings | toYaml }}

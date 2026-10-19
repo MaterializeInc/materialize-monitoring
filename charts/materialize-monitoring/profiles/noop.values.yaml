@@ -1,0 +1,55 @@
+# Profile: a release that creates no resources.
+#
+# Every subchart is off, and so is everything the chart renders with no subchart
+# behind it. Install the release with this profile first, then move components
+# onto it one at a time by turning on each one's tag over it.
+#
+# The materialize-monitoring-crds chart is a release of its own, which this
+# profile does not affect.
+
+# Every subchart is in the `default` group.
+tags:
+  default: false
+
+# Cluster-scoped, and shared by the subcharts' pods.
+priorityClasses:
+  create: false
+
+# The `Grafana` resource grafana-operator reconciles into, and the datasources
+# that target it. Datasources otherwise follow their backends, so they would
+# come back with `tags.loki`, `tags.thanos`, or `tags.alertmanager`.
+connections:
+  grafana:
+    enabled: false
+  datasources:
+    enabled: false
+
+# The folders the dashboards are filed into.
+dashboards:
+  config:
+    grafana:
+      enabled: false
+
+# PodMonitors for Materialize and its operator. Turning off `environmentdSQL`
+# also stops the chart creating the SQL monitor's credentials Secret.
+materialize:
+  environmentd:
+    serviceMonitor:
+      enabled: false
+  environmentdSQL:
+    serviceMonitor:
+      enabled: false
+  clusterd:
+    serviceMonitor:
+      enabled: false
+materialize-operator:
+  serviceMonitor:
+    enabled: false
+
+# PodMonitors for each CNI's dataplane.
+networking:
+  cni:
+    aws-vpc:
+      enabled: false
+    cilium:
+      enabled: false
