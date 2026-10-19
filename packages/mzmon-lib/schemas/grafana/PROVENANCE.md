@@ -9,10 +9,10 @@ draft-07 set drops.
 
 | | |
 | --- | --- |
-| Upstream | https://github.com/grafana/grafana-foundation-sdk/tree/v0.0.18/jsonschema |
-| Tag | `v0.0.18` |
-| Commit | `b3d52a7cbaffff15aeada9a7dbc55be1a417bdab` |
-| Committed | 2026-06-12T14:42:50Z |
+| Upstream | https://github.com/grafana/grafana-foundation-sdk/tree/v0.0.21/jsonschema |
+| Tag | `v0.0.21` |
+| Commit | `0ec8113b169595ca822f12cc70fb24dff9a89c91` |
+| Committed | 2026-10-16T13:02:08Z |
 | Documents | 55 |
 
 Re-vendor with `./bin/fetch-grafana-schemas.sh` after bumping `FSDK_REF`; Renovate maintains that pin.
