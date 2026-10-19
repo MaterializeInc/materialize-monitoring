@@ -119,6 +119,8 @@ pub mod extra {
     pub const LOKI_COMPONENT: &str = "lokiComponent";
     /// Which cloud providers the gateway was found to be pulling from.
     pub const CLOUD_PROVIDER_LIST: &str = "cloudProviderList";
+    /// Which load balancer and NAT pulls the gateway was found to be running.
+    pub const CLOUD_NETWORK_PULL_LIST: &str = "cloudNetworkPullList";
     /// Whether Karpenter's controller is being scraped.
     pub const KARPENTER_DETECTED: &str = "karpenterDetected";
     /// Whether any CloudNativePG instance is being scraped.
@@ -866,6 +868,36 @@ pub fn cloud_providers() -> dashboardv2::VariableKind {
         hide: dashboardv2::VariableHide::DontHide,
         sort: dashboardv2::VariableSort::AlphabeticalAsc,
         skip_url_sync: false,
+        regex: String::new(),
+    }
+    .build()
+}
+
+/// Which load balancer and NAT gateway pulls the gateway is running.
+///
+/// The Cloud Networking rows of `infra-net` render on this. Each networking
+/// pull stamps every series it writes, `up` included, with a `provider_pull`
+/// label naming the pull, such as `cloudwatch_nlb` or `gcp_cloud_nat`, the way
+/// the CNI monitors stamp `network_component`. Reading it off `up` rather than
+/// a provider metric keeps a pull that is configured but refused on screen,
+/// with its rows empty, rather than hidden. Per pull rather than per provider,
+/// unlike [`cloud_providers`], because an install that pulls its database from
+/// CloudWatch has not thereby named a load balancer.
+///
+/// Hidden, since it is detection rather than a choice, and multi-valued with
+/// "All" and no custom value, for the reason [`network_components`] gives.
+pub fn cloud_network_pulls() -> dashboardv2::VariableKind {
+    QueryVariable {
+        name: extra::CLOUD_NETWORK_PULL_LIST,
+        label: "Network Pulls",
+        description: "Load balancer and NAT gateway pulls the gateway was found to be running",
+        expr: r#"label_values(up{provider_pull=~".+"}, provider_pull)"#.to_string(),
+        multi: true,
+        include_all: true,
+        all_value: None,
+        hide: dashboardv2::VariableHide::HideVariable,
+        sort: dashboardv2::VariableSort::AlphabeticalAsc,
+        skip_url_sync: true,
         regex: String::new(),
     }
     .build()
@@ -1651,6 +1683,7 @@ pub fn network_scoped() -> Vec<dashboardv2::VariableKind> {
         network_components(),
         all_namespaces(),
         node_instances(),
+        cloud_network_pulls(),
         metric_adhoc(),
     ]
 }

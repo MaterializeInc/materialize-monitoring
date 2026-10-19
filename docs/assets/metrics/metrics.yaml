@@ -490,11 +490,13 @@
 - importance: essential
   labels:
   - container
+  - namespace
   - pod
   name: kube_pod_container_status_last_terminated_exitcode
   usage:
   - materialize.clusterd.error_kill
   - materialize.clusterd.system_cluster_terminated
+  - materialize.clusters.replica_oomkilled
   - materialize.environmentd.terminated
 - importance: essential
   labels:
@@ -4484,6 +4486,76 @@
   - infra.autoscaling.cloud.ec2.status_checks
 - importance: diagnostic
   labels: []
+  name: aws_natgateway_active_connection_count_maximum
+  usage:
+  - infra.net.cloud.aws_nat.connections
+- importance: diagnostic
+  labels: []
+  name: aws_natgateway_connection_attempt_count_sum
+  usage:
+  - infra.net.cloud.aws_nat.established
+- importance: diagnostic
+  labels: []
+  name: aws_natgateway_connection_established_count_sum
+  usage:
+  - infra.net.cloud.aws_nat.established
+- importance: diagnostic
+  labels: []
+  name: aws_natgateway_error_port_allocation_sum
+  usage:
+  - infra.net.cloud.aws_nat.exhaustion
+- importance: diagnostic
+  labels: []
+  name: aws_natgateway_idle_timeout_count_sum
+  usage:
+  - infra.net.cloud.aws_nat.idle_timeouts
+- importance: diagnostic
+  labels: []
+  name: aws_natgateway_packets_drop_count_sum
+  usage:
+  - infra.net.cloud.aws_nat.exhaustion
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_active_flow_count_average
+  usage:
+  - infra.net.cloud.nlb.open_connections
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_healthy_host_count_minimum
+  usage:
+  - infra.net.cloud.nlb.healthy_targets
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_new_flow_count_sum
+  usage:
+  - infra.net.cloud.nlb.new_connections
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_processed_bytes_sum
+  usage:
+  - infra.net.cloud.nlb.throughput
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_tcp_client_reset_count_sum
+  usage:
+  - infra.net.cloud.nlb.resets
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_tcp_elb_reset_count_sum
+  usage:
+  - infra.net.cloud.nlb.resets
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_tcp_target_reset_count_sum
+  usage:
+  - infra.net.cloud.nlb.resets
+- importance: diagnostic
+  labels: []
+  name: aws_networkelb_un_healthy_host_count_maximum
+  usage:
+  - infra.net.cloud.nlb.unhealthy_targets
+- importance: diagnostic
+  labels: []
   name: aws_rds_burst_balance_minimum
   usage:
   - infra.cloud.rds.io_balances
@@ -4650,6 +4722,44 @@
   - ext.consensus.azure_postgres.storage_used_ratio
   - infra.cloud.flexible.storage
 - importance: diagnostic
+  labels:
+  - dimensionDirection
+  name: azure_microsoft_network_loadbalancers_bytecount_total_bytes
+  usage:
+  - infra.net.cloud.azure_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_network_loadbalancers_dipavailability_average_count
+  usage:
+  - infra.net.cloud.azure_lb.healthy_backends
+- importance: diagnostic
+  labels:
+  - dimensionDirection
+  name: azure_microsoft_network_loadbalancers_syncount_total_count
+  usage:
+  - infra.net.cloud.azure_lb.new_connections
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_network_loadbalancers_vipavailability_average_count
+  usage:
+  - infra.net.cloud.azure_lb.availability
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_network_natgateways_datapathavailability_average_count
+  usage:
+  - infra.net.cloud.azure_nat.availability
+- importance: diagnostic
+  labels: []
+  name: azure_microsoft_network_natgateways_packetdropcount_total_count
+  usage:
+  - infra.net.cloud.azure_nat.dropped
+- importance: diagnostic
+  labels:
+  - dimension
+  name: azure_microsoft_network_natgateways_snatconnectioncount_total_count
+  usage:
+  - infra.net.cloud.azure_nat.snat_connections
+- importance: diagnostic
   labels: []
   name: azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent
   usage:
@@ -4764,6 +4874,66 @@
   - infra.cloud.gcs.objects_by_type
 - importance: diagnostic
   labels: []
+  name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count
+  usage:
+  - infra.net.cloud.gcp_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count
+  usage:
+  - infra.net.cloud.gcp_lb.packets
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count
+  usage:
+  - infra.net.cloud.gcp_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count
+  usage:
+  - infra.net.cloud.gcp_lb.packets
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count
+  usage:
+  - infra.net.cloud.gcp_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count
+  usage:
+  - infra.net.cloud.gcp_lb.packets
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count
+  usage:
+  - infra.net.cloud.gcp_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count
+  usage:
+  - infra.net.cloud.gcp_lb.packets
+- importance: diagnostic
+  labels: []
+  name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count
+  usage:
+  - infra.net.cloud.gcp_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count
+  usage:
+  - infra.net.cloud.gcp_lb.packets
+- importance: diagnostic
+  labels: []
+  name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count
+  usage:
+  - infra.net.cloud.gcp_lb.throughput
+- importance: diagnostic
+  labels: []
+  name: stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count
+  usage:
+  - infra.net.cloud.gcp_lb.packets
+- importance: diagnostic
+  labels: []
   name: stackdriver_monitoring_api_calls_total
   usage:
   - infra.cloud.collection.gcp_calls
@@ -4772,3 +4942,23 @@
   name: stackdriver_monitoring_last_scrape_error
   usage:
   - infra.cloud.collection.gcp_errors
+- importance: diagnostic
+  labels: []
+  name: stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count
+  usage:
+  - infra.net.cloud.cloud_nat.dropped
+- importance: diagnostic
+  labels: []
+  name: stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed
+  usage:
+  - infra.net.cloud.cloud_nat.allocation_failed
+- importance: diagnostic
+  labels: []
+  name: stackdriver_nat_gateway_router_googleapis_com_nat_open_connections
+  usage:
+  - infra.net.cloud.cloud_nat.open_connections
+- importance: diagnostic
+  labels: []
+  name: stackdriver_nat_gateway_router_googleapis_com_nat_port_usage
+  usage:
+  - infra.net.cloud.cloud_nat.port_usage

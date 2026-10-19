@@ -127,8 +127,13 @@ The Security tab is split the same way and for the same reason.
 Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
-Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap]({{< relref "../reference/development/roadmap.md" >}}#dashboards).
+Cloud Networking reads the network around the cluster from both sides.
+Kubernetes says which load balancers were created and the address each was given, on every cluster.
+The cloud provider says whether a load balancer has a healthy backend and what it carries,
+and whether the NAT gateway pods leave through is running out of source ports.
+That half comes from the gateway's [provider pulls]({{< relref "../metrics/collecting/cloud-provider-metrics.md" >}}),
+for the load balancers and NAT gateways named in values, and each pull's rows render only where it runs.
+A NAT gateway out of source ports makes a Materialize source stall and reconnect with no cause inside the cluster, and this tab is where it shows.
 
 {{< download-dashboards name="infra-net" >}}
 

@@ -52,6 +52,14 @@ blocks:
             comment: >-
               False stamps every sample at the scrape, for a pull whose newest
               point can be hours old and would otherwise be refused as stale.
+        - argument:
+            label: provider_pull
+            optional: true
+            default: ""
+            comment: >-
+              A `provider_pull` label for every series, `up` included, which a
+              dashboard reads to render a pull's rows only where it runs. Empty
+              sets no label.
 
         - discovery.relabel:
             label: pin
@@ -60,6 +68,9 @@ blocks:
               - rule:
                   target_label: instance
                   replacement: {ref: argument.instance.value}
+              - rule:
+                  target_label: provider_pull
+                  replacement: {ref: argument.provider_pull.value}
 
         - prometheus.scrape:
             label: provider
@@ -301,6 +312,158 @@ blocks:
                   source_labels: [__name__]
                   regex: "aws_[a-z0-9]+_info"
 
+  # One Network Load Balancer: the connections it carries and the resets that
+  # end them. Its target groups' health is `provider_cloudwatch_nlb_target_group`,
+  # since CloudWatch publishes health only per target group.
+  #
+  # The newest five-minute bucket ends at the pull, so it is short the minutes
+  # CloudWatch has not yet published: a five-minute Sum reads well under the
+  # truth. The resets keep that bucket, which covers most of the interval, and
+  # are read as "any"; a short reset burst is what they exist to catch. New
+  # connections and bytes take the newest published minute instead, which
+  # arrives whole, and are read as a rate.
+  - declare:
+      label: provider_cloudwatch_nlb
+      blocks:
+        - argument:
+            label: load_balancer
+            comment: The LoadBalancer dimension, net/<name>/<id>, which is the end of the ARN.
+        - argument: *region
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.cloudwatch:
+            label: nlb
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: nlb
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/NetworkELB
+                  nil_to_zero: false
+                  dimensions:
+                    LoadBalancer: {ref: argument.load_balancer.value}
+                  blocks:
+                    # Connections open, and opened.
+                    - metric: {name: ActiveFlowCount, statistics: [Average], period: 5m, length: 10m}
+                    - metric: {name: NewFlowCount, statistics: [Sum], period: 1m, length: 5m}
+                    - metric: {name: ProcessedBytes, statistics: [Sum], period: 1m, length: 5m}
+                    # Who reset a connection: the client, a target, or the load
+                    # balancer itself, which resets a flow that has idled past
+                    # its timeout or whose target is gone.
+                    - metric: {name: TCP_Client_Reset_Count, statistics: [Sum], period: 5m, length: 10m}
+                    - metric: {name: TCP_Target_Reset_Count, statistics: [Sum], period: 5m, length: 10m}
+                    - metric: {name: TCP_ELB_Reset_Count, statistics: [Sum], period: 5m, length: 10m}
+
+        - custom:
+            component: provider_scrape
+            label: nlb
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.nlb.targets}
+              instance: {ref: argument.load_balancer.value}
+              provider_pull: cloudwatch_nlb
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # One target group behind a Network Load Balancer: how many of its targets
+  # pass their health check. CloudWatch keys these by the pair, so the load
+  # balancer is named again. Each count keeps its worst of the five minutes.
+  - declare:
+      label: provider_cloudwatch_nlb_target_group
+      blocks:
+        - argument:
+            label: load_balancer
+            comment: The LoadBalancer dimension, net/<name>/<id>.
+        - argument:
+            label: target_group
+            comment: The TargetGroup dimension, targetgroup/<name>/<id>, which is the end of the ARN.
+        - argument: *region
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.cloudwatch:
+            label: target_group
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: target_group
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/NetworkELB
+                  nil_to_zero: false
+                  dimensions:
+                    LoadBalancer: {ref: argument.load_balancer.value}
+                    TargetGroup: {ref: argument.target_group.value}
+                  blocks:
+                    - metric: {name: HealthyHostCount, statistics: [Minimum], period: 5m, length: 10m}
+                    - metric: {name: UnHealthyHostCount, statistics: [Maximum], period: 5m, length: 10m}
+
+        - custom:
+            component: provider_scrape
+            label: target_group
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.target_group.targets}
+              instance: {ref: argument.target_group.value}
+              provider_pull: cloudwatch_nlb
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # One NAT gateway: the path every pod takes to anything outside the VPC,
+  # which is where a Materialize source's upstream usually is. Port exhaustion
+  # and the 350-second idle timeout both present inside the cluster as a
+  # source that stalls and reconnects with no in-cluster cause.
+  #
+  # Each count is a five-minute Sum, short at the newest minutes for the
+  # reason `provider_cloudwatch_nlb` gives, and read as "any" or as a ratio of
+  # two counts from the same window, which the shortfall does not bias.
+  - declare:
+      label: provider_cloudwatch_nat_gateway
+      blocks:
+        - argument:
+            label: nat_gateway_id
+            comment: The NatGatewayId, nat-<hex>.
+        - argument: *region
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.cloudwatch:
+            label: nat_gateway
+            sts_region: {ref: argument.region.value}
+            blocks:
+              - static:
+                  label: nat_gateway
+                  regions: [{ref: argument.region.value}]
+                  namespace: AWS/NATGateway
+                  nil_to_zero: false
+                  dimensions:
+                    NatGatewayId: {ref: argument.nat_gateway_id.value}
+                  blocks:
+                    # Exhaustion: no source port free for a destination, and
+                    # packets the gateway dropped.
+                    - metric: {name: ErrorPortAllocation, statistics: [Sum], period: 5m, length: 10m}
+                    - metric: {name: PacketsDropCount, statistics: [Sum], period: 5m, length: 10m}
+                    # Connections closed for idling, and how many open
+                    # attempts were answered.
+                    - metric: {name: IdleTimeoutCount, statistics: [Sum], period: 5m, length: 10m}
+                    - metric: {name: ConnectionAttemptCount, statistics: [Sum], period: 5m, length: 10m}
+                    - metric: {name: ConnectionEstablishedCount, statistics: [Sum], period: 5m, length: 10m}
+                    - metric: {name: ActiveConnectionCount, statistics: [Maximum], period: 5m, length: 10m}
+
+        - custom:
+            component: provider_scrape
+            label: nat_gateway
+            attributes:
+              targets: {ref: prometheus.exporter.cloudwatch.nat_gateway.targets}
+              instance: {ref: argument.nat_gateway_id.value}
+              provider_pull: cloudwatch_nat_gateway
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
   # --- Cloud Monitoring -----------------------------------------------------------
 
   # Every listed Cloud SQL instance in one project. One instance per service
@@ -480,6 +643,132 @@ blocks:
               forward_to: {ref: argument.forward_to.value}
               scrape_interval: {ref: argument.scrape_interval.value}
               scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # Every listed passthrough Network Load Balancer in one project, by
+  # forwarding rule: the bytes and packets each one carried in and out. A
+  # LoadBalancer Service on GKE is one of these, external or internal. GKE
+  # names its rules `a` and the Service's UID without dashes, cut to 32.
+  #
+  # Cloud Monitoring publishes no health for these, only traffic, and every
+  # series is a per-minute DELTA, so it becomes a counter that grows by the
+  # newest minute of each pull. A rate over it reads about a fifth of the truth
+  # at a five-minute interval; its last increment is one whole minute's
+  # traffic, and a series' first value is too.
+  #
+  # The series are sparse: a minute with no traffic from a client location
+  # writes no point. So the pull is stamped at the scrape, which keeps every
+  # counter the exporter holds continuous, and an idle minute an increment of
+  # zero. With Cloud Monitoring's own stamps, a counter with no new point has
+  # no new sample, and its last increment reads as current until the lookback
+  # ends.
+  #
+  # External rules publish each series under two resource types, the current
+  # one and the legacy `tcp_lb_rule` and `udp_lb_rule`, so the filter keeps
+  # the current one. Internal rules have only the legacy types. The round-trip
+  # latency distributions are left out: each becomes a histogram per client
+  # location.
+  - declare:
+      label: provider_gcp_load_balancing
+      blocks:
+        - argument: *project_id
+        - argument:
+            label: forwarding_rules
+            comment: Forwarding rule names.
+        - argument: *request_interval
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.gcp:
+            label: load_balancing
+            project_ids: [{ref: argument.project_id.value}]
+            metrics_prefixes:
+              - loadbalancing.googleapis.com/l3/external/ingress_
+              - loadbalancing.googleapis.com/l3/external/egress_
+              - loadbalancing.googleapis.com/l3/internal/ingress_
+              - loadbalancing.googleapis.com/l3/internal/egress_
+            extra_filters:
+              - function: string.format
+                arguments:
+                  - 'loadbalancing.googleapis.com/l3/external:resource.type="loadbalancing.googleapis.com/ExternalNetworkLoadBalancerRule" AND resource.labels.forwarding_rule_name=one_of("%s")'
+                  - &forwarding_rule_names
+                    function: string.join
+                    arguments:
+                      - {ref: argument.forwarding_rules.value}
+                      - '","'
+              - function: string.format
+                arguments:
+                  - 'loadbalancing.googleapis.com/l3/internal:resource.labels.forwarding_rule_name=one_of("%s")'
+                  - *forwarding_rule_names
+            request_interval: {ref: argument.request_interval.value}
+            ingest_delay: true
+
+        - custom:
+            component: provider_scrape
+            label: load_balancing
+            attributes:
+              targets: {ref: prometheus.exporter.gcp.load_balancing.targets}
+              instance: load_balancing
+              provider_pull: gcp_load_balancing
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+              honor_timestamps: false
+
+  # Every listed Cloud NAT gateway in one project: the path pods without an
+  # external address take out of the VPC, which is where a Materialize
+  # source's upstream usually is.
+  #
+  # Exhaustion is the failure that matters. Each VM is given a fixed share of
+  # source ports; `port_usage` is the most connections any one VM holds to a
+  # single destination, which that share limits, and `nat_allocation_failed`
+  # turns on when one wanted more and was refused. The packets dropped for
+  # want of a port are `dropped_sent_packets_count` with
+  # `reason="OUT_OF_RESOURCES"`, a per-minute DELTA stamped and read as
+  # `provider_gcp_load_balancing` describes.
+  - declare:
+      label: provider_gcp_cloud_nat
+      blocks:
+        - argument: *project_id
+        - argument:
+            label: gateways
+            comment: Cloud NAT gateway names.
+        - argument: *request_interval
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.gcp:
+            label: cloud_nat
+            project_ids: [{ref: argument.project_id.value}]
+            metrics_prefixes:
+              - router.googleapis.com/nat/nat_allocation_failed
+              - router.googleapis.com/nat/port_usage
+              - router.googleapis.com/nat/allocated_ports
+              - router.googleapis.com/nat/open_connections
+              - router.googleapis.com/nat/dropped_sent_packets_count
+            extra_filters:
+              - function: string.format
+                arguments:
+                  - 'router.googleapis.com/nat:resource.labels.gateway_name=one_of("%s")'
+                  - function: string.join
+                    arguments:
+                      - {ref: argument.gateways.value}
+                      - '","'
+            request_interval: {ref: argument.request_interval.value}
+            ingest_delay: true
+
+        - custom:
+            component: provider_scrape
+            label: cloud_nat
+            attributes:
+              targets: {ref: prometheus.exporter.gcp.cloud_nat.targets}
+              instance: cloud_nat
+              provider_pull: gcp_cloud_nat
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+              honor_timestamps: false
 
   # --- Azure Monitor --------------------------------------------------------------
 
@@ -758,3 +1047,207 @@ blocks:
                   action: keep
                   source_labels: [__name__]
                   regex: "azure_microsoft_containerservice_managedclusters_cluster_autoscaler_((unschedulable_pods_count|scale_down_in_cooldown|unneeded_nodes_count)_maximum|cluster_safe_to_autoscale_minimum)_[a-z]+|up|scrape_.+"
+
+  # The load balancers of every listed AKS cluster in one subscription. AKS
+  # makes one for public Services, `kubernetes`, and one for internal ones,
+  # `kubernetes-internal`, in the cluster's node resource group, found through
+  # the cluster as `provider_azure_aks` finds the node VMs. Every AKS cluster's
+  # are named the same, so the cluster is what names them.
+  #
+  # Three pulls, since each dimension set is its own call:
+  #
+  # Availability: Azure's own probe of each frontend address from inside the
+  # region, the share of the five minutes it answered.
+  #
+  # Probes: each backend's share of passed health probes, per frontend. With
+  # `externalTrafficPolicy: Local`, which the Materialize Services set, only a
+  # node running one of the Service's pods passes, so a healthy Service reads
+  # one backend at 100 and the rest at 0. The number at 100 is what to read,
+  # not the average.
+  #
+  # Traffic: bytes and new connections (SYN packets) per frontend and
+  # direction, for the newest minute, which Azure publishes whole within the
+  # minute. A five-minute bucket ending at the pull would be short.
+  - declare:
+      label: provider_azure_load_balancer
+      blocks:
+        - argument: *subscription_id
+        - argument:
+            label: clusters
+            comment: AKS cluster names, not resource IDs.
+        - argument: *cloud_environment
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.azure:
+            label: availability
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Network/loadBalancers
+            resource_graph_query_filter: &aks_load_balancers
+              function: string.format
+              arguments:
+                - >-
+                  where name in~ ('kubernetes', 'kubernetes-internal')
+                  | extend nodeResourceGroup = tolower(resourceGroup)
+                  | join kind=inner (Resources
+                  | where type =~ 'microsoft.containerservice/managedclusters' and name in~ ('%s')
+                  | project nodeResourceGroup = tolower(tostring(properties.nodeResourceGroup)))
+                  on nodeResourceGroup
+                - function: string.join
+                  arguments:
+                    - {ref: argument.clusters.value}
+                    - "','"
+            metrics: [VipAvailability]
+            metric_aggregations: [average]
+            included_dimensions: [FrontendIPAddress]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - prometheus.exporter.azure:
+            label: probes
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Network/loadBalancers
+            resource_graph_query_filter: *aks_load_balancers
+            metrics: [DipAvailability]
+            metric_aggregations: [average]
+            included_dimensions: [FrontendIPAddress, BackendIPAddress]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - prometheus.exporter.azure:
+            label: traffic
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Network/loadBalancers
+            resource_graph_query_filter: *aks_load_balancers
+            metrics: [ByteCount, SYNCount]
+            metric_aggregations: [total]
+            included_dimensions: [FrontendIPAddress, Direction]
+            interval: PT1M
+            timespan: PT5M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - custom:
+            component: provider_scrape
+            label: availability
+            attributes:
+              targets: {ref: prometheus.exporter.azure.availability.targets}
+              instance: lb_availability
+              provider_pull: azure_load_balancer
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - custom:
+            component: provider_scrape
+            label: probes
+            attributes:
+              targets: {ref: prometheus.exporter.azure.probes.targets}
+              instance: lb_probes
+              provider_pull: azure_load_balancer
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - custom:
+            component: provider_scrape
+            label: traffic
+            attributes:
+              targets: {ref: prometheus.exporter.azure.traffic.targets}
+              instance: lb_traffic
+              provider_pull: azure_load_balancer
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+  # Every listed NAT gateway in one subscription: the path the AKS nodes take
+  # out of the virtual network when the cluster's outbound type is
+  # `userAssignedNATGateway`, as the Terraform wrappers set it. Names are
+  # unique within a resource group, not across Azure, so two gateways of one
+  # name in a subscription are both pulled.
+  #
+  # SNAT connections are split by state, `Attempted` and `Failed`; a failed
+  # one is a connection the gateway could not give a source port, which is
+  # exhaustion. Each count is a five-minute total, short at the newest minute,
+  # and read as "any" or as a ratio. `metric_aggregations` applies to every
+  # metric in a call, so the first call asks for both and the `keep` below
+  # drops what no metric here uses.
+  - declare:
+      label: provider_azure_nat_gateway
+      blocks:
+        - argument: *subscription_id
+        - argument:
+            label: gateways
+            comment: NAT gateway names, not resource IDs.
+        - argument: *cloud_environment
+        - argument: *forward_to
+        - argument: *scrape_interval
+        - argument: *scrape_timeout
+
+        - prometheus.exporter.azure:
+            label: gateway
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Network/natGateways
+            resource_graph_query_filter: &nat_gateway_filter
+              function: string.format
+              arguments:
+                - "where name in~ ('%s')"
+                - function: string.join
+                  arguments:
+                    - {ref: argument.gateways.value}
+                    - "','"
+            metrics: [DatapathAvailability, PacketDropCount]
+            metric_aggregations: [average, total]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - prometheus.exporter.azure:
+            label: connections
+            subscriptions: [{ref: argument.subscription_id.value}]
+            resource_type: Microsoft.Network/natGateways
+            resource_graph_query_filter: *nat_gateway_filter
+            metrics: [SNATConnectionCount]
+            metric_aggregations: [total]
+            included_dimensions: [ConnectionState]
+            interval: PT5M
+            timespan: PT10M
+            included_resource_tags: []
+            azure_cloud_environment: {ref: argument.cloud_environment.value}
+
+        - custom:
+            component: provider_scrape
+            label: gateway
+            attributes:
+              targets: {ref: prometheus.exporter.azure.gateway.targets}
+              instance: nat_gateway
+              provider_pull: azure_nat_gateway
+              forward_to: {ref: prometheus.relabel.gateway.receiver}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - custom:
+            component: provider_scrape
+            label: connections
+            attributes:
+              targets: {ref: prometheus.exporter.azure.connections.targets}
+              instance: nat_connections
+              provider_pull: azure_nat_gateway
+              forward_to: {ref: argument.forward_to.value}
+              scrape_interval: {ref: argument.scrape_interval.value}
+              scrape_timeout: {ref: argument.scrape_timeout.value}
+
+        - prometheus.relabel:
+            label: gateway
+            forward_to: ["argument.forward_to.value"]
+            blocks:
+              - rule:
+                  action: keep
+                  source_labels: [__name__]
+                  regex: "azure_microsoft_network_natgateways_(datapathavailability_average|packetdropcount_total)_[a-z]+|up|scrape_.+"

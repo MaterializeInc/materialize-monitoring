@@ -43,12 +43,23 @@ declare "provider_scrape" {
 		comment  = "False stamps every sample at the scrape, for a pull whose newest point can be hours old and would otherwise be refused as stale."
 	}
 
+	argument "provider_pull" {
+		optional = true
+		default  = ""
+		comment  = "A `provider_pull` label for every series, `up` included, which a dashboard reads to render a pull's rows only where it runs. Empty sets no label."
+	}
+
 	discovery.relabel "pin" {
 		targets = argument.targets.value
 
 		rule {
 			target_label = "instance"
 			replacement  = argument.instance.value
+		}
+
+		rule {
+			target_label = "provider_pull"
+			replacement  = argument.provider_pull.value
 		}
 	}
 
@@ -445,6 +456,251 @@ declare "provider_cloudwatch_eks" {
 	}
 }
 
+declare "provider_cloudwatch_nlb" {
+	argument "load_balancer" {
+		comment = "The LoadBalancer dimension, net/<name>/<id>, which is the end of the ARN."
+	}
+
+	argument "region" { }
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.cloudwatch "nlb" {
+		sts_region = argument.region.value
+
+		static "nlb" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/NetworkELB"
+			nil_to_zero = false
+			dimensions = {
+				LoadBalancer = argument.load_balancer.value,
+			}
+
+			metric {
+				name = "ActiveFlowCount"
+				statistics = [
+					"Average",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "NewFlowCount"
+				statistics = [
+					"Sum",
+				]
+				period = "1m"
+				length = "5m"
+			}
+
+			metric {
+				name = "ProcessedBytes"
+				statistics = [
+					"Sum",
+				]
+				period = "1m"
+				length = "5m"
+			}
+
+			metric {
+				name = "TCP_Client_Reset_Count"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "TCP_Target_Reset_Count"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "TCP_ELB_Reset_Count"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+	}
+
+	provider_scrape "nlb" {
+		targets         = prometheus.exporter.cloudwatch.nlb.targets
+		instance        = argument.load_balancer.value
+		provider_pull   = "cloudwatch_nlb"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_cloudwatch_nlb_target_group" {
+	argument "load_balancer" {
+		comment = "The LoadBalancer dimension, net/<name>/<id>."
+	}
+
+	argument "target_group" {
+		comment = "The TargetGroup dimension, targetgroup/<name>/<id>, which is the end of the ARN."
+	}
+
+	argument "region" { }
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.cloudwatch "target_group" {
+		sts_region = argument.region.value
+
+		static "target_group" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/NetworkELB"
+			nil_to_zero = false
+			dimensions = {
+				LoadBalancer = argument.load_balancer.value,
+				TargetGroup  = argument.target_group.value,
+			}
+
+			metric {
+				name = "HealthyHostCount"
+				statistics = [
+					"Minimum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "UnHealthyHostCount"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+	}
+
+	provider_scrape "target_group" {
+		targets         = prometheus.exporter.cloudwatch.target_group.targets
+		instance        = argument.target_group.value
+		provider_pull   = "cloudwatch_nlb"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_cloudwatch_nat_gateway" {
+	argument "nat_gateway_id" {
+		comment = "The NatGatewayId, nat-<hex>."
+	}
+
+	argument "region" { }
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.cloudwatch "nat_gateway" {
+		sts_region = argument.region.value
+
+		static "nat_gateway" {
+			regions = [
+				argument.region.value,
+			]
+			namespace = "AWS/NATGateway"
+			nil_to_zero = false
+			dimensions = {
+				NatGatewayId = argument.nat_gateway_id.value,
+			}
+
+			metric {
+				name = "ErrorPortAllocation"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "PacketsDropCount"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "IdleTimeoutCount"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "ConnectionAttemptCount"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "ConnectionEstablishedCount"
+				statistics = [
+					"Sum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+
+			metric {
+				name = "ActiveConnectionCount"
+				statistics = [
+					"Maximum",
+				]
+				period = "5m"
+				length = "10m"
+			}
+		}
+	}
+
+	provider_scrape "nat_gateway" {
+		targets         = prometheus.exporter.cloudwatch.nat_gateway.targets
+		instance        = argument.nat_gateway_id.value
+		provider_pull   = "cloudwatch_nat_gateway"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
 declare "provider_gcp_cloudsql" {
 	argument "project_id" { }
 
@@ -595,6 +851,98 @@ declare "provider_gcp_compute_quota" {
 		forward_to      = argument.forward_to.value
 		scrape_interval = argument.scrape_interval.value
 		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_gcp_load_balancing" {
+	argument "project_id" { }
+
+	argument "forwarding_rules" {
+		comment = "Forwarding rule names."
+	}
+
+	argument "request_interval" {
+		comment = "How far back each pull reaches. Only the newest point per series is kept."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.gcp "load_balancing" {
+		project_ids = [
+			argument.project_id.value,
+		]
+		metrics_prefixes = [
+			"loadbalancing.googleapis.com/l3/external/ingress_",
+			"loadbalancing.googleapis.com/l3/external/egress_",
+			"loadbalancing.googleapis.com/l3/internal/ingress_",
+			"loadbalancing.googleapis.com/l3/internal/egress_",
+		]
+		extra_filters = [
+			string.format("loadbalancing.googleapis.com/l3/external:resource.type=\"loadbalancing.googleapis.com/ExternalNetworkLoadBalancerRule\" AND resource.labels.forwarding_rule_name=one_of(\"%s\")", string.join(argument.forwarding_rules.value, "\",\"")),
+			string.format("loadbalancing.googleapis.com/l3/internal:resource.labels.forwarding_rule_name=one_of(\"%s\")", string.join(argument.forwarding_rules.value, "\",\"")),
+		]
+		request_interval = argument.request_interval.value
+		ingest_delay = true
+	}
+
+	provider_scrape "load_balancing" {
+		targets          = prometheus.exporter.gcp.load_balancing.targets
+		instance         = "load_balancing"
+		provider_pull    = "gcp_load_balancing"
+		forward_to       = argument.forward_to.value
+		scrape_interval  = argument.scrape_interval.value
+		scrape_timeout   = argument.scrape_timeout.value
+		honor_timestamps = false
+	}
+}
+
+declare "provider_gcp_cloud_nat" {
+	argument "project_id" { }
+
+	argument "gateways" {
+		comment = "Cloud NAT gateway names."
+	}
+
+	argument "request_interval" {
+		comment = "How far back each pull reaches. Only the newest point per series is kept."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.gcp "cloud_nat" {
+		project_ids = [
+			argument.project_id.value,
+		]
+		metrics_prefixes = [
+			"router.googleapis.com/nat/nat_allocation_failed",
+			"router.googleapis.com/nat/port_usage",
+			"router.googleapis.com/nat/allocated_ports",
+			"router.googleapis.com/nat/open_connections",
+			"router.googleapis.com/nat/dropped_sent_packets_count",
+		]
+		extra_filters = [
+			string.format("router.googleapis.com/nat:resource.labels.gateway_name=one_of(\"%s\")", string.join(argument.gateways.value, "\",\"")),
+		]
+		request_interval = argument.request_interval.value
+		ingest_delay = true
+	}
+
+	provider_scrape "cloud_nat" {
+		targets          = prometheus.exporter.gcp.cloud_nat.targets
+		instance         = "cloud_nat"
+		provider_pull    = "gcp_cloud_nat"
+		forward_to       = argument.forward_to.value
+		scrape_interval  = argument.scrape_interval.value
+		scrape_timeout   = argument.scrape_timeout.value
+		honor_timestamps = false
 	}
 }
 
@@ -832,6 +1180,208 @@ declare "provider_azure_aks" {
 				"__name__",
 			]
 			regex = "azure_microsoft_containerservice_managedclusters_cluster_autoscaler_((unschedulable_pods_count|scale_down_in_cooldown|unneeded_nodes_count)_maximum|cluster_safe_to_autoscale_minimum)_[a-z]+|up|scrape_.+"
+		}
+	}
+}
+
+declare "provider_azure_load_balancer" {
+	argument "subscription_id" { }
+
+	argument "clusters" {
+		comment = "AKS cluster names, not resource IDs."
+	}
+
+	argument "cloud_environment" {
+		comment = "azurecloud, azurechinacloud or azureusgovernmentcloud."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.azure "availability" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Network/loadBalancers"
+		metrics = [
+			"VipAvailability",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('kubernetes', 'kubernetes-internal') | extend nodeResourceGroup = tolower(resourceGroup) | join kind=inner (Resources | where type =~ 'microsoft.containerservice/managedclusters' and name in~ ('%s') | project nodeResourceGroup = tolower(tostring(properties.nodeResourceGroup))) on nodeResourceGroup", string.join(argument.clusters.value, "','"))
+		metric_aggregations = [
+			"average",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_dimensions = [
+			"FrontendIPAddress",
+		]
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	prometheus.exporter.azure "probes" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Network/loadBalancers"
+		metrics = [
+			"DipAvailability",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('kubernetes', 'kubernetes-internal') | extend nodeResourceGroup = tolower(resourceGroup) | join kind=inner (Resources | where type =~ 'microsoft.containerservice/managedclusters' and name in~ ('%s') | project nodeResourceGroup = tolower(tostring(properties.nodeResourceGroup))) on nodeResourceGroup", string.join(argument.clusters.value, "','"))
+		metric_aggregations = [
+			"average",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_dimensions = [
+			"FrontendIPAddress",
+			"BackendIPAddress",
+		]
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	prometheus.exporter.azure "traffic" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Network/loadBalancers"
+		metrics = [
+			"ByteCount",
+			"SYNCount",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('kubernetes', 'kubernetes-internal') | extend nodeResourceGroup = tolower(resourceGroup) | join kind=inner (Resources | where type =~ 'microsoft.containerservice/managedclusters' and name in~ ('%s') | project nodeResourceGroup = tolower(tostring(properties.nodeResourceGroup))) on nodeResourceGroup", string.join(argument.clusters.value, "','"))
+		metric_aggregations = [
+			"total",
+		]
+		timespan = "PT5M"
+		interval = "PT1M"
+		included_dimensions = [
+			"FrontendIPAddress",
+			"Direction",
+		]
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	provider_scrape "availability" {
+		targets         = prometheus.exporter.azure.availability.targets
+		instance        = "lb_availability"
+		provider_pull   = "azure_load_balancer"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	provider_scrape "probes" {
+		targets         = prometheus.exporter.azure.probes.targets
+		instance        = "lb_probes"
+		provider_pull   = "azure_load_balancer"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	provider_scrape "traffic" {
+		targets         = prometheus.exporter.azure.traffic.targets
+		instance        = "lb_traffic"
+		provider_pull   = "azure_load_balancer"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+}
+
+declare "provider_azure_nat_gateway" {
+	argument "subscription_id" { }
+
+	argument "gateways" {
+		comment = "NAT gateway names, not resource IDs."
+	}
+
+	argument "cloud_environment" {
+		comment = "azurecloud, azurechinacloud or azureusgovernmentcloud."
+	}
+
+	argument "forward_to" { }
+
+	argument "scrape_interval" { }
+
+	argument "scrape_timeout" { }
+
+	prometheus.exporter.azure "gateway" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Network/natGateways"
+		metrics = [
+			"DatapathAvailability",
+			"PacketDropCount",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('%s')", string.join(argument.gateways.value, "','"))
+		metric_aggregations = [
+			"average",
+			"total",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	prometheus.exporter.azure "connections" {
+		subscriptions = [
+			argument.subscription_id.value,
+		]
+		resource_type = "Microsoft.Network/natGateways"
+		metrics = [
+			"SNATConnectionCount",
+		]
+		resource_graph_query_filter = string.format("where name in~ ('%s')", string.join(argument.gateways.value, "','"))
+		metric_aggregations = [
+			"total",
+		]
+		timespan = "PT10M"
+		interval = "PT5M"
+		included_dimensions = [
+			"ConnectionState",
+		]
+		included_resource_tags = []
+		azure_cloud_environment = argument.cloud_environment.value
+	}
+
+	provider_scrape "gateway" {
+		targets         = prometheus.exporter.azure.gateway.targets
+		instance        = "nat_gateway"
+		provider_pull   = "azure_nat_gateway"
+		forward_to      = prometheus.relabel.gateway.receiver
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	provider_scrape "connections" {
+		targets         = prometheus.exporter.azure.connections.targets
+		instance        = "nat_connections"
+		provider_pull   = "azure_nat_gateway"
+		forward_to      = argument.forward_to.value
+		scrape_interval = argument.scrape_interval.value
+		scrape_timeout  = argument.scrape_timeout.value
+	}
+
+	prometheus.relabel "gateway" {
+		forward_to = [
+			argument.forward_to.value,
+		]
+
+		rule {
+			action = "keep"
+			source_labels = [
+				"__name__",
+			]
+			regex = "azure_microsoft_network_natgateways_(datapathavailability_average|packetdropcount_total)_[a-z]+|up|scrape_.+"
 		}
 	}
 }
