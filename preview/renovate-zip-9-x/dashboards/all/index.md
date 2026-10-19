@@ -358,8 +358,13 @@ The Security tab is split the same way and for the same reason.
 Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
-Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/renovate-zip-9-x/reference/development/roadmap/#dashboards).
+Cloud Networking reads the network around the cluster from both sides.
+Kubernetes says which load balancers were created and the address each was given, on every cluster.
+The cloud provider says whether a load balancer has a healthy backend and what it carries,
+and whether the NAT gateway pods leave through is running out of source ports.
+That half comes from the gateway's [provider pulls](/materialize-monitoring/preview/renovate-zip-9-x/metrics/collecting/cloud-provider-metrics/),
+for the load balancers and NAT gateways named in values, and each pull's rows render only where it runs.
+A NAT gateway out of source ports makes a Materialize source stall and reconnect with no cause inside the cluster, and this tab is where it shows.
 
 <table class="download-dashboards">
   <thead>
@@ -373,7 +378,7 @@ The Kubernetes side of a load balancer — that one was created, and the address
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-zip-9-x/dashboards/grafana/infra-net.json?xxhash=c22c126400b39cc0" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-zip-9-x/dashboards/grafana/infra-net.json?xxhash=1fb4681ea5f297fc" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
         <br /><small>UID <code>mz-mon-infra-net</code></small>
       </td>
       <td>
