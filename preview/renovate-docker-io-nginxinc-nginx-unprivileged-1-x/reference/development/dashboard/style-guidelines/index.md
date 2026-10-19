@@ -860,7 +860,7 @@ Two things worth keeping if this pattern spreads:
 ## Rendering a row on a discovered variable
 
 **New precedent, first used on `infra-net`'s CNI and Security tabs, and since on `infra-cloud`'s provider rows,
-`infra-autoscaling`'s Cloud Capacity tab and every row of `infra-karpenter`.**
+`infra-autoscaling`'s Cloud Capacity tab, every row of `infra-karpenter`, and `infra-net`'s Cloud Networking rows.**
 `Row::only_when_variable` and `Row::only_unless_variable` own it, beside the time-range pair.
 
 A dashboard that must adapt to something about the cluster it is open on has two options: ship one artifact per
