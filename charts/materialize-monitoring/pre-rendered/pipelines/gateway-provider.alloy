@@ -858,7 +858,15 @@ declare "provider_gcp_load_balancing" {
 	argument "project_id" { }
 
 	argument "forwarding_rules" {
-		comment = "Forwarding rule names."
+		optional = true
+		default  = []
+		comment  = "Forwarding rule names."
+	}
+
+	argument "networks" {
+		optional = true
+		default  = []
+		comment  = "VPC network names, for every passthrough load balancer whose backends are in them."
 	}
 
 	argument "request_interval" {
@@ -882,8 +890,8 @@ declare "provider_gcp_load_balancing" {
 			"loadbalancing.googleapis.com/l3/internal/egress_",
 		]
 		extra_filters = [
-			string.format("loadbalancing.googleapis.com/l3/external:resource.type=\"loadbalancing.googleapis.com/ExternalNetworkLoadBalancerRule\" AND resource.labels.forwarding_rule_name=one_of(\"%s\")", string.join(argument.forwarding_rules.value, "\",\"")),
-			string.format("loadbalancing.googleapis.com/l3/internal:resource.labels.forwarding_rule_name=one_of(\"%s\")", string.join(argument.forwarding_rules.value, "\",\"")),
+			string.format("loadbalancing.googleapis.com/l3/external:resource.type=\"loadbalancing.googleapis.com/ExternalNetworkLoadBalancerRule\" AND (resource.labels.forwarding_rule_name=one_of(\"%s\") OR resource.labels.backend_network_name=one_of(\"%s\"))", string.join(argument.forwarding_rules.value, "\",\""), string.join(argument.networks.value, "\",\"")),
+			string.format("loadbalancing.googleapis.com/l3/internal:(resource.labels.forwarding_rule_name=one_of(\"%s\") OR resource.labels.network_name=one_of(\"%s\"))", string.join(argument.forwarding_rules.value, "\",\""), string.join(argument.networks.value, "\",\"")),
 		]
 		request_interval = argument.request_interval.value
 		ingest_delay = true

@@ -174,11 +174,13 @@ provider_gcp_compute_quota "provider" {
 }
     {{- end }}
     {{- $rules := dig "loadBalancing" "forwardingRules" list $gcp }}
-    {{- if $rules }}
+    {{- $networks := dig "loadBalancing" "networks" list $gcp }}
+    {{- if or $rules $networks }}
 
 provider_gcp_load_balancing "provider" {
     project_id       = {{ $project | quote }}
     forwarding_rules = {{ $rules | toJson }}
+    networks         = {{ $networks | toJson }}
     request_interval = {{ $gcp.requestInterval | quote }}
     scrape_interval  = {{ $gcp.scrapeInterval | quote }}
     scrape_timeout   = {{ $gcp.scrapeTimeout | quote }}
@@ -483,14 +485,15 @@ Usage:
     {{- $instances := dig "cloudSql" "instances" list $gcp }}
     {{- $regions := dig "compute" "regions" list $gcp }}
     {{- $rules := dig "loadBalancing" "forwardingRules" list $gcp }}
+    {{- $networks := dig "loadBalancing" "networks" list $gcp }}
     {{- $nats := dig "cloudNat" "gateways" list $gcp }}
-    {{- if and ( not $instances ) ( not ( dig "gcs" "buckets" list $gcp ) ) ( not $regions ) ( not $rules ) ( not $nats ) }}
-      {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but lists no resources. Set cloudSql.instances, gcs.buckets, compute.regions, loadBalancing.forwardingRules or cloudNat.gateways; resources are named, never discovered." }}
+    {{- if and ( not $instances ) ( not ( dig "gcs" "buckets" list $gcp ) ) ( not $regions ) ( not $rules ) ( not $networks ) ( not $nats ) }}
+      {{- $errors = append $errors "pipeline.metrics.provider.gcp.enabled is true but lists no resources. Set cloudSql.instances, gcs.buckets, compute.regions, loadBalancing.forwardingRules, loadBalancing.networks or cloudNat.gateways; resources are named, never discovered." }}
     {{- end }}
     {{- /* Both go into a Cloud Monitoring `one_of` between double quotes, and
            a name the filter does not match is a pull that silently returns
            nothing. Both are Compute Engine resource names. */}}
-    {{- range $kind := list ( list "loadBalancing.forwardingRules" "forwarding rule" $rules ) ( list "cloudNat.gateways" "Cloud NAT gateway" $nats ) }}
+    {{- range $kind := list ( list "loadBalancing.forwardingRules" "forwarding rule" $rules ) ( list "loadBalancing.networks" "VPC network" $networks ) ( list "cloudNat.gateways" "Cloud NAT gateway" $nats ) }}
       {{- range index $kind 2 }}
         {{- if not ( regexMatch "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$" ( . | toString ) ) }}
           {{- $errors = append $errors ( printf "pipeline.metrics.provider.gcp.%s entry %q is not a %s name. List the name alone — lowercase letters, digits and hyphens — not its URL or IP address." ( index $kind 0 ) ( . | toString ) ( index $kind 1 ) ) }}

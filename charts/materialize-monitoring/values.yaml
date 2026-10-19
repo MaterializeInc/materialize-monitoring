@@ -1179,8 +1179,11 @@ pipeline:
     #
     # **Resources are named, not discovered.** Each service lists the instances
     # or buckets to watch, and nothing else is pulled. Tag discovery would find
-    # every resource in the account and bill for each of them. A provider that is
-    # enabled with nothing listed fails at render.
+    # every resource in the account and bill for each of them. Where a resource
+    # cannot be named in advance, a named scope stands in for it: EKS nodes are
+    # found by their cluster, AKS node VMs and load balancers by theirs, and
+    # GCP load balancers by their VPC network. A provider that is enabled with
+    # nothing listed fails at render.
     #
     # **Credentials never travel through values.** The pull uses the gateway
     # pod's own cloud identity, bound through
@@ -1351,6 +1354,18 @@ pipeline:
           # and packets it carried in each direction. Cloud Monitoring
           # publishes no health for these load balancers.
           forwardingRules: []
+          # -- VPC network names whose passthrough Network Load Balancers to
+          # watch, external or internal.
+          # @raw
+          # Every passthrough load balancer whose backends are in a listed
+          # network is pulled, whoever made it, beside any rule in
+          # `forwardingRules`. This is the way to reach a rule that cannot be
+          # named beforehand: GKE names a rule only once it makes it, so a
+          # LoadBalancer Service the same release creates, such as Grafana's,
+          # has no name to list. On a network that holds only the cluster, as
+          # the Terraform wrappers create it, that is the cluster's load
+          # balancers and nothing else.
+          networks: []
         cloudNat:
           # -- Cloud NAT gateway names to watch — the NAT's name, not its
           # Cloud Router's.

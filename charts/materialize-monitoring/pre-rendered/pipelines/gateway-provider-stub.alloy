@@ -101,6 +101,9 @@ provider_gcp_load_balancing "provider" {
 	forwarding_rules = [
 		"a0123456789abcdef0123456789abcde",
 	]
+	networks = [
+		"example-network",
+	]
 	request_interval = "10m"
 	forward_to = otelcol.receiver.prometheus.inputBridge.receiver
 	scrape_interval = "5m"

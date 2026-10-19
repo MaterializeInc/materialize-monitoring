@@ -369,8 +369,9 @@ const NO_LOAD_BALANCER: &str = "**No load balancer metrics are being collected.*
      access and every pull is billed by the provider.\n\n\
      - **AWS**: list each Network Load Balancer's ARN, with its target groups' ARNs, under \
        `pipeline.metrics.provider.cloudwatch.nlb.loadBalancers`.\n\
-     - **Google Cloud**: list each Service's forwarding rule under \
-       `pipeline.metrics.provider.gcp.loadBalancing.forwardingRules`.\n\
+     - **Google Cloud**: list the cluster's VPC network under \
+       `pipeline.metrics.provider.gcp.loadBalancing.networks`, or each forwarding rule under \
+       `.forwardingRules`.\n\
      - **Azure**: list the AKS cluster under `pipeline.metrics.provider.azure.loadBalancer.clusters`.\n\n\
      A pull that is configured but failing still renders its rows, empty, so this note never \
      hides one. The Cloud Provider Metrics page of the documentation has the details.\n\n\
@@ -655,7 +656,7 @@ mod tests {
     fn each_fallback_explains_and_names_its_values() {
         for key in [
             "cloudwatch.nlb.loadBalancers",
-            "gcp.loadBalancing.forwardingRules",
+            "gcp.loadBalancing.networks",
             "azure.loadBalancer.clusters",
         ] {
             assert!(NO_LOAD_BALANCER.contains(key), "{key}");
