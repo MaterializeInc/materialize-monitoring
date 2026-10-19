@@ -85,6 +85,19 @@ tests:
         eval_time: 20m
         exp_samples: []
 
+  # A gateway refusing most scrapes leaves the counter with one sample every few
+  # minutes. A 5m `rate` then often has too few samples to return anything, and
+  # reading that as zero fired the rule while logs arrived.
+  - name: logging-collection-down stays quiet when samples are sparse
+    interval: 1m
+    input_series:
+      - series: 'loki_distributor_bytes_received_total{job="loki/loki-distributor", pod="loki-distributor-0"}'
+        values: "0 _x5 6000 _x5 12000 _x5 18000 _x5 24000 _x5 30000 _x5 36000"
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="logging-collection-down"})
+        eval_time: 35m
+        exp_samples: []
+
   # --- k8s-container-disk-usage: per node ------------------------------------
   #
   # Grouped by a node label the gateway does not keep, every node collapsed into
