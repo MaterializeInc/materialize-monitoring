@@ -366,3 +366,82 @@ tests:
           pattern: 'Grafana operator namespace: grafana-operator'
       - matchRegexRaw:
           pattern: 'Resource: mzmon-grafana \(namespace grafana\)'
+
+  # --- connections.grafana.enabled -------------------------------------------
+  # Off, the chart creates no `Grafana` resource in any mode, for a release no
+  # grafana-operator acts on. Paired with the default, because a gate that
+  # never turns off passes every test that only checks it is on.
+  - it: should create the Grafana resource by default
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: should create no Grafana resource when disabled, in bundled mode
+    set:
+      connections.grafana.enabled: false
+      dashboards.config.grafana.enabled: false
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create no Grafana resource when disabled, in external mode
+    set:
+      connections.grafana.enabled: false
+      connections.grafana.mode: external
+      connections.grafana.external.url: https://grafana.example.com
+      dashboards.config.grafana.enabled: false
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create no Grafana resource when disabled, in operator mode
+    set:
+      connections.grafana.enabled: false
+      connections.grafana.mode: operator
+      dashboards.config.grafana.enabled: false
+    template: templates/grafana-grafana.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not describe a target instance in the install notes when disabled
+    set:
+      connections.grafana.enabled: false
+      dashboards.config.grafana.enabled: false
+    template: templates/NOTES.txt
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'Target instance'
+
+  # Folders and datasources select the chart's own instance unless told
+  # otherwise, and grafana-operator only reports a selector that matches nothing.
+  - it: should refuse folders that still select the instance it does not create
+    set:
+      connections.grafana.enabled: false
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "connections.grafana.enabled is false, so this chart creates no Grafana resource, but these still select it: dashboards.config.grafana.folders.infra, dashboards.config.grafana.folders.materialize, dashboards.config.grafana.folders.meta-o11y\\."
+
+  - it: should refuse datasources that still select the instance it does not create
+    set:
+      connections.grafana.enabled: false
+      dashboards.config.grafana.enabled: false
+      connections.datasources.thanos.enabled: true
+    template: templates/validate.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "but these still select it: connections.datasources.thanos\\."
+
+  - it: should accept folders pointed at an instance it does not manage
+    set:
+      connections.grafana.enabled: false
+      dashboards.config.grafana.manifest.instanceSelector:
+        matchLabels:
+          dashboards.materialize.com/instance: platform-grafana
+    template: templates/validate.yaml
+    asserts:
+      - notFailedTemplate: {}

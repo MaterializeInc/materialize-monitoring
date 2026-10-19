@@ -6,8 +6,11 @@ point of view — "external" means "the operator did not create this server", no
 "outside the cluster". The bundled Grafana is external in that sense because the
 `grafana` subchart owns its Deployment, which is what keeps Grafana's readiness
 inside `helm --wait`.
+
+`connections.grafana.enabled: false` creates none in any mode, for a release
+that no grafana-operator acts on.
 */}}
-{{- if ( has $.Values.connections.grafana.mode ( list "bundled" "external" "operator" ) ) }}
+{{- if and $.Values.connections.grafana.enabled ( has $.Values.connections.grafana.mode ( list "bundled" "external" "operator" ) ) }}
   {{- $fullname := printf "%s-grafana" ( include "mzmon.fullname" $ ) }}
   {{- $ext := $.Values.connections.grafana.external }}
   {{- $bundled := eq $.Values.connections.grafana.mode "bundled" }}

@@ -35,9 +35,13 @@ Readiness is the reason for the split — it is not incidental.
 
 ## Connection modes
 
-Whichever server you use, the chart always creates one `Grafana` custom resource.
+Whichever server you use, the chart creates one `Grafana` custom resource.
 That resource is the operator's handle on "the Grafana that Materialize dashboards belong in".
 It is selected with `connections.grafana.mode`.
+
+When no grafana-operator acts on the release, set `connections.grafana.enabled: false` and the chart creates no `Grafana` resource in any mode.
+The chart then refuses to render folders or datasources that still select it.
+Turn those off, or point them at a `Grafana` resource you manage, as described in [Overriding the target instance](../grafana-operator/#overriding-the-target-instance).
 
 | `connections.grafana.mode` | Grafana server comes from | `Grafana` CR points at |
 |---|---|---|
