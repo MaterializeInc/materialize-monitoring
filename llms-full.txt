@@ -1909,6 +1909,7 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
+| `profiles/noop.values.yaml` | a release that creates no resources. Install it first, then turn components on over it one tag at a time |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
 
@@ -5510,9 +5511,13 @@ Readiness is the reason for the split — it is not incidental.
 
 ## Connection modes
 
-Whichever server you use, the chart always creates one `Grafana` custom resource.
+Whichever server you use, the chart creates one `Grafana` custom resource.
 That resource is the operator's handle on "the Grafana that Materialize dashboards belong in".
 It is selected with `connections.grafana.mode`.
+
+When no grafana-operator acts on the release, set `connections.grafana.enabled: false` and the chart creates no `Grafana` resource in any mode.
+The chart then refuses to render folders or datasources that still select it.
+Turn those off, or point them at a `Grafana` resource you manage, as described in [Overriding the target instance](../grafana-operator/#overriding-the-target-instance).
 
 | `connections.grafana.mode` | Grafana server comes from | `Grafana` CR points at |
 |---|---|---|
@@ -6545,6 +6550,8 @@ dashboards:
         # infers this for instances it creates itself.
         allowCrossNamespaceImport: true
 ```
+
+If you don't want the chart's own `Grafana` resource alongside yours, also set `connections.grafana.enabled: false`.
 
 ### Folders
 
@@ -15271,6 +15278,13 @@ How to talk to a grafana instance
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create the `Grafana` resource that grafana-operator reconciles this chart's folders, datasources, and dashboards into. Turn it off when no grafana-operator acts on this release, or when `dashboards.config.grafana.manifest.instanceSelector` points them at a `Grafana` resource you manage. The chart then creates none, whatever the `mode`, and refuses to render folders or datasources that still select it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
