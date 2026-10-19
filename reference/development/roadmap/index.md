@@ -301,7 +301,6 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-384] `infra-net`'s Cloud Networking rows, from the provider pull. The load balancer and NAT gateway pulls and their rows are in the chart; the per-cloud wrappers' read grants remain | 🔨 |
 | [DEP-115] A Datadog dashboard set | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
@@ -516,6 +515,5 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-381]: https://linear.app/materializeinc/issue/DEP-381
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
-[DEP-384]: https://linear.app/materializeinc/issue/DEP-384
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
 
