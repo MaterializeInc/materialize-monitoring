@@ -71,7 +71,7 @@
             }
           },
           "description": "**Indexes in the catalog. An index is an in-memory arrangement that makes reads against its relation effectively instant, in exchange for memory — so growth here is a leading indicator of cluster memory growth.**\n\nEnvironment-scoped. Hardened to read 0 on a fresh environment (the metric is absent until the first index exists).",
-          "id": 1035,
+          "id": 1038,
           "links": [],
           "title": "Active Indexes",
           "vizConfig": {
@@ -142,7 +142,7 @@
             }
           },
           "description": "**Materialized views Materialize is actively maintaining. Each one is a query whose result is kept continuously up to date, so this tracks roughly how much standing compute the environment carries.**\n\nEnvironment-scoped — the cluster/replica selectors don't narrow it. Steps on CREATE/DROP MATERIALIZED VIEW; steady otherwise.",
-          "id": 1034,
+          "id": 1037,
           "links": [],
           "title": "Active Materialized Views",
           "vizConfig": {
@@ -213,8 +213,8 @@
               "transformations": []
             }
           },
-          "description": "**Live SUBSCRIBE sessions — long-running queries that stream updates to a client as data changes. A handful of `system` subscribes are Materialize's own internal probes; a persistently climbing `user` count is a classic leaked-connection signal.**\n\nEnvironment-scoped.",
-          "id": 1037,
+          "description": "**Live SUBSCRIBE sessions — long-running queries that stream updates to a client as data changes. A handful of `system` subscribes are Materialize's own internal probes; a persistently climbing `user` count usually means a client is opening subscribes and never closing them.**\n\nEnvironment-scoped.",
+          "id": 1040,
           "links": [],
           "title": "Active Subscribes",
           "vizConfig": {
@@ -297,7 +297,7 @@
             }
           },
           "description": "**Non-materialized views — query templates evaluated on demand. They cost nothing until something reads them, so this is a catalog-shape signal rather than a load one.**\n\nEnvironment-scoped.",
-          "id": 1036,
+          "id": 1039,
           "links": [],
           "title": "Active Views",
           "vizConfig": {
@@ -433,7 +433,7 @@
             }
           },
           "description": "**SQL control-plane command totals per client `application_name` over the window, so you can see which clients drive the adapter and which are failing. Most clients set `application_name` in their connection string; those that don't bucket as `unrecognized`/`unspecified` (normal).**\n\n**Unhealthy:** Sustained errors against a real application mean that app is consistently failing its commands — correlate with the app's own logs and the `mz_internal` activity-log views for the specific failures.\n\nThe presentation layer pivots the `status` label into Success/Errors columns. Environment-scoped.",
-          "id": 1029,
+          "id": 1032,
           "links": [],
           "title": "SQL Control Plane Commands by Application",
           "vizConfig": {
@@ -549,7 +549,7 @@
             }
           },
           "description": "**CPU-cores spent maintaining arrangements — the in-memory indexed snapshots behind every index and materialized view — summed across a replica's workers, so an N-worker replica can reach N.**\n\n**Nominal:** Well below the worker count.\n\n**Degraded:** Sustained near the worker count means the replica is bottlenecked on maintenance, usually a high upstream change rate or many heavy indexes. The catalog cluster's baseline runs higher than typical user clusters.\n\nUses the long-form cluster_environmentd_* id labels. Reads high under the same multi-job scrape pitfall as the dataflow elapsed rate.",
-          "id": 1048,
+          "id": 1051,
           "links": [],
           "title": "Arrangement Maintenance Rate",
           "vizConfig": {
@@ -617,7 +617,7 @@
             }
           },
           "description": "**The same maintenance CPU, split per worker — each worker tops out at 1.0.**\n\n**Degraded:** Watch for skew: one worker sitting near 1.0 while its siblings idle near 0 means the cluster is bottlenecked on a single worker (a hot key or hot arrangement) — the most common reason an 8-worker cluster performs like a 1-worker one. `EXPLAIN PHYSICAL PLAN` on the heavy object is the usual next step.",
-          "id": 1049,
+          "id": 1052,
           "links": [],
           "title": "Arrangement Maintenance Rate (per worker)",
           "vizConfig": {
@@ -703,7 +703,7 @@
                   "spec": {
                     "options": {
                       "renameByName": {
-                        "Field": "Collection"
+                        "Field": "Object"
                       }
                     }
                   }
@@ -726,10 +726,10 @@
               ]
             }
           },
-          "description": "**Row counts of arrangements for Materialize's internal system collections (collection id starts with `s`). These back the catalog and internal probes, not user data, so they shouldn't grow with your workload — unexpected growth here can point at a Materialize bug.**",
-          "id": 1050,
+          "description": "**Row counts of arrangements for Materialize's internal system objects (object id starts with `s`). These back the catalog and internal probes, not user data, so they shouldn't grow with your workload — unexpected growth here can point at a Materialize bug.**",
+          "id": 1053,
           "links": [],
-          "title": "System Collections — Record Counts",
+          "title": "System Objects — Record Counts",
           "vizConfig": {
             "group": "table",
             "kind": "VizConfig",
@@ -814,7 +814,7 @@
                   "spec": {
                     "options": {
                       "renameByName": {
-                        "Field": "Collection ID"
+                        "Field": "Object ID"
                       }
                     }
                   }
@@ -837,8 +837,8 @@
               ]
             }
           },
-          "description": "**Row counts of transient (collection id `t*`) and uncategorized (`none`) arrangements — short-lived intermediates from query optimization and dataflow execution. Normally small and ephemeral.**\n\n**Unhealthy:** Sustained non-trivial entries here can mean a stuck or leaked dataflow holding intermediate state it should have released.",
-          "id": 1052,
+          "description": "**Row counts of transient (object id `t*`) and uncategorized (`none`) arrangements — short-lived intermediates from query optimization and dataflow execution. Normally small and ephemeral.**\n\n**Unhealthy:** Sustained non-trivial entries here can mean a stuck or orphaned dataflow holding intermediate state it should have released.",
+          "id": 1055,
           "links": [],
           "title": "Transient / Uncategorized — Record Counts",
           "vizConfig": {
@@ -925,7 +925,7 @@
                   "spec": {
                     "options": {
                       "renameByName": {
-                        "Field": "Collection"
+                        "Field": "Object"
                       }
                     }
                   }
@@ -948,10 +948,10 @@
               ]
             }
           },
-          "description": "**Row counts of arrangements for your compute objects (collection id starts with `u`) — the row count of every user index and materialized view, and the primary driver of cluster memory. Growth on a collection tracks the size of its underlying data.**",
-          "id": 1051,
+          "description": "**Row counts of arrangements for your compute objects (object id starts with `u`) — the row count of every user index and materialized view, and the primary driver of cluster memory. Growth on an object tracks the size of its underlying data.**",
+          "id": 1054,
           "links": [],
-          "title": "User Collections — Record Counts",
+          "title": "User Objects — Record Counts",
           "vizConfig": {
             "group": "table",
             "kind": "VizConfig",
@@ -1017,7 +1017,7 @@
             }
           },
           "description": "**An SLO-style snapshot: how much of the selected window the environment's clusters were ready. Sustained dips are the signal that something restarted or went down while you weren't watching.**\n\n**Nominal:** At or near full availability. Watch the decimals — 99.999% is five-nines, a very different story from 100%.\n\n**Degraded:** Availability slipped below target over the window. Correlate the dip with cluster restarts and outages; widen the range to pin down when it happened, then work backwards from there.\n\nFour-nines is about the ceiling this can measure: at a 30s scrape resolution over a week, a single missed scrape already costs a nine, so don't chase phantom sub-nine dips that are really scrape granularity.",
-          "id": 1001,
+          "id": 1002,
           "links": [],
           "title": "Environment Availability (Select Time Range)",
           "vizConfig": {
@@ -1123,7 +1123,7 @@
             }
           },
           "description": "**How many clusters exist, split into the Materialize-managed system clusters (mz_catalog_server, mz_system, mz_probe, …) that every environment has and the user clusters you created. The gap between the two is your own footprint.**\n\nSteady in normal operation; steps up and down on CREATE CLUSTER / DROP CLUSTER. Sustained drift with no DDL you recognize points at automation creating clusters.",
-          "id": 1030,
+          "id": 1033,
           "links": [],
           "title": "Cluster Count",
           "vizConfig": {
@@ -1259,7 +1259,7 @@
             }
           },
           "description": "**A reference row per (cluster, replica): ids, names, size, version, and scheduling metadata. The \"what does my fleet actually look like\" lookup — most useful for grabbing a cluster or replica id to scope the rest of a dashboard to.**\n\nA catalog snapshot, not a health signal. The presentation layer projects the metric's labels (compute_cluster_name, size, mz_version, region, …) into table columns; this query just selects the underlying series.",
-          "id": 1033,
+          "id": 1036,
           "links": [],
           "title": "Cluster Information",
           "vizConfig": {
@@ -1327,7 +1327,7 @@
             }
           },
           "description": "**Queries per second by session type — `user` tracks your client traffic, `system` is the steady single-digit baseline of internal health checks. Bursty is normal.**\n\nEnvironment-scoped.",
-          "id": 1022,
+          "id": 1025,
           "links": [],
           "title": "Active Queries",
           "vizConfig": {
@@ -1398,8 +1398,8 @@
               "transformations": []
             }
           },
-          "description": "**Open SQL sessions, split into `system` (Materialize's internal probing — a few are always present) and `user` (client connections).**\n\n**Degraded:** A `user` count that climbs and never settles is the classic leaked-connection signal; cross-check whether query activity rose to match, or whether connections are just accumulating idle.\n\nEnvironment-scoped — the cluster/replica selectors don't narrow it.",
-          "id": 1021,
+          "description": "**Open SQL sessions, split into `system` (Materialize's internal probing — a few are always present) and `user` (client connections).**\n\n**Degraded:** A `user` count that climbs and never settles usually means a client is opening connections and never closing them; cross-check whether query activity rose to match, or whether connections are just accumulating idle.\n\nEnvironment-scoped — the cluster/replica selectors don't narrow it.",
+          "id": 1024,
           "links": [],
           "title": "Active Sessions",
           "vizConfig": {
@@ -1470,7 +1470,7 @@
             }
           },
           "description": "**Commands per second through the adapter — the SQL protocol layer (parse, execute, prepare, fetch). Normally runs higher than the query rate, since one query is several commands.**\n\n**Degraded:** A flat-line on an environment that's usually busy is unusual and can indicate the adapter is in trouble; check per-application command activity and its error column.\n\nEnvironment-scoped.",
-          "id": 1023,
+          "id": 1026,
           "links": [],
           "title": "SQL Control Plane Command Rate",
           "vizConfig": {
@@ -1543,7 +1543,7 @@
             }
           },
           "description": "**Current CPU usage per container type as a fraction of its limit, averaged over the last 5 minutes — shows the worst-loaded container types.**\n\n**Nominal:** Well below 1.0.\n\n**Degraded:** Sustained near 1.0 means a container type is CPU-bound.\n\nNeeds CPU limits from kube-state-metrics; use the `.absolute` sibling where limits aren't exposed. Requires cAdvisor + kube-state-metrics.",
-          "id": 1005,
+          "id": 1006,
           "links": [],
           "title": "Current CPU Usage (5 min)",
           "vizConfig": {
@@ -1661,7 +1661,7 @@
             }
           },
           "description": "**Active dataflows on each replica. Every index, materialized view, and live SUBSCRIBE runs as one or more dataflows, so this count rises with DDL and subscribe activity.**\n\n**Nominal:** Stable for a steady workload.\n\n**Degraded:** A sharp drop with no matching DDL usually means a replica restarted; a sharp rise usually means bulk object creation.",
-          "id": 1045,
+          "id": 1048,
           "links": [],
           "title": "Dataflow Count",
           "vizConfig": {
@@ -1730,7 +1730,7 @@
             }
           },
           "description": "**The dataflow count broken out per worker. Workers in a replica run in lockstep and should see exactly the same dataflows, so their series should overlap perfectly.**\n\n**Unhealthy:** Visible divergence between worker series within one (cluster, replica) is a bug-class signal — the workers disagree on what they're running — and worth filing.",
-          "id": 1046,
+          "id": 1049,
           "links": [],
           "title": "Dataflow Count (per worker)",
           "vizConfig": {
@@ -1799,7 +1799,7 @@
             }
           },
           "description": "**CPU-cores busy inside dataflows, per cluster — the whole of dataflow work: arrangement maintenance, query evaluation, and hydration. Capped by cluster size (a 400cc cluster can't exceed 400 cores).**\n\n**Nominal:** Well below the cluster's size.\n\n**Degraded:** Sustained near the size cap means the cluster is CPU-bound and a candidate for upsizing. The catalog cluster (s2) is typically the busiest in any environment.\n\nReads high if the same clusterd endpoint is scraped by more than one Prometheus job (a known multi-job scrape-config pitfall); fix the scrape config, or collapse duplicate `job` series, at the deployment.",
-          "id": 1047,
+          "id": 1050,
           "links": [],
           "title": "Dataflow Elapsed Rate",
           "vizConfig": {
@@ -1872,10 +1872,10 @@
               "transformations": []
             }
           },
-          "description": "**How far behind real time each cluster's most-lagged collection is — the worst-case freshness across every index, materialized view, and source on the cluster.**\n\n**Nominal:** Low and flat, sub-second to a few seconds, for a cluster keeping up.\n\n**Degraded:** A sustained climb means a collection can't keep pace with its input — an under-provisioned cluster or an expensive dataflow. A sharp spike that decays on its own is normal re-hydration after a restart or DDL, not a problem.\n\nThe catalog cluster (s2) sits a couple seconds back as its baseline. Collections that have not produced results yet report a sentinel and are excluded here. For which collection is responsible, see materialize.compute.freshness.top_collections.",
-          "id": 1039,
+          "description": "**How far behind real time each cluster's least fresh object is — the worst-case freshness across every index, materialized view, and source on the cluster.**\n\n**Nominal:** Low and flat, sub-second to a few seconds, for a cluster keeping up.\n\n**Degraded:** A sustained climb means an object can't keep pace with its input — an under-provisioned cluster or an expensive dataflow. A sharp spike that decays on its own is normal re-hydration after a restart or DDL, not a problem.\n\nThe catalog cluster (s2) sits a couple seconds back as its baseline. Objects that have not produced results yet report a sentinel and are excluded here. For which object is responsible, see _Least Fresh Objects_ (in this row).",
+          "id": 1042,
           "links": [],
-          "title": "Freshness Lag by Cluster",
+          "title": "Worst Freshness by Cluster",
           "vizConfig": {
             "group": "timeseries",
             "kind": "VizConfig",
@@ -1948,10 +1948,10 @@
               "transformations": []
             }
           },
-          "description": "**The lag of every collection on each cluster, added together — one number for how far behind the cluster is in total.**\n\n**Nominal:** Low and flat. The absolute value is not comparable between clusters, since a cluster with more collections has more to add up; the *shape* is what this panel is for.\n\n**Degraded:** A climb that does not come back down. A rise that decays steadily is a cluster catching up after a restart, a rollout, or DDL, and the decay is the thing worth watching.\n\n**Read this beside the worst-case panel rather than instead of it.** The max says whether anything is behind; this says how much is behind in total, and the two answer different questions. When a hundred collections rehydrate and fifty of them catch up, the max barely moves — it is still reporting whichever one is furthest behind — while this halves. That descent is the clearest picture of hydration progress the metrics can give, and it is invisible in the max.\n\n**Deduplicated across replicas.** A collection served by several replicas reports once per replica, so the inner `max` picks the worst reading per collection before the outer `sum` adds collections together. Without it a two-replica cluster would report double, which is exactly the shape a blue/green rollout has.\n\nCollections that have not produced results yet report the `u64::MAX` sentinel and are excluded (`< 1e9`) — including them would swamp the total by nineteen orders of magnitude. They are counted by the hydration panels instead, so the two are complementary: this totals the collections that are *producing results*, those count the ones that are not. Datadog cannot express that value filter, so its query includes not-yet-hydrated collections and can overstate the total badly.",
-          "id": 1040,
+          "description": "**The freshness of every object on each cluster, added together — one number for how far behind the cluster is in total.**\n\n**Nominal:** Low and flat. The absolute value is not comparable between clusters, since a cluster with more objects has more to add up; the *shape* is what this panel is for.\n\n**Degraded:** A climb that does not come back down. A rise that decays steadily is a cluster catching up after a restart, a rollout, or DDL, and the decay is the thing worth watching.\n\n**Read this beside the worst-case panel rather than instead of it.** The max says whether anything is behind; this says how much is behind in total, and the two answer different questions. When a hundred objects rehydrate and fifty of them catch up, the max barely moves — it is still reporting whichever one is furthest behind — while this halves. That descent is the clearest picture of hydration progress the metrics can give, and it is invisible in the max.\n\n**Deduplicated across replicas.** An object served by several replicas reports once per replica, so the inner `max` picks the worst reading per object before the outer `sum` adds objects together. Without it a two-replica cluster would report double, which is exactly the shape a blue/green rollout has.\n\nObjects that have not produced results yet report the `u64::MAX` sentinel and are excluded (`< 1e9`) — including them would swamp the total by nineteen orders of magnitude. They are counted by the hydration panels instead, so the two are complementary: this totals the objects that are *producing results*, those count the ones that are not. Datadog cannot express that value filter, so its query includes not-yet-hydrated objects and can overstate the total badly.",
+          "id": 1043,
           "links": [],
-          "title": "Total Lag by Cluster",
+          "title": "Total Freshness by Cluster",
           "vizConfig": {
             "group": "timeseries",
             "kind": "VizConfig",
@@ -2019,10 +2019,10 @@
               "transformations": []
             }
           },
-          "description": "**The 15 collections whose results are furthest behind real time — the per-collection breakdown behind the per-cluster freshness lag, labeled by object name.**\n\nIdle or still-hydrating collections report a sentinel and are filtered out; check hydration state directly in SQL if a collection you expect is missing. Catalog (s2) collections commonly appear with a small, expected baseline lag.",
-          "id": 1041,
+          "description": "**The 15 objects whose results are furthest behind real time — the per-object breakdown behind _Worst Freshness by Cluster_, labeled by object name.**\n\nIdle or still-hydrating objects report a sentinel and are filtered out; check hydration state directly in SQL if an object you expect is missing. Catalog (s2) objects commonly appear with a small, expected baseline freshness of a few seconds.",
+          "id": 1044,
           "links": [],
-          "title": "Most-Lagged Collections",
+          "title": "Least Fresh Objects",
           "vizConfig": {
             "group": "barchart",
             "kind": "VizConfig",
@@ -2107,8 +2107,8 @@
               "transformations": []
             }
           },
-          "description": "**Collections waiting in each replica's hydration queue. environmentd schedules hydration in batches; a backlog means work is arriving faster than the replica can rebuild it.**\n\n**Nominal:** 0 — nothing is waiting to hydrate.\n\n**Unhealthy:** Sustained non-zero means the replica is undersized for its workload, or one slow-hydrating collection is holding up the line behind it.",
-          "id": 1043,
+          "description": "**Objects waiting in each replica's hydration queue. environmentd schedules hydration in batches; a backlog means work is arriving faster than the replica can rebuild it.**\n\n**Nominal:** 0 — nothing is waiting to hydrate.\n\n**Unhealthy:** Sustained non-zero means the replica is undersized for its workload, or one slow-hydrating object is holding up the line behind it.",
+          "id": 1046,
           "links": [],
           "title": "Hydration Queue Size",
           "vizConfig": {
@@ -2178,10 +2178,10 @@
               "transformations": []
             }
           },
-          "description": "**The 15 collections that took longest to finish hydrating. Hydration time scales with the size of the state being rebuilt, so large materialized views and indexes naturally top the list.**\n\nThe per-collection hydration-time metric is cloud-only, so this is blank on self-managed. Get it from SQL instead: `SELECT object_id, time_ns/1e9 AS seconds FROM mz_internal.mz_compute_hydration_times ORDER BY time_ns DESC`. The live metric-side proxy for what's behind is materialize.compute.freshness.top_collections.",
-          "id": 1044,
+          "description": "**The 15 objects that took longest to finish hydrating. Hydration time scales with the size of the state being rebuilt, so large materialized views and indexes naturally top the list.**\n\nThe per-object hydration-time metric is cloud-only, so this is blank on self-managed. Get it from SQL instead: `SELECT object_id, time_ns/1e9 AS seconds FROM mz_internal.mz_compute_hydration_times ORDER BY time_ns DESC`. The live metric-side proxy for what's behind is _Freshness -> Least Fresh Objects_.",
+          "id": 1047,
           "links": [],
-          "title": "Slowest Hydrating Collections",
+          "title": "Slowest Hydrating Objects",
           "vizConfig": {
             "group": "barchart",
             "kind": "VizConfig",
@@ -2322,8 +2322,8 @@
               "transformations": []
             }
           },
-          "description": "**Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**\n\n**Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.\n\n**Unhealthy:** A count that stays elevated means something can't finish hydrating — a source whose CREATE never completed, or a wedged dataflow. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.\n\nStopgap, not a real signal: self-managed has no hydration-state metric, so this counts collections parked at the wallclock-lag u64::MAX sentinel (> 1e15) as a proxy. Deprecate this query once an actual hydration-state metric exists.",
-          "id": 1042,
+          "description": "**Objects still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**\n\n**Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.\n\n**Unhealthy:** A count that stays elevated means something can't finish hydrating — a source whose CREATE never completed, or a wedged dataflow. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.\n\nStopgap, not a real signal: self-managed has no hydration-state metric, so this counts objects whose freshness reads the u64::MAX sentinel (> 1e15) as a proxy. Deprecate this query once an actual hydration-state metric exists.",
+          "id": 1045,
           "links": [],
           "title": "Currently Hydrating",
           "vizConfig": {
@@ -2395,7 +2395,7 @@
             }
           },
           "description": "**Indexes split by the kind of relation they sit on. Workloads normally lean heavily on indexes over views (the standard \"keep a query's result hot\" pattern); a large share of indexes on base tables is unusual and usually worth a second look.**\n\nEnvironment-scoped.",
-          "id": 1038,
+          "id": 1041,
           "links": [],
           "title": "Index Relationship Types",
           "vizConfig": {
@@ -2593,7 +2593,7 @@
             }
           },
           "description": "**Total CPU cores configured across every container in the environment, including the monitoring exporter — the Kubernetes view of what is provisioned rather than what is available to the workload.**\n\nDiffers from `materialize.kubernetes.cpu.capacity` only by counting the monitoring exporter. Use that one to read workload capacity; use this one when reconciling against what Kubernetes reports. Requires cAdvisor.",
-          "id": 1010,
+          "id": 1013,
           "links": [],
           "title": "Total CPU Capacity",
           "vizConfig": {
@@ -2665,7 +2665,7 @@
             }
           },
           "description": "**Total memory configured across every container in the environment, including the monitoring exporter — the Kubernetes view of what is provisioned rather than what is available to the workload.**\n\nDiffers from `materialize.kubernetes.memory.capacity` only by counting the monitoring exporter. Memory is the dominant constraint on Materialize: in-memory arrangements live inside this total. Requires cAdvisor.",
-          "id": 1011,
+          "id": 1014,
           "links": [],
           "title": "Total Memory",
           "vizConfig": {
@@ -2737,7 +2737,7 @@
             }
           },
           "description": "**Seconds since the most recent container restart in the environment.**\n\n**Nominal:** Hours to days ago.\n\n**Degraded:** A restart seconds/minutes ago is worth correlating with availability and pod-health — it may be an active incident (crash loop, OOM, eviction).\n\nRequires cAdvisor.",
-          "id": 1002,
+          "id": 1003,
           "links": [],
           "title": "Last Restart Time",
           "vizConfig": {
@@ -2881,7 +2881,7 @@
             }
           },
           "description": "**The version of Materialize running in the environment. A single version is the steady state; multiple values appear briefly during a rolling upgrade.**\n\nThe presentation layer extracts the commit hash from the `mz_version` label (e.g. to link the commit). If the version isn't what you expect, check the environment's manifest in the deployment pipeline.",
-          "id": 1007,
+          "id": 1010,
           "links": [],
           "title": "Materialize Version",
           "vizConfig": {
@@ -2958,7 +2958,7 @@
             }
           },
           "description": "**Current memory usage per container type as a fraction of its limit — shows the worst-loaded container types.**\n\n**Unhealthy:** Sustained near 1.0 is dangerous: hitting the limit triggers an OOM-kill, which on a compute replica forces a hydration cycle (in-memory state rebuilt from persisted storage, minutes-to-hours). The offending workload usually shows in the arrangement record counts.\n\nNeeds memory limits from kube-state-metrics; use the `.absolute` sibling where limits aren't exposed. Requires cAdvisor + kube-state-metrics.",
-          "id": 1006,
+          "id": 1007,
           "links": [],
           "title": "Current Memory Usage",
           "vizConfig": {
@@ -3097,7 +3097,7 @@
             }
           },
           "description": "**CPU utilization per pod as a fraction of the pod's limit. Split so the cluster/replica selectors filter the cluster pods while envd/balancer/ exporter stay visible.**\n\n**Degraded:** Sustained near 1.0 for a pod means it's CPU-bound; for the Materialize-level cause see the dataflow elapsed / arrangement rates.\n\nRequires cAdvisor + kube-state-metrics.",
-          "id": 1015,
+          "id": 1018,
           "links": [],
           "title": "Pod CPU Usage",
           "vizConfig": {
@@ -3187,7 +3187,7 @@
             }
           },
           "description": "**Memory usage per pod as a fraction of the pod's limit (working-set basis), same cluster/non-cluster split as pod CPU.**\n\n**Unhealthy:** A sustained climb toward 1.0 is dangerous — the pod gets OOM-killed, and on a compute replica that triggers a hydration cycle. If a cluster pod is the offender, the arrangement record counts show which arrangements hold the memory.\n\nRequires cAdvisor.",
-          "id": 1016,
+          "id": 1019,
           "links": [],
           "title": "Pod Memory Usage",
           "vizConfig": {
@@ -3319,7 +3319,7 @@
             }
           },
           "description": "**Network packets dropped (rx + tx) per pod per second — when kernel buffers fill faster than the app reads (rx) or egress rate-limiting kicks in (tx).**\n\n**Nominal:** 0 (single-digit pps drops are usually harmless background noise).\n\n**Degraded:** Sustained higher rates mean the pod is overwhelmed at the network layer — often paired with elevated pod CPU.\n\nRequires cAdvisor.",
-          "id": 1020,
+          "id": 1023,
           "links": [],
           "title": "Pod Network Packet Drops",
           "vizConfig": {
@@ -3451,7 +3451,7 @@
             }
           },
           "description": "**Network rx + tx errors per pod per second (counted at the NIC/kernel level).**\n\n**Nominal:** 0 — no NIC/kernel-level errors.\n\n**Unhealthy:** Non-zero is unusual and points at infrastructure (faulty NIC, kernel network stack, container runtime) — not a Materialize-level problem; file an infra ticket.\n\nRequires cAdvisor.",
-          "id": 1019,
+          "id": 1022,
           "links": [],
           "title": "Pod Network Errors",
           "vizConfig": {
@@ -3541,7 +3541,7 @@
             }
           },
           "description": "**Network bytes/sec received per pod. For cluster pods, Rx tracks ingest from upstream and inter-pod replication; for envd/balancer it's client SQL traffic. Surges alongside hydration are normal catchup.**\n\nRequires cAdvisor.",
-          "id": 1017,
+          "id": 1020,
           "links": [],
           "title": "Pod Network Rx",
           "vizConfig": {
@@ -3631,7 +3631,7 @@
             }
           },
           "description": "**Network bytes/sec transmitted per pod. For cluster pods Tx covers sink output, inter-pod replication, and query results returning to envd; for envd it's client query responses.**\n\nRequires cAdvisor.",
-          "id": 1018,
+          "id": 1021,
           "links": [],
           "title": "Pod Network Tx",
           "vizConfig": {
@@ -3701,7 +3701,7 @@
             }
           },
           "description": "**The mix of query kinds over the selected window — a workload-shape signal, not a rate. Heavy `set_variable`/`fetch` traffic is normal (that's how Postgres clients manage session state); heavy `insert`/`update`/`delete` on something you think of as read-mostly is worth a look.**\n\nIdle statement types are filtered out. Environment-scoped.",
-          "id": 1024,
+          "id": 1027,
           "links": [],
           "title": "Query Distribution (by statement_type)",
           "vizConfig": {
@@ -3780,7 +3780,7 @@
             }
           },
           "description": "**Median read-query latency — the typical time to look up the current state of an arrangement, which is the operation behind every `SELECT` against an index. Your \"what does a normal query feel like\" number.**\n\n**Nominal:** A few milliseconds on a healthy cluster.\n\n**Degraded:** Sustained multi-second p50 means the cluster is overwhelmed — it can't keep up with the read load on it.\n\nPer-cluster: the self-managed metric carries the cluster (instance_id) but not the replica, so the replica selector doesn't split it further.",
-          "id": 1026,
+          "id": 1029,
           "links": [],
           "title": "Peek Latency (p50)",
           "vizConfig": {
@@ -3854,7 +3854,7 @@
             }
           },
           "description": "**90th-percentile read-query latency — how slow the slowest 10% of queries feel. Catches the contention bursts and cold paths that the median hides.**\n\n**Nominal:** A small multiple of p50, roughly 2–5×.\n\n**Degraded:** p90 running 10–100× p50 means a bimodal distribution — usually cold-cache effects on infrequently-queried indexes, or contention.",
-          "id": 1027,
+          "id": 1030,
           "links": [],
           "title": "Peek Latency (p90)",
           "vizConfig": {
@@ -3928,7 +3928,7 @@
             }
           },
           "description": "**Tail read-query latency — the slowest 1% of queries, the ones users complain about.**\n\n**Nominal:** A small multiple of p50 (2–10×), with occasional spikes during query plan recompilation or hydration.\n\n**Degraded:** Sustained p99 in the seconds range — especially when p50/p90 are NOT elevated — points at a single bad query or a genuinely tail-sensitive use case. Confirm the latency is on real traffic (against the query rate), not idle scrapes.",
-          "id": 1028,
+          "id": 1031,
           "links": [],
           "title": "Peek Latency (p99)",
           "vizConfig": {
@@ -4002,7 +4002,7 @@
             }
           },
           "description": "**Query rate broken down by statement type and session type, fully time-resolved — the moving picture behind the distribution donut. A spike in `select`/`user` is the thing to line up against peek latency to confirm the system kept pace.**\n\nIdle (statement, session) tuples are filtered out. Environment-scoped.",
-          "id": 1025,
+          "id": 1028,
           "links": [],
           "title": "Query Rate (by statement_type / session_type)",
           "vizConfig": {
@@ -4092,7 +4092,7 @@
             }
           },
           "description": "**How many replicas back the selected clusters, and how many of those are redundancy beyond the first. Every cluster needs one replica to run; anything above that is capacity or availability headroom you've opted into, so a non-zero \"additional\" count is the quick check that HA is actually configured where you expect it.**\n\nSteps on CREATE/DROP CLUSTER REPLICA. The \"additional\" line is hardened to read 0 rather than \"no data\" on clusters with a single replica.",
-          "id": 1031,
+          "id": 1034,
           "links": [],
           "title": "Replica Count",
           "vizConfig": {
@@ -4164,7 +4164,7 @@
             }
           },
           "description": "**The replica fleet grouped by configured size. Most deployments settle on a handful of sizes; a long tail of one-off sizes usually means an experiment or a half-finished migration. The total agrees with the replica count.**",
-          "id": 1032,
+          "id": 1035,
           "links": [],
           "title": "Replica Sizes",
           "vizConfig": {
@@ -4270,7 +4270,7 @@
             }
           },
           "description": "**Deployment replica health — Ready vs Unavailable. Deployments back stateless services (e.g. the promsql exporter).**\n\n**Nominal:** All replicas Ready, zero Unavailable.\n\n**Degraded:** Unavailable counts indicate failed rollouts or crashing pods.\n\nRequires kube-state-metrics.\n\nCanonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.",
-          "id": 1014,
+          "id": 1017,
           "links": [],
           "title": "Deployment Readiness",
           "vizConfig": {
@@ -4354,7 +4354,7 @@
             }
           },
           "description": "**Pods in the Materialize namespace grouped by phase (Running, Pending, Failed, …).**\n\n**Nominal:** Nearly all Running.\n\n**Degraded:** Pending usually means Kubernetes can't schedule them (capacity, taints, AZ constraints); Failed means a container exited and won't be restarted.\n\nRequires kube-state-metrics.\n\nCanonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.",
-          "id": 1012,
+          "id": 1015,
           "links": [],
           "title": "Pod Readiness",
           "vizConfig": {
@@ -4438,7 +4438,7 @@
             }
           },
           "description": "**StatefulSet replicas reporting Ready. environmentd and the cluster pods are StatefulSets.**\n\n**Nominal:** Matches the configured replica count.\n\n**Degraded:** A drop indicates a pod stuck in initialization or hydration.\n\nRequires kube-state-metrics.\n\nCanonical because the `kube_*` families it reads are asserted against a running stack by `kube_state::labels_are_honored` in the e2e suite. That check exists for one specific failure: when the scrape does not set `honorLabels`, kube-state-metrics' own `namespace` and `pod` labels are renamed `exported_*` and replaced by the exporter pod's own identity, so this query matches nothing while `up` and `scrape_samples_scraped` stay healthy. It shipped that way once and was found by eye.",
-          "id": 1013,
+          "id": 1016,
           "links": [],
           "title": "StatefulSet Readiness",
           "vizConfig": {
@@ -4563,7 +4563,7 @@
             }
           },
           "description": "**Iceberg commit-duration percentiles (p50/p90/p99) — how long each `COMMIT` against the Iceberg catalog takes (write a snapshot manifest, ask the catalog to atomically swap it in).**\n\n**Nominal:** p50 sub-second to low seconds; p99 a few seconds even when healthy.\n\n**Degraded:** Sustained p99 in the tens of seconds points at a slow Iceberg catalog (REST catalog under load, Glue API throttling); sink lag will be growing at the same time.\n\nScoped to the selected clusters/replicas.",
-          "id": 1064,
+          "id": 1067,
           "links": [],
           "title": "Iceberg Commit Latency (p50 / p90 / p99)",
           "vizConfig": {
@@ -4658,7 +4658,7 @@
             }
           },
           "description": "**Per-sink rate of failed and conflicting Iceberg commits. Conflicts (concurrent-writer races on the snapshot pointer) are recoverable — Materialize retries — but a high rate means something else is writing the same Iceberg table; failures are commit-side errors (network, auth, schema).**\n\n**Unhealthy:** Non-zero in either dimension is worth investigating; climbing failures drag sink lag up with them.\n\nScoped to the selected clusters/replicas.",
-          "id": 1065,
+          "id": 1068,
           "links": [],
           "title": "Iceberg Commit Failures & Conflicts",
           "vizConfig": {
@@ -4798,7 +4798,7 @@
             }
           },
           "description": "**Per-sink rate of files and snapshots written to Iceberg. Each commit produces one snapshot with data files (new rows) and delete files (tombstones for upserts). The data:delete ratio reflects your workload — pure-insert sinks produce ~0 deletes; upsert-heavy ones roughly 1:1.**\n\nSustained delete-file rate with no data files means the sink is mostly deleting (data evaporating upstream). Scoped to the selected clusters/replicas.",
-          "id": 1066,
+          "id": 1069,
           "links": [],
           "title": "Iceberg File & Snapshot Rate",
           "vizConfig": {
@@ -4888,7 +4888,7 @@
             }
           },
           "description": "**Connect and disconnect events per sink against the Kafka broker. Healthy connections are persistent — a couple of connects at startup and zero disconnects afterward.**\n\n**Unhealthy:** A sustained non-zero disconnect rate signals unhealthy connectivity (network flakiness, broker restarting, auth tokens expiring); pairs with TX errors when the issue is broker-side rather than purely network.\n\nScoped to the selected clusters/replicas.",
-          "id": 1069,
+          "id": 1072,
           "links": [],
           "title": "Kafka Connect / Disconnect Rate",
           "vizConfig": {
@@ -4957,7 +4957,7 @@
             }
           },
           "description": "**Messages sitting in the librdkafka output buffer, waiting to be sent to the broker. Normal buffer fluctuates briefly as messages flow through.**\n\n**Unhealthy:** Sustained high values mean Materialize is producing faster than the broker accepts (often paired with TX errors); if the buffer hits its bound the sink stalls and lag climbs.\n\nScoped to the selected clusters/replicas.",
-          "id": 1068,
+          "id": 1071,
           "links": [],
           "title": "Kafka Output Buffer (messages)",
           "vizConfig": {
@@ -5026,7 +5026,7 @@
             }
           },
           "description": "**Per-sink rate of TX errors from the librdkafka client — each is one failed produce-request against the broker.**\n\n**Unhealthy:** Non-zero is a problem: broker outages, ACL changes, topic deletion/recreation, or partition rebalancing. Sustained errors grow sink lag and can fill the output buffer.\n\nScoped to the selected clusters/replicas.",
-          "id": 1067,
+          "id": 1070,
           "links": [],
           "title": "Kafka TX Error Rate",
           "vizConfig": {
@@ -5124,7 +5124,7 @@
             }
           },
           "description": "**Bytes staged for a sink but not yet committed downstream — an in-flight queue depth in bytes. Oscillates around a small value in normal operation as commits happen periodically.**\n\n**Unhealthy:** Sustained growth means the sink can't keep up — usually downstream back-pressure (broker overloaded, Iceberg catalog slow) or repeated commit failures (see the Iceberg/Kafka sink error panels).\n\nClamped at 0 (brief negatives come from scrape skew between the staged and committed counters). Scoped to the selected clusters/replicas.",
-          "id": 1063,
+          "id": 1066,
           "links": [],
           "title": "Sink Lag (staged minus committed)",
           "vizConfig": {
@@ -5193,7 +5193,7 @@
             }
           },
           "description": "**Outbound throughput per sink — bytes/second successfully committed to the downstream system (Kafka broker, Iceberg catalog, …).**\n\nIdle sinks are filtered out. Scoped to the selected clusters/replicas.",
-          "id": 1062,
+          "id": 1065,
           "links": [],
           "title": "Sink Throughput (committed)",
           "vizConfig": {
@@ -5268,7 +5268,7 @@
             }
           },
           "description": "**Sinks by (type, envelope) — e.g. `kafka / upsert`, `kafka / debezium`, `iceberg / upsert`. The envelope is how Materialize encodes changes: `upsert` writes the latest value per key, `debezium` writes change events with old+new values.**\n\nEnvironment-scoped.",
-          "id": 1061,
+          "id": 1064,
           "links": [],
           "title": "Sink Types",
           "vizConfig": {
@@ -5351,7 +5351,7 @@
             }
           },
           "description": "**Inbound throughput per primary source — bytes/second pulled from upstream. Subsources (e.g. per-table Postgres replication) roll up to their primary, so each line is one logical source.**\n\nIdle sources are filtered out. Scoped to the selected clusters/replicas.",
-          "id": 1058,
+          "id": 1061,
           "links": [],
           "title": "Source Bytes Received (rate)",
           "vizConfig": {
@@ -5445,8 +5445,8 @@
               "transformations": []
             }
           },
-          "description": "**Per-source upstream health, with two complementary signals — both nominal at 0, so an empty panel is healthy and any series means a source needs attention.**\n\n**Unhealthy:** Commit failures fire when the upstream is reachable but rejects the offset/replication-slot commit (auth/ACL, broker rejecting). The disconnected indicator flips to 1 when the source has lost sight of its upstream (`offset_known` fell below `offset_committed`) — the broker/DB-unreachable case (BrokerTransportFailure, severed security group, DNS) that commit-failures can't catch, because the source never reaches the commit step. When disconnected is 1, throughput flat-lines and lag climbs. Read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.\n\nData-decode errors are separate (`mz_source_error_inserts`). Scoped to the selected clusters/replicas.",
-          "id": 1060,
+          "description": "**Per-source upstream health, with two complementary signals — both nominal at 0, so an empty panel is healthy and any series means a source needs attention.**\n\n**Unhealthy:** Commit failures fire when the upstream is reachable but rejects the offset/replication-slot commit (auth/ACL, broker rejecting). The disconnected indicator flips to 1 when the source has lost sight of its upstream (`offset_known` fell below `offset_committed`) — the broker/DB-unreachable case (BrokerTransportFailure, severed security group, DNS) that commit-failures can't catch, because the source never reaches the commit step. When disconnected is 1, throughput flat-lines and the source falls further behind real time. Read the exact error via `SELECT name, status, error FROM mz_internal.mz_source_statuses WHERE status != 'running'`.\n\nData-decode errors are separate (`mz_source_error_inserts`). Scoped to the selected clusters/replicas.",
+          "id": 1063,
           "links": [],
           "title": "Source Upstream Errors",
           "vizConfig": {
@@ -5544,8 +5544,8 @@
               "transformations": []
             }
           },
-          "description": "**Messages ingested per second, split per source AND replica. Replicas read their upstream independently and should track together.**\n\n**Unhealthy:** A replica flat at 0 while its siblings keep ingesting has lost its upstream connection (e.g. restarted and couldn't resume pulling from Kafka). The source still shows `Running` overall and the aggregate throughput hides it, so this per-replica split is where it surfaces — lag will be climbing too; restarting that replica usually clears the stale connection.\n\nScoped to the selected clusters/replicas.",
-          "id": 1059,
+          "description": "**Messages ingested per second, split per source AND replica. Replicas read their upstream independently and should track together.**\n\n**Unhealthy:** A replica flat at 0 while its siblings keep ingesting has lost its upstream connection (e.g. restarted and couldn't resume pulling from Kafka). The source still shows `Running` overall and the aggregate throughput hides it, so this per-replica split is where it surfaces — the source will be falling behind real time too; restarting that replica usually clears the stale connection.\n\nScoped to the selected clusters/replicas.",
+          "id": 1062,
           "links": [],
           "title": "Source Ingestion by Replica",
           "vizConfig": {
@@ -5681,7 +5681,7 @@
             }
           },
           "description": "**A catalog of sources — one row per source (by name) with its connector type, envelope, and the cluster it ingests on. The metric-side \"what sources do I have\" reference.**\n\nSelf-managed exposes no source *status* metric, so running/stalled isn't here — check `SELECT name, type, status FROM mz_internal.mz_source_statuses`, and use source throughput to confirm a source is actively ingesting. `_progress` subsources are excluded, so the row count matches the source count. Environment-scoped.",
-          "id": 1057,
+          "id": 1060,
           "links": [],
           "title": "Sources",
           "vizConfig": {
@@ -5750,7 +5750,7 @@
             }
           },
           "description": "**Sources by connector type (kafka / postgres / mysql / …) — what flavors of upstream feed make up the ingest workload. Most environments concentrate on one or two.**\n\nEnvironment-scoped.",
-          "id": 1056,
+          "id": 1059,
           "links": [],
           "title": "Source Types",
           "vizConfig": {
@@ -5833,7 +5833,7 @@
             }
           },
           "description": "**Active sinks in the catalog — each emits the results of a materialized view or query to an external system (Kafka, Iceberg, …). Counts distinct sink objects (excluding `_progress` subsources), matching `mz_sinks`.**\n\nEnvironment-scoped.",
-          "id": 1054,
+          "id": 1057,
           "links": [],
           "title": "Active Sinks",
           "vizConfig": {
@@ -5904,7 +5904,7 @@
             }
           },
           "description": "**Active sources in the catalog — each is a continuous ingestion connection from an external system (Kafka, Postgres, MySQL, S3, …), so this is roughly how many upstream feeds the environment maintains. Counts distinct source objects (the hidden per-source `_progress` subsources are excluded), matching `mz_sources`.**\n\nEnvironment-scoped — the cluster/replica selectors don't narrow it.",
-          "id": 1053,
+          "id": 1056,
           "links": [],
           "title": "Active Sources",
           "vizConfig": {
@@ -5975,7 +5975,7 @@
             }
           },
           "description": "**User-created tables in the catalog. Tables are write-once-read-many; `INSERT`s feed dataflows downstream. Mostly a catalog-shape signal — for actual ingest activity look at source throughput.**\n\nEnvironment-scoped.",
-          "id": 1055,
+          "id": 1058,
           "links": [],
           "title": "Active Tables",
           "vizConfig": {
@@ -5996,6 +5996,305 @@
               "options": {
                 "colorMode": "none",
                 "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [],
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "summary-alert-history": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count by (alertname) (\n  max without (ruler_replica) (\n    ALERTS{namespace=~\"$mzNamespaceList\", alertstate=\"firing\"}\n  )\n)\n",
+                        "legendFormat": "{{alertname}}",
+                        "qryType": 1,
+                        "query": "count by (alertname) (\n  max without (ruler_replica) (\n    ALERTS{namespace=~\"$mzNamespaceList\", alertstate=\"firing\"}\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Which alerts about the environment were firing over the selected time range.**\n\n**Nominal:** Empty.\n\nA line is the number of firing instances of that alert. Read it beside the tab that alert is about to see what changed when it started.",
+          "id": 1009,
+          "links": [],
+          "title": "Alerts Firing Over Time",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "No alert about this environment fired in this range",
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "max",
+                    "mean",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "asc"
+                }
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "summary-alerts": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "max without (ruler_replica, tenant_id, cluster, audience) (\n  label_replace(\n    label_replace(\n      ALERTS{namespace=~\"$mzNamespaceList\"},\n      \"job\", \"\", \"job\", \"thanos-ruler|loki-ruler\"\n    ),\n    \"instance\", \"\", \"instance\", \"thanos-ruler|loki-ruler\"\n  )\n)\n",
+                        "format": "table",
+                        "instant": true,
+                        "qryType": 2,
+                        "query": "max without (ruler_replica, tenant_id, cluster, audience) (\n  label_replace(\n    label_replace(\n      ALERTS{namespace=~\"$mzNamespaceList\"},\n      \"job\", \"\", \"job\", \"thanos-ruler|loki-ruler\"\n    ),\n    \"instance\", \"\", \"instance\", \"thanos-ruler|loki-ruler\"\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": [
+                {
+                  "group": "organize",
+                  "kind": "Transformation",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "Value": true
+                      },
+                      "indexByName": {
+                        "alertname": 0,
+                        "alertstate": 1,
+                        "cluster_name": 5,
+                        "component": 3,
+                        "materialize_cloud_organization_name": 4,
+                        "namespace": 7,
+                        "pod": 6,
+                        "severity": 2
+                      },
+                      "renameByName": {
+                        "alertname": "alert",
+                        "alertstate": "state",
+                        "cluster_name": "cluster",
+                        "materialize_cloud_organization_name": "environment"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "description": "**Every alert about the environment that is firing or pending now, with the cluster or pod it is about.**\n\n**Nominal:** Empty.\n\n**Unhealthy:** Any firing row. A pending row has met its condition and is waiting out its `for` duration; it fires if the condition holds.\n\n`ALERTS` carries a rule's labels and not its annotations, so the summary and the advice are a click away: each alert name links to its entry under Common Alerts. `component` says which part of the environment the rule watches, and `audience` is left out: it says who a notification goes to, not what is wrong.\n\nRows are matched by namespace, so where two environments share one, an alert about either shows under both. A rule that groups by environment names it in the `environment` column.\n\nA rule that names no `job` or `instance` of its own is given the ruler's, which says nothing about the alert, so those cells read as empty. One that keeps its own, such as a node's `instance`, shows it.",
+          "id": 1008,
+          "links": [],
+          "title": "Alerts",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "filterable": true,
+                    "inspect": false
+                  },
+                  "noValue": "No alert about this environment is firing or pending, or none reached Thanos. Environment Alerts Firing says which."
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byType",
+                      "options": "string"
+                    },
+                    "properties": [
+                      {
+                        "id": "noValue",
+                        "value": "—"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "alert"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "targetBlank": true,
+                            "title": "What this alert means",
+                            "url": "https://materializeinc.github.io/materialize-monitoring/reference/common-alerts/#${__value.raw}"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "cellHeight": "sm",
+                "footer": {
+                  "countRows": false,
+                  "reducer": [],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "showTypeIcons": false
+              }
+            },
+            "version": ""
+          }
+        }
+      },
+      "summary-alerts-firing": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${metricsDatasource}"
+                      },
+                      "group": "prometheus",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "expr": "count(\n  max without (ruler_replica) (\n    ALERTS{namespace=~\"$mzNamespaceList\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  (\n    (\n      time()\n      - max(\n        prometheus_rule_group_last_evaluation_timestamp_seconds{\n          app=\"thanos\",\n          container=\"ruler\"\n        }\n      )\n      < 300\n    )\n    and on ()\n    (\n      min(\n        max by (pod) (\n          prometheus_remote_storage_highest_timestamp_in_seconds{\n            app=\"thanos\",\n            container=\"ruler\"\n          }\n        )\n        - on (pod)\n        max by (pod) (\n          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n            app=\"thanos\",\n            container=\"ruler\"\n          }\n        )\n      )\n      < 300\n    )\n  )\n  unless on ()\n  (\n    (\n      max(\n        (\n          time()\n          - max by (rule_group, user) (\n            loki_prometheus_rule_group_last_evaluation_timestamp_seconds{\n              app=\"loki\",\n              container=\"ruler\"\n            }\n            > 0\n          )\n        )\n        - on (rule_group, user)\n        max by (rule_group, user) (\n          loki_prometheus_rule_group_interval_seconds{\n            app=\"loki\",\n            container=\"ruler\"\n          }\n        )\n      )\n      >= 300\n    )\n    or on ()\n    (\n      max(\n        max by (pod, tenant) (\n          loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{\n            app=\"loki\",\n            container=\"ruler\"\n          }\n        )\n        - on (pod, tenant)\n        max by (pod, tenant) (\n          loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n            app=\"loki\",\n            container=\"ruler\"\n          }\n        )\n      )\n      >= 300\n    )\n  )\n)\n",
+                        "instant": true,
+                        "legendFormat": "alerts",
+                        "qryType": 1,
+                        "query": "count(\n  max without (ruler_replica) (\n    ALERTS{namespace=~\"$mzNamespaceList\", alertstate=\"firing\"}\n  )\n)\nor\n0 * (\n  (\n    (\n      time()\n      - max(\n        prometheus_rule_group_last_evaluation_timestamp_seconds{\n          app=\"thanos\",\n          container=\"ruler\"\n        }\n      )\n      < 300\n    )\n    and on ()\n    (\n      min(\n        max by (pod) (\n          prometheus_remote_storage_highest_timestamp_in_seconds{\n            app=\"thanos\",\n            container=\"ruler\"\n          }\n        )\n        - on (pod)\n        max by (pod) (\n          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n            app=\"thanos\",\n            container=\"ruler\"\n          }\n        )\n      )\n      < 300\n    )\n  )\n  unless on ()\n  (\n    (\n      max(\n        (\n          time()\n          - max by (rule_group, user) (\n            loki_prometheus_rule_group_last_evaluation_timestamp_seconds{\n              app=\"loki\",\n              container=\"ruler\"\n            }\n            > 0\n          )\n        )\n        - on (rule_group, user)\n        max by (rule_group, user) (\n          loki_prometheus_rule_group_interval_seconds{\n            app=\"loki\",\n            container=\"ruler\"\n          }\n        )\n      )\n      >= 300\n    )\n    or on ()\n    (\n      max(\n        max by (pod, tenant) (\n          loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds{\n            app=\"loki\",\n            container=\"ruler\"\n          }\n        )\n        - on (pod, tenant)\n        max by (pod, tenant) (\n          loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds{\n            app=\"loki\",\n            container=\"ruler\"\n          }\n        )\n      )\n      >= 300\n    )\n  )\n)\n"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "query-0"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "**Alerts about the environment that are firing now.**\n\n**Nominal:** Zero.\n\n**Unhealthy:** Any. _Alerts_ below names each one, and links to what it means.\n\nReads zero only while the Thanos ruler has evaluated a rule and written its results back within five minutes. Where a Loki ruler runs, every Loki rule group also has to be no more than five minutes overdue, and written back: the Loki rulers divide the groups between them, so one stalled ruler leaves its groups unevaluated while the others carry on. A ruler that has stopped evaluating fires nothing, and one whose write-back has stalled fires alerts that never reach Thanos, so either would read as no alerts. An instant query, because over a range the last zero from before a ruler went silent would still be shown. An empty reading means the alert path itself needs checking, on the Thanos Meta Monitoring dashboard's Ruler tab.",
+          "id": 1001,
+          "links": [],
+          "title": "Environment Alerts Firing",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "decimals": 0,
+                  "min": 0,
+                  "noValue": "Alerts are not reaching Thanos, so none can show. The Thanos Meta Monitoring dashboard's Ruler tab says why.",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#A2F49B",
+                        "value": null
+                      },
+                      {
+                        "color": "#FEDA8B",
+                        "value": 1
+                      },
+                      {
+                        "color": "#FDB366",
+                        "value": 1.5
+                      },
+                      {
+                        "color": "#F67E4B",
+                        "value": 2
+                      },
+                      {
+                        "color": "#DD3D2D",
+                        "value": 2.5
+                      },
+                      {
+                        "color": "#A50026",
+                        "value": 3
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "none",
                 "justifyMode": "auto",
                 "orientation": "auto",
                 "percentChangeColorMode": "standard",
@@ -6046,7 +6345,7 @@
             }
           },
           "description": "**Total CPU cores configured across the environment's containers (sum of cAdvisor CPU limits), excluding the monitoring exporter — i.e. the CPU available to the actual workload.**\n\nSteps track `ALTER CLUSTER REPLICA SIZE`, replica create/drop, and pod restarts. Requires cAdvisor. For the same total *including* the monitoring exporter see `.all_containers`.",
-          "id": 1008,
+          "id": 1011,
           "links": [],
           "title": "Total CPU Capacity",
           "vizConfig": {
@@ -6116,8 +6415,8 @@
               "transformations": []
             }
           },
-          "description": "**Collections still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**\n\n**Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.\n\n**Unhealthy:** A count that stays elevated means something can't finish hydrating — a source whose CREATE never completed, or a wedged dataflow. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.\n\nStopgap, not a real signal: self-managed has no hydration-state metric, so this counts collections parked at the wallclock-lag u64::MAX sentinel (> 1e15) as a proxy. Deprecate this query once an actual hydration-state metric exists.",
-          "id": 1003,
+          "description": "**Objects still rebuilding their in-memory state — a live hydration-queue proxy. After a restart, replica creation, or some DDL, a dataflow has to rebuild from persisted storage before it can serve, and until it does it produces no results.**\n\n**Nominal:** 0, with brief spikes right after a replica restart that drain back to 0 as dataflows catch up. Those spikes are healthy re-hydration, not a problem.\n\n**Unhealthy:** A count that stays elevated means something can't finish hydrating — a source whose CREATE never completed, or a wedged dataflow. Confirm what with `SELECT * FROM mz_internal.mz_hydration_statuses WHERE NOT hydrated`.\n\nStopgap, not a real signal: self-managed has no hydration-state metric, so this counts objects whose freshness reads the u64::MAX sentinel (> 1e15) as a proxy. Deprecate this query once an actual hydration-state metric exists.",
+          "id": 1004,
           "links": [],
           "title": "Currently Hydrating",
           "vizConfig": {
@@ -6174,7 +6473,7 @@
                       "spec": {
                         "expr": "max(\n  max_over_time(\n    (\n      mz_dataflow_wallclock_lag_seconds{materialize_cloud_organization_name=~\"$environmentNameList\", instance_id!=\"\", quantile=\"1\"} < 1e9\n    )[$__range:1m]\n  )\n)\n",
                         "instant": true,
-                        "legendFormat": "max lag",
+                        "legendFormat": "worst freshness",
                         "qryType": 1,
                         "query": "max(\n  max_over_time(\n    (\n      mz_dataflow_wallclock_lag_seconds{materialize_cloud_organization_name=~\"$environmentNameList\", instance_id!=\"\", quantile=\"1\"} < 1e9\n    )[$__range:1m]\n  )\n)\n"
                       },
@@ -6188,10 +6487,10 @@
               "transformations": []
             }
           },
-          "description": "**The worst lag seen anywhere in the environment over the selected window — how far the most-behind collection's output trailed real time. A top-level freshness pointer.**\n\n**Degraded:** Climbing toward an hour means some collection is falling behind; drill into per-cluster and per-collection freshness to find which, and into hydration / source health for why.\n\nNot-yet-hydrated collections are excluded (they report the sentinel and surface as \"currently hydrating\"). This is the peak over the window, so it reflects the worst moment rather than the current value.",
-          "id": 1004,
+          "description": "**The worst freshness seen anywhere in the environment over the selected window — how far the most-behind object's output trailed real time. A top-level freshness pointer.**\n\n**Degraded:** Climbing toward an hour means some object is falling behind; drill into per-cluster and per-object freshness to find which, and into hydration / source health for why.\n\nNot-yet-hydrated objects are excluded (they report the sentinel and surface as \"currently hydrating\"). This is the peak over the window, so it reflects the worst moment rather than the current value.",
+          "id": 1005,
           "links": [],
-          "title": "Max Lag (Select Time Range)",
+          "title": "Worst Freshness (Select Time Range)",
           "vizConfig": {
             "group": "stat",
             "kind": "VizConfig",
@@ -6309,7 +6608,7 @@
             }
           },
           "description": "**Total memory configured across the environment's containers (sum of cAdvisor memory limits), excluding the monitoring exporter. Memory is Materialize's dominant constraint — in-memory arrangements live in here.**\n\nSteps track replica sizing and pod restarts. Requires cAdvisor.",
-          "id": 1009,
+          "id": 1012,
           "links": [],
           "title": "Total Memory",
           "vizConfig": {
@@ -6383,6 +6682,15 @@
                                 "spec": {
                                   "element": {
                                     "kind": "ElementReference",
+                                    "name": "summary-alerts-firing"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
                                     "name": "availability-percent"
                                   }
                                 }
@@ -6438,6 +6746,43 @@
                           }
                         },
                         "title": "Environment Health"
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "collapse": false,
+                        "hideHeader": false,
+                        "layout": {
+                          "kind": "AutoGridLayout",
+                          "spec": {
+                            "columnWidthMode": "wide",
+                            "fillScreen": false,
+                            "items": [
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "summary-alerts"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "AutoGridLayoutItem",
+                                "spec": {
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "summary-alert-history"
+                                  }
+                                }
+                              }
+                            ],
+                            "maxColumnCount": 2,
+                            "rowHeightMode": "standard"
+                          }
+                        },
+                        "title": "Alerts"
                       }
                     },
                     {

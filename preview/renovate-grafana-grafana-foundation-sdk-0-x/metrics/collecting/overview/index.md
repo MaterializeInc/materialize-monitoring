@@ -5,7 +5,7 @@
 
 # Collecting Metrics
 
-There are five ways metrics reach `materialize-monitoring`, and most deployments use more than one.
+Metrics reach `materialize-monitoring` by the paths in the following table, and most deployments use more than one.
 
 | Path | Use it when | Direction |
 |---|---|---|
@@ -14,8 +14,9 @@ There are five ways metrics reach `materialize-monitoring`, and most deployments
 | [OpenTelemetry Endpoint](../opentelemetry-endpoint/) | You run an OpenTelemetry Collector, or an application that emits OTLP directly | Something **pushes** |
 | [Prometheus Scraper](../prometheus-scraper/) | You run your own Prometheus and this stack is not in the path at all | Your Prometheus **pulls** |
 | [Cloud Provider Metrics](../cloud-provider-metrics/) | The metadata database or the buckets are managed by AWS, Google Cloud or Azure, and their CPU, storage or burst headroom is wanted beside the rest | The gateway **pulls** from the provider's API |
+| [PostgreSQL exporter](../postgresql-exporter/) | The metadata database or Grafana's database is PostgreSQL, and what it reports about itself is wanted: connections, transaction-ID age, vacuum, and the size of every database on the instance | The gateway **pulls** from an exporter the chart runs |
 
-All but the Prometheus Scraper land in the same place: the `alloy-gateway` pipeline, which processes and enriches everything uniformly before writing it to [storage](../../storing/).
+Everything but the Prometheus Scraper lands in the same place: the `alloy-gateway` pipeline, which processes and enriches everything uniformly before writing it to [storage](../../storing/).
 How it got in makes no difference downstream.
 
 ## The gateway's ingress ports

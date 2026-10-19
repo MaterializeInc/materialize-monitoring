@@ -15,9 +15,9 @@ Thanos Query presents a Prometheus-compatible API, so anything that speaks PromQ
 Most questions are already answered by a query someone wrote for a dashboard.
 Two reference pages carry them, both generated from the same query registry the dashboards are built from:
 
-- **[Common Queries](../../reference/stable-metrics/common-queries/)** — the PromQL behind the shipped dashboard panels, and the best starting point for a new panel or an ad-hoc investigation. Each query also renders a **Datadog** tab beside its PromQL.
-- **[Common Alerts](../../reference/stable-metrics/common-alerts/)** — alerting expressions with thresholds and severities.
-- **[List of Metrics](../../reference/stable-metrics/list-metrics/)** — the metric families those queries draw on.
+- **[Common Queries](../../reference/common-queries/)** — the PromQL behind the shipped dashboard panels, and the best starting point for a new panel or an ad-hoc investigation. Each query also renders a **Datadog** tab beside its PromQL.
+- **[Common Alerts](../../reference/common-alerts/)** — alerting expressions with thresholds and severities.
+- **[List of Metrics](../../reference/list-metrics/)** — the metric families those queries draw on.
 
 > [!WARNING]
 >   Common Alerts is **reference material, not a shipped rule set**. The expressions are sound but the thresholds are not universal, and the chart does not currently install them as `PrometheusRule` resources. Adopt them selectively rather than wholesale.

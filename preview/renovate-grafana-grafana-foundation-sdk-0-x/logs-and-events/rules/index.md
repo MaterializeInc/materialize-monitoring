@@ -39,14 +39,18 @@ The result: log-derived metrics live in the same place — and are queried the s
 ## Rule storage and evaluation
 
 - **Definitions** live in object storage under the `/loki/ruler` prefix (see [Storing](../storing/)).
-- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so evaluation scales horizontally.
-- **Delegated execution.** A ruler can hand query execution to the [Loki Query Frontend](../architecture/#loki-query-frontend) to benefit from query splitting and caching.
+- **Sharding.** When more than one ruler runs, rule groups are distributed across the instances via a consistent [hash ring](../architecture/#the-hash-ring), so outside a ring change each group is evaluated by one ruler, and evaluation scales horizontally.
+  [Loki Ruler](../architecture/#ruler) covers the ring change, and what happens to a ruler's groups when it is lost.
+- **Local execution.** The rulers run their queries themselves.
+  Loki can instead hand them to the [Loki Query Frontend](../architecture/#loki-query-frontend) for query splitting and caching, but the chart does not configure that.
 
 ## Managing rules
 
 - Group related rules so the ring can balance evaluation across rulers.
 - Keep recording-rule output label sets small — they become metric series and carry the same [cardinality](../../o11y-glossary/#observability-foundations) cost as any other metric.
 - Alert routing, grouping, silences, and notification channels are configured in Alertmanager — see [Alerting](../../alerting/).
+- Grafana's alert list shows these rules and their state, read-only, through the [Loki Gateway](../architecture/#loki-gateway).
+  Edits are refused there: the `alloy-gateway` writes the chart's rules into the ruler and reverts a change it did not make.
 
 ## See more
 

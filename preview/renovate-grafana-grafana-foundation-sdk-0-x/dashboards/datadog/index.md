@@ -8,17 +8,17 @@
 > [!NOTE]
 >   **There is no Materialize dashboard set for Datadog yet.**
 >   It is tracked as [DEP-115](https://linear.app/materializeinc/issue/DEP-115) and sits in the backlog with no committed date, alongside the Google Cloud Monitoring and Honeycomb sets.
->   See the [Dashboards workstream](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/roadmap/#dashboards) for where it sits against the rest of the work.
+>   See the [Dashboards workstream](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/roadmap/#dashboards) for where it sits against the rest of the work.
 
 What exists today is the query material to build one yourself.
 
-[Common Queries](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/stable-metrics/common-queries/) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
+[Common Queries](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/common-queries/) renders every query in the registry with a **Datadog** tab beside its PromQL, in the metric query syntax you paste into a dashboard widget or a monitor.
 
 > [!WARNING]
 >   **These translations have not been run against a live Datadog account**, so expect to correct some of them.
 >   Where Datadog's query language cannot express what the PromQL does, the translation is approximate rather than equivalent.
 
-The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/queries/datadog/) (internal).
+The conventions behind them — how Prometheus metric names and labels land in Datadog, and where the two query languages diverge — are written up in [Datadog Translations](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/queries/datadog/).
 
 ## Getting the metrics there
 

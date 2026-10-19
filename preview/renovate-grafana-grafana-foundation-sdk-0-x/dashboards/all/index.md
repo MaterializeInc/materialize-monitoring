@@ -5,8 +5,8 @@
 
 # Available Dashboards
 
-Eleven dashboards ship today: five scoped to a Materialize environment (`env-*`), and six to the platform underneath it (`infra-*`).
-Two of the six watch the monitoring stack itself rather than anything it collects, and are filed in the **Meta Observability** folder.
+The dashboards come in two families: those scoped to a Materialize environment (`env-*`), and those scoped to the platform underneath it (`infra-*`).
+The `infra-*` dashboards that watch the monitoring stack itself, rather than anything it collects, are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
 If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
@@ -16,7 +16,8 @@ Download them when you are putting them into a Grafana you run yourself; [Import
 
 Only the **Grafana dashboard schema v2** render exists so far, and it needs **Grafana 12 or later** — see [Grafana compatibility](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/compatibility/#grafana).
 Each table below still lists the other formats, so it is clear which ones a dashboard has no render for yet.
-The Grafana 10 and 11 (schema v1) renders and the Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/stable-metrics/common-queries/) is the query material to build one yourself.
+Grafana 10 and 11 (schema v1) renders are not planned.
+The Datadog, Google Cloud Monitoring, and Honeycomb sets are tracked on the [roadmap](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/development/roadmap/#dashboards); until they land, [Common Queries](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/common-queries/) is the query material to build one yourself.
 
 ### Checking your Grafana version
 
@@ -29,7 +30,10 @@ Selecting it will show the current version.
 
 The high-level summary, and the one to open first.
 Its six tabs — Summary, Kubernetes Workloads, Connections / Activity, Cluster Objects / Replicas, Compute Objects, and Sources and Sinks — are there to catch the more obvious problems and point at what needs a closer look, rather than to answer any one of them in depth.
-It reads metrics only, and scopes to one environment at a time, with further pickers for namespace, cluster, and replica.
+The Summary tab counts the alerts firing about the environment beside its health numbers.
+Below them, it lists every alert firing or pending in the environment's namespace.
+Each alert's name links to its entry under [Common Alerts](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/common-alerts/).
+It reads metrics only, and scopes to one environment at a time, with further pickers for cluster and replica.
 
 <table class="download-dashboards">
   <thead>
@@ -43,7 +47,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-top.json?xxhash=067e270f5f05f836" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-top.json?xxhash=32634134048c665f" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -129,7 +133,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-upgrade.json?xxhash=67ea29c2cabdc309" download="mz-mon-env-upgrade.json"><code>env-upgrade.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-upgrade.json?xxhash=9a7e7c03f84f2da5" download="mz-mon-env-upgrade.json"><code>env-upgrade.json</code></a>
         <br /><small>UID <code>mz-mon-env-upgrade</code></small>
       </td>
       <td>
@@ -154,13 +158,16 @@ It needs both a metrics and a logs datasource.
 
 ### Materialize Persist (Storage) (`env-persist`)
 
-Object storage, as a Materialize environment experiences it, across four tabs: Overview, Operations, Compaction, and Storage.
-Persist is Materialize's storage layer: every durable collection is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
+Object storage, as a Materialize environment experiences it, across five tabs: Overview, Operations, Compaction, Storage, and Object Store Internals.
+Persist is Materialize's storage layer: every durable object is stored as data files in the persist bucket, and every read, write, and delete Materialize makes against the bucket is measured by the process that made it.
 Those measurements are identical on S3, GCS, Azure Blob, and S3-compatible stores, and need no cloud credentials.
 
 The Overview tab answers whether the bucket is failing Materialize: failed operations, read and write latency, write stalls, and compaction failures, with the store's own error text from the logs beneath them.
 The Storage tab is Materialize's own accounting of what the stored data is for — current data, data kept only for a reader still looking at an older version, and data nothing refers to.
 The bucket's own size, as the provider bills it, is on `infra-cloud`.
+The Object Store Internals tab is the store's own account, for a persist bucket on Ceph run by Rook:
+Ceph's health verdict and active health checks, disks down, free space, and the object gateway's requests, failures, and latency.
+It appears when you scrape Rook's Ceph manager and `rook-ceph-exporter`; on any other store, the tab says what it would show.
 It needs both a metrics and a logs datasource.
 
 <table class="download-dashboards">
@@ -175,7 +182,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-persist.json?xxhash=230c947af037b854" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-persist.json?xxhash=e663d6143588b394" download="mz-mon-env-persist.json"><code>env-persist.json</code></a>
         <br /><small>UID <code>mz-mon-env-persist</code></small>
       </td>
       <td>
@@ -200,14 +207,21 @@ It needs both a metrics and a logs datasource.
 
 ### Materialize Consensus (Metadata) (`env-consensus`)
 
-The metadata database, as a Materialize environment experiences it, across four tabs: Overview, Operations, Connections, and State and Cleanup.
-Persist records the current state of every durable collection in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
+The metadata database, as a Materialize environment experiences it, across five tabs:
+Overview, Operations, Connections, State and Cleanup, and Database Internals.
+Persist records the current state of every durable object in the metadata database and commits a new version of that record on every change, and the timestamp oracle keeps every query's timestamps in the same database.
 Both clients are measured here, the same way on RDS, Cloud SQL, Azure Flexible Server, CNPG, and CockroachDB.
 
 The Overview tab's verdict row separates the common failures: connection errors, which on a new install are almost always the metadata backend URL, its credentials, or the network path; a rising commit tail, which is the database slowing down; and calls queued for a pooled connection.
 The Connections tab shows each process's connection pool, which is what the database counts against its `max_connections`.
 State and Cleanup shows whether the table persist writes to is growing, which happens when a reader holds old versions that cleanup cannot delete.
 Its logs row carries the database's own error text, which is what distinguishes `connection refused` from `remaining connection slots are reserved`.
+The Database Internals tab is the database's own account, in a section per source.
+The PostgreSQL section reads the chart's [PostgreSQL exporter](../../metrics/collecting/postgresql-exporter/), on any PostgreSQL, managed or not:
+connections against the ceiling PostgreSQL refuses them at, the oldest open transaction, locks, transaction-ID headroom, the size of each database on the instance, dead rows, and autovacuum.
+The CloudNativePG (CNPG) section reads what a CNPG cluster publishes about itself, adding which instance is primary, replication, and backups.
+Each section appears when its source is scraped, and has a picker for the database it reads.
+With neither, the tab says how to set each up.
 It needs both a metrics and a logs datasource.
 
 <table class="download-dashboards">
@@ -222,7 +236,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-consensus.json?xxhash=4d2120bdc6f46bff" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/env-consensus.json?xxhash=e9d402733c44307e" download="mz-mon-env-consensus.json"><code>env-consensus.json</code></a>
         <br /><small>UID <code>mz-mon-env-consensus</code></small>
       </td>
       <td>
@@ -344,8 +358,13 @@ The Security tab is split the same way and for the same reason.
 Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
-Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/reference/internal/roadmap/#collection-gaps-these-depend-on).
+Cloud Networking reads the network around the cluster from both sides.
+Kubernetes says which load balancers were created and the address each was given, on every cluster.
+The cloud provider says whether a load balancer has a healthy backend and what it carries,
+and whether the NAT gateway pods leave through is running out of source ports.
+That half comes from the gateway's [provider pulls](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/metrics/collecting/cloud-provider-metrics/),
+for the load balancers and NAT gateways named in values, and each pull's rows render only where it runs.
+A NAT gateway out of source ports makes a Materialize source stall and reconnect with no cause inside the cluster, and this tab is where it shows.
 
 <table class="download-dashboards">
   <thead>
@@ -359,7 +378,7 @@ The Kubernetes side of a load balancer — that one was created, and the address
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-net.json?xxhash=c22c126400b39cc0" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-net.json?xxhash=1fb4681ea5f297fc" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
         <br /><small>UID <code>mz-mon-infra-net</code></small>
       </td>
       <td>
@@ -404,8 +423,99 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-cloud.json?xxhash=41720f670e80e137" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-cloud.json?xxhash=fd53e6e0add2299f" download="mz-mon-infra-cloud.json"><code>infra-cloud.json</code></a>
         <br /><small>UID <code>mz-mon-infra-cloud</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Infrastructure Autoscaling (`infra-autoscaling`)
+
+Whether the cluster's nodes are keeping up with its pods, on any cloud, across six tabs: Overview, Node Pools, Pending Pods, Workload Autoscaling, Cloud Capacity, and Events.
+Open it when a Materialize cluster replica will not start, since that is usually a pod waiting for a node.
+
+It is built from what every cluster has, so it reads the same whether Karpenter, GKE's or AKS's cluster autoscaler adds the nodes:
+- **Pods waiting for a node, and why.** The scheduler's own explanation for each pod it could not place, followed by what the autoscaler did about it.
+- **Nodes by pool, instance type and zone.** Also how full each pool is to the scheduler: requests against allocatable, which is what decides whether a pod fits, rather than usage.
+- **HorizontalPodAutoscalers.** Their current, desired, minimum and maximum replicas, and any that cannot read the metric they scale on.
+- **What the cloud says about capacity.** EC2 status checks and node group sizes, Compute Engine quota, and AKS's own autoscaler gauges, when [cloud provider metrics](/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/metrics/collecting/cloud-provider-metrics/) are enabled for them.
+
+The per-pool panels need kube-state-metrics to publish node labels, which the chart configures; on an install from before that they say so.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-autoscaling.json?xxhash=a0d6ff29eb206fc2" download="mz-mon-infra-autoscaling.json"><code>infra-autoscaling.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-autoscaling</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>infra</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Karpenter (`infra-karpenter`)
+
+How Karpenter adds, replaces and removes the cluster's nodes on EKS, across five tabs: Overview, Provisioning, Disruption, Controller, and Events and Logs.
+It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpenter` module creates, and renders nothing but an explanation on a cluster without Karpenter.
+
+- **Provisioning:** what Karpenter launched and what EC2 refused, and which instance types EC2 briefly stopped offering in a zone. Also how long each stage of a launch took, from EC2 accepting it to the node being ready.
+- **Disruption:** consolidation, drift and expiry, and what blocks them. On a Materialize cluster that is mostly the `do-not-disrupt` annotation the operator puts on every Materialize pod, since moving a replica means rehydrating it. That reading is the design working; a PodDisruptionBudget blocking the same nodes for hours is not.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-karpenter.json?xxhash=305c39452d44f821" download="mz-mon-infra-karpenter.json"><code>infra-karpenter.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-karpenter</code></small>
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>infra</code><br />
@@ -429,14 +539,16 @@ Provider data is minutes old, and bucket size a day old, so this dashboard says 
 
 ## Meta monitoring (`infra-*`)
 
-These two dashboards watch the monitoring stack rather than anything it collects.
-Their subject can take its own instrumentation down with it, so an empty panel on either can mean the component that would have reported a problem is the one that failed.
-Every panel on both states its own empty-state text for that reason.
+These dashboards watch the monitoring stack rather than anything it collects.
+Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
+Every panel states its own empty-state text for that reason.
+An alert count reads zero only while the rulers that evaluate its alerts are evaluating and writing back, and is empty otherwise.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
 Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
-The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+The Overview tab leads with any alert about Loki firing or pending now, then with scrape health and with the canary.
+The canary writes a line and reads it back, and is the only end-to-end check on the store.
 It needs both a metrics and a logs datasource.
 
 <table class="download-dashboards">
@@ -451,7 +563,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-loki.json?xxhash=421483051414961b" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-loki.json?xxhash=827b126dc804ff37" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
         <br /><small>UID <code>mz-mon-infra-loki</code></small>
       </td>
       <td>
@@ -477,6 +589,7 @@ It needs both a metrics and a logs datasource.
 ### Alloy Meta Monitoring (`infra-alloy`)
 
 Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
@@ -498,8 +611,59 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-alloy.json?xxhash=6f085c5fcb62bb8e" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-alloy.json?xxhash=81db788da01e37fb" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
+      </td>
+      <td>
+          <strong>Grafana folder</strong>: <code>meta-o11y</code><br />
+          <strong>Minimum Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>Recommended Materialize</strong>: <code>v26.24.0</code><br />
+          <strong>SQL metric prefix</strong>: <code>mz_</code><br />
+          <strong>Export target</strong>: <code>generic</code><br />
+      </td>
+    </tr>
+    <tr>
+      <td>Grafana 10 and 11<br /><small>dashboard schema v1</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+    <tr>
+      <td>Datadog<br /><small>dashboard JSON</small></td>
+      <td colspan="2"><em>Not published yet</em></td>
+    </tr>
+  </tbody>
+</table>
+
+
+### Thanos Meta Monitoring (`infra-thanos`)
+
+Whether the metrics store is healthy, and which part of it broke if not.
+Its tabs are Overview, Writes, Reads, Ruler, Storage, Resources, and Logs.
+The Overview tab leads with any Thanos alert firing or pending now, then with scrape health.
+The alerts are the upstream Thanos mixin's, which the Thanos subchart installs and the Thanos ruler evaluates.
+Writes follows a sample through the receivers to object storage.
+Reads covers Thanos Query and the stores it fans out to, including whether every store is connected.
+Ruler covers rule evaluation, notifications to Alertmanager, and the results written back.
+Storage covers the compactor, and object storage as each Thanos process sees it.
+It needs both a metrics and a logs datasource.
+
+**Thanos answers every metrics panel on this dashboard, including the ones about Thanos Query.**
+A dashboard that is empty throughout most likely means Thanos Query is down.
+The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where a halted compactor says why it halted.
+
+<table class="download-dashboards">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Download</th>
+      <th>Annotations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
+      <td>
+        <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/dashboards/grafana/infra-thanos.json?xxhash=6688a4724f357287" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
+        <br /><small>UID <code>mz-mon-infra-thanos</code></small>
       </td>
       <td>
           <strong>Grafana folder</strong>: <code>meta-o11y</code><br />

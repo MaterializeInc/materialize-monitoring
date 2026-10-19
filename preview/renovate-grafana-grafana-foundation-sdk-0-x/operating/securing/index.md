@@ -63,6 +63,7 @@ No component authenticates its callers:
 |---|---|
 | Alloy gateway ingest (`3100`, `4317`, `4318`, `9090`) | Write logs and metrics into your backends |
 | Loki distributor / query frontend (`3100`) | Read and write any tenant's logs |
+| Loki gateway (`8080`) | Read any tenant's logs and the ruler's rule state |
 | Thanos Receive (`10908`) / Query (`9090`) | Write and read any metric series |
 | Alertmanager (`9093`) | Read alerts, create silences |
 | Every `/metrics` endpoint | Read the stack's own telemetry |
@@ -166,9 +167,9 @@ Two consequences follow from those deviations, and the second is the one that su
   The chart sets one for grafana-operator, Thanos, metrics-server, node-exporter and the Alloy pre-validate job, and sets seccomp on the Alloy containers directly.
   Thanos takes it per component, because Compactor, Store Gateway, Receive and Ruler each ship a context of their own that `thanos.global.podSecurityContext` never overrides.
 - [x] `[chart]` **Grafana runs on a read-only root filesystem.**
-  It needs a writable `/tmp`, which the chart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
+  It needs a writable `/tmp`, which the Grafana subchart mounts, and `grafana.ini.plugins.preinstall_auto_update: false`, which the chart sets.
   Without either, the pod stays Ready while its datasources fail.
-  A validator errors on both.
+  A validator errors when the plugin setting is turned back on, and when a values file adds a second `/tmp` mount.
   See `grafana.containerSecurityContext` in the [values reference](../../reference/helm/materialize-monitoring-values/).
 - [ ] `[operator]` Restrict `pods/exec` and `pods/portforward` in the monitoring namespace. Given the ServiceAccount permissions above, exec into the gateway is a cluster-wide Secret read.
 
@@ -287,6 +288,7 @@ Every one of them fails quietly, and none of the symptoms names TLS:
 | `loki.defaults.readinessProbe` scheme | Every Loki pod fails readiness at once — presents as a crashloop |
 | `loki.monitoring.serviceMonitor` scheme | Loki's own metrics vanish, and `up` goes *absent* rather than 0, so an alert on `up == 0` does not fire either |
 | The Grafana datasource URL | Every log panel renders empty, with no error on the dashboard |
+| The Loki gateway's `nginxConfig.schema`, `ssl` and probe scheme | The same empty panels, from the hop between Grafana and Loki; or both gateway replicas unready |
 | The canary's flags | The end-to-end check reports the log store as broken when it is not |
 
 The render refuses each of those rather than letting you find out, which is most of what the chart contributes here.
@@ -311,9 +313,9 @@ Each ruler therefore verifies Alertmanager as `alertmanager`, the Service's bare
 Both rulers present their own component's certificate from phase 1, which Alertmanager ignores until phase 2.
 
 Both rulers also remote-write rule results, including the `ALERTS` series, to the gateway's metrics listener on 9090, which the profile moves to TLS.
-The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` ConfigMap.
-The profile points the ruler at the TLS one.
-The ruler reads that file once at startup, so switching ConfigMaps, which changes its pod template, is what rolls it onto TLS.
+The chart renders the Thanos ruler's remote-write configuration twice, as a plaintext and a `-tls` Secret.
+The profile points `thanos.ruler.remoteWrite.secretName` at the TLS one.
+The ruler reads that file once at startup, so switching Secrets, which changes its pod template, is what rolls it onto TLS.
 The names also carry a revision, which is bumped whenever the contents change, so a chart upgrade rolls the ruler onto new contents too.
 The Loki ruler's is in its subchart's values, so the profile restates its URL as https and adds a `tls_config`.
 Both present their own component's certificate from phase 1, so phase 3 can require one in any rollout order.
@@ -343,11 +345,11 @@ In `materialize-terraform-self-managed` both are on by default, since every exam
 
 Three profiles, composed in order. **The two hops do not reach the same place, and that is a property of Kubernetes rather than of the backends** — all of this was measured on a live cluster, not read off documentation.
 
-| Phase | Profile | Gateway ingress | Loki | Thanos Receive | Alertmanager |
-|---|---|---|---|---|---|
-| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS, no client CA | TLS, `NoClientCert`; rulers present |
-| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
-| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | client CA set — **authenticated** | **unreachable** |
+| Phase | Profile | Gateway ingress | Loki | Loki gateway | Thanos Receive | Alertmanager |
+|---|---|---|---|---|---|---|
+| 1 | `mtls.values.yaml` | TLS, no client CA | TLS, `NoClientCert` | TLS to Grafana and to Loki, no client CA | TLS, no client CA | TLS, `NoClientCert`; rulers present |
+| 2 | `+ mtls-phase2.values.yaml` | client CA set; clients present | `VerifyClientCertIfGiven`, client presents | `ssl_verify_client optional`; Grafana presents, and it presents to Loki | client presents, server still ignores it | `VerifyClientCertIfGiven`; Grafana presents too |
+| 3 | `+ mtls-phase3.values.yaml` | `RequireAndVerifyClientCert` — **authenticated** | **unreachable** | **unreachable** | client CA set — **authenticated** | **unreachable** |
 
 The gateway's own ingress reaches phase 3 because its listeners are not the ports the kubelet probes — readiness is on `12345`. That is the difference between it and Loki.
 
@@ -390,6 +392,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 | **Certificate issuance** | ✅ Shipped, off by default. `certificates.enabled` renders cert-manager `Certificate` resources with the full SAN ladder — see [Certificates](#certificates) |
 | **In-cluster TLS, gateway → Thanos Receive** | ✅ Shipped and **authenticated** at phase 3, off by default. A client with no certificate is refused at the handshake |
 | **In-cluster TLS, gateway → Loki** | 🔨 Encrypted at phase 2, and that is its ceiling — the kubelet probes the same port and cannot present a certificate |
+| **In-cluster TLS, Grafana → Loki gateway → Loki** | 🔨 Encrypted on both hops, and presented certificates verified, at phase 2, which is its ceiling. The kubelet probes the Loki gateway's listener too |
 | **In-cluster TLS, every gateway ingress port** | ✅ Shipped and **authenticated** at phase 3 — `3100`, `4317`, `4318` and `9090`. All four listeners render from Helm and take TLS from values; a client presenting no certificate is refused at the handshake on each |
 | **In-cluster TLS, rulers and Grafana → Alertmanager** | 🔨 Encrypted, and presented certificates verified, at phase 2, which is its ceiling. The kubelet and the config reloader dial the same port and cannot present a certificate |
 | **In-cluster TLS, rulers → gateway** | ✅ Shipped and **authenticated** at phase 3. Both rulers remote-write to `9090` over TLS and present their component's certificate from phase 1 |
@@ -404,7 +407,7 @@ Stated plainly, because the values surface implies more than the deployment has 
 
 Where the phases land is therefore your choice, not the chart's. A stack sitting at phase 1 or 2 is **encrypted and not authenticated**, and phase 2 is the state most likely to be mistaken for mTLS: every values file carries a `certFile`, the servers name a client CA, and a client presenting nothing is still served. Only phase 3 refuses it.
 
-The design for the first three is written up in the [TLS and authentication design doc](../../reference/internal/design-docs/20260816-tls-authentication/) (internal), including the two-phase rollout that gets there without an outage.
+The design for the first three is written up in the [TLS and authentication design doc](../../reference/development/design-docs/20260816-tls-authentication/), including the two-phase rollout that gets there without an outage.
 
 ## See also
 

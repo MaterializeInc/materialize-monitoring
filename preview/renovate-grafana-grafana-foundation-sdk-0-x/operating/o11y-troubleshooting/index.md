@@ -42,6 +42,45 @@ kubectl --namespace monitoring logs <pod> --all-containers --previous
 
 The genuine "it really is just slow" case exists but is narrow: a **known** ingester rollout, which is ordered and readiness-gated at roughly a minute per ingester. If you did not just change the ingester pod spec, that is not what you are looking at. See [Upgrading](../upgrading/).
 
+## Runbooks
+
+The runbooks hold the full procedure for an alert or a failure of one component.
+The following list holds every runbook page and its sections, so that you can search this page for them:
+
+
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/thanos/">Thanos</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/thanos/#thanos-compactor">Thanos Compactor</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/thanos/#thanos-compactor-halted">Thanos Compactor halted</a>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/thanos/#compactor-out-of-space">Compactor out of space</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/kubernetes/">Kubernetes</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/kubernetes/#storage">Storage</a>
+<ul>
+  <li>
+    <a href="/materialize-monitoring/preview/renovate-grafana-grafana-foundation-sdk-0-x/operating/runbooks/kubernetes/#temporarily-increase-storage-of-working-pvcs">Temporarily increase storage of working PVCs</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </li>
+</ul>
+
+
 ## Install and storage
 
 ### `create bucket: no s3 endpoint in config file`
@@ -196,6 +235,12 @@ kubectl -n monitoring scale statefulset thanos-compactor --replicas=1
 >
 >  While the Compactor is down, **retention is not enforced** and the bucket grows. That is tolerable for minutes and worth watching over days — it is why compaction falling behind deserves an alert rather than a periodic look.
 
+### `ThanosCompactHalted` {#thanos-compact-halted}
+
+The Compactor pod is `Running` and healthy, but `thanos_compact_halted` is `1` and its log holds a `critical error detected; halting` message.
+The error names the cause, such as `overlaps found while gathering blocks` or `no space left on device`.
+For each cause and its fix, see [Thanos Compactor halted](../runbooks/thanos/#thanos-compactor-halted).
+
 ### Everything suddenly fails, and it worked an hour ago
 
 Terraform cannot reach the cluster, `kubectl` returns an auth error, or a plan that succeeded this morning now fails on the provider rather than on anything you changed.
@@ -212,6 +257,40 @@ aws sso login                                                # AWS (or your usua
 Then re-fetch cluster credentials, because a kubeconfig entry with an exec plugin will keep failing until the underlying session is refreshed.
 
 The tell is breadth: an expired session breaks *everything at once*, including things you did not touch. A real misconfiguration is almost always narrower. When a failure looks impossibly broad, check the clock before you check your work.
+
+## Data that goes missing
+
+### Healthy targets go dark: `data refused due to high memory usage`
+
+A share of the metrics stops arriving, `up` included, for targets that are running fine.
+Alerts that read absence fire on whichever targets are affected: `environmentd-not-scraped`, `logging-collection-down`, the Thanos `*IsDown` rules.
+A gateway pod logs this on every scrape it makes:
+
+```text
+msg="Scrape commit failed" ... err="1 error occurred:\n\t* data refused due to high memory usage\n\n"
+```
+
+**Cause.** The gateways divide the scrape targets between them, and each pod passes what it scrapes through a memory limiter before writing it out.
+A pod whose heap stays above the limiter's soft limit refuses every scrape it commits, and a refused scrape is lost rather than retried.
+The pod stays `Ready` and keeps its targets.
+It usually holds its own `/metrics` target as well, so its memory-limiter counters vanish with everything else,
+and the _Memory Limiter Refusals_ panel shows nothing for it.
+Its log also repeats `Forced GC did not reclaim enough memory`:
+refusing does not shrink what the pod already holds, and a pod in this state can stay there for days.
+It is likeliest after the gateways reshard their targets, in a rollout or when the autoscaler removes a replica,
+because each pod then carries a larger share of the series.
+The `alloy-gateway-refusing-scrapes` alert fires on it.
+
+**Fix.** Find the pod that is refusing:
+
+```bash
+kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --since=10m --tail=-1 --prefix | grep "data refused due to high memory usage" | awk '{print $1}' | sort | uniq -c
+```
+
+Delete it to recover now; the other gateways take over its targets.
+To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources`,
+as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+`GOMEMLIMIT` and the memory limiter follow the new limit, unless `extraEnv` sets an explicit `GOMEMLIMIT`.
 
 ## Configuration that appears to do nothing
 

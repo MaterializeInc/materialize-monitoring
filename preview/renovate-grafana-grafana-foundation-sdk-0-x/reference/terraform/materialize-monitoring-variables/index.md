@@ -120,9 +120,14 @@ Channels in the docs for worked examples.
   `route` options. Empty means no alert reaches anybody.
 - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
   of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
-  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+  `audience` label, `platform`, `workload` or `development`, which is the usual thing an extra
+  route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
+- `default_templates` — make the chart's notification templates every receiver's default (the
+  chart's default is on): a readable subject and Slack body, and links into Grafana.
+- `grafana_url` — the address people open Grafana at, for those links. Null derives it from
+  Grafana's `root_url`, which is unset unless `additional_values` exposes Grafana.
 
 The Alertmanager-native parts are typed `any` and passed through as written, so every
 integration Alertmanager documents works without a module release.
@@ -133,15 +138,17 @@ integration Alertmanager documents works without a module release.
 `alerting_receiver_secrets`. The chart fails the render on an inline credential.
 </td>
         <td class="tf-var-schema"><pre><code>object({
-    preset           = optional(string)
-    presets          = optional(map(map(string)))
-    unknown_severity = optional(string)
-    receivers        = optional(any)
-    routes           = optional(object({ root = optional(any), extra = optional(any) }))
-    inhibit_rules    = optional(any)
-    time_intervals   = optional(any)
-    templates        = optional(map(string))
-    global           = optional(any)
+    preset            = optional(string)
+    presets           = optional(map(map(string)))
+    unknown_severity  = optional(string)
+    receivers         = optional(any)
+    routes            = optional(object({ root = optional(any), extra = optional(any) }))
+    inhibit_rules     = optional(any)
+    time_intervals    = optional(any)
+    templates         = optional(map(string))
+    default_templates = optional(bool)
+    grafana_url       = optional(string)
+    global            = optional(any)
   })</code></pre></td>
     </tr>
     <tr>
@@ -359,18 +366,29 @@ Set false when the cluster already has them from elsewhere — kube-prometheus-s
 platform team that owns CRDs centrally — since Terraform would otherwise fail trying to
 create objects it does not own.
 
-Note the teardown blast radius: destroying this release deletes the CRDs, which cascades to
-every GrafanaDashboard, GrafanaDatasource, PrometheusRule, and PodMonitor in the cluster,
-including ones this stack did not create. It is a separate `helm_release` so it can be
-targeted independently (`-target=module.monitoring.helm_release.crds`).
-
-The Grafana custom resources still have to go before grafana-operator does, or their
-finalizers have no remover and the CRDs wedge in Terminating. The chart's `pre-delete` hook
-handles that ordering now — but it lives in the *main* release, so destroying this one first
-takes the resource types out from under it. Destroy in the module's own order, and see the
-"Uninstalling" page in the docs.
+Every CRD carries `helm.sh/resource-policy: keep`, so destroying this release, or turning
+this off later, leaves the CRDs and every custom resource in the cluster in place. Removing
+the CRDs is a deliberate step of its own; see the "Uninstalling" page in the docs.
 </td>
         <td class="tf-var-default"><code>true</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="enable_postgres_exporter" href="#enable_postgres_exporter">enable_<wbr>postgres_<wbr>exporter</a></td>
+        <td class="tf-var-type"><code>bool</code></td>
+      <td class="tf-var-desc">Run the chart's postgres-exporter, which reads each PostgreSQL database it watches from the
+inside: connections against the ceiling, transaction-ID age, vacuum, and the size of every
+database on the instance.
+
+It watches every `postgres_exporter_targets` entry, and Grafana's own database whenever this
+module configures one with a password, as a target named `grafana`. Grafana's connects to the
+`postgres` database rather than `grafana_database_name`, because Grafana's own tables would add
+thousands of per-table series that no panel reads.
+
+Each target's credentials go into a Secret this module creates, `postgres-exporter`, never into
+the Helm values. The role each target connects as needs `pg_monitor` to see other roles'
+sessions; see the PostgreSQL exporter page.
+</td>
+        <td class="tf-var-default"><code>false</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="enable_sql_scraper" href="#enable_sql_scraper">enable_<wbr>sql_<wbr>scraper</a></td>
@@ -398,17 +416,21 @@ Merged with any annotations `object_storage` contributes, so both can be present
     <tr>
       <td class="tf-var-name"><a name="google_cloud_metrics" href="#google_cloud_metrics">google_<wbr>cloud_<wbr>metrics</a></td>
         <td class="tf-var-type"><em>schema</em></td>
-      <td class="tf-var-desc">Also export metrics to Google Cloud Monitoring from the Alloy gateway. Null disables it; Thanos
-is unaffected either way.
+      <td class="tf-var-desc">Also export metrics to Google Cloud Managed Service for Prometheus from the Alloy gateway, over
+OTLP to the Telemetry API. Null disables it; Thanos is unaffected either way.
 
 `min_importance` picks a metric tier — `essential`, `recommended`, `extended`, `diagnostic`, or
-`all` — and each tier includes the ones below it. This is a cost control: GCM bills per custom
-metric and `all` sends the entire surface.
+`all` — and each tier includes the ones below it. This is a cost control: the series land as
+`prometheus.googleapis.com/` metrics, billed per sample ingested, and `all` sends the entire
+surface.
 
-Authentication is ADC only. Bind the gateway ServiceAccount to a Google service account holding
-`roles/monitoring.metricWriter` through `object_storage.gateway_service_account_annotations`;
-failing that it falls back to the node's service account, which works only if that account has
-the role.
+The project needs the `telemetry.googleapis.com` API enabled. Authentication is ADC only. Bind
+the gateway ServiceAccount to a Google service account holding `roles/monitoring.metricWriter`
+through `object_storage.gateway_service_account_annotations`; failing that it falls back to the
+node's service account, which works only if that account has the role.
+
+`prefix` is deprecated and ignored. The Telemetry API names every metric
+`prometheus.googleapis.com/<name>/<kind>`, so there is no prefix to choose.
 </td>
         <td class="tf-var-schema"><pre><code>object({
     min_importance = optional(string, "recommended")
@@ -613,8 +635,9 @@ Two ports stop short of `authenticate` by nature rather than by choice, and
 the chart refuses to configure them otherwise: Loki's HTTP port and
 Alertmanager's API port are probed by the kubelet, and a `httpGet` probe has
 no field for a client certificate, so their terminal state is `present`.
-Grafana's datasources verify the backend, and present a certificate only to
-Alertmanager.
+The Loki gateway's listener stops at `present` for the same reason. Grafana's
+datasources verify the backend, and from `present` they present a certificate
+to Alertmanager and to the Loki gateway; the Thanos datasource presents none.
 </td>
         <td class="tf-var-default"><code>off</code></td>
     </tr>
@@ -646,6 +669,23 @@ the cluster reduces that to "has any certificate".
   })</code></pre></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="kube_state_metrics_pod_labels" href="#kube_state_metrics_pod_labels">kube_<wbr>state_<wbr>metrics_<wbr>pod_<wbr>labels</a></td>
+        <td class="tf-var-type"><code>list(string)</code></td>
+      <td class="tf-var-desc">Pod labels to publish on `kube_pod_labels`, in addition to the Materialize ones the chart names.
+
+An ownership label for cost-center allocation is the expected use. Each arrives as
+`label_<key>`, with every character outside `[a-zA-Z0-9_]` mapped to `_`, and joins to any
+`kube_pod_*` family on `namespace` and `pod`.
+
+Appended to the chart's `pods` allowlist entry rather than replacing it. Setting
+`kube-state-metrics.metricLabelsAllowlist` through `additional_values` instead replaces the
+whole list, node labels included.
+
+Name each label. `*` copies every label on every pod, and is refused.
+</td>
+        <td class="tf-var-default"><code>[]</code></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="materialize_instance_namespace" href="#materialize_instance_namespace">materialize_<wbr>instance_<wbr>namespace</a></td>
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Namespace the Materialize instance runs in. Used to scope scrape targets.</td>
@@ -656,6 +696,22 @@ the cluster reduces that to "has any certificate".
         <td class="tf-var-type"><code>string</code></td>
       <td class="tf-var-desc">Namespace the Materialize operator runs in.</td>
         <td class="tf-var-default"><code>materialize</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="metadata_databases" href="#metadata_databases">metadata_<wbr>databases</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">The metadata databases a cloud provider pull watches, by flavor and the provider's name for
+them. Each becomes an `externalDependencies.consensus` entry, so the `ext:consensus_*`
+recording rules read that database and no other the pull also watches, such as Grafana's.
+
+`flavor` is `rds` (the DB instance identifier), `cloudsql` (the instance name, without the
+project) or `azure-postgres` (the flexible server name). A postgres-exporter target is declared
+with its own `metadata_database` flag instead.
+</td>
+        <td class="tf-var-schema"><pre><code>list(object({
+    flavor      = string
+    resource_id = string
+  }))</code></pre></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="min_zones" href="#min_zones">min_<wbr>zones</a></td>
@@ -816,6 +872,41 @@ a Secret.
   })</code></pre></td>
     </tr>
     <tr>
+      <td class="tf-var-name"><a name="postgres_exporter_passwords" href="#postgres_exporter_passwords">postgres_<wbr>exporter_<wbr>passwords</a></td>
+        <td class="tf-var-type"><code>map(string)</code></td>
+      <td class="tf-var-desc">The password for each `postgres_exporter_targets` entry, keyed by its `name`. Written into the
+exporter's Secret and nowhere else. Every target needs a non-empty one: the exporter refuses a
+target whose credentials have no password. Grafana's always comes from
+`grafana_database_password`, and a `grafana` entry here is ignored.
+</td>
+        <td class="tf-var-default"><code>map[]</code></td>
+    </tr>
+    <tr>
+      <td class="tf-var-name"><a name="postgres_exporter_targets" href="#postgres_exporter_targets">postgres_<wbr>exporter_<wbr>targets</a></td>
+        <td class="tf-var-type"><em>schema</em></td>
+      <td class="tf-var-desc">Databases for the postgres-exporter to watch, beside Grafana's. Ignored unless
+`enable_postgres_exporter` is true.
+
+`name` becomes the target's `target` label and keys its password in
+`postgres_exporter_passwords`. `database` is the one the connection opens, and per-table
+statistics come from it alone; everything instance-wide covers every database on the
+instance. Point it at the metadata database's own database (`materialize` in the shipped
+examples), and leave it at `postgres` for anything whose tables you do not need.
+
+`metadata_database = true` declares the target a metadata database, which is what the
+`postgres` recording-rule adapter reads.
+</td>
+        <td class="tf-var-schema"><pre><code>list(object({
+    name              = string
+    host              = string
+    port              = optional(number, 5432)
+    database          = optional(string, "postgres")
+    user              = string
+    ssl_mode          = optional(string, "require")
+    metadata_database = optional(bool, false)
+  }))</code></pre></td>
+    </tr>
+    <tr>
       <td class="tf-var-name"><a name="prometheus_remote_write" href="#prometheus_remote_write">prometheus_<wbr>remote_<wbr>write</a></td>
         <td class="tf-var-type"><em>schema</em></td>
       <td class="tf-var-desc">Prometheus remote-write destinations for the Alloy gateway, keyed by name — Amazon Managed
@@ -931,7 +1022,7 @@ immutable, so the old PVCs must be deleted first — discarding their contents.
 | <a name="output_grafana_admin_secret_name"></a> [grafana_admin_secret_name](#output_grafana_admin_secret_name) | Name of the Secret holding the Grafana admin credentials. |
 | <a name="output_grafana_admin_user"></a> [grafana_admin_user](#output_grafana_admin_user) | Grafana admin username. |
 | <a name="output_grafana_url"></a> [grafana_url](#output_grafana_url) | In-cluster URL for Grafana, which is what the module deploys by default. The chart can expose Grafana through `grafana.ingress` or `grafana.service` supplied via `additional_values`; this output does not follow that yet, so use the external hostname you configured there instead. |
-| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (query frontend). Reads carry a tenant header; see the chart's datasource configuration. |
+| <a name="output_logs_url"></a> [logs_url](#output_logs_url) | Loki read endpoint (the Loki gateway), which also serves the ruler's rule and alert state. `https` whenever `internal_tls` is not `off`, verified against the internal CA. Reads carry a tenant header; see the chart's datasource configuration. |
 | <a name="output_metrics_url"></a> [metrics_url](#output_metrics_url) | Thanos Query endpoint. Prometheus-API-compatible, so consumers of a Prometheus URL keep working against it. |
 | <a name="output_namespace"></a> [namespace](#output_namespace) | Namespace the monitoring stack is installed into. |
 | <a name="output_release_name"></a> [release_name](#output_release_name) | Name of the materialize-monitoring Helm release. |

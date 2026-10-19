@@ -268,6 +268,7 @@ Google's managed, Prometheus-compatible metrics store, backed by Monarch.
 Not a separate product from [GCM](#gcm) but an ingestion path *into* it, landing data under the `prometheus.googleapis.com/` domain where it's queryable by PromQL and usable in GCM dashboards and alerts.
 Billed per sample ingested — cheaper and more cardinality-tolerant than the `workload.googleapis.com/` domain — retains 24 months, and (like [AMP](#amp)) doesn't scrape: you push to it via [remote-write](#remote-write) or [OTLP](#otlp).
 The natural long-term store for GCP-centralized customers, replacing a self-run [Thanos](#thanos).
+The gateway's Google Cloud destination writes here, over OTLP to the Telemetry API.
 
 ## Kubernetes integration
 
@@ -312,7 +313,7 @@ This stack does **not** ship ServiceMonitors for Materialize itself — those li
 
 ##### DIY scraping {#diy-scraping}
 The "I'll scrape `environmentd` and `clusterd` myself" path.
-Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/stable-metrics/).
+Customers who already operate a complete observability stack can ignore most of this repo and just consume the [documented metrics surface](../reference/list-metrics/).
 Source-side defaults are kept minimal specifically so this path stays viable.
 
 ##### Materialize Cloud {#materialize-cloud}
