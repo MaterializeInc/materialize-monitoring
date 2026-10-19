@@ -7141,6 +7141,463 @@ address it was given.
 </span></span></code></pre></div>
   </div>
 </div>
+<h4 id="infra.net.cloud.nlb.healthy_targets">infra.net.cloud.nlb.healthy_targets
+  <a class="anchor" href="#infra.net.cloud.nlb.healthy_targets">#</a>
+</h4>
+Targets in each Network Load Balancer target group that passed their
+health check, at the worst moment of the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.nlb.healthy_targets-tabs" id="infra.net.cloud.nlb.healthy_targets-tab-0" checked>
+  <label for="infra.net.cloud.nlb.healthy_targets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target_group<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_healthy_host_count_minimum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">target_group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_TargetGroup</span>&#34;, &#34;<span style="color:#e6db74">targetgroup/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.nlb.unhealthy_targets">infra.net.cloud.nlb.unhealthy_targets
+  <a class="anchor" href="#infra.net.cloud.nlb.unhealthy_targets">#</a>
+</h4>
+Targets in each target group failing their health check, at the worst
+moment of the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.nlb.unhealthy_targets-tabs" id="infra.net.cloud.nlb.unhealthy_targets-tab-0" checked>
+  <label for="infra.net.cloud.nlb.unhealthy_targets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>target_group<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_un_healthy_host_count_maximum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">target_group</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_TargetGroup</span>&#34;, &#34;<span style="color:#e6db74">targetgroup/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.nlb.open_connections">infra.net.cloud.nlb.open_connections
+  <a class="anchor" href="#infra.net.cloud.nlb.open_connections">#</a>
+</h4>
+Connections open through each Network Load Balancer, averaged over the
+last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.nlb.open_connections-tabs" id="infra.net.cloud.nlb.open_connections-tab-0" checked>
+  <label for="infra.net.cloud.nlb.open_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_active_flow_count_average[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.nlb.new_connections">infra.net.cloud.nlb.new_connections
+  <a class="anchor" href="#infra.net.cloud.nlb.new_connections">#</a>
+</h4>
+Connections each Network Load Balancer opened per second, in the newest
+minute CloudWatch has published.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.nlb.new_connections-tabs" id="infra.net.cloud.nlb.new_connections-tab-0" checked>
+  <label for="infra.net.cloud.nlb.new_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_new_flow_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.nlb.throughput">infra.net.cloud.nlb.throughput
+  <a class="anchor" href="#infra.net.cloud.nlb.throughput">#</a>
+</h4>
+Bytes each Network Load Balancer carried per second, both directions
+together, in the newest minute CloudWatch has published.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.nlb.throughput-tabs" id="infra.net.cloud.nlb.throughput-tab-0" checked>
+  <label for="infra.net.cloud.nlb.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_processed_bytes_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.nlb.resets">infra.net.cloud.nlb.resets
+  <a class="anchor" href="#infra.net.cloud.nlb.resets">#</a>
+</h4>
+TCP resets through each Network Load Balancer per five minutes, by
+who sent them: the client, a target, or the load balancer itself.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.nlb.resets-tabs" id="infra.net.cloud.nlb.resets-tab-0" checked>
+  <label for="infra.net.cloud.nlb.resets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_tcp_client_reset_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_tcp_target_reset_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>load_balancer<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>aws_networkelb_tcp_elb_reset_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">load_balancer</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension_LoadBalancer</span>&#34;, &#34;<span style="color:#e6db74">net/([^/]+)/.*</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.gcp_lb.packets">infra.net.cloud.gcp_lb.packets
+  <a class="anchor" href="#infra.net.cloud.gcp_lb.packets">#</a>
+</h4>
+Packets into and out of each load balancer forwarding rule per second,
+in the newest minute Cloud Monitoring has published.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.gcp_lb.packets-tabs" id="infra.net.cloud.gcp_lb.packets-tab-0" checked>
+  <label for="infra.net.cloud.gcp_lb.packets-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.gcp_lb.throughput">infra.net.cloud.gcp_lb.throughput
+  <a class="anchor" href="#infra.net.cloud.gcp_lb.throughput">#</a>
+</h4>
+Bytes into and out of each load balancer forwarding rule per second, in
+the newest minute Cloud Monitoring has published.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.gcp_lb.throughput-tabs" id="infra.net.cloud.gcp_lb.throughput-tab-0" checked>
+  <label for="infra.net.cloud.gcp_lb.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_ingress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_ingress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, forwarding_rule_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_loadbalancing_googleapis_com_external_network_load_balancer_rule_loadbalancing_googleapis_com_l_3_external_egress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_tcp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span> <span style="color:#f92672">or</span> last_over_time<span style="color:#f92672">(</span>stackdriver_internal_udp_lb_rule_loadbalancing_googleapis_com_l_3_internal_egress_bytes_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_lb.availability">infra.net.cloud.azure_lb.availability
+  <a class="anchor" href="#infra.net.cloud.azure_lb.availability">#</a>
+</h4>
+The share of the last five minutes each load balancer frontend address
+answered Azure&rsquo;s own probe of its data path.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_lb.availability-tabs" id="infra.net.cloud.azure_lb.availability-tab-0" checked>
+  <label for="infra.net.cloud.azure_lb.availability-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName, frontend<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_vipavailability_average_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">frontend</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimension</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">100</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_lb.healthy_backends">infra.net.cloud.azure_lb.healthy_backends
+  <a class="anchor" href="#infra.net.cloud.azure_lb.healthy_backends">#</a>
+</h4>
+Backends behind each load balancer frontend address that passed every
+health probe in the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_lb.healthy_backends-tabs" id="infra.net.cloud.azure_lb.healthy_backends-tab-0" checked>
+  <label for="infra.net.cloud.azure_lb.healthy_backends-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName, frontend<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_dipavailability_average_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">frontend</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span> <span style="color:#f92672">==</span> <span style="color:#66d9ef">bool</span> <span style="color:#ae81ff">100</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_lb.new_connections">infra.net.cloud.azure_lb.new_connections
+  <a class="anchor" href="#infra.net.cloud.azure_lb.new_connections">#</a>
+</h4>
+Connections clients opened to each load balancer frontend address per
+second, counted as inbound SYN packets in the newest minute.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_lb.new_connections-tabs" id="infra.net.cloud.azure_lb.new_connections-tab-0" checked>
+  <label for="infra.net.cloud.azure_lb.new_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName, frontend<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_syncount_total_count{dimensionDirection<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">In</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">frontend</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_lb.throughput">infra.net.cloud.azure_lb.throughput
+  <a class="anchor" href="#infra.net.cloud.azure_lb.throughput">#</a>
+</h4>
+Bytes into and out of each load balancer frontend address per second,
+in the newest minute.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_lb.throughput-tabs" id="infra.net.cloud.azure_lb.throughput-tab-0" checked>
+  <label for="infra.net.cloud.azure_lb.throughput-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName, frontend<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">In</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">frontend</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName, frontend<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">label_replace</span><span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>    last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_loadbalancers_bytecount_total_bytes{dimensionDirection<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Out</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>,
+</span></span><span style="display:flex;"><span>    &#34;<span style="color:#e6db74">frontend</span>&#34;, &#34;<span style="color:#e6db74">$1</span>&#34;, &#34;<span style="color:#e6db74">dimensionFrontendIPAddress</span>&#34;, &#34;<span style="color:#e6db74">(.*)</span>&#34;
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.aws_nat.exhaustion">infra.net.cloud.aws_nat.exhaustion
+  <a class="anchor" href="#infra.net.cloud.aws_nat.exhaustion">#</a>
+</h4>
+Connections each NAT gateway could not give a source port, and packets
+it dropped, per five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.aws_nat.exhaustion-tabs" id="infra.net.cloud.aws_nat.exhaustion-tab-0" checked>
+  <label for="infra.net.cloud.aws_nat.exhaustion-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>dimension_NatGatewayId<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>aws_natgateway_error_port_allocation_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>dimension_NatGatewayId<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>aws_natgateway_packets_drop_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.aws_nat.idle_timeouts">infra.net.cloud.aws_nat.idle_timeouts
+  <a class="anchor" href="#infra.net.cloud.aws_nat.idle_timeouts">#</a>
+</h4>
+Connections each NAT gateway closed for being idle, per five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.aws_nat.idle_timeouts-tabs" id="infra.net.cloud.aws_nat.idle_timeouts-tab-0" checked>
+  <label for="infra.net.cloud.aws_nat.idle_timeouts-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>dimension_NatGatewayId<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>aws_natgateway_idle_timeout_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.aws_nat.connections">infra.net.cloud.aws_nat.connections
+  <a class="anchor" href="#infra.net.cloud.aws_nat.connections">#</a>
+</h4>
+Connections open through each NAT gateway, at the busiest moment of the
+last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.aws_nat.connections-tabs" id="infra.net.cloud.aws_nat.connections-tab-0" checked>
+  <label for="infra.net.cloud.aws_nat.connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>dimension_NatGatewayId<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>aws_natgateway_active_connection_count_maximum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.aws_nat.established">infra.net.cloud.aws_nat.established
+  <a class="anchor" href="#infra.net.cloud.aws_nat.established">#</a>
+</h4>
+The share of connection attempts through each NAT gateway that the
+destination answered, over the last five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.aws_nat.established-tabs" id="infra.net.cloud.aws_nat.established-tab-0" checked>
+  <label for="infra.net.cloud.aws_nat.established-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>dimension_NatGatewayId<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_natgateway_connection_established_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">/</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">(</span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>dimension_NatGatewayId<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>last_over_time<span style="color:#f92672">(</span>aws_natgateway_connection_attempt_count_sum[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">))</span> <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.cloud_nat.allocation_failed">infra.net.cloud.cloud_nat.allocation_failed
+  <a class="anchor" href="#infra.net.cloud.cloud_nat.allocation_failed">#</a>
+</h4>
+Whether each Cloud NAT gateway refused a VM a source port it asked for.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.cloud_nat.allocation_failed-tabs" id="infra.net.cloud.cloud_nat.allocation_failed-tab-0" checked>
+  <label for="infra.net.cloud.cloud_nat.allocation_failed-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, router_id, gateway_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_nat_gateway_router_googleapis_com_nat_nat_allocation_failed[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.cloud_nat.port_usage">infra.net.cloud.cloud_nat.port_usage
+  <a class="anchor" href="#infra.net.cloud.cloud_nat.port_usage">#</a>
+</h4>
+The most connections any one VM behind each Cloud NAT gateway holds to
+a single destination address and port, which its share of NAT ports
+limits.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.cloud_nat.port_usage-tabs" id="infra.net.cloud.cloud_nat.port_usage-tab-0" checked>
+  <label for="infra.net.cloud.cloud_nat.port_usage-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, router_id, gateway_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_nat_gateway_router_googleapis_com_nat_port_usage[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.cloud_nat.open_connections">infra.net.cloud.cloud_nat.open_connections
+  <a class="anchor" href="#infra.net.cloud.cloud_nat.open_connections">#</a>
+</h4>
+Connections open through each Cloud NAT gateway.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.cloud_nat.open_connections-tabs" id="infra.net.cloud.cloud_nat.open_connections-tab-0" checked>
+  <label for="infra.net.cloud.cloud_nat.open_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, router_id, gateway_name<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_nat_gateway_router_googleapis_com_nat_open_connections[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.cloud_nat.dropped">infra.net.cloud.cloud_nat.dropped
+  <a class="anchor" href="#infra.net.cloud.cloud_nat.dropped">#</a>
+</h4>
+Packets each Cloud NAT gateway dropped per second, by reason, in the
+newest minute Cloud Monitoring has published.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.cloud_nat.dropped-tabs" id="infra.net.cloud.cloud_nat.dropped-tab-0" checked>
+  <label for="infra.net.cloud.cloud_nat.dropped-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">sum</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>region, router_id, gateway_name, reason<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">(</span><span style="color:#66d9ef">idelta</span><span style="color:#f92672">(</span>stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span><span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">or</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>stackdriver_nat_gateway_router_googleapis_com_nat_dropped_sent_packets_count[<span style="color:#e6db74">10m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_nat.availability">infra.net.cloud.azure_nat.availability
+  <a class="anchor" href="#infra.net.cloud.azure_nat.availability">#</a>
+</h4>
+The share of the last five minutes each Azure NAT gateway answered
+Azure&rsquo;s own probe of its data path.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_nat.availability-tabs" id="infra.net.cloud.azure_nat.availability-tab-0" checked>
+  <label for="infra.net.cloud.azure_nat.availability-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">min</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_natgateways_datapathavailability_average_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">100</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_nat.snat_connections">infra.net.cloud.azure_nat.snat_connections
+  <a class="anchor" href="#infra.net.cloud.azure_nat.snat_connections">#</a>
+</h4>
+SNAT connections each Azure NAT gateway attempted, and those that
+failed, per five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_nat.snat_connections-tabs" id="infra.net.cloud.azure_nat.snat_connections-tab-0" checked>
+  <label for="infra.net.cloud.azure_nat.snat_connections-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Attempted</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_natgateways_snatconnectioncount_total_count{dimension<span style="color:#f92672">=</span>&#34;<span style="color:#e6db74">Failed</span>&#34;}[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
+<h4 id="infra.net.cloud.azure_nat.dropped">infra.net.cloud.azure_nat.dropped
+  <a class="anchor" href="#infra.net.cloud.azure_nat.dropped">#</a>
+</h4>
+Packets each Azure NAT gateway dropped, per five minutes.
+<div class="book-tabs">
+  <input type="radio" class="toggle" name="infra.net.cloud.azure_nat.dropped-tabs" id="infra.net.cloud.azure_nat.dropped-tab-0" checked>
+  <label for="infra.net.cloud.azure_nat.dropped-tab-0">PromQL</label>
+  <div class="book-tabs-content markdown-inner">
+          
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-promql" data-lang="promql"><span style="display:flex;"><span><span style="color:#66d9ef">max</span> <span style="color:#66d9ef">by</span> <span style="color:#f92672">(</span>resourceGroup, resourceName<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>
+</span></span><span style="display:flex;"><span>  last_over_time<span style="color:#f92672">(</span>azure_microsoft_network_natgateways_packetdropcount_total_count[<span style="color:#e6db74">15m</span>]<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">)</span>
+</span></span></code></pre></div>
+  </div>
+</div>
 
 ## infra-nodes
 
