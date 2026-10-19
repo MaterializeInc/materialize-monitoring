@@ -8,9 +8,34 @@ the component's version_paths. See reference/development/versioning.md and
 reference/development/releasing.md.
 -->
 
-## materialize-monitoring (Helm chart + Terraform module) v1.5.0 (Unreleased)
+## materialize-monitoring (Helm chart + Terraform module) v1.6.0 (Unreleased)
 
 _Changes Pending_
+
+## materialize-monitoring (Helm chart + Terraform module) v1.5.0
+
+* Find GCP load balancers by their VPC network
+    * [materialize-monitoring#571](https://github.com/MaterializeInc/materialize-monitoring/pull/571)
+    * `pipeline.metrics.provider.gcp.loadBalancing.networks` lists VPC networks whose passthrough load balancers to pull, external or internal, beside the forwarding rules in `forwardingRules`. A rule either list names is pulled. Use it for a rule that cannot be named beforehand, such as one GKE makes for a Service the same release creates. On a network that holds only the cluster, as the Terraform wrappers create it, that is the cluster's load balancers and nothing else.
+* Add a noop profile, and let the Grafana resource be turned off
+    * [materialize-monitoring#572](https://github.com/MaterializeInc/materialize-monitoring/pull/572)
+    * Turn off the chart's `Grafana` resource, and install a release that creates nothing
+        * `connections.grafana.enabled` (default `true`): set it to `false` and the chart creates no `Grafana` resource in any `connections.grafana.mode`. Use it when no grafana-operator acts on the release, or when `dashboards.config.grafana.manifest.instanceSelector` points the folders and datasources at a `Grafana` resource you manage.
+        * With `connections.grafana.enabled: false`, the chart refuses to render folders or datasources that still select its own instance. Turn them off, or set `dashboards.config.grafana.manifest.instanceSelector`.
+        * `profiles/noop.values.yaml`: a release that creates no resources. Install with it first, then turn components on over it one tag at a time. The `materialize-monitoring-crds` chart is unaffected.
+
+### Dependencies
+
+* Included Pipelines @ v0.12.0..v0.13.0
+* Included Prometheus Scrapers @ v0.4.0..v0.5.0
+* <details><summary>Included mzmon-lib (shared library) @ v0.13.0..v0.14.0</summary>
+
+    * Lock file maintenance (cargo)
+        * [materialize-monitoring#567](https://github.com/MaterializeInc/materialize-monitoring/pull/567)
+    * Lock file maintenance (pep621)
+        * [materialize-monitoring#568](https://github.com/MaterializeInc/materialize-monitoring/pull/568)
+
+  </details>
 
 ## materialize-monitoring (Helm chart + Terraform module) v1.4.0
 
