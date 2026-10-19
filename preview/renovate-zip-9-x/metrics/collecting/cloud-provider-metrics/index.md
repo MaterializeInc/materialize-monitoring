@@ -133,8 +133,13 @@ What the load balancer is doing, and what the NAT gateway every outbound connect
   because CloudWatch publishes health only per target group, keyed by both.
   Application Load Balancers are not pulled.
   NAT gateways are named by ID.
-- **Google Cloud**: a LoadBalancer Service on GKE is a passthrough Network Load Balancer, named by its forwarding rule.
-  GKE names the rule `a` followed by the Service's UID without dashes, cut to 32 characters, and the rule's description names the Service.
+- **Google Cloud**: a LoadBalancer Service on GKE is a passthrough Network Load Balancer,
+  named by its forwarding rule or found by the VPC network its backends are in.
+  GKE names the rule only once it makes it: `a` followed by the Service's UID without dashes, cut to 32 characters, for an external rule,
+  and `k8s2-` and a hash for an internal one under L4 ILB subsetting; the rule's description names the Service.
+  A rule cannot be listed before its Service exists, so a Service the same release creates, such as Grafana's, can only be reached by its network.
+  `networks` reaches every passthrough load balancer in the network, whoever made it,
+  which on a network that holds only the cluster is the cluster's own.
   Cloud NAT gateways are named by the NAT's name, not its Cloud Router's.
 - **Azure**: AKS puts every LoadBalancer Service behind one load balancer named `kubernetes`,
   and internal ones behind `kubernetes-internal`, in the cluster's node resource group.
@@ -257,7 +262,7 @@ pipeline:
         compute:
           regions: [us-east1]
         loadBalancing:
-          forwardingRules: [a0123456789abcdef0123456789abcde]
+          networks: [mz-prod-network]
         cloudNat:
           gateways: [mz-prod-nat]
       azure:
@@ -283,7 +288,7 @@ AKS names are unique only within a resource group, so two clusters of one name i
 A Compute Engine entry is a region, such as `us-east1`; its zones are included, and a zone is refused.
 A Network Load Balancer or target group is its ARN, or the end of it that CloudWatch uses, such as `net/mz-prod/0123456789abcdef`.
 An ARN in a region other than `region` is refused, since CloudWatch is regional and the pull would return nothing.
-A forwarding rule or Cloud NAT gateway is its name, not its address or URL, and a NAT gateway ID is `nat-` and hex, not its name.
+A forwarding rule, VPC network or Cloud NAT gateway is its name, not its address or URL, and a NAT gateway ID is `nat-` and hex, not its name.
 Azure NAT gateway names are unique only within a resource group, so two gateways of one name in the subscription are both pulled.
 The chart refuses anything else at render, since the names sit inside the Resource Graph query's filter.
 `subscriptionId` is the subscription's GUID.
@@ -421,7 +426,7 @@ The pull does not read those types back, so it does not loop.
 | S3 request metrics | Opt-in per bucket on the AWS side, and billed as custom metrics |
 | Azure Blob `Transactions` | The window each pull reads ends at the scrape, so its newest five-minute bucket is a minute or so short, and a count read from it under-counts. `Availability` already falls with throttling and server errors, and the clients report the same requests exactly |
 | Azure resource tags | The exporter copies the `owner` tag onto every series by default. Tags are free text, and the pull copies none |
-| Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each. EKS nodes are the exception, found by the cluster tag EKS and Karpenter set, because they are replaced too often to name |
+| Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each. EKS nodes are the exception, found by the cluster tag EKS and Karpenter set, because they are replaced too often to name. Google Cloud load balancers listed by network are another, because GKE names them only once it makes them |
 | The EC2 vCPU quota's limit | CloudWatch publishes the usage but not the limit, which only CloudWatch metric math and the Service Quotas API return, and the exporter supports neither |
 | Capacity refusals | No provider publishes a metric for a launch it could not fulfil, such as `InsufficientInstanceCapacity`, `ZONE_RESOURCE_POOL_EXHAUSTED` or `AllocationFailed`. Karpenter and the cluster autoscaler report them |
 | Azure compute quota | Not an Azure Monitor metric; it is only in the Compute usage API |

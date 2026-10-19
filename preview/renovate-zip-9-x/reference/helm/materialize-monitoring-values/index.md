@@ -1914,7 +1914,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[], "networks":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -1937,8 +1937,11 @@ replacement for it.
 
 **Resources are named, not discovered.** Each service lists the instances
 or buckets to watch, and nothing else is pulled. Tag discovery would find
-every resource in the account and bill for each of them. A provider that is
-enabled with nothing listed fails at render.
+every resource in the account and bill for each of them. Where a resource
+cannot be named in advance, a named scope stands in for it: EKS nodes are
+found by their cluster, AKS node VMs and load balancers by theirs, and
+GCP load balancers by their VPC network. A provider that is enabled with
+nothing listed fails at render.
 
 **Credentials never travel through values.** The pull uses the gateway
 pod's own cloud identity, bound through
@@ -2190,6 +2193,23 @@ characters; `gcloud compute forwarding-rules list` shows them, with
 the Service in each one's description. Each is pulled for the bytes
 and packets it carried in each direction. Cloud Monitoring
 publishes no health for these load balancers.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.loadBalancing<wbr>.networks</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">VPC network names whose passthrough Network Load Balancers to watch, external or internal.
+Every passthrough load balancer whose backends are in a listed
+network is pulled, whoever made it, beside any rule in
+`forwardingRules`. This is the way to reach a rule that cannot be
+named beforehand: GKE names a rule only once it makes it, so a
+LoadBalancer Service the same release creates, such as Grafana's,
+has no name to list. On a network that holds only the cluster, as
+the Terraform wrappers create it, that is the cluster's load
+balancers and nothing else.
 </td>
     </tr>
     <tr>
@@ -2964,6 +2984,13 @@ How to talk to a grafana instance
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create the `Grafana` resource that grafana-operator reconciles this chart's folders, datasources, and dashboards into. Turn it off when no grafana-operator acts on this release, or when `dashboards.config.grafana.manifest.instanceSelector` points them at a `Grafana` resource you manage. The chart then creates none, whatever the `mode`, and refuses to render folders or datasources that still select it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
