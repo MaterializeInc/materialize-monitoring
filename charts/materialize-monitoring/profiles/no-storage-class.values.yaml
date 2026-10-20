@@ -1,0 +1,80 @@
+# No-StorageClass profile: every PersistentVolumeClaim, turned into emptyDir.
+#
+# Compose last, after the sizing profiles and any Grafana profile:
+#   -f profiles/no-storage-class.values.yaml
+#
+# For clusters with no StorageClass, or none that the nodes can attach. Most of
+# the stack is already volumeless; the workloads below are not, and their pods
+# stay Pending on an unbound claim. `storage-class.values.yaml` is the other half
+# of the same choice: it names a class rather than dropping the volumes.
+#
+# What each one gives up:
+#
+#   * **Grafana** — keeps its settings only until it restarts. Users, API keys,
+#     annotations, and anything else changed in the UI are lost. The dashboards,
+#     data sources, and folders this chart installs come back on their own.
+#     Grafana is on emptyDir at the chart default; it is listed so this profile
+#     wins over `grafana-pvc.values.yaml` composed before it.
+#     `grafana-postgres.values.yaml` keeps the state without a volume.
+#   * **Alertmanager** — silences and the notification log, lost on restart.
+#     The only loss here that nothing else can reconstruct.
+#   * **The Loki ruler** — its remote-write WAL. Recording-rule samples buffered
+#     while Thanos is unreachable are lost on restart.
+#   * **The Thanos Store Gateway** — the index-header cache, rebuilt from the
+#     bucket on every start. Slower, not lossy.
+#   * **The Thanos Compactor** — scratch only. Nothing is lost, but it needs real
+#     node disk, because compaction downloads whole block groups.
+#
+# The ephemeral-storage requests are what make the scheduler place these pods on
+# nodes with room. Check what the nodes offer before you install:
+#
+#   kubectl get nodes -o custom-columns='NODE:.metadata.name,EPH:.status.allocatable.ephemeral-storage'
+#
+# A pod Pending on `Insufficient ephemeral-storage` needs a smaller request here.
+#
+# **On an existing install, `helm upgrade` fails** with `updates to statefulset
+# spec ... are forbidden`: `volumeClaimTemplates` are immutable, so Helm cannot
+# remove them in place. Delete the affected StatefulSets first and let the
+# upgrade recreate them. Grafana is a Deployment and needs nothing:
+#
+#   kubectl -n monitoring delete statefulset \
+#     alertmanager loki-ruler thanos-storegateway thanos-compactor
+#
+# Deleting a StatefulSet leaves its PVCs, which nothing reclaims afterwards.
+# Delete those too once the pods are back. See Operating > Upgrading,
+# "StatefulSet fields that cannot be patched".
+
+grafana:
+  persistence:
+    enabled: false
+
+alertmanager:
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      ephemeral-storage: 256Mi
+
+loki:
+  ruler:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        ephemeral-storage: 1Gi
+
+thanos:
+  storegateway:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        ephemeral-storage: 2Gi
+  compactor:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        # Compaction downloads whole block groups. Raise this as retention and
+        # volume grow; a node that runs out evicts the pod mid-compaction.
+        ephemeral-storage: 10Gi

@@ -1,0 +1,278 @@
+# Ad-hoc profile: the whole stack, one replica of everything, no volumes.
+#
+# For a troubleshooting session on a cluster you do not own — a day-1 install,
+# an on-premises cluster you have never seen, a node pool already full of
+# Materialize — where the goal is a Grafana with metrics in it as soon as
+# possible. It is the one file you need; it composes with nothing else.
+#
+#   -f profiles/adhoc.values.yaml
+#
+# Add `-f profiles/s3-compatible.values.yaml` after it to move Loki onto the
+# same object store as Thanos.
+#
+# **Not for production.** Every replica count is 1 and every replication factor
+# is 1, so losing a pod loses data: Thanos Receive's last two hours of samples,
+# all of Loki's logs, every Alertmanager silence. Nothing sits on a
+# PersistentVolume, so nothing needs a StorageClass, and nothing outlives a
+# reschedule.
+#
+# ---------------------------------------------------------------------------
+# Before you install: the Thanos objstore Secret
+# ---------------------------------------------------------------------------
+# Thanos has no local-disk mode that works across Receive, Store Gateway and
+# Compactor, so even an ad-hoc install needs a bucket. Create the Secret it reads
+# first. For S3 or an S3-compatible store such as Ceph RGW or MinIO:
+#
+#   kubectl create namespace monitoring
+#   kubectl create secret generic thanos-objstore-config -n monitoring \
+#     --from-file=objstore.yml=/dev/stdin <<'EOF'
+#   type: S3
+#   config:
+#     bucket: <BUCKET>
+#     endpoint: <HOST>[:<PORT>]   # no scheme
+#     access_key: <ACCESS_KEY>
+#     secret_key: <SECRET_KEY>
+#     insecure: true              # plain HTTP; false for HTTPS
+#   EOF
+#
+# GCS and Azure take the same Secret with their own `type` and `config`; see the
+# Thanos objstore documentation.
+#
+# Loki needs no bucket here: it runs as one process on its own filesystem.
+#
+# ---------------------------------------------------------------------------
+# Switches you are likely to flip
+# ---------------------------------------------------------------------------
+# Each one is a line or two below, marked `SWITCH`:
+#
+#   * NetworkPolicies are **off**. On a cluster whose DNS answers from a host
+#     address (NodeLocal DNSCache, common on Kubespray), the chart's DNS egress
+#     rules match nothing and every policed pod loses name resolution.
+#   * Loki's gateway looks for a Service called `kube-dns`. Kubespray calls it
+#     `coredns`; RKE2 calls it `rke2-coredns-rke2-coredns`.
+#   * metrics-server is off, as at the chart default. Turn it on only when the
+#     cluster has none; `kubectl top` and HPAs need one.
+#   * Loki is on. Turn it off if the cluster cannot fit even one more pod.
+#
+# Dashboards are a separate chart, `materialize-monitoring-dashboards`, and this
+# profile does not install them. See Getting started > Ad-hoc install.
+
+# ---------------------------------------------------------------------------
+# NetworkPolicies — SWITCH
+# ---------------------------------------------------------------------------
+# Every key that renders one, so re-enabling a single component is one line.
+networkPolicies:
+  # Alertmanager, grafana-operator and metrics-server.
+  enabled: false
+alloy-agent:
+  networkPolicy:
+    enabled: false
+alloy-gateway:
+  networkPolicy:
+    enabled: false
+  # One gateway instead of an autoscaled 2 to 8. Each one requests 2Gi.
+  controller:
+    replicas: 1
+    autoscaling:
+      horizontal:
+        enabled: false
+    # `minAvailable: 1` on a single replica blocks every node drain.
+    podDisruptionBudget:
+      enabled: false
+grafana:
+  networkPolicy:
+    enabled: false
+  # SQLite on an emptyDir.
+  persistence:
+    enabled: false
+kube-state-metrics:
+  networkPolicy:
+    enabled: false
+node-exporter:
+  networkPolicy:
+    enabled: false
+postgres-exporter:
+  networkPolicy:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# metrics-server — SWITCH
+# ---------------------------------------------------------------------------
+# Off, as at the chart default: most clusters already serve `metrics.k8s.io`,
+# and two installs fight over the same APIService. Uncomment when
+# `kubectl get apiservice v1beta1.metrics.k8s.io` finds nothing.
+# metrics-server:
+#   enabled: true
+
+# ---------------------------------------------------------------------------
+# Loki: SingleBinary on the pod's own filesystem
+# ---------------------------------------------------------------------------
+# One pod instead of a distributed ring. Logs live on an emptyDir and are gone
+# when the pod is.
+pipeline:
+  logging:
+    gateway:
+      destination:
+        loki:
+          # SingleBinary renders one `loki` Service rather than the distributor.
+          url: 'http://loki.{{ include "mzmon.loki.namespace" $ }}.svc:3100/loki/api/v1/push'
+          # SWITCH: pairs with `loki.enabled: false` below.
+          # enabled: false
+
+loki:
+  # SWITCH: turns Loki off entirely. Also uncomment the `enabled: false` under
+  # `pipeline.logging.gateway.destination.loki` above, or the Alloy gateway
+  # retries a Loki that does not exist.
+  # enabled: false
+
+  # SWITCH: the name of the cluster DNS Service, which Loki's gateway uses as its
+  # nginx resolver. The gateway crash-loops with `host not found in resolver`
+  # when this is wrong. Find it with `kubectl get svc -n kube-system`.
+  # global:
+  #   dnsService: coredns
+  #   dnsNamespace: kube-system
+
+  deploymentMode: SingleBinary
+  networkPolicy:
+    enabled: false
+
+  loki:
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+      # Unused by the filesystem backend; the validator rejects the placeholder.
+      bucketNames:
+        chunks: loki-chunks
+        ruler: loki-ruler
+      use_thanos_objstore: false
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+    compactor:
+      # Must match `storage.type`, or the compactor crash-loops.
+      delete_request_store: filesystem
+
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+        ephemeral-storage: 2Gi
+
+  # Zero the distributed targets. Loki refuses to render monolithic and
+  # distributed targets together.
+  ingester:
+    replicas: 0
+  queryScheduler:
+    replicas: 0
+  compactor:
+    replicas: 0
+  indexGateway:
+    replicas: 0
+  ruler:
+    replicas: 0
+
+  gateway:
+    replicas: 1
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+  lokiCanary:
+    enabled: false
+  test:
+    enabled: false
+  minio:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# Thanos: one of each, replication factor 1
+# ---------------------------------------------------------------------------
+thanos:
+  global:
+    networkPolicies: false
+    objstore:
+      # Read the Secret created before install; see the header.
+      createSecret: false
+      secretName: thanos-objstore-config
+      secretKey: objstore.yml
+
+  receive:
+    replicaCount: 1
+    # Restated in full: Helm replaces lists, and the replication factor has to
+    # match the single replica or Receive refuses every write.
+    extraArgs:
+      - --receive.replication-factor=1
+    # The chart's hard zone spread leaves the pod Pending on a cluster with no
+    # zone labels, and one pod has nothing to spread from.
+    topologySpreadConstraints: []
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+        ephemeral-storage: 2Gi
+      limits:
+        ephemeral-storage: 3Gi
+
+  query:
+    autoscaling:
+      enabled: false
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  storegateway:
+    replicaCount: 1
+    # The index-header cache rebuilds from the bucket on every start.
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+        ephemeral-storage: 1Gi
+    # Thanos defaults to a 2GB chunk pool and a 250MB index cache; a 512Mi pod
+    # needs both brought down with it, or it is OOM-killed rather than small.
+    extraArgs:
+      - --chunk-pool-size=256MB
+      - '--index-cache.config={"type": "IN-MEMORY", "config": {"max_size": "64MB", "max_item_size": "8MB"}}'
+      - --store.limits.request-series=1000000
+      - --store.limits.request-samples=50000000
+
+  compactor:
+    # Scratch only. An ad-hoc install holds days of data, not months.
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+        ephemeral-storage: 5Gi
+
+  ruler:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Alertmanager: one replica, silences on an emptyDir
+# ---------------------------------------------------------------------------
+alertmanager:
+  replicaCount: 1
+  topologySpreadConstraints: []
+  persistence:
+    enabled: false

@@ -27,6 +27,13 @@ The Helm chart is the full-fidelity surface: the Terraform modules are a thin la
 
 See [Helm Installation](../helm/) for instructions on how to install `materialize-monitoring` via Helm.
 
+## Ad-hoc install for troubleshooting
+
+If you need a Grafana with metrics in it on a cluster you don't run day to day, such as during a day-1 install, one profile installs the whole stack with one replica of everything and no volumes.
+It isn't for production.
+
+See [Ad-hoc install](../adhoc/).
+
 ## Going to Production
 
 Whichever path you take, [Production Best Practices](../../operating/production-best-practices/) is the checklist for a real deployment — sizing, retention, replication, disruption budgets, and object-storage durability — with each item tagged by who owns it.

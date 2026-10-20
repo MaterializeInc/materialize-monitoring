@@ -170,7 +170,7 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
 
   The dashboards themselves ship in a chart of their own. Install it against the
   folder UIDs above:
-    helm install {{ $.Release.Name }}-dashboards <repo>/materialize-monitoring-dashboards \
+    helm install {{ $.Release.Name }}-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
       --namespace {{ include "mzmon.namespace" $ }}
   {{- end }}
   {{- $thanosDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) }}
