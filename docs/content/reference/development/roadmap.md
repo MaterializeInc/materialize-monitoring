@@ -307,7 +307,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-115] A Datadog dashboard set, starting with `env-top`, with names from reference tables that a per-install sync writes. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
+| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic after [DEP-349]. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
 | [DEP-325] `infra-*` variables that reference variables those dashboards never define | ⬜ |
