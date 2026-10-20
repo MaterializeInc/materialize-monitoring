@@ -258,6 +258,127 @@ Then re-fetch cluster credentials, because a kubeconfig entry with an exec plugi
 
 The tell is breadth: an expired session breaks *everything at once*, including things you did not touch. A real misconfiguration is almost always narrower. When a failure looks impossibly broad, check the clock before you check your work.
 
+## Scheduling, DNS, and access
+
+The entries in this section come up most on on-premises clusters, where node labels, DNS, and ingress differ from the cloud defaults the chart assumes.
+
+### Pods `Pending` with `didn't match pod topology spread constraints (missing required label)` {#missing-zone-label}
+
+Thanos Receive, Loki's ingesters, or Alertmanager stay `Pending`, and `kubectl describe pod` shows this event.
+
+**Cause.** These workloads carry a topology spread constraint on `topology.kubernetes.io/zone` with `whenUnsatisfiable: DoNotSchedule`.
+When no node has that label, the scheduler has no zone to place a pod in.
+
+**Fix.** Compose `profiles/no-zone-spread.values.yaml`, which keeps a soft spread across nodes instead.
+`profiles/adhoc.values.yaml` removes the constraints as well.
+For more information, see [Production Best Practices](../production-best-practices/#thanos-few-zones).
+
+### `host not found in resolver "kube-dns.kube-system.svc.cluster.local."` {#host-not-found-in-resolver}
+
+The `loki-gateway` pod crash-loops, and its `nginx` container logs this line at startup.
+
+**Cause.** The gateway's nginx config names the cluster DNS Service as its resolver.
+The Loki chart assumes that Service is `kube-dns` in `kube-system`.
+Some distributions name it differently.
+Kubespray names it `coredns`, and RKE2 names it `rke2-coredns-rke2-coredns`.
+
+**Fix.** Find the Service, and set its name and namespace:
+
+```bash
+kubectl get services --all-namespaces | grep -i dns
+```
+
+```yaml
+loki:
+  global:
+    dnsService: DNS_SERVICE
+    dnsNamespace: kube-system
+```
+
+Replace `DNS_SERVICE` with the Service name.
+
+### grafana-operator logs `failed to authenticate with instance` and `Client.Timeout exceeded` {#grafana-operator-timeout}
+
+Grafana is `Running`, and a port-forward to it works.
+The operator still can't reach it, so no dashboards, data sources, or folders reach Grafana.
+Every `GrafanaManifest` then reports `instanceSelector found no matching Grafana instances`.
+
+A port-forward goes straight to the pod.
+It skips DNS, the Service, and NetworkPolicy, so it doesn't test the path the operator takes.
+
+**Cause.** Check DNS first.
+The chart's `*-egress-dns` NetworkPolicies allow port 53 only to pods.
+On a cluster that runs NodeLocal DNSCache, pods resolve through a link-local address that belongs to no pod, such as Kubespray's `169.254.25.10`.
+The policy doesn't match that address, so every lookup from a policed pod times out.
+
+Look at the nameserver your pods use:
+
+```bash
+kubectl run dnstest --namespace monitoring --rm -it --restart=Never --image=busybox -- cat /etc/resolv.conf
+```
+
+**Fix.** When the nameserver is a link-local or node address, allow DNS to it from the components whose egress the chart restricts.
+NetworkPolicies are additive, so one policy that selects those components extends each of their DNS rules.
+
+Select only those components.
+A policy that selects a pod isolates that pod's egress, so `podSelector: {}` would restrict Grafana, both Alloy roles, and the chart's Jobs to DNS alone.
+Those pods have no egress policy otherwise, and they would lose every other connection they make.
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-node-dns
+  namespace: monitoring
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - loki
+          - alertmanager
+          - grafana-operator
+          - kube-state-metrics
+          - metrics-server
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: NAMESERVER_IP/32
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+EOF
+```
+
+Replace `NAMESERVER_IP` with the address from `resolv.conf`.
+Helm doesn't manage this policy, so it survives upgrades.
+
+When the nameserver is a Service IP, DNS isn't the cause.
+Run `curl` from a pod with no policy, such as one started with `kubectl run`, against `http://grafana.monitoring/api/health`.
+When that fails too, the problem is Service routing on the cluster rather than this chart.
+
+### A port-forwarded Grafana returns `ERR_EMPTY_RESPONSE` or `ERR_CONNECTION_RESET` {#port-forward-resets}
+
+The page loads, but some requests fail, and the `kubectl port-forward` terminal logs errors such as `error copying from local connection to remote stream`.
+
+**Cause.** `kubectl port-forward` carries every connection through the API server and the kubelet.
+When one connection is reset at the pod end, kubectl drops it, and some kubectl versions end the whole forward.
+A page that opens many requests at once, such as a Grafana dashboard or the Materialize Console, hits this often.
+
+**Fix.** Expose the Service on a NodePort instead.
+`kubectl expose` copies the selector and ports from the existing Service:
+
+```bash
+kubectl expose service grafana --namespace monitoring --name grafana-nodeport --type NodePort
+```
+
+Open `http://NODE_IP:NODE_PORT`, where `NODE_PORT` is the port from `kubectl get service grafana-nodeport --namespace monitoring`.
+Delete the Service when you're done; Helm doesn't manage it.
+
 ## Data that goes missing
 
 ### Healthy targets go dark: `data refused due to high memory usage`

@@ -7,6 +7,8 @@
 
 If you are not using the terraform module to install `materialize-monitoring`, you can use the provided Helm charts to install the monitoring stack in your Kubernetes cluster.
 
+For a short-lived install to troubleshoot a cluster, see [Ad-hoc install](../adhoc/) instead.
+
 > [!INFO]
 >  The [Terraform modules](../terraform/) are the recommended path: they create the buckets and workload-identity bindings, derive every backend key from one `object_storage` object, and roll Alloy when its config changes.
 >
@@ -67,7 +69,13 @@ Without a cloud identity provider there is no workload identity to bind, so cred
 - Loki takes them under `loki.loki.storage.object_store.<backend>`; prefer supplying the values through `loki.<component>.extraEnvFrom` (a `secretRef`) over inlining them, since inline values render into a ConfigMap in plaintext.
 - Thanos takes them inside `thanos.global.objstore.config`, which becomes a Secret when `createSecret: true`.
 
-Any S3-compatible endpoint works — set `object_storage.endpoint` in Loki's config and `endpoint` in Thanos's. The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs) this way, so a self-hosted MinIO, Ceph, or rustfs is a supported shape rather than an untested one.
+Any S3-compatible endpoint works, including Ceph RGW, MinIO, and rustfs.
+The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs).
+
+`profiles/s3-compatible.values.yaml` sets up both backends for one of these stores.
+Its header has the commands that create the two Secrets it reads: the Thanos objstore document, and a pair of environment variables for Loki.
+Write the endpoint as `HOST:PORT` with no scheme, because the objstore client rejects one.
+Set `insecure: true` for a store that serves plain HTTP.
 
 > [!WARNING]
 >  The chart's validators grade credential handling and will tell you when a cloud backend has neither an identity annotation nor inline credentials — at which point the component falls back to ambient node credentials, which usually means it silently works in one cluster and fails in another. Read the render output rather than assuming silence.
@@ -78,8 +86,7 @@ The `materialize-monitoring` Helm chart is designed to be highly customizable, s
 
 Typically, you would want to create a values.yaml file that has your
 specific configurations.
-You may start fresh or you can copy a preset from
-the `charts/materialize-monitoring/profiles/` directory in this repository.
+You can start fresh, or start from the profiles in the chart's `profiles/` directory.
 
 > [!WARNING]
 >  Be aware that when merging examples together that you do not have
@@ -100,17 +107,31 @@ chart, so you only need to specify the values that are different from the defaul
 >      key: value
 >  ```
 
+### Get the profiles {#get-the-profiles}
+
+The profiles ship inside the chart package, so you don't need to download them one at a time.
+Pull the chart and unpack it:
+
+```bash
+helm pull oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --version VERSION --untar
+```
+
+Replace `VERSION` with the chart version you install.
+
+Every profile is then at `materialize-monitoring/profiles/`, and you can pass each one with `-f`.
+Pull the same version you install, because a profile can name values that exist only in that version.
+
 ### Choosing which components run, via tags
 
 Which subcharts install is driven by `tags`, and the semantics are **OR**: a component runs if *any* tag covering it is true. There is no need to disable a group before enabling one member.
 
 | Tag | Covers |
 |---|---|
-| `tags.default` | everything below. `true` by default |
+| `tags.default` | everything below except metrics-server. `true` by default |
 | `tags.bundled-backends` | Loki, Thanos, Alertmanager |
 | `tags.managed-grafana` | Grafana and grafana-operator |
 | `tags.pipeline` | both Alloy roles (agent + gateway) |
-| `tags.cluster-metrics` | kube-state-metrics, metrics-server |
+| `tags.cluster-metrics` | kube-state-metrics, node-exporter, and metrics-server. metrics-server installs only through this tag or `tags.metrics-server`, because most clusters already run one |
 
 Per-chart overrides — `tags.loki`, `tags.thanos`, `tags.alloy-agent`, `tags.alloy-gateway`, `tags.grafana-standalone`, `tags.grafana-operator`, `tags.alertmanager`, `tags.kube-state-metrics`, `tags.metrics-server` — are OR'd on top.
 
@@ -166,7 +187,10 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
+| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
+| `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
+| `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
 | `profiles/noop.values.yaml` | a release that creates no resources. Install it first, then turn components on over it one tag at a time |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
@@ -283,7 +307,20 @@ helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitori
   --timeout 15m
 ```
 
-Pin `--version` on both. The two charts have deliberately separate lifecycles, so they do not share a version — see [Compatibility](../../reference/compatibility/) for which pairs are tested together.
+The dashboards are a third chart, and the main chart doesn't install them.
+Without this release, Grafana comes up with its data sources and folders but no dashboards:
+
+```bash
+helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
+  --namespace monitoring \
+  --version X.Y.Z
+```
+
+Its defaults match a `materialize-monitoring` release named `mzmon`.
+For a different release name, see [Importing dashboards via Grafana Operator](../../dashboards/grafana/grafana-operator/#importing-dashboards-via-grafana-operator).
+
+Pin `--version` on each. The charts have separate lifecycles, so they don't share a version.
+For the pairs that are tested together, see [Compatibility](../../reference/compatibility/).
 
 A few flags earn their place:
 
