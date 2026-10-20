@@ -174,6 +174,8 @@ dashboards:
         allowCrossNamespaceImport: true
 ```
 
+If you don't want the chart's own `Grafana` resource alongside yours, also set `connections.grafana.enabled: false`.
+
 ### Folders
 
 The dashboards are filed into folders rather than dropped at the root of the Grafana.

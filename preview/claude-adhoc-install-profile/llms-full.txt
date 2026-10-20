@@ -1875,11 +1875,11 @@ Which subcharts install is driven by `tags`, and the semantics are **OR**: a com
 
 | Tag | Covers |
 |---|---|
-| `tags.default` | everything below. `true` by default |
+| `tags.default` | everything below except metrics-server. `true` by default |
 | `tags.bundled-backends` | Loki, Thanos, Alertmanager |
 | `tags.managed-grafana` | Grafana and grafana-operator |
 | `tags.pipeline` | both Alloy roles (agent + gateway) |
-| `tags.cluster-metrics` | kube-state-metrics, metrics-server |
+| `tags.cluster-metrics` | kube-state-metrics, node-exporter, and metrics-server. metrics-server installs only through this tag or `tags.metrics-server`, because most clusters already run one |
 
 Per-chart overrides — `tags.loki`, `tags.thanos`, `tags.alloy-agent`, `tags.alloy-gateway`, `tags.grafana-standalone`, `tags.grafana-operator`, `tags.alertmanager`, `tags.kube-state-metrics`, `tags.metrics-server` — are OR'd on top.
 
@@ -1935,11 +1935,12 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
-| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last |
+| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
 | `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
 | `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
+| `profiles/noop.values.yaml` | a release that creates no resources. Install it first, then turn components on over it one tag at a time |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
 
@@ -2267,7 +2268,8 @@ DNS Service name
   For more information, see [`host not found in resolver`](../../operating/o11y-troubleshooting/#host-not-found-in-resolver).
 
 metrics-server
-: Turn it off when the cluster already runs one.
+: Off, as at the chart default, because most clusters already serve `metrics.k8s.io`.
+  Turn it on when `kubectl get apiservice v1beta1.metrics.k8s.io` finds nothing.
 
 Loki
 : Turn it off when the cluster can't fit one more pod.
@@ -4054,8 +4056,13 @@ What the load balancer is doing, and what the NAT gateway every outbound connect
   because CloudWatch publishes health only per target group, keyed by both.
   Application Load Balancers are not pulled.
   NAT gateways are named by ID.
-- **Google Cloud**: a LoadBalancer Service on GKE is a passthrough Network Load Balancer, named by its forwarding rule.
-  GKE names the rule `a` followed by the Service's UID without dashes, cut to 32 characters, and the rule's description names the Service.
+- **Google Cloud**: a LoadBalancer Service on GKE is a passthrough Network Load Balancer,
+  named by its forwarding rule or found by the VPC network its backends are in.
+  GKE names the rule only once it makes it: `a` followed by the Service's UID without dashes, cut to 32 characters, for an external rule,
+  and `k8s2-` and a hash for an internal one under L4 ILB subsetting; the rule's description names the Service.
+  A rule cannot be listed before its Service exists, so a Service the same release creates, such as Grafana's, can only be reached by its network.
+  `networks` reaches every passthrough load balancer in the network, whoever made it,
+  which on a network that holds only the cluster is the cluster's own.
   Cloud NAT gateways are named by the NAT's name, not its Cloud Router's.
 - **Azure**: AKS puts every LoadBalancer Service behind one load balancer named `kubernetes`,
   and internal ones behind `kubernetes-internal`, in the cluster's node resource group.
@@ -4178,7 +4185,7 @@ pipeline:
         compute:
           regions: [us-east1]
         loadBalancing:
-          forwardingRules: [a0123456789abcdef0123456789abcde]
+          networks: [mz-prod-network]
         cloudNat:
           gateways: [mz-prod-nat]
       azure:
@@ -4204,7 +4211,7 @@ AKS names are unique only within a resource group, so two clusters of one name i
 A Compute Engine entry is a region, such as `us-east1`; its zones are included, and a zone is refused.
 A Network Load Balancer or target group is its ARN, or the end of it that CloudWatch uses, such as `net/mz-prod/0123456789abcdef`.
 An ARN in a region other than `region` is refused, since CloudWatch is regional and the pull would return nothing.
-A forwarding rule or Cloud NAT gateway is its name, not its address or URL, and a NAT gateway ID is `nat-` and hex, not its name.
+A forwarding rule, VPC network or Cloud NAT gateway is its name, not its address or URL, and a NAT gateway ID is `nat-` and hex, not its name.
 Azure NAT gateway names are unique only within a resource group, so two gateways of one name in the subscription are both pulled.
 The chart refuses anything else at render, since the names sit inside the Resource Graph query's filter.
 `subscriptionId` is the subscription's GUID.
@@ -4342,7 +4349,7 @@ The pull does not read those types back, so it does not loop.
 | S3 request metrics | Opt-in per bucket on the AWS side, and billed as custom metrics |
 | Azure Blob `Transactions` | The window each pull reads ends at the scrape, so its newest five-minute bucket is a minute or so short, and a count read from it under-counts. `Availability` already falls with throttling and server errors, and the clients report the same requests exactly |
 | Azure resource tags | The exporter copies the `owner` tag onto every series by default. Tags are free text, and the pull copies none |
-| Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each. EKS nodes are the exception, found by the cluster tag EKS and Karpenter set, because they are replaced too often to name |
+| Resources found by tag | Tag discovery pulls every matching resource in the account, and bills for each. EKS nodes are the exception, found by the cluster tag EKS and Karpenter set, because they are replaced too often to name. Google Cloud load balancers listed by network are another, because GKE names them only once it makes them |
 | The EC2 vCPU quota's limit | CloudWatch publishes the usage but not the limit, which only CloudWatch metric math and the Service Quotas API return, and the exporter supports neither |
 | Capacity refusals | No provider publishes a metric for a launch it could not fulfil, such as `InsufficientInstanceCapacity`, `ZONE_RESOURCE_POOL_EXHAUSTED` or `AllocationFailed`. Karpenter and the cluster autoscaler report them |
 | Azure compute quota | Not an Azure Monitor metric; it is only in the Compute usage API |
@@ -5725,9 +5732,13 @@ Readiness is the reason for the split — it is not incidental.
 
 ## Connection modes
 
-Whichever server you use, the chart always creates one `Grafana` custom resource.
+Whichever server you use, the chart creates one `Grafana` custom resource.
 That resource is the operator's handle on "the Grafana that Materialize dashboards belong in".
 It is selected with `connections.grafana.mode`.
+
+When no grafana-operator acts on the release, set `connections.grafana.enabled: false` and the chart creates no `Grafana` resource in any mode.
+The chart then refuses to render folders or datasources that still select it.
+Turn those off, or point them at a `Grafana` resource you manage, as described in [Overriding the target instance](../grafana-operator/#overriding-the-target-instance).
 
 | `connections.grafana.mode` | Grafana server comes from | `Grafana` CR points at |
 |---|---|---|
@@ -6760,6 +6771,8 @@ dashboards:
         # infers this for instances it creates itself.
         allowCrossNamespaceImport: true
 ```
+
+If you don't want the chart's own `Grafana` resource alongside yours, also set `connections.grafana.enabled: false`.
 
 ### Folders
 
@@ -9970,8 +9983,12 @@ Look at the nameserver your pods use:
 kubectl run dnstest --namespace monitoring --rm -it --restart=Never --image=busybox -- cat /etc/resolv.conf
 ```
 
-**Fix.** When the nameserver is a link-local or node address, allow DNS to it for the whole namespace.
-NetworkPolicies are additive, so one policy covers every component:
+**Fix.** When the nameserver is a link-local or node address, allow DNS to it from the components whose egress the chart restricts.
+NetworkPolicies are additive, so one policy that selects those components extends each of their DNS rules.
+
+Select only those components.
+A policy that selects a pod isolates that pod's egress, so `podSelector: {}` would restrict Grafana, both Alloy roles, and the chart's Jobs to DNS alone.
+Those pods have no egress policy otherwise, and they would lose every other connection they make.
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -9981,7 +9998,16 @@ metadata:
   name: allow-egress-node-dns
   namespace: monitoring
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - loki
+          - alertmanager
+          - grafana-operator
+          - kube-state-metrics
+          - metrics-server
   policyTypes:
     - Egress
   egress:
@@ -14544,7 +14570,7 @@ bug this repo has shipped once already.
     <tr>
       <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider</td>
       <td class="helm-value-type">h5</td>
-      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
+      <td class="helm-value-default"><code>{"azure":{"aks":{"clusters":[]}, "blob":{"storageAccounts":[]}, "cloudEnvironment":"azurecloud", "enabled":false, "loadBalancer":{"clusters":[]}, "metricImportance":"extended", "natGateway":{"names":[]}, "postgres":{"servers":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m", "subscriptionId":""}, "cloudwatch":{"eks":{"clusters":[]}, "enabled":false, "metricImportance":"extended", "natGateway":{"ids":[]}, "nlb":{"loadBalancers":[]}, "rds":{"instances":[]}, "region":"", "s3":{"buckets":[]}, "scrapeInterval":"5m", "scrapeTimeout":"2m"}, "gcp":{"cloudNat":{"gateways":[]}, "cloudSql":{"instances":[]}, "compute":{"regions":[]}, "enabled":false, "gcs":{"buckets":[]}, "loadBalancing":{"forwardingRules":[], "networks":[]}, "metricImportance":"extended", "projectId":"", "requestInterval":"10m", "scrapeInterval":"5m", "scrapeTimeout":"2m"}}</code></td>
       <td class="helm-value-desc">Cloud provider metrics, pulled into the gateway.
 
 The gateway can pull what a cloud provider's monitoring API publishes about
@@ -14567,8 +14593,11 @@ replacement for it.
 
 **Resources are named, not discovered.** Each service lists the instances
 or buckets to watch, and nothing else is pulled. Tag discovery would find
-every resource in the account and bill for each of them. A provider that is
-enabled with nothing listed fails at render.
+every resource in the account and bill for each of them. Where a resource
+cannot be named in advance, a named scope stands in for it: EKS nodes are
+found by their cluster, AKS node VMs and load balancers by theirs, and
+GCP load balancers by their VPC network. A provider that is enabled with
+nothing listed fails at render.
 
 **Credentials never travel through values.** The pull uses the gateway
 pod's own cloud identity, bound through
@@ -14820,6 +14849,23 @@ characters; `gcloud compute forwarding-rules list` shows them, with
 the Service in each one's description. Each is pulled for the bytes
 and packets it carried in each direction. Cloud Monitoring
 publishes no health for these load balancers.
+</td>
+    </tr>
+    <tr>
+      <td class="helm-value-key">pipeline<wbr>.metrics<wbr>.provider<wbr>.gcp<wbr>.loadBalancing<wbr>.networks</td>
+      <td class="helm-value-type">list</td>
+      <td class="helm-value-default"><pre>
+[]</pre>
+</td>
+      <td class="helm-value-desc">VPC network names whose passthrough Network Load Balancers to watch, external or internal.
+Every passthrough load balancer whose backends are in a listed
+network is pulled, whoever made it, beside any rule in
+`forwardingRules`. This is the way to reach a rule that cannot be
+named beforehand: GKE names a rule only once it makes it, so a
+LoadBalancer Service the same release creates, such as Grafana's,
+has no name to list. On a network that holds only the cluster, as
+the Terraform wrappers create it, that is the cluster's load
+balancers and nothing else.
 </td>
     </tr>
     <tr>
@@ -15594,6 +15640,13 @@ How to talk to a grafana instance
     <th>Key</th><th>Type</th><th>Default</th><th>Description</th>
   </thead>
   <tbody>    <tr>
+      <td class="helm-value-key">connections<wbr>.grafana<wbr>.enabled</td>
+      <td class="helm-value-type">bool</td>
+      <td class="helm-value-default"><code>true</code></td>
+      <td class="helm-value-desc">Create the `Grafana` resource that grafana-operator reconciles this chart's folders, datasources, and dashboards into. Turn it off when no grafana-operator acts on this release, or when `dashboards.config.grafana.manifest.instanceSelector` points them at a `Grafana` resource you manage. The chart then creates none, whatever the `mode`, and refuses to render folders or datasources that still select it.
+</td>
+    </tr>
+    <tr>
       <td class="helm-value-key">connections<wbr>.grafana<wbr>.mode</td>
       <td class="helm-value-type">string</td>
       <td class="helm-value-default"><code>"bundled"</code></td>
@@ -18269,7 +18322,7 @@ query frontend, and Grafana then shows no Loki rules.
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "nginxinc/nginx-unprivileged",
-  "tag": "1.31.6-alpine-slim"
+  "tag": "1.31.7-alpine-slim"
 }</pre>
 </td>
       <td class="helm-value-desc">The nginx image. The `-alpine-slim` variant carries the SSL and stub-status modules this config uses, at a quarter of the full image's size.
@@ -27751,7 +27804,6 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-384] `infra-net`'s Cloud Networking rows, from the provider pull. The load balancer and NAT gateway pulls and their rows are in the chart; the per-cloud wrappers' read grants remain | 🔨 |
 | [DEP-115] A Datadog dashboard set | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
@@ -27966,7 +28018,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [DEP-381]: https://linear.app/materializeinc/issue/DEP-381
 [DEP-382]: https://linear.app/materializeinc/issue/DEP-382
 [DEP-383]: https://linear.app/materializeinc/issue/DEP-383
-[DEP-384]: https://linear.app/materializeinc/issue/DEP-384
 [DEP-385]: https://linear.app/materializeinc/issue/DEP-385
 
 

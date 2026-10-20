@@ -127,11 +127,11 @@ Which subcharts install is driven by `tags`, and the semantics are **OR**: a com
 
 | Tag | Covers |
 |---|---|
-| `tags.default` | everything below. `true` by default |
+| `tags.default` | everything below except metrics-server. `true` by default |
 | `tags.bundled-backends` | Loki, Thanos, Alertmanager |
 | `tags.managed-grafana` | Grafana and grafana-operator |
 | `tags.pipeline` | both Alloy roles (agent + gateway) |
-| `tags.cluster-metrics` | kube-state-metrics, metrics-server |
+| `tags.cluster-metrics` | kube-state-metrics, node-exporter, and metrics-server. metrics-server installs only through this tag or `tags.metrics-server`, because most clusters already run one |
 
 Per-chart overrides — `tags.loki`, `tags.thanos`, `tags.alloy-agent`, `tags.alloy-gateway`, `tags.grafana-standalone`, `tags.grafana-operator`, `tags.alertmanager`, `tags.kube-state-metrics`, `tags.metrics-server` — are OR'd on top.
 
@@ -187,11 +187,12 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
-| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last |
+| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
 | `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
 | `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
+| `profiles/noop.values.yaml` | a release that creates no resources. Install it first, then turn components on over it one tag at a time |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
 | `profiles/otlp-metrics-honeycomb.values.yaml` | a generic OTLP metrics backend |
 
