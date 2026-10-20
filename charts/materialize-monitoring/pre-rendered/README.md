@@ -7,18 +7,19 @@ sources under `packages/`:
 
 | Subdirectory                  | Generated from                                         | By                                      |
 |-------------------------------|--------------------------------------------------------|-----------------------------------------|
-| `dashboards/grafana/`         | `packages/dashboards/` + `packages/queries/`           | `mz-monitoring-build gen-dashboards`    |
 | `pipelines/`                  | `packages/alloy-pipelines/`                            | `mz-monitoring-build gen-pipelines`     |
 | `scrapers/`                   | `packages/prometheus-scrapers/`                        | `mz-monitoring-build gen-scrape-configs`|
 | `metrics/`                    | `packages/queries/`                                    | `mz-monitoring-build gen-metric-tiers`  |
 | `rules/prometheus/`           | `packages/queries/` (the `alerts:` entries)            | `mz-monitoring-build gen-rules`         |
+| `rules/loki/`                 | `packages/queries/` (the LogQL `alerts:` entries)      | `mz-monitoring-build gen-rules`         |
 
 `rules/prometheus/` holds one rule file per registry file plus `_index.yaml`, which records each rule's capabilities
 and whether it is in the default set. Tokens of the form `__mzmon_*__` in the rule files are replaced by the chart at
 install time (`templates/alerts/prometheusrules.yaml`).
 
-Empty placeholders, kept so the chart's `.Files.Get` globs resolve: `dashboards/datadog/`, `rules/loki/`,
-`rules/thanos/`. Nothing generates into them yet.
+`rules/loki/` holds the log-derived rules, one file per registry file, which `templates/alerts/lokirules.yaml` loads.
+`rules/thanos/` is an empty placeholder, and nothing generates into it.
+The rendered dashboards live in the dashboards chart, under `charts/materialize-monitoring-dashboards/pre-rendered/`.
 
 The chart's templates load these files via `{{ .Files.Get }}` because
 Helm restricts that directive to the chart directory itself.
