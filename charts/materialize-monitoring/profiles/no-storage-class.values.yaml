@@ -31,8 +31,18 @@
 #   kubectl get nodes -o custom-columns='NODE:.metadata.name,EPH:.status.allocatable.ephemeral-storage'
 #
 # A pod Pending on `Insufficient ephemeral-storage` needs a smaller request here.
-# Changing this on an existing install does not move data: the old PVCs stay
-# behind until you delete them.
+#
+# **On an existing install, `helm upgrade` fails** with `updates to statefulset
+# spec ... are forbidden`: `volumeClaimTemplates` are immutable, so Helm cannot
+# remove them in place. Delete the affected StatefulSets first and let the
+# upgrade recreate them. Grafana is a Deployment and needs nothing:
+#
+#   kubectl -n monitoring delete statefulset \
+#     alertmanager loki-ruler thanos-storegateway thanos-compactor
+#
+# Deleting a StatefulSet leaves its PVCs, which nothing reclaims afterwards.
+# Delete those too once the pods are back. See Operating > Upgrading,
+# "StatefulSet fields that cannot be patched".
 
 grafana:
   persistence:

@@ -50,7 +50,8 @@
 #     rules match nothing and every policed pod loses name resolution.
 #   * Loki's gateway looks for a Service called `kube-dns`. Kubespray calls it
 #     `coredns`; RKE2 calls it `rke2-coredns-rke2-coredns`.
-#   * metrics-server is on. Turn it off if the cluster already runs one.
+#   * metrics-server is off, as at the chart default. Turn it on only when the
+#     cluster has none; `kubectl top` and HPAs need one.
 #   * Loki is on. Turn it off if the cluster cannot fit even one more pod.
 #
 # Dashboards are a separate chart, `materialize-monitoring-dashboards`, and this
@@ -69,6 +70,15 @@ alloy-agent:
 alloy-gateway:
   networkPolicy:
     enabled: false
+  # One gateway instead of an autoscaled 2 to 8. Each one requests 2Gi.
+  controller:
+    replicas: 1
+    autoscaling:
+      horizontal:
+        enabled: false
+    # `minAvailable: 1` on a single replica blocks every node drain.
+    podDisruptionBudget:
+      enabled: false
 grafana:
   networkPolicy:
     enabled: false
@@ -88,10 +98,11 @@ postgres-exporter:
 # ---------------------------------------------------------------------------
 # metrics-server — SWITCH
 # ---------------------------------------------------------------------------
-# Uncomment when the cluster already serves `metrics.k8s.io`; two installs fight
-# over the same APIService.
+# Off, as at the chart default: most clusters already serve `metrics.k8s.io`,
+# and two installs fight over the same APIService. Uncomment when
+# `kubectl get apiservice v1beta1.metrics.k8s.io` finds nothing.
 # metrics-server:
-#   enabled: false
+#   enabled: true
 
 # ---------------------------------------------------------------------------
 # Loki: SingleBinary on the pod's own filesystem

@@ -210,3 +210,45 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  # --- adhoc: the Alloy gateway and metrics-server ---------------------------
+  - it: adhoc runs one Alloy gateway
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/alloy-gateway/templates/controllers/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: adhoc renders no Alloy gateway autoscaler
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/alloy-gateway/templates/hpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # A minAvailable: 1 budget over one replica blocks every node drain.
+  - it: adhoc renders no Alloy gateway disruption budget
+    values:
+      - ../profiles/adhoc.values.yaml
+    template: ../charts/alloy-gateway/templates/pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The profile leaves metrics-server off, as at the chart default, because a
+  # second one fights the cluster's own over the `metrics.k8s.io` APIService.
+  # helm-unittest cannot select a template from a disabled subchart, so the off
+  # case has no assertion of its own; this proves the commented SWITCH is the
+  # key that turns it on.
+  - it: adhoc renders metrics-server when its switch is on
+    values:
+      - ../profiles/adhoc.values.yaml
+    set:
+      metrics-server.enabled: true
+    template: ../charts/metrics-server/templates/deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 1

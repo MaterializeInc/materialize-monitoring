@@ -285,8 +285,12 @@ Look at the nameserver your pods use:
 kubectl run dnstest --namespace monitoring --rm -it --restart=Never --image=busybox -- cat /etc/resolv.conf
 ```
 
-**Fix.** When the nameserver is a link-local or node address, allow DNS to it for the whole namespace.
-NetworkPolicies are additive, so one policy covers every component:
+**Fix.** When the nameserver is a link-local or node address, allow DNS to it from the components whose egress the chart restricts.
+NetworkPolicies are additive, so one policy that selects those components extends each of their DNS rules.
+
+Select only those components.
+A policy that selects a pod isolates that pod's egress, so `podSelector: {}` would restrict Grafana, both Alloy roles, and the chart's Jobs to DNS alone.
+Those pods have no egress policy otherwise, and they would lose every other connection they make.
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -296,7 +300,16 @@ metadata:
   name: allow-egress-node-dns
   namespace: monitoring
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - loki
+          - alertmanager
+          - grafana-operator
+          - kube-state-metrics
+          - metrics-server
   policyTypes:
     - Egress
   egress:

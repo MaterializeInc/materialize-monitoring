@@ -144,7 +144,8 @@ DNS Service name
   For more information, see [`host not found in resolver`](../../operating/o11y-troubleshooting/#host-not-found-in-resolver).
 
 metrics-server
-: Turn it off when the cluster already runs one.
+: Off, as at the chart default, because most clusters already serve `metrics.k8s.io`.
+  Turn it on when `kubectl get apiservice v1beta1.metrics.k8s.io` finds nothing.
 
 Loki
 : Turn it off when the cluster can't fit one more pod.
