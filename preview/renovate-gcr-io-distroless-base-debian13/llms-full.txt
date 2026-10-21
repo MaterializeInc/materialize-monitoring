@@ -1047,6 +1047,13 @@ The Helm chart is the full-fidelity surface: the Terraform modules are a thin la
 
 See [Helm Installation](../helm/) for instructions on how to install `materialize-monitoring` via Helm.
 
+## Ad-hoc install for troubleshooting
+
+If you need a Grafana with metrics in it on a cluster you don't run day to day, such as during a day-1 install, one profile installs the whole stack with one replica of everything and no volumes.
+It isn't for production.
+
+See [Ad-hoc install](../adhoc/).
+
 ## Going to Production
 
 Whichever path you take, [Production Best Practices](../../operating/production-best-practices/) is the checklist for a real deployment — sizing, retention, replication, disruption budgets, and object-storage durability — with each item tagged by who owns it.
@@ -1748,6 +1755,8 @@ url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-gc
 
 If you are not using the terraform module to install `materialize-monitoring`, you can use the provided Helm charts to install the monitoring stack in your Kubernetes cluster.
 
+For a short-lived install to troubleshoot a cluster, see [Ad-hoc install](../adhoc/) instead.
+
 > [!INFO]
 >  The [Terraform modules](../terraform/) are the recommended path: they create the buckets and workload-identity bindings, derive every backend key from one `object_storage` object, and roll Alloy when its config changes.
 >
@@ -1808,7 +1817,13 @@ Without a cloud identity provider there is no workload identity to bind, so cred
 - Loki takes them under `loki.loki.storage.object_store.<backend>`; prefer supplying the values through `loki.<component>.extraEnvFrom` (a `secretRef`) over inlining them, since inline values render into a ConfigMap in plaintext.
 - Thanos takes them inside `thanos.global.objstore.config`, which becomes a Secret when `createSecret: true`.
 
-Any S3-compatible endpoint works — set `object_storage.endpoint` in Loki's config and `endpoint` in Thanos's. The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs) this way, so a self-hosted MinIO, Ceph, or rustfs is a supported shape rather than an untested one.
+Any S3-compatible endpoint works, including Ceph RGW, MinIO, and rustfs.
+The chart's own tier-2 E2E runs against [rustfs](https://github.com/rustfs/rustfs).
+
+`profiles/s3-compatible.values.yaml` sets up both backends for one of these stores.
+Its header has the commands that create the two Secrets it reads: the Thanos objstore document, and a pair of environment variables for Loki.
+Write the endpoint as `HOST:PORT` with no scheme, because the objstore client rejects one.
+Set `insecure: true` for a store that serves plain HTTP.
 
 > [!WARNING]
 >  The chart's validators grade credential handling and will tell you when a cloud backend has neither an identity annotation nor inline credentials — at which point the component falls back to ambient node credentials, which usually means it silently works in one cluster and fails in another. Read the render output rather than assuming silence.
@@ -1819,8 +1834,7 @@ The `materialize-monitoring` Helm chart is designed to be highly customizable, s
 
 Typically, you would want to create a values.yaml file that has your
 specific configurations.
-You may start fresh or you can copy a preset from
-the `charts/materialize-monitoring/profiles/` directory in this repository.
+You can start fresh, or start from the profiles in the chart's `profiles/` directory.
 
 > [!WARNING]
 >  Be aware that when merging examples together that you do not have
@@ -1841,17 +1855,31 @@ chart, so you only need to specify the values that are different from the defaul
 >      key: value
 >  ```
 
+### Get the profiles {#get-the-profiles}
+
+The profiles ship inside the chart package, so you don't need to download them one at a time.
+Pull the chart and unpack it:
+
+```bash
+helm pull oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --version VERSION --untar
+```
+
+Replace `VERSION` with the chart version you install.
+
+Every profile is then at `materialize-monitoring/profiles/`, and you can pass each one with `-f`.
+Pull the same version you install, because a profile can name values that exist only in that version.
+
 ### Choosing which components run, via tags
 
 Which subcharts install is driven by `tags`, and the semantics are **OR**: a component runs if *any* tag covering it is true. There is no need to disable a group before enabling one member.
 
 | Tag | Covers |
 |---|---|
-| `tags.default` | everything below. `true` by default |
+| `tags.default` | everything below except metrics-server. `true` by default |
 | `tags.bundled-backends` | Loki, Thanos, Alertmanager |
 | `tags.managed-grafana` | Grafana and grafana-operator |
 | `tags.pipeline` | both Alloy roles (agent + gateway) |
-| `tags.cluster-metrics` | kube-state-metrics, metrics-server |
+| `tags.cluster-metrics` | kube-state-metrics, node-exporter, and metrics-server. metrics-server installs only through this tag or `tags.metrics-server`, because most clusters already run one |
 
 Per-chart overrides — `tags.loki`, `tags.thanos`, `tags.alloy-agent`, `tags.alloy-gateway`, `tags.grafana-standalone`, `tags.grafana-operator`, `tags.alertmanager`, `tags.kube-state-metrics`, `tags.metrics-server` — are OR'd on top.
 
@@ -1907,7 +1935,10 @@ helm install mzmon . -f profiles/loki-test.values.yaml -f profiles/kind-tier1.va
 | `profiles/grafana-ingress.values.yaml` | make Grafana reachable over an Ingress, internal by default and TLS-terminated. Pair it with one of the two above |
 | `profiles/scheduling.values.yaml` | node selector, tolerations, and priority-class names, fanned out to every subchart. Edit the four anchors at the top; see below |
 | `profiles/storage-class.values.yaml` | one StorageClass, aimed at the four workloads that claim a volume. Edit the single anchor at the top |
+| `profiles/no-storage-class.values.yaml` | for clusters with **no StorageClass**. Puts the same four workloads, and Grafana, on `emptyDir` and requests node disk for them instead. Grafana then keeps UI changes only until it restarts. Compose it last. On an existing install, delete the four StatefulSets first; see [StatefulSet fields that cannot be patched](../../operating/upgrading/#statefulset-fields-that-cannot-be-patched) |
 | `profiles/no-zone-spread.values.yaml` | for clusters with **no zone labels, or one zone**. Without it Thanos Receive and Loki's ingesters stay Pending; see [Production Best Practices](../../operating/production-best-practices/#thanos-few-zones) |
+| `profiles/s3-compatible.values.yaml` | Ceph RGW, MinIO, or another S3-compatible store with static keys, for both backends. The keys come from two Secrets you create; the header has the commands |
+| `profiles/adhoc.values.yaml` | the whole stack in one file: one replica of everything, no volumes, no NetworkPolicies. For troubleshooting, not production; see [Ad-hoc install](../adhoc/) |
 | `profiles/split-namespace.values.yaml` | one namespace per subchart. Changes every workload-identity subject; see [Namespace layout](../../operating/production-best-practices/#namespace-layout) |
 | `profiles/noop.values.yaml` | a release that creates no resources. Install it first, then turn components on over it one tag at a time |
 | `profiles/otel-metrics-fanout.values.yaml` | additional metric destinations (GCM, Datadog) with per-destination importance tiers |
@@ -2024,7 +2055,20 @@ helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitori
   --timeout 15m
 ```
 
-Pin `--version` on both. The two charts have deliberately separate lifecycles, so they do not share a version — see [Compatibility](../../reference/compatibility/) for which pairs are tested together.
+The dashboards are a third chart, and the main chart doesn't install them.
+Without this release, Grafana comes up with its data sources and folders but no dashboards:
+
+```bash
+helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
+  --namespace monitoring \
+  --version X.Y.Z
+```
+
+Its defaults match a `materialize-monitoring` release named `mzmon`.
+For a different release name, see [Importing dashboards via Grafana Operator](../../dashboards/grafana/grafana-operator/#importing-dashboards-via-grafana-operator).
+
+Pin `--version` on each. The charts have separate lifecycles, so they don't share a version.
+For the pairs that are tested together, see [Compatibility](../../reference/compatibility/).
 
 A few flags earn their place:
 
@@ -2080,6 +2124,178 @@ On the Helm path every `[consumer]` item is yours, including the buckets and wor
 - [Chart values](../../reference/helm/materialize-monitoring-values/) — every value, generated from `values.yaml`
 - [CRDs](../../reference/crds/) — what the CRDs chart installs
 - [Compatibility](../../reference/compatibility/) — chart, CRDs chart, and Terraform module versions
+
+
+--------------------------------------------------------------------------------
+title: "Ad-hoc install"
+url: https://materializeinc.github.io/materialize-monitoring/preview/renovate-gcr-io-distroless-base-debian13/getting-started/adhoc/index.md
+--------------------------------------------------------------------------------
+
+# Install an ad-hoc stack for troubleshooting
+
+This page is for you if you need a Grafana with metrics in it, on a cluster you don't run day to day, as soon as possible.
+Typical cases are a day-1 install, an on-premises cluster you haven't seen before, or a node pool that Materialize already fills.
+
+The install uses `profiles/adhoc.values.yaml`, one file that covers the whole stack:
+
+- Every component runs one replica, with a replication factor of 1.
+- Nothing claims a PersistentVolume, so the cluster doesn't need a StorageClass.
+- Loki runs as one process on its own filesystem, so it needs no bucket.
+- Topology spread constraints are removed, so pods schedule on nodes with no zone labels.
+- NetworkPolicies are off.
+
+Losing a pod loses that pod's data, so don't run this profile in production.
+Grafana keeps users, API keys, and anything else changed in its UI only until it restarts.
+The dashboards, data sources, and folders the charts install come back on their own.
+
+For a lasting install, see [Helm](../helm/).
+
+## Before you begin
+
+You need the following:
+
+- `helm` and `kubectl`, with access to the cluster.
+- An object store bucket for Thanos.
+  Thanos has no local-disk mode that works across its components, so even an ad-hoc install needs one.
+  S3, an S3-compatible store such as Ceph RGW or MinIO, GCS, and Azure Blob Storage all work.
+- An address you can reach Grafana on, such as a node IP.
+
+## Install the stack
+
+1. Pull the chart, which includes every profile:
+
+   ```bash
+   helm pull oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring --version VERSION --untar
+   ```
+
+   Replace `VERSION` with the chart version you install.
+
+1. Create the Secret that Thanos reads its bucket from.
+   For S3 or an S3-compatible store:
+
+   ```bash
+   kubectl create namespace monitoring
+   kubectl create secret generic thanos-objstore-config --namespace monitoring \
+     --from-file=objstore.yml=/dev/stdin <<'EOF'
+   type: S3
+   config:
+     bucket: BUCKET
+     endpoint: HOST:PORT
+     access_key: ACCESS_KEY
+     secret_key: SECRET_KEY
+     insecure: true
+   EOF
+   ```
+
+   Replace the following:
+
+   - `BUCKET`: the bucket for Thanos blocks.
+   - `HOST:PORT`: the store's endpoint, with no scheme.
+   - `ACCESS_KEY` and `SECRET_KEY`: the store's credentials.
+
+   Set `insecure: false` when the store serves HTTPS.
+   GCS and Azure take the same Secret with their own `type` and `config`.
+
+1. Install the CRDs:
+
+   ```bash
+   helm install mzmon-crds oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-crds \
+     --namespace monitoring --version VERSION --wait
+   ```
+
+1. Install the chart with the profile:
+
+   ```bash
+   helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring \
+     --namespace monitoring --skip-crds --version VERSION \
+     -f materialize-monitoring/profiles/adhoc.values.yaml \
+     --timeout 15m
+   ```
+
+   The install output warns about every production setting the profile turns off.
+   Read past those for anything else.
+
+1. Install the dashboards, which are a chart of their own:
+
+   ```bash
+   helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
+     --namespace monitoring --version VERSION
+   ```
+
+   Each chart has its own version, so replace `VERSION` in each command.
+
+1. Check that the pods are running and that the dashboards reached Grafana:
+
+   ```bash
+   kubectl get pods --namespace monitoring
+   kubectl get grafana,grafanamanifest --namespace monitoring
+   ```
+
+## Reach Grafana
+
+A port-forward works, but it drops connections when a dashboard opens many requests at once.
+On a cluster whose nodes you can reach, a NodePort Service is steadier.
+`kubectl expose` copies the selector and ports from the existing Service:
+
+```bash
+kubectl expose service grafana --namespace monitoring --name grafana-nodeport --type NodePort
+kubectl get service grafana-nodeport --namespace monitoring -o jsonpath='{.spec.ports[0].nodePort}'
+```
+
+Open `http://NODE_IP:NODE_PORT`.
+Replace `NODE_IP` with the address of any node, and `NODE_PORT` with the port the second command prints.
+
+The admin password is in the `grafana` Secret:
+
+```bash
+kubectl get secret grafana --namespace monitoring -o jsonpath='{.data.admin-password}' | base64 -d
+```
+
+Delete the `grafana-nodeport` Service when you're done; Helm doesn't manage it.
+
+## Adjust for the cluster
+
+The profile marks each setting you're likely to change with `SWITCH`.
+Edit your copy of `adhoc.values.yaml`, or pass the key with `--set`:
+
+NetworkPolicies
+: Each key that renders one is listed, so you can turn a single component's policy back on.
+  If you turn them on, see [grafana-operator times out reaching Grafana](../../operating/o11y-troubleshooting/#grafana-operator-timeout) for clusters that run NodeLocal DNSCache.
+
+DNS Service name
+: Loki's gateway resolves through a Service named `kube-dns`.
+  Set `loki.global.dnsService` when the cluster names it something else.
+  For more information, see [`host not found in resolver`](../../operating/o11y-troubleshooting/#host-not-found-in-resolver).
+
+metrics-server
+: Off, as at the chart default, because most clusters already serve `metrics.k8s.io`.
+  Turn it on when `kubectl get apiservice v1beta1.metrics.k8s.io` finds nothing.
+
+Loki
+: Turn it off when the cluster can't fit one more pod.
+  Also turn off the Alloy gateway's Loki destination, which the profile lists beside it.
+
+To keep logs in object storage, add `-f materialize-monitoring/profiles/s3-compatible.values.yaml` after `adhoc`.
+Its header has the commands for the two Secrets it reads.
+
+## Clean up
+
+Uninstall the releases in the reverse order you installed them:
+
+```bash
+helm uninstall mzmon-dashboards --namespace monitoring
+helm uninstall mzmon --namespace monitoring
+helm uninstall mzmon-crds --namespace monitoring
+```
+
+The following outlive the releases:
+
+- The CRDs, which the CRDs release leaves in place.
+  Other installs in the cluster might use them.
+- The Secrets you created, and any NodePort Service.
+- The Thanos blocks in the bucket.
+
+For when and how to remove the CRDs, see [Uninstalling](../../operating/uninstalling/).
 
 
 --------------------------------------------------------------------------------
@@ -6505,7 +6721,7 @@ The dashboards are a **separate chart**, `materialize-monitoring-dashboards`, in
 Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
 
 ```bash
-helm install mzmon-dashboards materialize/materialize-monitoring-dashboards \
+helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
   --namespace monitoring
 ```
 
@@ -9708,6 +9924,127 @@ Then re-fetch cluster credentials, because a kubeconfig entry with an exec plugi
 
 The tell is breadth: an expired session breaks *everything at once*, including things you did not touch. A real misconfiguration is almost always narrower. When a failure looks impossibly broad, check the clock before you check your work.
 
+## Scheduling, DNS, and access
+
+The entries in this section come up most on on-premises clusters, where node labels, DNS, and ingress differ from the cloud defaults the chart assumes.
+
+### Pods `Pending` with `didn't match pod topology spread constraints (missing required label)` {#missing-zone-label}
+
+Thanos Receive, Loki's ingesters, or Alertmanager stay `Pending`, and `kubectl describe pod` shows this event.
+
+**Cause.** These workloads carry a topology spread constraint on `topology.kubernetes.io/zone` with `whenUnsatisfiable: DoNotSchedule`.
+When no node has that label, the scheduler has no zone to place a pod in.
+
+**Fix.** Compose `profiles/no-zone-spread.values.yaml`, which keeps a soft spread across nodes instead.
+`profiles/adhoc.values.yaml` removes the constraints as well.
+For more information, see [Production Best Practices](../production-best-practices/#thanos-few-zones).
+
+### `host not found in resolver "kube-dns.kube-system.svc.cluster.local."` {#host-not-found-in-resolver}
+
+The `loki-gateway` pod crash-loops, and its `nginx` container logs this line at startup.
+
+**Cause.** The gateway's nginx config names the cluster DNS Service as its resolver.
+The Loki chart assumes that Service is `kube-dns` in `kube-system`.
+Some distributions name it differently.
+Kubespray names it `coredns`, and RKE2 names it `rke2-coredns-rke2-coredns`.
+
+**Fix.** Find the Service, and set its name and namespace:
+
+```bash
+kubectl get services --all-namespaces | grep -i dns
+```
+
+```yaml
+loki:
+  global:
+    dnsService: DNS_SERVICE
+    dnsNamespace: kube-system
+```
+
+Replace `DNS_SERVICE` with the Service name.
+
+### grafana-operator logs `failed to authenticate with instance` and `Client.Timeout exceeded` {#grafana-operator-timeout}
+
+Grafana is `Running`, and a port-forward to it works.
+The operator still can't reach it, so no dashboards, data sources, or folders reach Grafana.
+Every `GrafanaManifest` then reports `instanceSelector found no matching Grafana instances`.
+
+A port-forward goes straight to the pod.
+It skips DNS, the Service, and NetworkPolicy, so it doesn't test the path the operator takes.
+
+**Cause.** Check DNS first.
+The chart's `*-egress-dns` NetworkPolicies allow port 53 only to pods.
+On a cluster that runs NodeLocal DNSCache, pods resolve through a link-local address that belongs to no pod, such as Kubespray's `169.254.25.10`.
+The policy doesn't match that address, so every lookup from a policed pod times out.
+
+Look at the nameserver your pods use:
+
+```bash
+kubectl run dnstest --namespace monitoring --rm -it --restart=Never --image=busybox -- cat /etc/resolv.conf
+```
+
+**Fix.** When the nameserver is a link-local or node address, allow DNS to it from the components whose egress the chart restricts.
+NetworkPolicies are additive, so one policy that selects those components extends each of their DNS rules.
+
+Select only those components.
+A policy that selects a pod isolates that pod's egress, so `podSelector: {}` would restrict Grafana, both Alloy roles, and the chart's Jobs to DNS alone.
+Those pods have no egress policy otherwise, and they would lose every other connection they make.
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-node-dns
+  namespace: monitoring
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - loki
+          - alertmanager
+          - grafana-operator
+          - kube-state-metrics
+          - metrics-server
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: NAMESERVER_IP/32
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+EOF
+```
+
+Replace `NAMESERVER_IP` with the address from `resolv.conf`.
+Helm doesn't manage this policy, so it survives upgrades.
+
+When the nameserver is a Service IP, DNS isn't the cause.
+Run `curl` from a pod with no policy, such as one started with `kubectl run`, against `http://grafana.monitoring/api/health`.
+When that fails too, the problem is Service routing on the cluster rather than this chart.
+
+### A port-forwarded Grafana returns `ERR_EMPTY_RESPONSE` or `ERR_CONNECTION_RESET` {#port-forward-resets}
+
+The page loads, but some requests fail, and the `kubectl port-forward` terminal logs errors such as `error copying from local connection to remote stream`.
+
+**Cause.** `kubectl port-forward` carries every connection through the API server and the kubelet.
+When one connection is reset at the pod end, kubectl drops it, and some kubectl versions end the whole forward.
+A page that opens many requests at once, such as a Grafana dashboard or the Materialize Console, hits this often.
+
+**Fix.** Expose the Service on a NodePort instead.
+`kubectl expose` copies the selector and ports from the existing Service:
+
+```bash
+kubectl expose service grafana --namespace monitoring --name grafana-nodeport --type NodePort
+```
+
+Open `http://NODE_IP:NODE_PORT`, where `NODE_PORT` is the port from `kubectl get service grafana-nodeport --namespace monitoring`.
+Delete the Service when you're done; Helm doesn't manage it.
+
 ## Data that goes missing
 
 ### Healthy targets go dark: `data refused due to high memory usage`
@@ -12360,7 +12697,7 @@ You may consider Garage or RustFS or MinIO for manually provisioned object stora
 | https://grafana.github.io/helm-charts | alloy(alloy-gateway) | 1.13.1 |
 | https://kubernetes-sigs.github.io/metrics-server | metrics-server | 3.14.0 |
 | [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | grafana | 14.0.1 |
-| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 18.15.1 |
+| [oci://ghcr.io/grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) | loki | 19.0.2 |
 | [oci://ghcr.io/grafana/helm-charts](https://github.com/grafana/helm-charts) | grafana-operator | 5.25.0 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | alertmanager | 1.43.3 |
 | [oci://ghcr.io/prometheus-community/charts](https://github.com/prometheus-community/helm-charts) | kube-state-metrics | 8.6.0 |
@@ -22490,7 +22827,7 @@ not belong here — `git ls-files | awk -F/ '{print $1}' | sort -u` is the quick
         * `rules/`: `prometheus/`, `loki/`, `thanos/`
         * `metrics/`: `metric-tiers.yaml`
       * `templates/`: provided resources — `alerts/`, `dashboards/`, `pipelines/`, `scrapers/`, plus `grafana-grafana.yaml` (the `Grafana` instance), `grafana-datasources.yaml` (the Thanos / Loki / Alertmanager `GrafanaDatasource`s), `alertmanager-config.yaml` (Alertmanager's configuration, rendered from `alerting`), `validate.yaml` and `NOTES.txt` (the render-time validation surface), and the `_*.tpl` helper files (`_helpers.tpl`, `_grafana_helpers.tpl`, `_loki_helpers.tpl`, `_thanos_helpers.tpl`, `_alloy_helpers.tpl`, `_alertmanager_helpers.tpl`, `_postgres_exporter_helpers.tpl`, and others)
-      * `profiles/`: composable values overlays — sizing (`loki-small`, `loki-large`, `loki-test`), cloud examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`), and shape overlays (`existing-grafana`, `grafana-postgres`, `grafana-pvc`, `grafana-ingress`, `split-namespace`, `otel-metrics-fanout`, `otlp-metrics-honeycomb`). The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
+      * `profiles/`: composable values overlays — sizing (`loki-*`, `thanos-*`, `kind`), storage examples (`aws-example`, `gcp-example`, `azure-example`, `aws-amp-fanout`, `s3-compatible`), shape overlays (`existing-grafana`, `grafana-*`, `no-storage-class`, `no-zone-spread`, `split-namespace`, and others), and `adhoc`, the whole stack in one file. The chart defaults target a **medium** install, so sizing profiles are deltas in either direction
         * `registry/`: hardened-image and private-registry overlays — `pull-secret` (the pull secret alone, composed first) `mirror` (same images, private host — anchors per upstream registry), and one per hardened-image vendor (`chainguard`, `docker-hardened-images`). Split that way because the pull secret is the half they all share, and because no single `global` key reaches every subchart. Only vendors that keep the upstream entrypoint and layout get a profile — Bitnami rebuilds around its own charts, so it is a port rather than a retag
       * `tests/`: `helm-unittest` suites plus `__snapshot__/` (`make helm-tests`), and `alertmanager/` — scenario values for `make alertmanager-config-check`, which helm-unittest does not collect, each checked with `amtool check-config` and rendered with `amtool template render`
     * `materialize-monitoring-dashboards/`: the Grafana dashboards, as a chart and release of their own — though not a *component* of their own: it belongs to the existing `dashboards` component, whose version stream it shares with `packages/dashboards/` and `packages/queries/`. Split out because Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew — the umbrella chart's `helm upgrade` began failing outright. It creates `GrafanaManifest` resources and nothing else; the `Grafana` instance, the datasources and the folders stay in the umbrella chart, and this one references them through values it cannot discover (`grafana.instanceSelector`, `grafana.folderUids`)
