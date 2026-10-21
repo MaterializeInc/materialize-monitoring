@@ -21,7 +21,7 @@ diagnosis honest.
   strings, pods that will not start, changes that appear to do nothing.
 - [Uninstalling](../../../docs/content/operating/uninstalling.md) — read *before*
   tearing anything down. Teardown deadlocks by default.
-- [Production Best Practices](../../../docs/content/operating/production-best-practices.md)
+- [Production Best Practices](../../../docs/content/operating/production-best-practices/checklist.md)
   — the checklist, tagged with who owns each item.
 - [Installing via Helm](../../../docs/content/getting-started/helm.md) and
   [Terraform](../../../docs/content/getting-started/terraform.md) — the two paths.

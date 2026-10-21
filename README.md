@@ -46,7 +46,7 @@ helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitori
 That is the shape, not a complete install: object storage and credentials come first, and the backend has to be named in your values.
 See [Installing via Helm](https://materializeinc.github.io/materialize-monitoring/getting-started/helm/) for the real
 procedure, and
-[Production Best Practices](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/)
+[Production Best Practices](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/checklist/)
 before running it anywhere that matters.
 
 ### Dashboards only

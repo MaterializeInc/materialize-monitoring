@@ -81,7 +81,7 @@ Only the binding mechanism differs. Pick your provider:
 
 > [!INFO]
 >   The default assumes the release is installed into `monitoring`.
->   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the `:sub` is `system:serviceaccount:loki:loki` instead.
+>   Under [split namespaces](../../operating/production-best-practices/stack-wide/#namespace-layout), the `:sub` is `system:serviceaccount:loki:loki` instead.
 
 A trust policy scoped to the wrong namespace/ServiceAccount is what produces `STS: AssumeRoleWithWebIdentity … 403 AccessDenied`.
 
@@ -129,7 +129,7 @@ loki:
 
    > [!INFO]
    >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[loki/loki]"` here.
+   >   Under [split namespaces](../../operating/production-best-practices/stack-wide/#namespace-layout), use `--member="serviceAccount:<project>.svc.id.goog[loki/loki]"` here.
 
 3. Annotate the ServiceAccount — and set the GCS backend in all four places from [Selecting the backend](#selecting-the-backend), which the annotation alone does not do:
 
@@ -151,7 +151,7 @@ loki:
 
    > [!INFO]
    >   The default assumes the release is installed into `monitoring`.
-   >   Under [split namespaces](../../operating/production-best-practices/#namespace-layout), the subject is `system:serviceaccount:loki:loki` instead.
+   >   Under [split namespaces](../../operating/production-best-practices/stack-wide/#namespace-layout), the subject is `system:serviceaccount:loki:loki` instead.
 
 3. Annotate the ServiceAccount, label the pods so the webhook injects the token, and set the Azure backend in all four places from [Selecting the backend](#selecting-the-backend):
 
@@ -169,7 +169,7 @@ loki:
 {{< /tabs >}}
 
 > [!INFO]
->   **The token exchange and the object store are both 443 hops** to your cloud's identity and storage endpoints (AWS: STS + S3; GCP: `sts.googleapis.com`/`oauth2.googleapis.com` + GCS; Azure: `login.microsoftonline.com` + Blob). If you enable the Loki NetworkPolicy you must allow that egress (`networkPolicy.externalStorage`), or the credential fetch fails — a *blocked* egress hangs the compactor at startup (a silent connect timeout), while an *allowed* egress with a bad binding returns a fast auth error. See [Operating > Production Best Practices](../../operating/production-best-practices/#11-security--credentials).
+>   **The token exchange and the object store are both 443 hops** to your cloud's identity and storage endpoints (AWS: STS + S3; GCP: `sts.googleapis.com`/`oauth2.googleapis.com` + GCS; Azure: `login.microsoftonline.com` + Blob). If you enable the Loki NetworkPolicy you must allow that egress (`networkPolicy.externalStorage`), or the credential fetch fails — a *blocked* egress hangs the compactor at startup (a silent connect timeout), while an *allowed* egress with a bad binding returns a fast auth error. See [Operating > Production Best Practices](../../operating/production-best-practices/loki/#object-storage-egress).
 
 > [!NOTE]
 >   **Alternatives.** **EKS Pod Identity** is a newer AWS alternative to IRSA (a pod-identity *association*, no `oidc-provider` to manage). **Static keys / connection strings** are the last-resort escape hatch on any cloud — supply them as a Secret consumed by reference, for environments without workload identity.

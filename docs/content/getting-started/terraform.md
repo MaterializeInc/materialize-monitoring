@@ -379,14 +379,14 @@ Either grow the pool or start at `sizing = "small"`.
 
 The modules cover the cloud-resource half of a production deployment — buckets, workload identity, version pinning — but not the sizing, retention, and capacity decisions that only you can make.
 
-[Production Best Practices](../../operating/production-best-practices/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/#terraform-consumer), then work the items still tagged `[operator]`.
+[Production Best Practices](../../operating/production-best-practices/checklist/) is the checklist, tagged by owner. Start with [what the Terraform path already handles](../../operating/production-best-practices/checklist/#terraform-consumer), then work the items still tagged `[operator]`.
 
 Four that catch people out on a first production install:
 
 - **A default StorageClass must exist.** Several components are PVC-backed and the modules do not create one.
-- **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/#metrics-thanos).
+- **Retention is enforced in-cluster, not by the bucket.** `metrics_retention_days` defaults to off for a reason — see the [Thanos checklist](../../operating/production-best-practices/thanos/).
 - **Nothing is notified until a receiver exists.** Alertmanager and the bundled rules install, but a default install routes every alert to `mzmon-null`. See [Alerting](#alerting).
-- **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/#grafana).
+- **Grafana has no identity provider until you configure one.** The modules give it a durable database and can put a load balancer in front of it, but not an IdP — see [Authentication](../../dashboards/grafana/auth/) and the [Grafana checklist](../../operating/production-best-practices/grafana/).
 
 ## Pinning a different version
 

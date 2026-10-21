@@ -129,7 +129,7 @@ kubectl get nodes -o custom-columns='NODE:.metadata.name,DISK:.status.capacity.e
 
 Then lower the request, or lower what drives it.
 For Receive that is `thanos.receive.tsdb.retention` — local retention sets the disk requirement almost linearly, and the chart ships 6h for this reason.
-See [Declaring the ephemeral budget](../production-best-practices/#thanos-ephemeral-budget).
+See [Declaring the ephemeral budget](../production-best-practices/thanos/#thanos-ephemeral-budget).
 
 Two things that make this harder to spot than it should be:
 
@@ -239,7 +239,7 @@ When no node has that label, the scheduler has no zone to place a pod in.
 
 **Fix.** Compose `profiles/no-zone-spread.values.yaml`, which keeps a soft spread across nodes instead.
 `profiles/adhoc.values.yaml` removes the constraints as well.
-For more information, see [Production Best Practices](../production-best-practices/#thanos-few-zones).
+For more information, see [Production Best Practices](../production-best-practices/stack-wide/#fewer-than-two-zones).
 
 ### `host not found in resolver "kube-dns.kube-system.svc.cluster.local."` {#host-not-found-in-resolver}
 
@@ -378,7 +378,7 @@ kubectl --namespace monitoring logs -l app.kubernetes.io/name=alloy-gateway --si
 
 Delete it to recover now; the other gateways take over its targets.
 To stop it recurring, give the gateway more memory: raise `alloy-gateway.alloy.resources`,
-as [Production Best Practices](../production-best-practices/#collection-alloy) describes.
+as [Production Best Practices](../production-best-practices/alloy/#restart-after-a-config-change) describes.
 `GOMEMLIMIT` and the memory limiter follow the new limit, unless `extraEnv` sets an explicit `GOMEMLIMIT`.
 
 ## Configuration that appears to do nothing
@@ -397,7 +397,7 @@ This is the one place the chart cannot own its own rollout, and it is the revers
 kubectl --namespace monitoring rollout restart deployment/alloy-gateway daemonset/alloy-agent
 ```
 
-The Terraform modules stamp a values hash onto both pod templates so this happens automatically. On the Helm path it is yours — see [Collection (Alloy)](../production-best-practices/#collection-alloy).
+The Terraform modules stamp a values hash onto both pod templates so this happens automatically. On the Helm path it is yours — see [Collection (Alloy)](../production-best-practices/alloy/#restart-after-a-config-change).
 
 ### Grafana's admin password changes on every deploy
 
@@ -448,7 +448,7 @@ Note that a replace does **not** reset PVCs, per the storage-class warning above
 
 ## See more
 
-- [Production Best Practices](../production-best-practices/) — the deployment checklist, tagged by owner
+- [Production Best Practices](../production-best-practices/checklist/) — the deployment checklist, tagged by owner
 - [Uninstalling](../uninstalling/) and [Upgrading](../upgrading/) — the two asymmetric lifecycle operations
 - [Meta Observability](../meta-observability/) — monitoring the monitoring stack
 - [Troubleshooting Materialize](../troubleshooting-materialize/) — the mirror of this page, for when the database
