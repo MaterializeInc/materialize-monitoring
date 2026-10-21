@@ -602,9 +602,10 @@ Step 3 also decouples the dashboards from the Materialize version.
 The canonical names are produced by the monitors against every Materialize release, so a dashboard on `cluster_id` works on a release that emits `instance_id` and on one that emits `cluster_id`.
 Today a rename upstream would need a `min-mz-version` bump or a second arm in every affected query.
 
-The pre-1.0 budget makes this cheap now.
-The [deprecation policy](../20260823-deprecation-policy/#the-pre-10-breaking-change-budget) lists label-family harmonization as "cheaper before anyone queries the long-form labels", and asks whether it should block 1.0.
-This design's answer is that the first pass SHOULD land before [DEP-205](https://linear.app/materializeinc/issue/DEP-205) stamps 1.0, and the second pass need not.
+1.0 shipped before the first pass, so the [pre-1.0 budget](../20260823-deprecation-policy/#the-pre-10-breaking-change-budget) that listed label-family harmonization is spent.
+The migration still fits a minor release.
+Upstream label names are on the [coordinated surface](../20260823-deprecation-policy/#coordinated-surface-materialize-metrics-and-labels), which asks for disclosure and for a dual-publish shim where this repository's layer allows one, and sets no major-version requirement.
+The alias overlap is that shim.
 
 ### Alerts keep both labels through the window
 
@@ -675,7 +676,7 @@ Cloud's usage pipeline (internal) calls that resource name the `environment_id` 
 Cloud also has a design (internal) proposing to collapse its organization and environment labels into one `environment_id` through relabeling, without fixing which of the two values it carries.
 This doc fixes it: `environment_id` is the resource's `spec.environmentId`, in Cloud as everywhere, and the globally unique key is `(cluster, environment_id)` because Cloud repeats the UUID across regions.
 
-Cloud converges by adopting the shipped monitors, which is already the [CLOM](../../roadmap/#clom--metrics-for-cloud-cloud-metrics) direction, and gets the aliases and the overlap with them.
+Cloud converges by adopting the shipped monitors, which is already the [Cloud adoption](../../roadmap/#cloud-adoption) direction, and gets the aliases and the overlap with them.
 Two decisions are Cloud's alone.
 The first is `mz_cluster` against `cluster`: this stack stamps `cluster`, the ecosystem expects `cluster`, and Cloud's alerting would move with the adoption.
 The second is whether Cloud sets `spec.environmentName` to the name a customer sees, since its `metadata.name` is an internal identifier and `environment_name` would otherwise show it.
@@ -754,17 +755,17 @@ The render tests prove a rule exists, and the important assertions are about wha
 ## Documentation to update
 
 - **A customer-facing label contract page**, generated from `labels.yaml`: every canonical label, its meaning and join target, every alias with its retirement date, and the reserved list. It absorbs the alerting design's owed label contract, and it is the artifact a customer writes queries and routes against.
-- `reference/internal/dashboard/style-guidelines.md` — the [label-family section](../../dashboard/style-guidelines/#materialize-metric-label-families) becomes a pointer to the contract page once the aliases ship, and the "query author writes the label" paragraph goes with it.
-- `reference/internal/pipelines/metrics.md` — the [three-phase table](../../pipelines/metrics/#where-relabeling-lives-three-phases) names `inputMetricProcessor` as the home for dashboard-contract normalization. It moves to the monitors, and the table should say why.
+- `reference/development/dashboard/style-guidelines.md` — the [label-family section](../../dashboard/style-guidelines/#materialize-metric-label-families) becomes a pointer to the contract page once the aliases ship, and the "query author writes the label" paragraph goes with it.
+- `reference/development/pipelines/metrics.md` — the [three-phase table](../../pipelines/metrics/#where-relabeling-lives-three-phases) names `inputMetricProcessor` as the home for dashboard-contract normalization. It moves to the monitors, and the table should say why.
 - `reference/stability.md` — the canonical vocabulary becomes a public interface ("documented metric labels"), while raw upstream labels stay unstable. That is the central claim, written as policy.
-- `reference/internal/versioning.md` — the same surface, in the policy of record.
-- `reference/internal/queries/alerts.md` — its scoping guidance names the long-form label and a query-time `label_replace` from `pod`.
+- `reference/development/versioning.md` — the same surface, in the policy of record.
+- `reference/development/queries/alerts.md` — its scoping guidance names the long-form label and a query-time `label_replace` from `pod`.
 - `packages/prometheus-scrapers/README.md` — the allowlist rationale gains the aliases and the vocabulary file.
 - `metrics/collecting/` — the GMP page states which rules the GMP flavor cannot express, once that is measured.
-- `reference/internal/design-docs/20260916-tenant-query-api.md` — its [What exists today](../20260916-tenant-query-api/#what-exists-today) rows name `materialize_cloud_organization_name` and `organization_name` as the environment labels the proxy enforces on. The key becomes `environment_id`, with `cluster` where a store spans clusters.
+- `reference/development/design-docs/20260916-tenant-query-api.md` — its [What exists today](../20260916-tenant-query-api/#what-exists-today) rows name `materialize_cloud_organization_name` and `organization_name` as the environment labels the proxy enforces on. The key becomes `environment_id`, with `cluster` where a store spans clusters.
 - `logs-and-events/` — the structured-metadata reference gains `environment_id`.
 - `compatibility.md` — the operator version that sets `materialize.cloud/environment-id`.
-- `reference/internal/roadmap.md` — ✅ done. A workstream section and a follow-up-documentation entry point here.
+- `reference/development/roadmap.md` — ✅ done. Its **Metric label standardization** section and its **Designs in flight** row link here.
 
 ## Open questions
 
