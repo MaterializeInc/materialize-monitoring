@@ -1242,12 +1242,14 @@ queries:
         ),
         0
       ) < 31536000
+    # The PromQL's worst queue per component is the newest sample minus the
+    # stalest queue's last send, hence min: on the send timestamp.
     datadogQuery: |
       cutoff_max(
         clamp_min(
           max:prometheus_remote_storage_highest_timestamp_in_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
             by {pod,component_id}
-            - max:prometheus_remote_storage_queue_highest_sent_timestamp_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+            - min:prometheus_remote_storage_queue_highest_sent_timestamp_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
               by {pod,component_id},
           0
         ),
@@ -1283,21 +1285,21 @@ queries:
           0
         ) < 31536000
       )
-    # A group-by function needs at least one tag, so this is the maximum per role.
-    # Only the gateway runs remote-write queues, so it draws one series.
+    # The send timestamp keeps each queue's tags, so cutoff_max drops a queue
+    # that never sent on its own, as the PromQL does, before the overall max.
     datadogQuery: |
       max(
         cutoff_max(
           clamp_min(
             max:prometheus_remote_storage_highest_timestamp_in_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
-              by {app,pod,component_id}
+              by {pod,component_id}
               - max:prometheus_remote_storage_queue_highest_sent_timestamp_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
-                by {app,pod,component_id},
+                by {pod,component_id,url,remote_name},
             0
           ),
           31536000
         ),
-        {app}
+        {*}
       )
 
   - id: infra.alloy.metric_pipeline.down_targets

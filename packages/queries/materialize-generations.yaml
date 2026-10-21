@@ -304,12 +304,14 @@ queries:
           "generation", "$1", "pod", "%%{mzGenerationPattern}"
         ) < 1e9
       )
-    # As above: the environmentd pod stands in for the generation.
+    # As above: the environmentd pod stands in for the generation. The inner
+    # query keeps every tag that tells one reading from another, so cutoff_max
+    # drops each replica's sentinel on its own.
     datadogQuery: |
       max(
         cutoff_max(
           max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
-            by {pod,instance_id,collection_id},
+            by {namespace,pod,instance_id,replica_id,collection_id},
           1e9
         ),
         {pod}
@@ -360,13 +362,18 @@ queries:
           ) < 1e9
         )
       )
-    # As above: the environmentd pod stands in for the generation.
+    # As above: the environmentd pod stands in for the generation. cutoff_max
+    # drops each reading's sentinel, and the inner group-by max takes each
+    # collection's worst surviving replica before the sum.
     datadogQuery: |
       sum(
-        cutoff_max(
-          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
-            by {pod,instance_id,collection_id},
-          1e9
+        max(
+          cutoff_max(
+            max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+              by {namespace,pod,instance_id,replica_id,collection_id},
+            1e9
+          ),
+          {pod,instance_id,collection_id}
         ),
         {pod}
       )
@@ -410,13 +417,18 @@ queries:
           ) < 1e9
         )
       )
-    # As above: the environmentd pod stands in for the generation.
+    # As above: the environmentd pod stands in for the generation. cutoff_max
+    # drops each reading's sentinel, and the inner group-by max takes each
+    # collection's worst surviving replica before the sum.
     datadogQuery: |
       sum(
-        cutoff_max(
-          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
-            by {pod,instance_id,collection_id},
-          1e9
+        max(
+          cutoff_max(
+            max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+              by {namespace,pod,instance_id,replica_id,collection_id},
+            1e9
+          ),
+          {pod,instance_id,collection_id}
         ),
         {pod,instance_id}
       )

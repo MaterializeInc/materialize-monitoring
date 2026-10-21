@@ -210,12 +210,14 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
-    # cutoff_max drops each collection's sentinel before the per-cluster max,
-    # as `< 1e9` does inside the PromQL aggregation.
+    # The inner query keeps every tag that tells one reading from another, so
+    # cutoff_max drops each replica's sentinel on its own, as `< 1e9` does in
+    # the PromQL, before the per-cluster max.
     datadogQuery: |
       max(
         cutoff_max(
-          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND quantile:1} by {instance_id,collection_id},
+          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+            by {namespace,pod,instance_id,replica_id,collection_id},
           1e9
         ),
         {instance_id}
@@ -264,13 +266,18 @@ queries:
       functions:
         - name: mzClusterName
           args: ["instance_id"]
-    # As above: cutoff_max drops the sentinels, then the group-by sum adds the
-    # deduplicated collections per cluster.
+    # As above, cutoff_max drops each reading's sentinel. The inner group-by
+    # max then takes each collection's worst surviving replica, and the outer
+    # sum adds the collections per cluster.
     datadogQuery: |
       sum(
-        cutoff_max(
-          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND quantile:1} by {instance_id,collection_id},
-          1e9
+        max(
+          cutoff_max(
+            max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+              by {namespace,pod,instance_id,replica_id,collection_id},
+            1e9
+          ),
+          {instance_id,collection_id}
         ),
         {instance_id}
       )
@@ -298,13 +305,17 @@ queries:
           args: ["collection_id"]
         - name: mzClusterName
           args: ["instance_id"]
-    # As above: cutoff_max drops the sentinels before the top 15 are taken.
+    # As above, cutoff_max drops each reading's sentinel, and the group-by max
+    # takes each collection's worst surviving replica before the top 15.
     datadogQuery: |
       top(
-        cutoff_max(
-          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND replica_id:%%{mzReplicaList} AND quantile:1}
-            by {instance_id,collection_id},
-          1e9
+        max(
+          cutoff_max(
+            max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND instance_id:%%{mzClusterList} AND replica_id:%%{mzReplicaList} AND quantile:1}
+              by {namespace,pod,instance_id,replica_id,collection_id},
+            1e9
+          ),
+          {instance_id,collection_id}
         ),
         15, 'max', 'desc'
       )

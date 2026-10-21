@@ -85,7 +85,7 @@ queries:
       default_zero(
         count_not_null(
           cutoff_max(
-            max:up{app:thanos AND $thanosNamespace AND $thanosComponent} by {service.instance.id},
+            min:up{app:thanos AND $thanosNamespace AND $thanosComponent} by {service,service.instance.id},
             0
           )
         )
