@@ -169,7 +169,8 @@ The following table maps each PromQL construct to its Datadog form:
 | `sum(max by (k) (m))` | `sum(max:m{…} by {k}, {*})` |
 | `sum by (o) (a / b)` | `sum(sum:a{…} by {i,o} / sum:b{…} by {i,o}, {o})` |
 | `m > 1e15` | `cutoff_min(m, 1e15)` |
-| `max by (o) (m < 1e9)` | `max(cutoff_max(max:m{…} by {i,o}, 1e9), {o})` |
+| `max by (o) (m < 1e9)` | `max(cutoff_max(max:m{…} by {every series tag}, 1e9), {o})` |
+| `sum by (o) (max by (o, k) (m < 1e9))` | `sum(max(cutoff_max(max:m{…} by {every series tag}, 1e9), {o,k}), {o})` |
 | `q > 0`, to drop idle series | `cutoff_min(q, 1e-9)` |
 | `a > bool b` | `is_greater(a - b, 0)` |
 | `a * on (k) group_left (name) info` | `a * (info * 0 + 1)`, with both grouped by `k` |
@@ -193,11 +194,16 @@ The following table maps each PromQL construct to its Datadog form:
 `sum`, `avg`, `min`, `max`, and `count` with a tag set aggregate across the series of an expression:
 
 ```text
-max(cutoff_max(max:mz_dataflow_wallclock_lag_seconds{…} by {instance_id,collection_id}, 1e9), {instance_id})
+max(cutoff_max(max:mz_dataflow_wallclock_lag_seconds{…} by {namespace,pod,instance_id,replica_id,collection_id}, 1e9), {instance_id})
 ```
 
 They are how a translation aggregates twice, aggregates after a value filter, or divides before aggregating.
 The inner query groups by every tag the PromQL's inner step keeps, and the function's tag set is the outer step's.
+
+A PromQL value filter, such as `< 1e9`, applies to each series before any aggregation.
+The query inside `cutoff_min` or `cutoff_max` therefore groups by every tag that tells one series from another: `namespace`, `pod`, `instance_id`, `replica_id`, and `collection_id` for wallclock lag.
+Grouping by fewer tags merges series before the filter, so one series decides for all of them, and a hydrating replica's sentinel hides the replica that is serving.
+Where the PromQL aggregates again after the filter, the group-by functions nest: `max(…, {instance_id,collection_id})` takes each collection's worst surviving reading, and a `sum` or `top` around it then counts each collection once.
 A group-by function always takes a tag set, and `{*}` reduces to a single series, as an outer aggregation without `by` does.
 Datadog validates a group-by function's tag set against its innermost query, so an outer group-by around a join that contains another group-by fails to validate, even though the join runs on its own.
 `is_greater`, `is_less`, and `floor` work inside a group-by function, and `is_equal` doesn't.
