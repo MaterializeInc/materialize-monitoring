@@ -135,13 +135,16 @@ Thanos is always the primary metric store. These fan out in addition to it, from
 
 | Variable | Default | Notes |
 |---|---|---|
-| `enable_google_cloud_metrics` | `false` | GCP only. Export to Google Cloud Monitoring. Creates a service account with `roles/monitoring.metricWriter` and binds the gateway to it |
+| `enable_google_cloud_metrics` | `false` | GCP only. Export to Google Cloud Managed Service for Prometheus, over OTLP to the Telemetry API. Creates a service account with `roles/monitoring.metricWriter` and binds the gateway to it |
 | `google_cloud_metrics_min_importance` | `"recommended"` | `essential`, `recommended`, `extended`, `diagnostic`, or `all`. Each tier includes the ones below it |
-| `google_cloud_metrics_prefix` | `null` | Metric name prefix. Defaults to `workload.googleapis.com/mzmon` |
+| `google_cloud_metrics_prefix` | `null` | Deprecated and ignored. Every metric is `prometheus.googleapis.com/<name>/<kind>`, so there is no prefix to choose |
+
+The project needs the `telemetry.googleapis.com` API enabled.
 
 `min_importance` is a **cost control**, not a filter for convenience.
-Cloud Monitoring bills per custom metric and per sample, so the tier you pick sets the bill.
+Cloud Monitoring bills these metrics per sample ingested, so the tier you pick sets the bill.
 `recommended` covers the dashboards; `all` sends the full surface and is a diagnostic setting, not a steady state.
+[Metrics > Storing](../../metrics/storing/#gcm) has the prices and a measured install.
 
 The tiers come from the same `metric-tiers.yaml` the chart uses, so a Terraform-selected tier and a Helm-selected one always mean the same set.
 See [Metrics > Storing](../../metrics/storing/) for what each tier contains.

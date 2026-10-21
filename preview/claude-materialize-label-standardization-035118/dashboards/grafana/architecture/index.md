@@ -35,9 +35,13 @@ Readiness is the reason for the split — it is not incidental.
 
 ## Connection modes
 
-Whichever server you use, the chart always creates one `Grafana` custom resource.
+Whichever server you use, the chart creates one `Grafana` custom resource.
 That resource is the operator's handle on "the Grafana that Materialize dashboards belong in".
 It is selected with `connections.grafana.mode`.
+
+When no grafana-operator acts on the release, set `connections.grafana.enabled: false` and the chart creates no `Grafana` resource in any mode.
+The chart then refuses to render folders or datasources that still select it.
+Turn those off, or point them at a `Grafana` resource you manage, as described in [Overriding the target instance](../grafana-operator/#overriding-the-target-instance).
 
 | `connections.grafana.mode` | Grafana server comes from | `Grafana` CR points at |
 |---|---|---|
@@ -215,7 +219,7 @@ Dashboards are **pre-rendered** into that chart, not generated at template time.
 Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
 `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
 The chart embeds them with `.Files.Get`.
-See [Dashboards as Code](../../../reference/internal/dashboard/overview/) for the authoring workflow.
+See [Dashboards as Code](../../../reference/development/dashboard/overview/) for the authoring workflow.
 
 Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
 
@@ -262,7 +266,7 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Thirteen dashboards are rendered, and `selected` decides which of them a release installs.
+Every dashboard in the registry is rendered, and `selected` decides which of them a release installs.
 Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
 These are the ones with something to know before narrowing it:
 
@@ -416,7 +420,7 @@ The chart therefore sets `timeInterval` to the slower of `pipeline.metrics.kubel
 Metrics scraped faster than that get a coarser minimum step and still draw.
 `connections.datasources.thanos.jsonData.timeInterval` overrides it, which is only worth doing for a datasource that reads metrics scraped more slowly still.
 The render warns about an override shorter than the chart's value, since that brings the scattered points back.
-The [style guidelines](/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/internal/dashboard/style-guidelines/#rate-intervals) cover the same failure from the dashboard side.
+The [style guidelines](/materialize-monitoring/preview/claude-materialize-label-standardization-035118/reference/development/dashboard/style-guidelines/#rate-intervals) cover the same failure from the dashboard side.
 
 ### Loki is multi-tenant
 
