@@ -8,6 +8,9 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+# Datadog's official client, for its dashboard models only. The client half is
+# never called; rustls keeps it off native-tls, matching mz-monitoring-build.
+datadog-api-client = { version = "0.38", default-features = false, features = ["rustls-tls"] }
 mzmon-lib = { path = "../mzmon-lib" }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
