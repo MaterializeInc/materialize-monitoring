@@ -189,7 +189,7 @@ That makes the namespace the only thing that varies between layouts.
 | Split (`split-namespace` profile) | `grafana.grafana` | `grafana-operator.grafana-operator` | `grafana` | `monitoring` |
 
 `monitoring` is the recommended release namespace; substitute whatever you install into.
-See [Namespace layout](../../../operating/production-best-practices/#namespace-layout) for the trade-off between the two.
+See [Namespace layout](../../../operating/production-best-practices/stack-wide/#namespace-layout) for the trade-off between the two.
 
 Two things shift automatically under `split-namespace`, both to keep `mode: bundled` working:
 

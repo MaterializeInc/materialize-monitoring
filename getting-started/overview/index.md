@@ -36,7 +36,7 @@ See [Ad-hoc install](../adhoc/).
 
 ## Going to Production
 
-Whichever path you take, [Production Best Practices](../../operating/production-best-practices/) is the checklist for a real deployment — sizing, retention, replication, disruption budgets, and object-storage durability — with each item tagged by who owns it.
+Whichever path you take, [Production Best Practices](../../operating/production-best-practices/checklist/) is the checklist for a real deployment — sizing, retention, replication, disruption budgets, and object-storage durability — with each item tagged by who owns it.
 
 ## Getting Help
 
