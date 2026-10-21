@@ -28,7 +28,7 @@ queries:
         %%{mzEnvironmentNamespaceFilter}
       } == 1
     datadogQuery: |
-      avg:up{job:monitoring/mzmon-materialize-environmentd, %%{mzEnvironmentNamespaceFilter}}
+      cutoff_min(max:up{service:monitoring/mzmon-materialize-environmentd AND %%{mzEnvironmentNamespaceFilter}} by {service.instance.id}, 1)
   - id: materialize.scraper.mzmon.clusterd
     stability: best-effort
     description:
@@ -49,7 +49,7 @@ queries:
         %%{mzEnvironmentNamespaceFilter}
       } == 1
     datadogQuery: |
-      avg:up{job:monitoring/mzmon-materialize-clusterd, %%{mzEnvironmentNamespaceFilter}}
+      cutoff_min(max:up{service:monitoring/mzmon-materialize-clusterd AND %%{mzEnvironmentNamespaceFilter}} by {service.instance.id}, 1)
   - id: materialize.scraper.mzmon.orchestratord
     stability: best-effort
     description:
@@ -63,7 +63,7 @@ queries:
         %%{mzOperatorNamespaceFilter}
       } == 1
     datadogQuery: |
-      avg:up{job:materialize/mzmon-materialize-operator, %%{mzOperatorNamespaceFilter}}
+      cutoff_min(max:up{service:materialize/mzmon-materialize-operator AND %%{mzOperatorNamespaceFilter}} by {service.instance.id}, 1)
   - id: materialize.health.clusters.status.percentage
     stability: best-effort
     description:
@@ -335,5 +335,5 @@ queries:
         )
       )
     datadogQuery: |
-      max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter}, quantile:1}.rollup(max, 3600)
+      max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND quantile:1}.rollup(max, 3600)
     instant: true

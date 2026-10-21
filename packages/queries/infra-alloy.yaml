@@ -108,6 +108,12 @@ queries:
         ),
         0
       )
+    datadogQuery: |
+      clamp_min(
+        sum:kube_daemonset_status_desired_number_scheduled{$alloyNamespace AND daemonset:alloy-agent}
+          - default_zero(sum:up{app:alloy-agent AND $alloyNamespace}),
+        0
+      )
 
   - id: infra.alloy.health.unhealthy_components
     stability: experimental
@@ -142,6 +148,9 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:alloy_component_controller_running_components{$alloyRole AND $alloyNamespace AND $alloyPod}
+        - sum:alloy_component_controller_running_components{$alloyRole AND $alloyNamespace AND $alloyPod AND health_type:healthy}
 
   - id: infra.alloy.health.config_failed
     stability: experimental
@@ -172,6 +181,13 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      count_not_null(
+        cutoff_max(
+          min:alloy_config_last_load_successful{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod},
+          0
+        )
+      )
 
   - id: infra.alloy.health.log_lines_lost
     stability: experimental
@@ -199,6 +215,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_write_dropped_entries_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.health.samples_lost
     stability: experimental
@@ -273,6 +291,11 @@ queries:
           )
         )
       )
+    # The `and on ()` gate is a join that only filters, so this reads zero rather
+    # than no data while nothing is reporting.
+    datadogQuery: |
+      default_zero(sum:prometheus_remote_storage_samples_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60))
+        + default_zero(sum:otelcol_exporter_send_failed_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60))
 
   - id: infra.alloy.health.pushes_refused
     stability: experimental
@@ -350,6 +373,19 @@ queries:
           )
         )
       )
+    # The `and on ()` gate is a join that only filters, so this reads zero rather
+    # than no data while nothing is reporting.
+    datadogQuery: |
+      default_zero(
+        sum:loki_source_api_request_duration_seconds_count{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND NOT route:other AND NOT status_code:2*
+        }.as_rate().rollup(sum, 60)
+      )
+        + default_zero(
+          sum:prometheus_receive_http_request_duration_seconds_count{
+            $alloyRole AND $alloyNamespace AND $alloyPod AND NOT route:other AND NOT status_code:2*
+          }.as_rate().rollup(sum, 60)
+        )
 
   - id: infra.alloy.health.up
     stability: experimental
@@ -373,6 +409,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      max:up{$alloyRole AND $alloyNamespace AND $alloyPod} by {app,pod}
 
   - id: infra.alloy.health.restarts
     stability: experimental
@@ -406,6 +444,14 @@ queries:
         }
         %%{range}
       )
+    # The `and on (namespace, pod) up{…}` join only filters, so the role picker
+    # doesn't apply; the namespace and pod pickers filter these series' own tags.
+    datadogQuery: |
+      cutoff_min(
+        sum:kube_pod_container_status_restarts_total{$alloyNamespace AND $alloyPod AND container:alloy}
+          by {namespace,pod}.as_count(),
+        1e-9
+      )
 
   - id: infra.alloy.health.versions
     stability: experimental
@@ -424,6 +470,11 @@ queries:
           namespace=~"$alloyNamespace",
           pod=~"$alloyPod"
         }
+      )
+    datadogQuery: |
+      count(
+        max:alloy_build_info{$alloyRole AND $alloyNamespace AND $alloyPod} by {app,version,pod},
+        {app,version}
       )
 
   - id: infra.alloy.health.lines_delivered
@@ -450,6 +501,11 @@ queries:
           %%{interval}
         )
       )
+    # Datadog's `host` tag also carries the node's name, so this splits by the
+    # `loki.write` component, which names the destination, rather than by `host`.
+    datadogQuery: |
+      sum:loki_write_sent_entries_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {app,component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.health.samples_delivered
     stability: experimental
@@ -487,6 +543,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_remote_storage_samples_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:otelcol_exporter_sent_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
 
   # --- overview: alerts --------------------------------------------------------
   # Selected by the rules' `component` label rather than by name, so a new rule
@@ -494,6 +557,7 @@ queries:
   # target lost, a gateway refusing what it scraped, Loki receiving nothing.
   # `alloy` is the collectors' own software. The rules' selectors span every
   # namespace, so neither collector picker can narrow these.
+  # No Datadog form: Datadog alerts are monitors, not a series.
   - id: infra.alloy.health.alerts_firing
     stability: experimental
     description:
@@ -685,6 +749,9 @@ queries:
         )
         or vector(0)
       )
+    datadogQuery: |
+      sum:loki_source_file_read_lines_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+        + default_zero(sum:loki_source_journal_target_lines_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60))
 
   - id: infra.alloy.log_pipeline.stored
     stability: experimental
@@ -715,6 +782,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_write_sent_entries_total{$alloyRole AND app:alloy-gateway AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.log_pipeline.propagation
     stability: experimental
@@ -745,6 +814,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:loki_write_entry_propagation_latency_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {app}
 
   - id: infra.alloy.log_pipeline.files
     stability: experimental
@@ -764,6 +836,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:loki_source_file_files_active_total{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.log_pipeline.file_lines
     stability: experimental
@@ -786,6 +860,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_source_file_read_lines_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.log_pipeline.journal_lines
     stability: experimental
@@ -809,6 +886,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_source_journal_target_lines_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.log_pipeline.requests
     stability: experimental
@@ -837,6 +917,11 @@ queries:
           %%{interval}
         )
       )
+    # Datadog's `host` tag also carries the node's name, so this splits by the
+    # `loki.write` component, which names the destination, rather than by `host`.
+    datadogQuery: |
+      sum:loki_write_request_duration_seconds_count{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {component_id,status_code}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.log_pipeline.retries
     stability: experimental
@@ -860,6 +945,11 @@ queries:
           %%{interval}
         )
       )
+    # Datadog's `host` tag also carries the node's name, so this splits by the
+    # `loki.write` component, which names the destination, rather than by `host`.
+    datadogQuery: |
+      sum:loki_write_batch_retries_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {app,component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.log_pipeline.dropped
     stability: experimental
@@ -904,6 +994,14 @@ queries:
           %%{interval}
         )
       )
+    # Datadog can't merge in the zero line from the PromQL's `or` arm, so a quiet
+    # install reads no data here rather than zero.
+    datadogQuery: |
+      cutoff_min(
+        sum:loki_write_dropped_entries_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {app,reason}.as_rate().rollup(sum, 60),
+        1e-9
+      )
 
   - id: infra.alloy.log_pipeline.request_latency
     stability: experimental
@@ -931,6 +1029,11 @@ queries:
           )
         )
       )
+    # Datadog's `host` tag also carries the node's name, so this splits by the
+    # `loki.write` component, which names the destination, rather than by `host`.
+    datadogQuery: |
+      p99:loki_write_request_duration_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {component_id}
 
   - id: infra.alloy.log_pipeline.guard_drops
     stability: experimental
@@ -973,6 +1076,16 @@ queries:
           }
           %%{interval}
         )
+      )
+    # Datadog can't merge in the zero line from the PromQL's `or` arm, so a quiet
+    # install reads no data here rather than zero. Datadog writes the spaces in a
+    # reason as underscores, so `skip self` is `skip_self`.
+    datadogQuery: |
+      cutoff_min(
+        sum:loki_process_dropped_lines_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND reason NOT IN (sampledebug,skip_self,skip_loki,alloy_loki.echo)
+        } by {app,reason}.as_rate().rollup(sum, 60),
+        1e-9
       )
 
   - id: infra.alloy.log_pipeline.truncated
@@ -1017,6 +1130,15 @@ queries:
           %%{interval}
         )
       )
+    # Datadog can't relabel the CRI reassembly cuts as `field:cri_reassembly` or
+    # merge two metrics into one set of series, so each metric is its own query.
+    datadogQuery:
+      - |
+        sum:loki_process_cri_lines_truncated_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {pod}.as_rate().rollup(sum, 60)
+      - |
+        sum:loki_process_truncated_fields_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {pod,field}.as_rate().rollup(sum, 60)
 
   # --- metric pipeline: targets -> gateway -> stores ---------------------------
   - id: infra.alloy.metric_pipeline.targets
@@ -1038,6 +1160,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:prometheus_target_scrape_pool_targets{$alloyRole AND $alloyNamespace AND $alloyPod}
 
   - id: infra.alloy.metric_pipeline.targets_down
     stability: experimental
@@ -1055,6 +1179,8 @@ queries:
       count(up == 0)
       or
       0 * count(up)
+    datadogQuery: |
+      count_not_null(cutoff_max(min:up{*} by {service,service.instance.id}, 0))
 
   - id: infra.alloy.metric_pipeline.samples_sent
     stability: experimental
@@ -1078,6 +1204,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_remote_storage_samples_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.send_delay
     stability: experimental
@@ -1114,6 +1242,17 @@ queries:
         ),
         0
       ) < 31536000
+    datadogQuery: |
+      cutoff_max(
+        clamp_min(
+          max:prometheus_remote_storage_highest_timestamp_in_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+            by {pod,component_id}
+            - max:prometheus_remote_storage_queue_highest_sent_timestamp_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+              by {pod,component_id},
+          0
+        ),
+        31536000
+      )
 
   - id: infra.alloy.metric_pipeline.send_delay.worst
     stability: experimental
@@ -1144,6 +1283,22 @@ queries:
           0
         ) < 31536000
       )
+    # A group-by function needs at least one tag, so this is the maximum per role.
+    # Only the gateway runs remote-write queues, so it draws one series.
+    datadogQuery: |
+      max(
+        cutoff_max(
+          clamp_min(
+            max:prometheus_remote_storage_highest_timestamp_in_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+              by {app,pod,component_id}
+              - max:prometheus_remote_storage_queue_highest_sent_timestamp_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+                by {app,pod,component_id},
+            0
+          ),
+          31536000
+        ),
+        {app}
+      )
 
   - id: infra.alloy.metric_pipeline.down_targets
     stability: experimental
@@ -1161,6 +1316,8 @@ queries:
       max by (job, namespace, pod, instance) (
         up == 0
       )
+    datadogQuery: |
+      cutoff_max(min:up{*} by {service,namespace,pod,service.instance.id}, 0)
 
   - id: infra.alloy.metric_pipeline.targets_by_monitor
     stability: experimental
@@ -1185,6 +1342,9 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:prometheus_target_scrape_pool_targets{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {scrape_job}
 
   - id: infra.alloy.metric_pipeline.rejected_scrapes
     stability: experimental
@@ -1242,6 +1402,15 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_target_scrapes_exceeded_sample_limit_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_target_scrapes_exceeded_body_size_limit_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_target_scrape_pool_exceeded_target_limit_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_target_scrape_pool_exceeded_label_limits_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.rejected_samples
     stability: experimental
@@ -1289,6 +1458,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_target_scrapes_sample_out_of_order_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_target_scrapes_sample_duplicate_timestamp_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_target_scrapes_sample_out_of_bounds_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.slowest_scrapes
     stability: experimental
@@ -1310,6 +1486,11 @@ queries:
         max by (job) (
           scrape_duration_seconds
         )
+      )
+    datadogQuery: |
+      top(
+        max:scrape_duration_seconds{*} by {service},
+        10, 'max', 'desc'
       )
 
   - id: infra.alloy.metric_pipeline.largest_scrapes
@@ -1334,6 +1515,11 @@ queries:
         sum by (job) (
           scrape_samples_post_metric_relabeling
         )
+      )
+    datadogQuery: |
+      top(
+        sum:scrape_samples_post_metric_relabeling{*} by {service},
+        10, 'max', 'desc'
       )
 
   - id: infra.alloy.metric_pipeline.samples_scraped
@@ -1364,6 +1550,10 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_forwarded_samples_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND (component_id:prometheus.scrape.* OR component_id:prometheus.operator.*)
+      } by {component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.remote_write
     stability: experimental
@@ -1416,6 +1606,16 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_remote_storage_samples_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_remote_storage_samples_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_remote_storage_samples_retried_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.shards
     stability: experimental
@@ -1454,6 +1654,15 @@ queries:
             pod=~"$alloyPod"
           }
         )
+    datadogQuery:
+      - |
+        max:prometheus_remote_storage_shards{$alloyRole AND $alloyNamespace AND $alloyPod} by {component_id}
+      - |
+        max:prometheus_remote_storage_shards_desired{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}
+      - |
+        max:prometheus_remote_storage_shards_max{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}
 
   - id: infra.alloy.metric_pipeline.send_latency
     stability: experimental
@@ -1479,6 +1688,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:prometheus_remote_storage_sent_batch_duration_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {component_id}
 
   - id: infra.alloy.metric_pipeline.active_series
     stability: experimental
@@ -1500,6 +1712,9 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:prometheus_remote_write_wal_storage_active_series{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {pod}
 
   - id: infra.alloy.metric_pipeline.wal_size
     stability: experimental
@@ -1520,6 +1735,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:prometheus_tsdb_wal_storage_size_bytes{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.metric_pipeline.wal_errors
     stability: experimental
@@ -1576,6 +1793,15 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_remote_write_wal_corruptions_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_wal_writes_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_remote_write_wal_checkpoint_creations_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_tsdb_wal_truncations_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.otel_sent
     stability: experimental
@@ -1612,6 +1838,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:otelcol_exporter_sent_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:otelcol_exporter_sent_log_records_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.otel_failed
     stability: experimental
@@ -1647,6 +1880,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:otelcol_exporter_send_failed_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
+      - |
+        sum:otelcol_exporter_send_failed_log_records_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.metric_pipeline.otel_queue
     stability: experimental
@@ -1670,6 +1910,14 @@ queries:
           namespace=~"$alloyNamespace",
           pod=~"$alloyPod"
         }
+      )
+    datadogQuery: |
+      max(
+        max:otelcol_exporter_queue_size{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {component_id,data_type,pod}
+          / max:otelcol_exporter_queue_capacity{$alloyRole AND $alloyNamespace AND $alloyPod}
+            by {component_id,data_type,pod},
+        {component_id,data_type}
       )
 
   - id: infra.alloy.metric_pipeline.otel_filtered
@@ -1696,6 +1944,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:otelcol_processor_filter_datapoints_filtered_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {component_id}.as_rate().rollup(sum, 60)
 
   # --- ingest: what pushes into the gateway -----------------------------------
   - id: infra.alloy.ingest.log_push.lines
@@ -1720,6 +1971,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_source_api_entries_written{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.log_push.requests
     stability: experimental
@@ -1747,6 +2000,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_source_api_request_duration_seconds_count{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {route,status_code}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.log_push.latency
     stability: experimental
@@ -1771,6 +2027,8 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:loki_source_api_request_duration_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
 
   - id: infra.alloy.ingest.remote_write.received
     stability: experimental
@@ -1796,6 +2054,10 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_forwarded_samples_total{
+        $alloyRole AND $alloyNamespace AND $alloyPod AND component_id:prometheus.receive_http.*
+      }.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.remote_write.samples
     stability: experimental
@@ -1832,6 +2094,13 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_forwarded_samples_total{
+          $alloyRole AND $alloyNamespace AND $alloyPod AND component_id:prometheus.receive_http.*
+        }.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_api_remote_write_invalid_labels_samples_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.remote_write.requests
     stability: experimental
@@ -1859,6 +2128,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:prometheus_receive_http_request_duration_seconds_count{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {route,status_code}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.remote_write.latency
     stability: experimental
@@ -1884,6 +2156,8 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:prometheus_receive_http_request_duration_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
 
   - id: infra.alloy.ingest.remote_write.senders
     stability: experimental
@@ -1931,6 +2205,16 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:prometheus_remote_storage_samples_total{url:*alloy-gateway*}
+          by {service}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_remote_storage_samples_failed_total{url:*alloy-gateway*}
+          by {service}.as_rate().rollup(sum, 60)
+      - |
+        sum:prometheus_remote_storage_samples_retried_total{url:*alloy-gateway*}
+          by {service}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.otlp.metrics
     stability: experimental
@@ -1966,6 +2250,11 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:otelcol_receiver_accepted_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:otelcol_receiver_refused_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.otlp.logs
     stability: experimental
@@ -2001,6 +2290,11 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:otelcol_receiver_accepted_log_records_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
+      - |
+        sum:otelcol_receiver_refused_log_records_total{$alloyRole AND $alloyNamespace AND $alloyPod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.ingest.tls_rejections
     stability: experimental
@@ -2067,6 +2361,11 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    # Datadog can't merge in the zero line from the PromQL's `or` arm, so a quiet
+    # install reads no data here rather than zero.
+    datadogQuery: |
+      sum:alloy_component_controller_running_components{$alloyRole AND $alloyNamespace AND $alloyPod AND NOT health_type:healthy}
+        by {pod,health_type}
 
   - id: infra.alloy.components.running
     stability: experimental
@@ -2087,6 +2386,9 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:alloy_component_controller_running_components{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {pod}
 
   - id: infra.alloy.components.config_by_pod
     stability: experimental
@@ -2134,6 +2436,15 @@ queries:
             pod=~"$alloyPod"
           }
         )
+    # Datadog has no `time()`, so the second query is each collector's start
+    # timestamp rather than its uptime.
+    datadogQuery:
+      - |
+        max:alloy_config_hash{$alloyRole AND $alloyNamespace AND $alloyPod} by {app,pod,sha256}
+          * max:alloy_config_last_load_successful{$alloyRole AND $alloyNamespace AND $alloyPod} by {app,pod}
+      - |
+        max:alloy_resources_process_start_time_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {app,pod}
 
   - id: infra.alloy.components.distinct_configs
     stability: experimental
@@ -2153,6 +2464,11 @@ queries:
             pod=~"$alloyPod"
           }
         )
+      )
+    datadogQuery: |
+      count(
+        max:alloy_config_hash{$alloyRole AND $alloyNamespace AND $alloyPod} by {app,sha256},
+        {app}
       )
 
   - id: infra.alloy.components.evaluation_rate
@@ -2178,6 +2494,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:alloy_component_evaluation_seconds_count{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {app}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.components.evaluation_latency
     stability: experimental
@@ -2202,6 +2521,8 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:alloy_component_evaluation_seconds{$alloyRole AND $alloyNamespace AND $alloyPod} by {app}
 
   - id: infra.alloy.components.slow
     stability: experimental
@@ -2242,6 +2563,11 @@ queries:
           %%{interval}
         )
       )
+    # Datadog can't merge in the zero line from the PromQL's `or` arm, so a quiet
+    # install reads no data here rather than zero.
+    datadogQuery: |
+      sum:alloy_component_evaluation_slow_seconds{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {app,component_id}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.components.queue
     stability: experimental
@@ -2261,6 +2587,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      max:alloy_component_evaluation_queue_size{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.cluster.peers
     stability: experimental
@@ -2295,6 +2623,11 @@ queries:
             pod=~"$alloyPod"
           }
         )
+    datadogQuery:
+      - |
+        sum:cluster_node_peers{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
+      - |
+        count_not_null(max:cluster_node_info{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod})
 
   - id: infra.alloy.cluster.health_score
     stability: experimental
@@ -2314,6 +2647,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      max:cluster_node_gossip_health_score{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.cluster.targets
     stability: experimental
@@ -2335,6 +2670,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      sum:prometheus_target_scrape_pool_targets{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.cluster.transport_failures
     stability: experimental
@@ -2367,6 +2704,15 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      per_second(
+        max:cluster_transport_tx_packets_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+          by {pod}.rollup(max, 60)
+      )
+        + per_second(
+          max:cluster_transport_stream_tx_packets_failed_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+            by {pod}.rollup(max, 60)
+        )
 
   - id: infra.alloy.cluster.members
     stability: experimental
@@ -2398,6 +2744,9 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      min:cluster_ready_for_traffic{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
+        * (max:cluster_node_info{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod,state} * 0 + 1)
 
   # --- resources: whether the collectors have room to work --------------------
   - id: infra.alloy.resources.cpu
@@ -2434,6 +2783,13 @@ queries:
         namespace=~"$alloyNamespace",
         pod=~"$alloyPod"
       }
+    # The `and on (namespace, pod) up{…}` join only filters, so the role picker
+    # doesn't apply; the namespace and pod pickers filter these series' own tags.
+    datadogQuery: |
+      max:container_cpu_usage_seconds_total{$alloyNamespace AND $alloyPod AND container:alloy}
+        by {namespace,pod}.as_rate().rollup(sum, 60)
+        / max:kube_pod_container_resource_limits{$alloyNamespace AND $alloyPod AND container:alloy AND resource:cpu}
+          by {namespace,pod}.rollup(avg, 60)
 
   - id: infra.alloy.resources.throttling
     stability: experimental
@@ -2471,6 +2827,13 @@ queries:
         namespace=~"$alloyNamespace",
         pod=~"$alloyPod"
       }
+    # The `and on (namespace, pod) up{…}` join only filters, so the role picker
+    # doesn't apply; the namespace and pod pickers filter these series' own tags.
+    datadogQuery: |
+      sum:container_cpu_cfs_throttled_periods_total{$alloyNamespace AND $alloyPod AND container:alloy}
+        by {namespace,pod}.as_rate().rollup(sum, 60)
+        / sum:container_cpu_cfs_periods_total{$alloyNamespace AND $alloyPod AND container:alloy}
+          by {namespace,pod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.resources.memory
     stability: experimental
@@ -2506,6 +2869,13 @@ queries:
         namespace=~"$alloyNamespace",
         pod=~"$alloyPod"
       }
+    # The `and on (namespace, pod) up{…}` join only filters, so the role picker
+    # doesn't apply; the namespace and pod pickers filter these series' own tags.
+    datadogQuery: |
+      max:container_memory_working_set_bytes{$alloyNamespace AND $alloyPod AND container:alloy}
+        by {namespace,pod}
+        / max:kube_pod_container_resource_limits{$alloyNamespace AND $alloyPod AND container:alloy AND resource:memory}
+          by {namespace,pod}
 
   - id: infra.alloy.resources.gomemlimit
     stability: experimental
@@ -2545,6 +2915,12 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      (
+        max:go_memstats_sys_bytes{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
+          - max:go_memstats_heap_released_bytes{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
+      )
+        / max:go_gc_gomemlimit_bytes{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.resources.memory_limiter
     stability: experimental
@@ -2593,6 +2969,11 @@ queries:
           %%{interval}
         )
       )
+    # Datadog can't merge in the zero line from the PromQL's `or` arm, so a quiet
+    # install reads no data here rather than zero.
+    datadogQuery: |
+      sum:otelcol_processor_memory_limiter_refused_metric_points_total{$alloyRole AND $alloyNamespace AND $alloyPod}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.alloy.resources.goroutines
     stability: experimental
@@ -2613,6 +2994,8 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      max:go_goroutines{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.resources.file_descriptors
     stability: experimental
@@ -2637,6 +3020,9 @@ queries:
           pod=~"$alloyPod"
         }
       )
+    datadogQuery: |
+      max:process_open_fds{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
+        / max:process_max_fds{$alloyRole AND $alloyNamespace AND $alloyPod} by {pod}
 
   - id: infra.alloy.resources.terminations
     stability: experimental
@@ -2661,6 +3047,14 @@ queries:
         namespace=~"$alloyNamespace",
         pod=~"$alloyPod"
       }
+    # The `and on (namespace, pod) up{…}` join only filters, so the role picker
+    # doesn't apply; the namespace and pod pickers filter these series' own tags.
+    datadogQuery: |
+      cutoff_min(
+        max:kube_pod_container_status_last_terminated_reason{$alloyNamespace AND $alloyPod AND container:alloy}
+          by {namespace,pod,reason},
+        1
+      )
 
   # --- events: what Kubernetes reported about the collectors -------------------
   - id: infra.alloy.events.rate.by_reason

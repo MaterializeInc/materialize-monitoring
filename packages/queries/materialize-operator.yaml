@@ -46,6 +46,8 @@ queries:
       sum(
         orchestratord_is_leader{%%{mzOperatorNamespaceFilter}}
       )
+    datadogQuery: |
+      sum:orchestratord_is_leader{%%{mzOperatorNamespaceFilter}}
 
   - id: materialize.operator.environments.needing_update
     stability: experimental
@@ -73,6 +75,8 @@ queries:
       sum(
         environmentd_needs_update{%%{mzOperatorNamespaceFilter}}
       )
+    datadogQuery: |
+      sum:environmentd_needs_update{%%{mzOperatorNamespaceFilter}}
 
   - id: materialize.operator.reconciliation.rate
     stability: experimental
@@ -98,6 +102,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:orchestratord_reconciliations_total{%%{mzOperatorNamespaceFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.operator.reconciliation.failures.total
     stability: experimental
@@ -128,6 +134,8 @@ queries:
           %%{range}
         )
       )
+    datadogQuery: |
+      sum:orchestratord_reconciliations_total{%%{mzOperatorNamespaceFilter} AND outcome:failed}.as_count()
 
   # --- what the passes concluded -------------------------------------------
   - id: materialize.operator.reconciliation.outcomes
@@ -167,6 +175,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:orchestratord_reconciliations_total{%%{mzOperatorNamespaceFilter}} by {outcome}.as_rate().rollup(sum, 60)
 
   - id: materialize.operator.reconciliation.failures.by_controller
     stability: experimental
@@ -193,6 +203,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:orchestratord_reconciliations_total{%%{mzOperatorNamespaceFilter} AND outcome:failed} by {controller,event_type}.as_rate().rollup(sum, 60)
 
   # --- how long the work takes ---------------------------------------------
   - id: materialize.operator.reconciliation.duration
@@ -251,6 +263,13 @@ queries:
             %%{interval}
           )
         ))
+    datadogQuery:
+      - |
+        p50:orchestratord_reconciliation_duration_seconds{%%{mzOperatorNamespaceFilter}}
+      - |
+        p90:orchestratord_reconciliation_duration_seconds{%%{mzOperatorNamespaceFilter}}
+      - |
+        p99:orchestratord_reconciliation_duration_seconds{%%{mzOperatorNamespaceFilter}}
 
   - id: materialize.operator.reconciliation.step.duration.p99
     stability: experimental
@@ -280,6 +299,8 @@ queries:
           %%{interval}
         )
       ))
+    datadogQuery: |
+      p99:orchestratord_reconciliation_step_duration_seconds{%%{mzOperatorNamespaceFilter}} by {step}
 
   # --- which phase -----------------------------------------------------------
   - id: materialize.operator.reconciliation.steps.rate
@@ -306,6 +327,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:orchestratord_reconciliation_steps_total{%%{mzOperatorNamespaceFilter}} by {step}.as_rate().rollup(sum, 60)
 
   - id: materialize.operator.reconciliation.steps.incomplete
     stability: experimental
@@ -340,3 +363,5 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:orchestratord_reconciliation_steps_total{%%{mzOperatorNamespaceFilter} AND outcome IN (failed,abandoned)} by {step,outcome}.as_rate().rollup(sum, 60)

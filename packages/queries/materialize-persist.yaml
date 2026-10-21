@@ -72,6 +72,8 @@ queries:
         text.
     promQL: |
       sum(rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval}))
+    datadogQuery: |
+      sum:mz_persist_external_failed_count{%%{mzEnvironmentFilter} AND op:blob_*}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.health.read_latency_p99
     stability: experimental
@@ -91,6 +93,8 @@ queries:
           rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval})
         )
       )
+    datadogQuery: |
+      p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_get}
 
   - id: materialize.persist.health.write_latency_p99
     stability: experimental
@@ -109,6 +113,8 @@ queries:
           rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_set"}%%{interval})
         )
       )
+    datadogQuery: |
+      p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_set}
 
   - id: materialize.persist.health.write_stalls
     stability: experimental
@@ -128,6 +134,9 @@ queries:
     promQL: |
       sum(rate(mz_persist_user_write_stall_count{%%{mzEnvironmentFilter}}%%{interval}))
       + sum(rate(mz_persist_compaction_write_stall_count{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery: |
+      sum:mz_persist_user_write_stall_count{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+        + sum:mz_persist_compaction_write_stall_count{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.health.compaction_failures
     stability: experimental
@@ -143,6 +152,9 @@ queries:
     promQL: |
       sum(rate(mz_persist_compaction_failed{%%{mzEnvironmentFilter}}%%{interval}))
       + sum(rate(mz_persist_compaction_timed_out{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery: |
+      sum:mz_persist_compaction_failed{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+        + sum:mz_persist_compaction_timed_out{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.health.stored
     stability: experimental
@@ -161,6 +173,9 @@ queries:
     promQL: |
       sum(max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}}))
       + sum(max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery: |
+      sum(max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+        + sum(max:mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
 
   # --- Overview: latency and failures -----------------------------------------
   - id: materialize.persist.latency.read_write
@@ -203,6 +218,15 @@ queries:
             rate(mz_persist_external_op_latency_bucket{%%{mzEnvironmentFilter}, op="blob_set"}%%{interval})
           )
         )
+    datadogQuery:
+      - |
+        p50:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_get}
+      - |
+        p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_get}
+      - |
+        p50:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_set}
+      - |
+        p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_set}
 
   - id: materialize.persist.latency.round_trip
     stability: experimental
@@ -224,6 +248,8 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      max:mz_persist_external_rtt_latency{%%{mzEnvironmentFilter} AND external:blob} by {app,cluster_environmentd_materialize_cloud_cluster_id}
 
   - id: materialize.persist.failures.by_operation
     stability: experimental
@@ -239,6 +265,8 @@ queries:
       sum by (op) (
         rate(mz_persist_external_failed_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_external_failed_count{%%{mzEnvironmentFilter} AND op:blob_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.failures.store_errors
     stability: experimental
@@ -261,6 +289,8 @@ queries:
       sum by (op, code) (
         rate(mz_persist_s3_errors{%%{mzEnvironmentFilter}}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_s3_errors{%%{mzEnvironmentFilter}} by {op,code}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.failures.timeouts
     stability: experimental
@@ -293,6 +323,17 @@ queries:
       - |
         sum(rate(mz_persist_s3_operation_timeouts{%%{mzEnvironmentFilter}}%%{interval}))
           and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+    # The `and on ()` guard is a join that only filters, so it is dropped: on
+    # Azure Blob these read zero rather than empty.
+    datadogQuery:
+      - |
+        sum:mz_persist_s3_connect_timeouts{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_s3_read_timeouts{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_s3_operation_attempt_timeouts{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_s3_operation_timeouts{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.logs.retries
     stability: experimental
@@ -334,6 +375,8 @@ queries:
       sum by (op) (
         rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_external_started_count{%%{mzEnvironmentFilter} AND op:blob_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.ops.throughput
     stability: experimental
@@ -351,6 +394,8 @@ queries:
       sum by (op) (
         rate(mz_persist_external_bytes_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_external_bytes_count{%%{mzEnvironmentFilter} AND op:blob_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.ops.requests
     stability: experimental
@@ -373,6 +418,10 @@ queries:
         rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})
       )
         and on () (sum(rate(mz_persist_s3_operations{%%{mzEnvironmentFilter}}%%{interval})) > 0)
+    # As in the timeouts query, the guard is dropped, so Azure Blob reads zero
+    # rather than empty.
+    datadogQuery: |
+      sum:mz_persist_s3_operations{%%{mzEnvironmentFilter}} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.latency.mean_by_operation
     stability: experimental
@@ -398,6 +447,9 @@ queries:
           rate(mz_persist_external_started_count{%%{mzEnvironmentFilter}, op=~"blob_.*"}%%{interval})
         )
       ) >= 0
+    datadogQuery: |
+      sum:mz_persist_external_seconds{%%{mzEnvironmentFilter} AND op:blob_*} by {op}.as_rate().rollup(sum, 60)
+        / sum:mz_persist_external_started_count{%%{mzEnvironmentFilter} AND op:blob_*} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.latency.read_by_process
     stability: experimental
@@ -419,6 +471,8 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      p99:mz_persist_external_op_latency{%%{mzEnvironmentFilter} AND op:blob_get} by {app,cluster_environmentd_materialize_cloud_cluster_id}
 
   - id: materialize.persist.retries.by_operation
     stability: experimental
@@ -438,6 +492,11 @@ queries:
       sum by (op) (
         rate(mz_persist_retry_retries_count{%%{mzEnvironmentFilter}, op=~"batch::set|batch::delete|fetch_batch::get|rollup::get|rollup::set|rollup::delete|hollow_run::get|hollow_run::set|blob::open|compaction_noop::delete|storage_usage::shard_size"}%%{interval})
       )
+    datadogQuery: |
+      sum:mz_persist_retry_retries_count{%%{mzEnvironmentFilter} AND op IN (
+        batch::set,batch::delete,fetch_batch::get,rollup::get,rollup::set,rollup::delete,
+        hollow_run::get,hollow_run::set,blob::open,compaction_noop::delete,storage_usage::shard_size
+      )} by {op}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.cache.hits
     stability: experimental
@@ -463,6 +522,12 @@ queries:
           + sum(rate(mz_persist_external_bytes_count{%%{mzEnvironmentFilter}, op="blob_get"}%%{interval}))
         )
       ) >= 0
+    datadogQuery: |
+      sum:mz_persist_blob_cache_hits_bytes{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+        / (
+          sum:mz_persist_blob_cache_hits_bytes{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+            + sum:mz_persist_external_bytes_count{%%{mzEnvironmentFilter} AND op:blob_get}.as_rate().rollup(sum, 60)
+        )
 
   - id: materialize.persist.hedging
     stability: experimental
@@ -482,6 +547,11 @@ queries:
         sum(rate(mz_persist_blob_hedges_fired{%%{mzEnvironmentFilter}}%%{interval}))
       - |
         sum(rate(mz_persist_blob_hedges_won{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery:
+      - |
+        sum:mz_persist_blob_hedges_fired{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_blob_hedges_won{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   # --- Compaction -------------------------------------------------------------
   - id: materialize.persist.compaction.outcomes
@@ -514,6 +584,19 @@ queries:
         sum(rate(mz_persist_compaction_timed_out{%%{mzEnvironmentFilter}}%%{interval}))
       - |
         sum(rate(mz_persist_compaction_dropped{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery:
+      - |
+        sum:mz_persist_compaction_requested{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_compaction_started{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_compaction_applied{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_compaction_failed{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_compaction_timed_out{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_compaction_dropped{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.compaction.queue_wait
     stability: experimental
@@ -532,6 +615,9 @@ queries:
         /
         sum(rate(mz_persist_compaction_started{%%{mzEnvironmentFilter}}%%{interval}))
       ) >= 0
+    datadogQuery: |
+      sum:mz_persist_compaction_queued_seconds{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+        / sum:mz_persist_compaction_started{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.compaction.busy
     stability: experimental
@@ -554,6 +640,8 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      sum:mz_persist_compaction_seconds{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.writes.amplification
     stability: experimental
@@ -573,6 +661,11 @@ queries:
         sum(rate(mz_persist_user_bytes{%%{mzEnvironmentFilter}}%%{interval}))
       - |
         sum(rate(mz_persist_compaction_bytes{%%{mzEnvironmentFilter}}%%{interval}))
+    datadogQuery:
+      - |
+        sum:mz_persist_user_bytes{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
+      - |
+        sum:mz_persist_compaction_bytes{%%{mzEnvironmentFilter}}.as_rate().rollup(sum, 60)
 
   - id: materialize.persist.writes.stalls_by_process
     stability: experimental
@@ -593,6 +686,10 @@ queries:
       functions:
         - name: mzClusterName
           args: ["cluster_environmentd_materialize_cloud_cluster_id"]
+    datadogQuery: |
+      sum:mz_persist_user_write_stall_count{%%{mzEnvironmentFilter}} by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
+        + sum:mz_persist_compaction_write_stall_count{%%{mzEnvironmentFilter}}
+          by {app,cluster_environmentd_materialize_cloud_cluster_id}.as_rate().rollup(sum, 60)
 
   # --- Storage ----------------------------------------------------------------
   - id: materialize.persist.usage.by_state
@@ -623,6 +720,17 @@ queries:
         sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}}))
       - |
         sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery:
+      - |
+        sum(max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+      - |
+        sum(max:mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+      - |
+        sum(max:mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+      - |
+        sum(max:mz_persist_shard_usage_not_leaked_not_referenced_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
+      - |
+        sum(max:mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
 
   - id: materialize.persist.usage.leaked
     stability: experimental
@@ -637,6 +745,8 @@ queries:
         raising with Materialize support.
     promQL: |
       sum(max by (shard) (mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery: |
+      sum(max:mz_persist_shard_usage_leaked_bytes{%%{mzEnvironmentFilter}} by {shard}, {*})
 
   - id: materialize.persist.usage.largest
     stability: experimental
@@ -656,6 +766,12 @@ queries:
       topk(10,
         max by (shard) (mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}})
         + max by (shard) (mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}})
+      )
+    datadogQuery: |
+      top(
+        max:mz_persist_shard_usage_current_state_batches_bytes{%%{mzEnvironmentFilter}} by {shard}
+          + max:mz_persist_shard_usage_current_state_rollups_bytes{%%{mzEnvironmentFilter}} by {shard},
+        10, 'max', 'desc'
       )
 
   - id: materialize.persist.usage.held
@@ -678,6 +794,8 @@ queries:
         mz_objects o ON o.id = s.object_id WHERE s.shard_id = '<shard>'`.
     promQL: |
       topk(10, max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}}))
+    datadogQuery: |
+      top(max:mz_persist_shard_usage_referenced_not_current_state_bytes{%%{mzEnvironmentFilter}} by {shard}, 10, 'max', 'desc')
 
 metricOverrides:
   # The latency histogram is per operation, per process, per bucket — the bulk

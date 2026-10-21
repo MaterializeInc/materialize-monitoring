@@ -58,6 +58,11 @@ description: |
 metricImportanceHint: diagnostic
 
 queries:
+  # Every `datadogQuery` here drops the `last_over_time`: Datadog has no lookback
+  # window, so a provider sample plots at its own timestamp and the line runs on
+  # to the next pull. Datadog lowercases tag keys as well as values, so
+  # `dimension_DBInstanceIdentifier` is `dimension_dbinstanceidentifier` there.
+
   # --- Metadata Database: headroom, every provider -----------------------------
   - id: infra.cloud.db.cpu
     stability: experimental
@@ -93,6 +98,15 @@ queries:
         max by (resourceName) (
           last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])
         ) / 100
+    datadogQuery:
+      - |
+        max:aws_rds_cpuutilization_average{*} by {dimension_dbinstanceidentifier} / 100
+      - |
+        max:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization{*}
+          by {database_id}
+      - |
+        max:azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent{*}
+          by {resourcename} / 100
 
   - id: infra.cloud.db.connections
     stability: experimental
@@ -130,6 +144,17 @@ queries:
         )
       - |
         sum(mz_persist_postgres_connpool_size) + (sum(mz_ts_oracle_postgres_connpool_size) or vector(0))
+    datadogQuery:
+      - |
+        max:aws_rds_database_connections_maximum{*} by {dimension_dbinstanceidentifier}
+      - |
+        sum:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends{*}
+          by {database_id}
+      - |
+        max:azure_microsoft_dbforpostgresql_flexibleservers_active_connections_maximum_count{*}
+          by {resourcename}
+      - |
+        sum:mz_persist_postgres_connpool_size{*} + default_zero(sum:mz_ts_oracle_postgres_connpool_size{*})
 
   - id: infra.cloud.db.transaction_ids
     stability: experimental
@@ -161,6 +186,15 @@ queries:
         max by (resourceName) (
           last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count[15m])
         ) / 2147483648
+    datadogQuery:
+      - |
+        max:aws_rds_maximum_used_transaction_ids_maximum{*} by {dimension_dbinstanceidentifier} / 2147483648
+      - |
+        max:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_transaction_id_utilization{*}
+          by {database_id}
+      - |
+        max:azure_microsoft_dbforpostgresql_flexibleservers_maximum_used_transactionids_maximum_count{*}
+          by {resourcename} / 2147483648
 
   # --- Metadata Database: RDS --------------------------------------------------
   - id: infra.cloud.rds.free_storage
@@ -186,6 +220,8 @@ queries:
       min by (dimension_DBInstanceIdentifier) (
         last_over_time(aws_rds_free_storage_space_minimum[15m])
       )
+    datadogQuery: |
+      min:aws_rds_free_storage_space_minimum{*} by {dimension_dbinstanceidentifier}
 
   - id: infra.cloud.rds.freeable_memory
     stability: experimental
@@ -201,6 +237,8 @@ queries:
       min by (dimension_DBInstanceIdentifier) (
         last_over_time(aws_rds_freeable_memory_minimum[15m])
       )
+    datadogQuery: |
+      min:aws_rds_freeable_memory_minimum{*} by {dimension_dbinstanceidentifier}
 
   - id: infra.cloud.rds.cpu_credits
     stability: experimental
@@ -218,6 +256,8 @@ queries:
       min by (dimension_DBInstanceIdentifier) (
         last_over_time(aws_rds_cpucredit_balance_minimum[15m])
       )
+    datadogQuery: |
+      min:aws_rds_cpucredit_balance_minimum{*} by {dimension_dbinstanceidentifier}
 
   - id: infra.cloud.rds.io_latency
     stability: experimental
@@ -239,6 +279,11 @@ queries:
         max by (dimension_DBInstanceIdentifier) (
           last_over_time(aws_rds_write_latency_average[15m])
         )
+    datadogQuery:
+      - |
+        max:aws_rds_read_latency_average{*} by {dimension_dbinstanceidentifier}
+      - |
+        max:aws_rds_write_latency_average{*} by {dimension_dbinstanceidentifier}
 
   - id: infra.cloud.rds.queue_depth
     stability: experimental
@@ -253,6 +298,8 @@ queries:
       max by (dimension_DBInstanceIdentifier) (
         last_over_time(aws_rds_disk_queue_depth_average[15m])
       )
+    datadogQuery: |
+      max:aws_rds_disk_queue_depth_average{*} by {dimension_dbinstanceidentifier}
 
   - id: infra.cloud.rds.io_balances
     stability: experimental
@@ -281,6 +328,13 @@ queries:
         min by (dimension_DBInstanceIdentifier) (
           last_over_time(aws_rds_ebsbyte_balance_percent_minimum[15m])
         ) / 100
+    datadogQuery:
+      - |
+        min:aws_rds_burst_balance_minimum{*} by {dimension_dbinstanceidentifier} / 100
+      - |
+        min:aws_rds_ebsiobalance_percent_minimum{*} by {dimension_dbinstanceidentifier} / 100
+      - |
+        min:aws_rds_ebsbyte_balance_percent_minimum{*} by {dimension_dbinstanceidentifier} / 100
 
   # --- Metadata Database: Cloud SQL --------------------------------------------
   - id: infra.cloud.cloudsql.disk
@@ -303,6 +357,9 @@ queries:
       max by (database_id) (
         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization[15m])
       )
+    datadogQuery: |
+      max:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_disk_utilization{*}
+        by {database_id}
 
   - id: infra.cloud.cloudsql.memory
     stability: experimental
@@ -319,6 +376,9 @@ queries:
       max by (database_id) (
         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization[15m])
       )
+    datadogQuery: |
+      max:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_memory_utilization{*}
+        by {database_id}
 
   - id: infra.cloud.cloudsql.up
     stability: experimental
@@ -333,6 +393,8 @@ queries:
       min by (database_id) (
         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up[15m])
       )
+    datadogQuery: |
+      min:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_up{*} by {database_id}
 
   - id: infra.cloud.cloudsql.backends_by_database
     stability: experimental
@@ -351,6 +413,9 @@ queries:
       sum by (database_id, database) (
         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends[15m])
       )
+    datadogQuery: |
+      sum:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends{*}
+        by {database_id,database}
 
   - id: infra.cloud.cloudsql.backends_by_state
     stability: experimental
@@ -368,6 +433,9 @@ queries:
       sum by (database_id, state) (
         last_over_time(stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state[15m])
       )
+    datadogQuery: |
+      sum:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_postgresql_num_backends_by_state{*}
+        by {database_id,state}
 
   # --- Metadata Database: Azure Flexible Server --------------------------------
   - id: infra.cloud.flexible.storage
@@ -389,6 +457,9 @@ queries:
       max by (resourceName) (
         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent[15m])
       ) / 100
+    datadogQuery: |
+      max:azure_microsoft_dbforpostgresql_flexibleservers_storage_percent_maximum_percent{*}
+        by {resourcename} / 100
 
   - id: infra.cloud.flexible.memory
     stability: experimental
@@ -405,6 +476,9 @@ queries:
       max by (resourceName) (
         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent[15m])
       ) / 100
+    datadogQuery: |
+      max:azure_microsoft_dbforpostgresql_flexibleservers_memory_percent_maximum_percent{*}
+        by {resourcename} / 100
 
   - id: infra.cloud.flexible.cpu_credits
     stability: experimental
@@ -421,6 +495,9 @@ queries:
       min by (resourceName) (
         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count[15m])
       )
+    datadogQuery: |
+      min:azure_microsoft_dbforpostgresql_flexibleservers_cpu_credits_remaining_minimum_count{*}
+        by {resourcename}
 
   - id: infra.cloud.flexible.alive
     stability: experimental
@@ -435,6 +512,8 @@ queries:
       min by (resourceName) (
         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count[15m])
       )
+    datadogQuery: |
+      min:azure_microsoft_dbforpostgresql_flexibleservers_is_db_alive_minimum_count{*} by {resourcename}
 
   - id: infra.cloud.flexible.io_consumed
     stability: experimental
@@ -456,6 +535,13 @@ queries:
         max by (resourceName) (
           last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_bandwidth_consumed_percentage_maximum_percent[15m])
         ) / 100
+    datadogQuery:
+      - |
+        max:azure_microsoft_dbforpostgresql_flexibleservers_disk_iops_consumed_percentage_maximum_percent{*}
+          by {resourcename} / 100
+      - |
+        max:azure_microsoft_dbforpostgresql_flexibleservers_disk_bandwidth_consumed_percentage_maximum_percent{*}
+          by {resourcename} / 100
 
   - id: infra.cloud.flexible.queue_depth
     stability: experimental
@@ -470,6 +556,9 @@ queries:
       max by (resourceName) (
         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count[15m])
       )
+    datadogQuery: |
+      max:azure_microsoft_dbforpostgresql_flexibleservers_disk_queue_depth_average_count{*}
+        by {resourcename}
 
   - id: infra.cloud.flexible.connections_failed
     stability: experimental
@@ -490,6 +579,9 @@ queries:
       max by (resourceName) (
         last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count[15m])
       )
+    datadogQuery: |
+      max:azure_microsoft_dbforpostgresql_flexibleservers_connections_failed_total_count{*}
+        by {resourcename}
 
   # --- Object Storage: every provider ------------------------------------------
   - id: infra.cloud.bucket.bytes
@@ -534,6 +626,20 @@ queries:
         + sum(max by (shard) (mz_persist_shard_usage_referenced_not_current_state_bytes))
         + sum(max by (shard) (mz_persist_shard_usage_not_leaked_not_referenced_bytes))
         + sum(max by (shard) (mz_persist_shard_usage_leaked_bytes))
+    datadogQuery:
+      - |
+        max:aws_s3_bucket_size_bytes_average{*} by {dimension_bucketname}
+      - |
+        sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{*} by {bucket_name}
+      - |
+        max:azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes{*}
+          by {resourcename}
+      - |
+        sum(max:mz_persist_shard_usage_current_state_batches_bytes{*} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_current_state_rollups_bytes{*} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_referenced_not_current_state_bytes{*} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_not_leaked_not_referenced_bytes{*} by {shard}, {*})
+          + sum(max:mz_persist_shard_usage_leaked_bytes{*} by {shard}, {*})
 
   - id: infra.cloud.bucket.objects
     stability: experimental
@@ -561,6 +667,14 @@ queries:
         max by (resourceName) (
           last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count[15m])
         )
+    datadogQuery:
+      - |
+        max:aws_s3_number_of_objects_average{*} by {dimension_bucketname}
+      - |
+        sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{*} by {bucket_name}
+      - |
+        max:azure_microsoft_storage_storageaccounts_blobservices_blobcount_average_count{*}
+          by {resourcename}
 
   # --- Object Storage: GCS -----------------------------------------------------
   - id: infra.cloud.gcs.bytes_by_type
@@ -582,6 +696,8 @@ queries:
       sum by (bucket_name, type) (
         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes[30m])
       )
+    datadogQuery: |
+      sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{*} by {bucket_name,type}
 
   - id: infra.cloud.gcs.objects_by_type
     stability: experimental
@@ -597,6 +713,8 @@ queries:
       sum by (bucket_name, type) (
         last_over_time(stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count[30m])
       )
+    datadogQuery: |
+      sum:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_count{*} by {bucket_name,type}
 
   # --- Object Storage: Azure Blob ----------------------------------------------
   - id: infra.cloud.blob.availability
@@ -614,6 +732,9 @@ queries:
       min by (resourceName) (
         last_over_time(azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent[15m])
       ) / 100
+    datadogQuery: |
+      min:azure_microsoft_storage_storageaccounts_blobservices_availability_average_percent{*}
+        by {resourcename} / 100
 
   - id: infra.cloud.blob.latency
     stability: experimental
@@ -636,6 +757,13 @@ queries:
         max by (resourceName) (
           last_over_time(azure_microsoft_storage_storageaccounts_blobservices_successe2elatency_average_milliseconds[15m])
         ) / 1000
+    datadogQuery:
+      - |
+        max:azure_microsoft_storage_storageaccounts_blobservices_successserverlatency_average_milliseconds{*}
+          by {resourcename} / 1000
+      - |
+        max:azure_microsoft_storage_storageaccounts_blobservices_successe2elatency_average_milliseconds{*}
+          by {resourcename} / 1000
 
   # --- Collection --------------------------------------------------------------
   - id: infra.cloud.collection.pulls
@@ -657,6 +785,9 @@ queries:
     instant: true
     promQL: |
       max by (job, instance) (up{job=~"integrations/(cloudwatch|gcp|azure)"})
+    datadogQuery: |
+      max:up{service IN (integrations/cloudwatch,integrations/gcp,integrations/azure)}
+        by {service,service.instance.id}
 
   - id: infra.cloud.collection.resources
     stability: experimental
@@ -684,6 +815,35 @@ queries:
         count(max by (resourceName) (last_over_time(azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent[15m])))
       - |
         count(max by (resourceName) (last_over_time(azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes[15m])))
+    datadogQuery:
+      - |
+        count(max:aws_rds_cpuutilization_average{*} by {dimension_dbinstanceidentifier}, {*})
+      - |
+        count(max:aws_s3_bucket_size_bytes_average{*} by {dimension_bucketname}, {*})
+      - |
+        count(
+          max:stackdriver_cloudsql_database_cloudsql_googleapis_com_database_cpu_utilization{*}
+            by {database_id},
+          {*}
+        )
+      - |
+        count(
+          max:stackdriver_gcs_bucket_storage_googleapis_com_storage_v_2_total_bytes{*}
+            by {bucket_name},
+          {*}
+        )
+      - |
+        count(
+          max:azure_microsoft_dbforpostgresql_flexibleservers_cpu_percent_average_percent{*}
+            by {resourcename},
+          {*}
+        )
+      - |
+        count(
+          max:azure_microsoft_storage_storageaccounts_blobservices_blobcapacity_average_bytes{*}
+            by {resourcename},
+          {*}
+        )
 
   - id: infra.cloud.collection.gcp_errors
     stability: experimental
@@ -703,6 +863,8 @@ queries:
       max by (instance) (
         last_over_time(stackdriver_monitoring_last_scrape_error[15m])
       )
+    datadogQuery: |
+      max:stackdriver_monitoring_last_scrape_error{*} by {service.instance.id}
 
   - id: infra.cloud.collection.gcp_calls
     stability: experimental
@@ -724,6 +886,11 @@ queries:
       sum by (instance) (
         rate(stackdriver_monitoring_api_calls_total[30m])
       ) * 60
+    # The pull moves this counter once every five minutes, so the rollup spans the
+    # PromQL's 30-minute range rather than 60 seconds.
+    datadogQuery: |
+      sum:stackdriver_monitoring_api_calls_total{*}
+        by {service.instance.id}.as_rate().rollup(sum, 1800) * 60
 
   - id: infra.cloud.collection.azure_failures
     stability: experimental
@@ -747,6 +914,10 @@ queries:
       sum by (statusCode) (
         rate(azurerm_api_request_count{statusCode!~"2.."}[30m])
       ) * 60
+    # Azure calls happen at each pull, so the rollup spans the PromQL's 30-minute
+    # range rather than 60 seconds.
+    datadogQuery: |
+      sum:azurerm_api_request_count{NOT statuscode:2*} by {statuscode}.as_rate().rollup(sum, 1800) * 60
 
   - id: infra.cloud.collection.azure_calls
     stability: experimental
@@ -772,3 +943,8 @@ queries:
         ),
         "resourceProvider", "other", "resourceProvider", ""
       )
+    # Datadog can't rewrite tags, so the Resource Graph POSTs and other calls
+    # without a resource provider group under `resourceprovider:N/A` rather than
+    # `resource graph` and `other`. The 30-minute rollup is as above.
+    datadogQuery: |
+      sum:azurerm_api_request_count{*} by {resourceprovider,method}.as_rate().rollup(sum, 1800) * 60

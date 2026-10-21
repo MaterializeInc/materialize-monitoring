@@ -400,8 +400,8 @@ alerts:
           cilium_bpf_map_pressure
         ) > 0.7
       datadogQuery: |
-        avg(last_15m):(
-          max:cilium_bpf_map_pressure{*} by {map_name,instance}
+        min(last_15m):(
+          max:cilium_bpf_map_pressure{*} by {map_name,service.instance.id}
         ) > 0.7
   - alert: cilium-drop-rate-elevated
     group: cilium
@@ -422,8 +422,8 @@ alerts:
           rate(cilium_drop_count_total[5m:1m])
         ) > 10
       datadogQuery: |
-        avg(last_5m):(
-          max:cilium_drop_count_total{*} by {direction,reason,pod}.as_rate()
+        min(last_30m):(
+          max:cilium_drop_count_total{*} by {direction,reason,pod}.as_rate().rollup(sum, 60)
         ) > 10
 
   # --- CoreDNS (cluster DNS) -----------------------------------------------
@@ -571,7 +571,7 @@ alerts:
         ) > 0
       datadogQuery: |
         min(last_15m):(
-          max:kube_node_status_condition{condition:DiskPressure, status:true} by {node}
+          max:kube_node_status_condition{condition:diskpressure AND status:true} by {node}
         ) > 0
   - alert: k8s-volume-usage
     group: k8s_disk
@@ -598,9 +598,9 @@ alerts:
         ) > 70
       datadogQuery: |
         avg(last_15m):100 * (
-          max:kubelet_volume_stats_used_bytes{!persistentvolumeclaim:*cluster-s2-*, !persistentvolumeclaim:*cluster-u*}
+          max:kubelet_volume_stats_used_bytes{NOT persistentvolumeclaim:*cluster-s2-* AND NOT persistentvolumeclaim:*cluster-u*}
             by {namespace,persistentvolumeclaim}
-          / max:kubelet_volume_stats_capacity_bytes{!persistentvolumeclaim:*cluster-s2-*, !persistentvolumeclaim:*cluster-u*}
+          / max:kubelet_volume_stats_capacity_bytes{NOT persistentvolumeclaim:*cluster-s2-* AND NOT persistentvolumeclaim:*cluster-u*}
             by {namespace,persistentvolumeclaim}
         ) > 70
 
@@ -630,7 +630,7 @@ alerts:
         ) > 0
       datadogQuery: |
         avg(last_2m):(
-          sum:loki_write_dropped_entries_total{*} by {namespace,job,reason}.as_rate()
+          sum:loki_write_dropped_entries_total{*} by {namespace,service,reason}.as_rate().rollup(sum, 60)
         ) > 0
   - alert: loki-push-err-high
     group: loki
@@ -663,8 +663,8 @@ alerts:
       # Datadog exporter; without it there is nothing to divide.
       datadogQuery: |
         avg(last_2m):100 * (
-          sum:loki_request_duration_seconds.count{(status_code:4* OR status_code:5*), route:*push*} by {namespace,job}.as_rate()
-          / sum:loki_request_duration_seconds.count{route:*push*} by {namespace,job}.as_rate()
+          sum:loki_request_duration_seconds_count{(status_code:4* OR status_code:5*) AND route:*push*} by {namespace,service}.as_rate().rollup(sum, 60)
+          / sum:loki_request_duration_seconds_count{route:*push*} by {namespace,service}.as_rate().rollup(sum, 60)
         ) > 10
   - alert: loki-panics
     group: loki
@@ -687,7 +687,7 @@ alerts:
         ) > 0
       datadogQuery: |
         sum(last_10m):(
-          sum:loki_panic_total{*} by {namespace,job}.as_count()
+          sum:loki_panic_total{*} by {namespace,service}.as_count()
         ) > 0
   - alert: loki-req-duration-high
     group: loki
@@ -711,7 +711,7 @@ alerts:
         ) > 1
       datadogQuery: |
         avg(last_5m):(
-          p95:loki_request_duration_seconds{!route:*tail*, !route:/schedulerpb.schedulerforquerier/querierloop} by {job}
+          p95:loki_request_duration_seconds{NOT route:*tail* AND NOT route:/schedulerpb.schedulerforquerier/querierloop} by {service}
         ) > 1
   - alert: loki-req-err-high
     group: loki
@@ -740,8 +740,8 @@ alerts:
       # As above: needs histograms::send_aggregation_metrics.
       datadogQuery: |
         avg(last_2m):100 * (
-          sum:loki_request_duration_seconds.count{status_code:5*} by {namespace,job,route}.as_rate()
-          / sum:loki_request_duration_seconds.count{*} by {namespace,job,route}.as_rate()
+          sum:loki_request_duration_seconds_count{status_code:5*} by {namespace,service,route}.as_rate().rollup(sum, 60)
+          / sum:loki_request_duration_seconds_count{*} by {namespace,service,route}.as_rate().rollup(sum, 60)
         ) > 10
   - alert: loki-writer-err-high
     group: loki
@@ -769,8 +769,8 @@ alerts:
       # As above: needs histograms::send_aggregation_metrics.
       datadogQuery: |
         avg(last_2m):100 * (
-          sum:loki_request_duration_seconds.count{status_code:error} by {namespace,job,route}.as_rate()
-          / sum:loki_request_duration_seconds.count{*} by {namespace,job,route}.as_rate()
+          sum:loki_request_duration_seconds_count{status_code:error} by {namespace,service,route}.as_rate().rollup(sum, 60)
+          / sum:loki_request_duration_seconds_count{*} by {namespace,service,route}.as_rate().rollup(sum, 60)
         ) > 10
 
   # --- Observability collection --------------------------------------------
@@ -797,7 +797,7 @@ alerts:
         ) == 0
       datadogQuery: |
         avg(last_1h):(
-          max:up{job IN (*/*materialize-environmentd,*/*materialize-clusterd), !cluster_environmentd_materialize_cloud_cluster_id:s5}
+          max:up{(service:*materialize-environmentd OR service:*materialize-clusterd) AND NOT cluster_environmentd_materialize_cloud_cluster_id:s5}
             by {pod,namespace}
         ) <= 0
   - alert: critical-metrics-missing
@@ -833,7 +833,7 @@ alerts:
       # down — Datadog cannot count series by value.
       datadogQuery: |
         avg(last_30m):(
-          1 - avg:up{job IN (cadvisor,kube-state-metrics,node-exporter,alloy-agent,alloy-gateway)} by {job}
+          1 - avg:up{service IN (cadvisor,kube-state-metrics,node-exporter,alloy-agent,alloy-gateway)} by {service}
         ) * 100 > 30
   - alert: logging-collection-down
     group: metric_collection
@@ -864,7 +864,7 @@ alerts:
       promQL: |
         (sum(rate(loki_distributor_bytes_received_total[5m])) or vector(0)) == 0
       datadogQuery: |
-        avg(last_5m):default_zero(sum:loki_distributor_bytes_received_total{*}.as_rate()) <= 0
+        avg(last_5m):default_zero(sum:loki_distributor_bytes_received_total{*}.as_rate().rollup(sum, 60)) <= 0
 
   # --- Kubernetes deployments ----------------------------------------------
   # Split by criticality of the workload: core, important and non-essential,
@@ -894,7 +894,7 @@ alerts:
         )
       datadogQuery: |
         max(last_10m):(
-          max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (%%{infraCoreWorkloadList}), %%{excludeEnvironmentFilter}}
+          max:kube_deployment_status_condition{condition:available AND status:true AND deployment IN (%%{infraCoreWorkloadList}) AND %%{excludeEnvironmentFilter}}
             by {deployment,namespace}
         ) <= 0
   - alert: k8s-deployment-unavailable-warning
@@ -917,7 +917,7 @@ alerts:
         )
       datadogQuery: |
         max(last_10m):(
-          max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (%%{infraImportantWorkloadList}), %%{excludeEnvironmentFilter}}
+          max:kube_deployment_status_condition{condition:available AND status:true AND deployment IN (%%{infraImportantWorkloadList}) AND %%{excludeEnvironmentFilter}}
             by {deployment,namespace}
         ) <= 0
   - alert: k8s-deployment-unavailable-notice
@@ -940,7 +940,7 @@ alerts:
         )
       datadogQuery: |
         max(last_10m):(
-          max:kube_deployment_status_condition{condition:Available, status:true, deployment IN (%%{infraNonessentialWorkloadList}), %%{excludeEnvironmentFilter}}
+          max:kube_deployment_status_condition{condition:available AND status:true AND deployment IN (%%{infraNonessentialWorkloadList}) AND %%{excludeEnvironmentFilter}}
             by {deployment,namespace}
         ) <= 0
 
@@ -977,7 +977,7 @@ alerts:
       # budget.
       datadogQuery: |
         avg(last_30m):(
-          1.77 - sum:kube_pod_container_resource_requests{unit:core, resource:cpu, container IN (%%{infraDaemonsetWorkloadList})} by {node}
+          1.77 - sum:kube_pod_container_resource_requests{unit:core AND resource:cpu AND container IN (%%{infraDaemonsetWorkloadList})} by {node}
         ) < 0.01
   - alert: k8s-daemonset-saturating-mem
     group: daemonset
@@ -1004,7 +1004,7 @@ alerts:
       # As above: grouped by node rather than deduplicated by container.
       datadogQuery: |
         avg(last_30m):(
-          10730942464 - sum:kube_pod_container_resource_requests{unit:byte, resource:memory, container IN (%%{infraDaemonsetWorkloadList})} by {node}
+          10730942464 - sum:kube_pod_container_resource_requests{unit:byte AND resource:memory AND container IN (%%{infraDaemonsetWorkloadList})} by {node}
         ) < 5243000
   - alert: k8s-daemonset-high-cpu
     group: daemonset
@@ -1031,7 +1031,7 @@ alerts:
       # As above: grouped by node rather than deduplicated by container.
       datadogQuery: |
         avg(last_1h):(
-          1.77 - sum:kube_pod_container_resource_requests{unit:core, resource:cpu, container IN (%%{infraDaemonsetWorkloadList})} by {node}
+          1.77 - sum:kube_pod_container_resource_requests{unit:core AND resource:cpu AND container IN (%%{infraDaemonsetWorkloadList})} by {node}
         ) < 0.1
 
   # --- File descriptors ----------------------------------------------------
@@ -1144,8 +1144,8 @@ alerts:
         ) > 1
       datadogQuery: |
         avg(last_6h):(
-          sum:container_cpu_usage_seconds_total{pod:vector-*, !container:""} by {pod,namespace,container}.as_rate()
-          / max:kube_pod_container_resource_requests{resource:cpu, pod:vector-*, !container:""} by {pod,namespace,container}
+          sum:container_cpu_usage_seconds_total{pod:vector-* AND container:*} by {pod,namespace,container}.as_rate().rollup(sum, 60)
+          / max:kube_pod_container_resource_requests{resource:cpu AND pod:vector-* AND container:*} by {pod,namespace,container}.rollup(avg, 60)
         ) > 1
   - alert: infra-pods-high-cpu-ratio
     group: infra_cpu
@@ -1172,9 +1172,9 @@ alerts:
         ) > 1
       datadogQuery: |
         avg(last_30m):(
-          sum:container_cpu_usage_seconds_total{%%{excludeMzDeploymentNamespaceFilter}, !container:"", pod NOT IN (parca-agent-*,vector-*,cilium-egress-*)}
-            by {pod,namespace,container}.as_rate()
-          / max:kube_pod_container_resource_requests{%%{excludeMzDeploymentNamespaceFilter}, resource:cpu, !container:"", pod NOT IN (parca-agent-*,vector-*,cilium-egress-*)}
+          sum:container_cpu_usage_seconds_total{%%{excludeMzDeploymentNamespaceFilter} AND container:* AND NOT (pod:parca-agent-* OR pod:vector-* OR pod:cilium-egress-*)}
+            by {pod,namespace,container}.as_rate().rollup(sum, 60)
+          / max:kube_pod_container_resource_requests{%%{excludeMzDeploymentNamespaceFilter} AND resource:cpu AND container:* AND NOT (pod:parca-agent-* OR pod:vector-* OR pod:cilium-egress-*)}
             by {pod,namespace,container}
         ) > 1
   - alert: infra-memory-high
@@ -1338,7 +1338,7 @@ alerts:
         ) > 0
       datadogQuery: |
         min(last_20m):(
-          max:kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter}, phase:Pending} by {namespace,pod}
+          max:kube_pod_status_phase{%%{excludeMzDeploymentNamespaceFilter} AND phase:pending} by {namespace,pod}
         ) > 0
   - alert: pod-restart-rate-high
     group: infra_pod_health
@@ -1360,8 +1360,8 @@ alerts:
         ) * 100 > 0
       datadogQuery: |
         avg(last_10m):(
-          avg:kube_pod_container_status_restarts_total{%%{excludeMzDeploymentNamespaceFilter}, container NOT IN (%%{infraNonessentialWorkloadList})}
-            by {container,namespace}.as_rate()
+          avg:kube_pod_container_status_restarts_total{%%{excludeMzDeploymentNamespaceFilter} AND container NOT IN (%%{infraNonessentialWorkloadList})}
+            by {container,namespace}.as_rate().rollup(sum, 60)
         ) * 100 > 0
   - alert: pod-restart-rate-high-nonessential
     group: infra_pod_health
@@ -1383,7 +1383,7 @@ alerts:
         ) * 100 > 0
       datadogQuery: |
         avg(last_10m):(
-          avg:kube_pod_container_status_restarts_total{container IN (%%{infraNonessentialWorkloadList})} by {container,namespace}.as_rate()
+          avg:kube_pod_container_status_restarts_total{container IN (%%{infraNonessentialWorkloadList})} by {container,namespace}.as_rate().rollup(sum, 60)
         ) * 100 > 0
   - alert: pods-stuck-in-waiting
     group: infra_pod_health
@@ -1443,11 +1443,13 @@ alerts:
             label_replace(container_network_receive_bytes_total{workload="materialize-egress"}, "node", "$1", "instance", "(.+)")
           ) ^ 0
         )
-      # `absent()` is a Datadog no-data notification, not a query. The egress-
-      # gateway node restriction is a group_left join, so this and the four
-      # queries below cover every node — scope them to the egress pool by tag.
+      # `absent()` is a Datadog no-data notification, not a query: the threshold
+      # here is never crossed, so set the monitor's notify_no_data to alert when
+      # the series stop. The egress-gateway node restriction is a group_left
+      # join, so this and the four queries below cover every node — scope them
+      # to the egress pool by tag.
       datadogQuery: |
-        avg(last_2m):sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+        avg(last_2m):sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate().rollup(sum, 60) < 0
   - alert: excessive-egress-traffic
     group: egress_gateway
     stability: best-effort
@@ -1474,7 +1476,7 @@ alerts:
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
         avg(last_20m):(
-          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate().rollup(sum, 60)
         ) > 687500000
   - alert: high-egress-traffic
     group: egress_gateway
@@ -1502,7 +1504,7 @@ alerts:
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
         avg(last_20m):(
-          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate().rollup(sum, 60)
         ) > 562500000
   - alert: low-egress-traffic
     group: egress_gateway
@@ -1530,7 +1532,7 @@ alerts:
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
         avg(last_2m):(
-          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+          sum:node_network_receive_bytes_total{device:eth0} by {node}.as_rate().rollup(sum, 60)
         ) < 100
   - alert: no-egress-traffic
     group: egress_gateway
@@ -1558,5 +1560,5 @@ alerts:
       # Covers every node, not just the egress-gateway pool. See above.
       datadogQuery: |
         avg(last_5m):(
-          min:node_network_receive_bytes_total{device:eth0} by {node}.as_rate()
+          min:node_network_receive_bytes_total{device:eth0} by {node}.as_rate().rollup(sum, 60)
         ) <= 0

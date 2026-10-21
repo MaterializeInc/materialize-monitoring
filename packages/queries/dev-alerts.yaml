@@ -69,3 +69,8 @@ alerts:
           or
             increase(loki_process_truncated_fields_total{field="line"}[1h])
         ) > 0
+      # The `unless … offset 1h` arm, which counts a counter created inside the
+      # window, has no Datadog form, so the cut that creates the counter can go
+      # unreported.
+      datadogQuery: |
+        sum(last_1h):sum:loki_process_truncated_fields_total{field:line} by {namespace,app,component_id}.as_count() > 0
