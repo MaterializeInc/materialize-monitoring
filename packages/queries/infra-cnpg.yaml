@@ -74,6 +74,9 @@ queries:
     promQL: |
       (count(cnpg_collector_up{pod=~"($cnpgClusterList)-[0-9]+"} == 0) or vector(0))
       + (count(up{pod=~"($cnpgClusterList)-[0-9]+", container="postgres"} == 0) or vector(0))
+    datadogQuery: |
+      default_zero(count(cutoff_max(max:cnpg_collector_up{$cnpgClusterList} by {pod}, 0), {*}))
+        + default_zero(count(cutoff_max(max:up{$cnpgClusterList AND container:postgres} by {pod}, 0), {*}))
 
   - id: infra.cnpg.health.primary
     stability: experimental
@@ -89,6 +92,8 @@ queries:
       unhealthy: No instance at all means there is no primary, and nothing can commit.
     promQL: |
       max by (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
+    datadogQuery: |
+      cutoff_max(max:cnpg_pg_replication_in_recovery{$cnpgClusterList} by {pod}, 0)
     instant: true
 
   - id: infra.cnpg.health.connections_used
@@ -120,6 +125,16 @@ queries:
           - on (pod) sum by (pod) (cnpg_pg_settings_setting{pod=~"($cnpgClusterList)-[0-9]+", name=~"superuser_reserved_connections|reserved_connections"})
         )
       )
+    datadogQuery: |
+      max(
+        sum:cnpg_backends_total{$cnpgClusterList} by {pod}
+          / (
+            max:cnpg_pg_settings_setting{$cnpgClusterList AND name:max_connections} by {pod}
+              - sum:cnpg_pg_settings_setting{$cnpgClusterList AND name IN (superuser_reserved_connections,reserved_connections)}
+                by {pod}
+          ),
+        {*}
+      )
 
   - id: infra.cnpg.health.oldest_transaction
     stability: experimental
@@ -138,6 +153,8 @@ queries:
         state it is in.
     promQL: |
       max(cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
+    datadogQuery: |
+      max:cnpg_backends_max_tx_duration_seconds{$cnpgClusterList}
 
   - id: infra.cnpg.health.xid_used
     stability: experimental
@@ -161,6 +178,8 @@ queries:
         measure Cloud SQL publishes as transaction-ID utilization.
     promQL: |
       max(cnpg_pg_database_xid_age{pod=~"($cnpgClusterList)-[0-9]+"}) / 2147483648
+    datadogQuery: |
+      max:cnpg_pg_database_xid_age{$cnpgClusterList} / 2147483648
 
   - id: infra.cnpg.health.version
     stability: experimental
@@ -174,6 +193,8 @@ queries:
         versions at once means a rolling upgrade is under way.
     promQL: |
       max by (full) (cnpg_collector_postgres_version{pod=~"($cnpgClusterList)-[0-9]+"})
+    datadogQuery: |
+      max:cnpg_collector_postgres_version{$cnpgClusterList} by {full}
     instant: true
 
   - id: infra.cnpg.health.backup_age
@@ -192,6 +213,10 @@ queries:
         cluster with no backup configured reports.
     promQL: |
       time() - max(cnpg_collector_last_available_backup_timestamp{pod=~"($cnpgClusterList)-[0-9]+"} > 0)
+    # Datadog has no `time()`, so this is the raw timestamp of the latest
+    # backup rather than the age derived from it.
+    datadogQuery: |
+      cutoff_min(max:cnpg_collector_last_available_backup_timestamp{$cnpgClusterList}, 1e-9)
 
   # --- Connections ------------------------------------------------------------
   - id: infra.cnpg.connections.by_database
@@ -226,6 +251,23 @@ queries:
           )
           and on (pod) (cnpg_pg_replication_in_recovery{pod=~"($cnpgClusterList)-[0-9]+"} == 0)
         )
+    datadogQuery:
+      - |
+        sum(
+          sum:cnpg_backends_total{$cnpgClusterList} by {pod,datname,usename}
+            * (cutoff_max(max:cnpg_pg_replication_in_recovery{$cnpgClusterList} by {pod}, 0) * 0 + 1),
+          {datname,usename}
+        )
+      - |
+        max(
+          (
+            max:cnpg_pg_settings_setting{$cnpgClusterList AND name:max_connections} by {pod}
+              - sum:cnpg_pg_settings_setting{$cnpgClusterList AND name IN (superuser_reserved_connections,reserved_connections)}
+                by {pod}
+          )
+            * (cutoff_max(max:cnpg_pg_replication_in_recovery{$cnpgClusterList} by {pod}, 0) * 0 + 1),
+          {*}
+        )
 
   - id: infra.cnpg.connections.by_state
     stability: experimental
@@ -251,6 +293,11 @@ queries:
         sum by (state) (cnpg_backends_total{pod=~"($cnpgClusterList)-[0-9]+"})
       - |
         sum(cnpg_backends_waiting_total{pod=~"($cnpgClusterList)-[0-9]+"})
+    datadogQuery:
+      - |
+        sum:cnpg_backends_total{$cnpgClusterList} by {state}
+      - |
+        sum:cnpg_backends_waiting_total{$cnpgClusterList}
 
   - id: infra.cnpg.connections.oldest_transaction
     stability: experimental
@@ -263,6 +310,8 @@ queries:
         the consensus table grows and every commit slows.
     promQL: |
       max by (datname, state) (cnpg_backends_max_tx_duration_seconds{pod=~"($cnpgClusterList)-[0-9]+"})
+    datadogQuery: |
+      max:cnpg_backends_max_tx_duration_seconds{$cnpgClusterList} by {datname,state}
 
   # --- Activity ---------------------------------------------------------------
   - id: infra.cnpg.activity.transactions
@@ -285,6 +334,19 @@ queries:
         sum by (datname) (rate(cnpg_pg_stat_database_xact_commit{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
       - |
         sum by (datname) (rate(cnpg_pg_stat_database_xact_rollback{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+    datadogQuery:
+      - |
+        cutoff_min(
+          sum:cnpg_pg_stat_database_xact_commit{$cnpgClusterList AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
+      - |
+        cutoff_min(
+          sum:cnpg_pg_stat_database_xact_rollback{$cnpgClusterList AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
 
   - id: infra.cnpg.activity.rows
     stability: experimental
@@ -307,6 +369,25 @@ queries:
         sum by (datname) (rate(cnpg_pg_stat_database_tup_updated{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
       - |
         sum by (datname) (rate(cnpg_pg_stat_database_tup_deleted{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval})) > 0
+    datadogQuery:
+      - |
+        cutoff_min(
+          sum:cnpg_pg_stat_database_tup_inserted{$cnpgClusterList AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
+      - |
+        cutoff_min(
+          sum:cnpg_pg_stat_database_tup_updated{$cnpgClusterList AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
+      - |
+        cutoff_min(
+          sum:cnpg_pg_stat_database_tup_deleted{$cnpgClusterList AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60),
+          1e-9
+        )
 
   - id: infra.cnpg.activity.cache_hit
     stability: experimental
@@ -329,6 +410,15 @@ queries:
           + sum by (datname) (rate(cnpg_pg_stat_database_blks_read{pod=~"($cnpgClusterList)-[0-9]+", datname!=""}%%{interval}))
         )
       ) >= 0
+    datadogQuery: |
+      sum:cnpg_pg_stat_database_blks_hit{$cnpgClusterList AND datname:*}
+        by {datname}.as_rate().rollup(sum, 60)
+        / (
+          sum:cnpg_pg_stat_database_blks_hit{$cnpgClusterList AND datname:*}
+            by {datname}.as_rate().rollup(sum, 60)
+            + sum:cnpg_pg_stat_database_blks_read{$cnpgClusterList AND datname:*}
+              by {datname}.as_rate().rollup(sum, 60)
+        )
 
   # --- Storage ----------------------------------------------------------------
   - id: infra.cnpg.storage.database_size
@@ -346,6 +436,8 @@ queries:
         database, and this is what tells them apart.
     promQL: |
       max by (datname) (cnpg_pg_database_size_bytes{pod=~"($cnpgClusterList)-[0-9]+"})
+    datadogQuery: |
+      max:cnpg_pg_database_size_bytes{$cnpgClusterList} by {datname}
 
   - id: infra.cnpg.storage.wal
     stability: experimental
@@ -373,6 +465,15 @@ queries:
             max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="size"})
           / on (pod) max by (pod) (cnpg_collector_pg_wal{pod=~"($cnpgClusterList)-[0-9]+", value="count"})
         )
+    datadogQuery:
+      - |
+        max:cnpg_collector_pg_wal{$cnpgClusterList AND value:size} by {pod}
+      - |
+        max:cnpg_collector_pg_wal_archive_status{$cnpgClusterList AND value:ready} by {pod}
+          * (
+            max:cnpg_collector_pg_wal{$cnpgClusterList AND value:size} by {pod}
+              / max:cnpg_collector_pg_wal{$cnpgClusterList AND value:count} by {pod}
+          )
 
   - id: infra.cnpg.storage.xid_age
     stability: experimental
@@ -388,6 +489,8 @@ queries:
         holding it back.
     promQL: |
       max by (datname) (cnpg_pg_database_xid_age{pod=~"($cnpgClusterList)-[0-9]+"}) / 2147483648
+    datadogQuery: |
+      max:cnpg_pg_database_xid_age{$cnpgClusterList} by {datname} / 2147483648
 
   # --- Replication ------------------------------------------------------------
   - id: infra.cnpg.replication.lag
@@ -406,6 +509,8 @@ queries:
         slows it down directly.
     promQL: |
       max by (pod) (cnpg_pg_replication_lag{pod=~"($cnpgClusterList)-[0-9]+"})
+    datadogQuery: |
+      max:cnpg_pg_replication_lag{$cnpgClusterList} by {pod}
 
   - id: infra.cnpg.replication.archive_failures
     stability: experimental
@@ -419,3 +524,5 @@ queries:
         good segment, and keeps WAL on disk until it succeeds.
     promQL: |
       sum by (pod) (rate(cnpg_pg_stat_archiver_failed_count{pod=~"($cnpgClusterList)-[0-9]+"}%%{interval}))
+    datadogQuery: |
+      sum:cnpg_pg_stat_archiver_failed_count{$cnpgClusterList} by {pod}.as_rate().rollup(sum, 60)

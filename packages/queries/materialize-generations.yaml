@@ -56,6 +56,12 @@ queries:
           )
         )
       )
+    # Datadog can't extract the generation from the pod name. Each generation runs
+    # one environmentd, so this counts the environmentd pods that report.
+    datadogQuery: |
+      count_not_null(
+        sum:mz_compute_commands_total{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter}} by {pod}
+      )
 
   - id: materialize.generations.version
     stability: experimental
@@ -106,6 +112,10 @@ queries:
           "generation", "$1", "pod", "%%{mzGenerationPattern}"
         )
       )
+    # Datadog can't extract the generation from the pod name, so each row names the
+    # generation's environmentd pod instead.
+    datadogQuery: |
+      max:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter}} by {pod,mz_version}.rollup(max, %%{range})
     # Evaluated once rather than per step, so the table draws a row per generation
     # instead of a row per generation *per scrape*. The `max_over_time` over the
     # selected range is what keeps that from collapsing to "whatever is running
@@ -140,6 +150,12 @@ queries:
             "generation", "$1", "pod", "%%{mzGenerationPattern}"
           )
         )
+      )
+    # Datadog can't extract the generation from the pod name, so this counts the
+    # pods of every selected generation together.
+    datadogQuery: |
+      count_not_null(
+        max:container_memory_working_set_bytes{%%{cAdvisorFilter} AND %%{mzGenerationFilter}} by {pod}
       )
 
   - id: materialize.generations.hydrating
@@ -201,6 +217,18 @@ queries:
           ) > bool 1e15
         )
       )
+    # Datadog can't extract the generation from the pod name. Each generation's
+    # environmentd reports this metric, so its pod stands in for the generation.
+    datadogQuery: |
+      sum(
+        is_greater(
+          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+            by {pod,instance_id,collection_id}
+            - 1e15,
+          0
+        ),
+        {pod}
+      )
 
   - id: materialize.generations.collections
     stability: experimental
@@ -232,6 +260,13 @@ queries:
             "generation", "$1", "pod", "%%{mzGenerationPattern}"
           )
         )
+      )
+    # As above: the environmentd pod stands in for the generation.
+    datadogQuery: |
+      count(
+        max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+          by {pod,instance_id,collection_id},
+        {pod}
       )
 
   - id: materialize.generations.lag.max
@@ -268,6 +303,18 @@ queries:
           },
           "generation", "$1", "pod", "%%{mzGenerationPattern}"
         ) < 1e9
+      )
+    # As above: the environmentd pod stands in for the generation. The inner
+    # query keeps every tag that tells one reading from another, so cutoff_max
+    # drops each replica's sentinel on its own.
+    datadogQuery: |
+      max(
+        cutoff_max(
+          max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+            by {namespace,pod,instance_id,replica_id,collection_id},
+          1e9
+        ),
+        {pod}
       )
 
   - id: materialize.generations.lag.total
@@ -315,6 +362,21 @@ queries:
           ) < 1e9
         )
       )
+    # As above: the environmentd pod stands in for the generation. cutoff_max
+    # drops each reading's sentinel, and the inner group-by max takes each
+    # collection's worst surviving replica before the sum.
+    datadogQuery: |
+      sum(
+        max(
+          cutoff_max(
+            max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+              by {namespace,pod,instance_id,replica_id,collection_id},
+            1e9
+          ),
+          {pod,instance_id,collection_id}
+        ),
+        {pod}
+      )
 
   - id: materialize.generations.lag.total_by_cluster
     stability: experimental
@@ -355,6 +417,21 @@ queries:
           ) < 1e9
         )
       )
+    # As above: the environmentd pod stands in for the generation. cutoff_max
+    # drops each reading's sentinel, and the inner group-by max takes each
+    # collection's worst surviving replica before the sum.
+    datadogQuery: |
+      sum(
+        max(
+          cutoff_max(
+            max:mz_dataflow_wallclock_lag_seconds{%%{mzEnvironmentFilter} AND %%{mzGenerationFilter} AND instance_id:%%{mzClusterList} AND quantile:1}
+              by {namespace,pod,instance_id,replica_id,collection_id},
+            1e9
+          ),
+          {pod,instance_id,collection_id}
+        ),
+        {pod,instance_id}
+      )
 
   - id: materialize.generations.cpu
     stability: experimental
@@ -386,6 +463,10 @@ queries:
           "generation", "$1", "pod", "%%{mzGenerationPattern}"
         )
       )
+    # Datadog can't extract the generation from the pod name, so this is per pod;
+    # each pod's name carries its generation.
+    datadogQuery: |
+      sum:container_cpu_usage_seconds_total{%%{cAdvisorFilter} AND %%{mzGenerationFilter}} by {pod}.as_rate().rollup(sum, 60)
 
   - id: materialize.generations.memory
     stability: experimental
@@ -412,3 +493,6 @@ queries:
           "generation", "$1", "pod", "%%{mzGenerationPattern}"
         )
       )
+    # As above: per pod, because the generation stays in the pod name.
+    datadogQuery: |
+      sum:container_memory_working_set_bytes{%%{cAdvisorFilter} AND %%{mzGenerationFilter}} by {pod}

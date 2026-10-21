@@ -230,12 +230,13 @@ alerts:
             args: ["namespace"]
       # The pod-start grace period is dropped. The no-restarts-in-6h condition
       # is a join, so it is the second query here: combine the two in a composite
-      # monitor (a && b).
+      # monitor (a && b). The timestamp arrives as a gauge, so per_second reads
+      # whether it advances.
       datadogQuery:
         - |
-          avg(last_5m):(
-            max:mz_cluster_server_last_command_received{server_name:compute, pod:*0, cluster_environmentd_materialize_cloud_cluster_id NOT IN (s*1,s*3,s*4,s*5), %%{excludeEnvironmentFilter}}
-              by {namespace,cluster_environmentd_materialize_cloud_cluster_id,cluster_environmentd_materialize_cloud_replica_id,pod}.as_rate()
+          avg(last_5m):per_second(
+            max:mz_cluster_server_last_command_received{server_name:compute AND pod:*0 AND NOT (cluster_environmentd_materialize_cloud_cluster_id:s*1 OR cluster_environmentd_materialize_cloud_cluster_id:s*3 OR cluster_environmentd_materialize_cloud_cluster_id:s*4 OR cluster_environmentd_materialize_cloud_cluster_id:s*5) AND %%{excludeEnvironmentFilter}}
+              by {namespace,cluster_environmentd_materialize_cloud_cluster_id,cluster_environmentd_materialize_cloud_replica_id,pod}.rollup(max, 60)
           ) <= 0
         - |
           sum(last_6h):(
@@ -299,7 +300,7 @@ alerts:
           ) == 0
       datadogQuery: |
         max(last_5m):(
-          max:up{job:*/*materialize-environmentd, %%{excludeEnvironmentFilter}} by {namespace,materialize_cloud_organization_name,pod}
+          max:up{service:*/*materialize-environmentd AND %%{excludeEnvironmentFilter}} by {namespace,materialize_cloud_organization_name,pod}
         ) <= 0
   - alert: environmentd-not-scraped
     group: environmentd
@@ -336,7 +337,7 @@ alerts:
         absent(up{job=~".*/.*materialize-environmentd"})
       # A Datadog no-data notification on the metric, not a query.
       datadogQuery: |
-        avg:up{job:*/*materialize-environmentd}
+        avg:up{service:*/*materialize-environmentd}
 
   # --- auth ----------------------------------------------------------------
   - alert: auth-errors
@@ -367,7 +368,7 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_30m):(
-          avg:mz_auth_request_count{!status:2*, !status:401*} by {namespace,status}.as_rate()
+          avg:mz_auth_request_count{NOT status:2* AND NOT status:401*} by {namespace,status}.as_rate().rollup(sum, 60)
         ) > 0.01
   - alert: auth-refresh-failures
     group: auth
@@ -392,7 +393,7 @@ alerts:
         ) > 0.002
       datadogQuery: |
         avg(last_15m):(
-          avg:mz_auth_request_count{status:401*, path:refresh_token}.as_rate()
+          avg:mz_auth_request_count{status:401* AND path:refresh_token}.as_rate().rollup(sum, 60)
         ) > 0.002
 
   # --- console -------------------------------------------------------------
@@ -438,8 +439,9 @@ alerts:
       # Datadog cannot express; add a composite monitor for it if you need it.
       datadogQuery: |
         avg(last_5m):(
-          sum:mz_adapter_commands{application_name:web_console, status:error, %%{excludeEnvironmentFilter}} by {application_name}.as_rate()
-          / sum:mz_adapter_commands{application_name:web_console, %%{excludeEnvironmentFilter}} by {application_name}.as_rate()
+          sum:mz_adapter_commands{application_name:web_console AND status:error AND %%{excludeEnvironmentFilter}}
+            by {application_name}.as_rate().rollup(sum, 60)
+          / sum:mz_adapter_commands{application_name:web_console AND %%{excludeEnvironmentFilter}} by {application_name}.as_rate().rollup(sum, 60)
         ) * 100 > 2
 
   # --- the metadata database ----------------------------------------------
@@ -479,6 +481,10 @@ alerts:
           Materialize's side, or by resource from the cloud provider's.
       promQL: |
         min by (flavor, namespace, resource) (ext:consensus_up) == 0
+      # The recorded series reaches Datadog as `ext_consensus_up`, because
+      # Datadog turns the `:` in a metric name into `_`.
+      datadogQuery: |
+        max(last_5m):min:ext_consensus_up{*} by {flavor,namespace,resource} <= 0
 
   - alert: consensus-failures
     group: consensus
@@ -513,7 +519,7 @@ alerts:
       promQL: |
         sum by (namespace) (rate(mz_persist_consensus_failures[5m])) > 0.1
       datadogQuery: |
-        avg(last_10m):sum:mz_persist_consensus_failures{*} by {namespace}.as_rate() > 0.1
+        avg(last_10m):sum:mz_persist_consensus_failures{*} by {namespace}.as_rate().rollup(sum, 60) > 0.1
 
   # --- object storage --------------------------------------------------------
   - alert: blob-failures
@@ -543,7 +549,7 @@ alerts:
       promQL: |
         sum by (namespace, op) (rate(mz_persist_external_failed_count{op=~"blob_.*"}[5m])) > 0.1
       datadogQuery: |
-        avg(last_10m):sum:mz_persist_external_failed_count{op:blob_*} by {namespace,op}.as_rate() > 0.1
+        avg(last_10m):sum:mz_persist_external_failed_count{op:blob_*} by {namespace,op}.as_rate().rollup(sum, 60) > 0.1
 
   # --- persist itself ----------------------------------------------------------
   # Persist's own failure counters. The dependencies have alerts of their own
@@ -586,11 +592,11 @@ alerts:
       # here.
       datadogQuery:
         - |
-          avg(last_1m):sum:mz_persist_compaction_failed{*} by {namespace}.as_rate() > 1
+          avg(last_1m):sum:mz_persist_compaction_failed{*} by {namespace}.as_rate().rollup(sum, 60) > 1
         - |
-          avg(last_1m):sum:mz_persist_lease_timeout_read{*} by {namespace}.as_rate() > 3
+          avg(last_1m):sum:mz_persist_lease_timeout_read{*} by {namespace}.as_rate().rollup(sum, 60) > 3
         - |
-          avg(last_1m):sum:mz_persist_state_update_state_slow_path{*} by {namespace}.as_rate() > 1
+          avg(last_1m):sum:mz_persist_state_update_state_slow_path{*} by {namespace}.as_rate().rollup(sum, 60) > 1
 
   # --- environmentd / clusterd lifecycle -----------------------------------
   # Exit code 166 is Materialize's clean-shutdown sentinel; other non-graceful
@@ -669,8 +675,8 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_30m):100 * (
-          sum:container_cpu_usage_seconds_total{pod:*environmentd*, !container:""} by {namespace,pod}.as_rate()
-          / (sum:container_spec_cpu_quota{pod:*environmentd*, !container:""} by {namespace,pod} / 100000)
+          sum:container_cpu_usage_seconds_total{pod:*environmentd* AND container:*} by {namespace,pod}.as_rate().rollup(sum, 60)
+          / (sum:container_spec_cpu_quota{pod:*environmentd* AND container:*} by {namespace,pod}.rollup(avg, 60) / 100000)
         ) > 80
   - alert: environmentd-high-memory
     group: environmentd
@@ -706,8 +712,8 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_30m):100 * (
-          sum:container_memory_working_set_bytes{pod:*environmentd*, !container:""} by {namespace,pod,container}
-          / sum:container_spec_memory_limit_bytes{pod:*environmentd*, !container:""} by {namespace,pod,container}
+          sum:container_memory_working_set_bytes{pod:*environmentd* AND container:*} by {namespace,pod,container}
+          / sum:container_spec_memory_limit_bytes{pod:*environmentd* AND container:*} by {namespace,pod,container}
         ) > 80
   - alert: environmentd-cpu-throttled
     group: environmentd
@@ -734,8 +740,8 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_30m):100 * (
-          avg:container_cpu_cfs_throttled_periods_total{container:environmentd} by {instance,container,namespace}.as_rate()
-          / avg:container_cpu_cfs_periods_total{container:environmentd} by {instance,container,namespace}.as_rate()
+          avg:container_cpu_cfs_throttled_periods_total{container:environmentd} by {service.instance.id,container,namespace}.as_rate().rollup(sum, 60)
+          / avg:container_cpu_cfs_periods_total{container:environmentd} by {service.instance.id,container,namespace}.as_rate().rollup(sum, 60)
         ) > 50
   - alert: environmentd-memory-elevated
     group: environmentd
@@ -801,10 +807,10 @@ alerts:
             args: ["namespace"]
       # The four exit-code exclusions are a second series joined on (namespace,
       # pod) — a composite monitor in Datadog — so only the restart clause is
-      # here.
+      # here. Datadog requires the sum time aggregator with .as_count().
       datadogQuery: |
-        max(last_1h):(
-          sum:kube_pod_container_status_restarts_total{%%{mzEnvironmentNamespaceFilter}, container:clusterd} by {namespace,pod}.as_count()
+        sum(last_1h):(
+          sum:kube_pod_container_status_restarts_total{%%{mzEnvironmentNamespaceFilter} AND container:clusterd} by {namespace,pod}.as_count()
         ) > 0
   - alert: system-cluster-terminated
     group: environment_health
@@ -899,7 +905,7 @@ alerts:
           - name: mzEnvironmentName
             args: ["namespace"]
       datadogQuery: |
-        max(last_10m):min:mz_dataflow_replica_expiration_remaining_seconds{pod:*cluster*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+        max(last_10m):min:mz_dataflow_replica_expiration_remaining_seconds{pod:*cluster* AND %%{excludeEnvironmentFilter}} by {namespace,pod}
         < 604800
   - alert: swap-cluster-oom
     group: environment_health
@@ -949,7 +955,7 @@ alerts:
       # conditions are joins that Datadog would need a composite monitor for.
       datadogQuery: |
         max(last_10m):(
-          max:kube_pod_container_status_last_terminated_reason{reason:OOMKilled, %%{mzEnvironmentNamespaceFilter}} by {namespace,pod}
+          max:kube_pod_container_status_last_terminated_reason{reason:oomkilled AND %%{mzEnvironmentNamespaceFilter}} by {namespace,pod}
         ) > 0
 
   # --- system clusters -----------------------------------------------------
@@ -997,12 +1003,15 @@ alerts:
         functions:
           - name: mzClusterName
             args: ["instance_id"]
-      # Datadog aggregates once and cannot drop the unhydrated sentinel, so this
-      # reads the worst replica rather than the freshest, and a hydrating replica
-      # reads as stale.
+      # min: takes each collection's freshest replica, cutoff_max drops the
+      # unhydrated sentinel, and the group-by max takes the worst collection.
       datadogQuery: |
-        avg(last_15m):(
-          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:s*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        avg(last_15m):max(
+          cutoff_max(
+            min:mz_dataflow_wallclock_lag_seconds{quantile:1 AND instance_id:s* AND %%{excludeEnvironmentFilter}} by {namespace,instance_id,collection_id},
+            1e18
+          ),
+          {namespace,instance_id}
         ) > 60
   - alert: system-cluster-stale
     group: system_clusters
@@ -1037,12 +1046,15 @@ alerts:
         functions:
           - name: mzClusterName
             args: ["instance_id"]
-      # Datadog aggregates once and cannot drop the unhydrated sentinel, so this
-      # reads the worst replica rather than the freshest, and a hydrating replica
-      # reads as stale.
+      # min: takes each collection's freshest replica, cutoff_max drops the
+      # unhydrated sentinel, and the group-by max takes the worst collection.
       datadogQuery: |
-        avg(last_15m):(
-          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:s*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+        avg(last_15m):max(
+          cutoff_max(
+            min:mz_dataflow_wallclock_lag_seconds{quantile:1 AND instance_id:s* AND %%{excludeEnvironmentFilter}} by {namespace,instance_id,collection_id},
+            1e18
+          ),
+          {namespace,instance_id}
         ) > 600
   - alert: system-cluster-hydration-stuck
     group: system_clusters
@@ -1082,7 +1094,7 @@ alerts:
       # replica rather than on every one.
       datadogQuery: |
         min(last_15m):(
-          max:mz_dataflow_wallclock_lag_seconds{quantile:1, instance_id:s*, %%{excludeEnvironmentFilter}} by {namespace,instance_id}
+          max:mz_dataflow_wallclock_lag_seconds{quantile:1 AND instance_id:s* AND %%{excludeEnvironmentFilter}} by {namespace,instance_id}
         ) >= 1000000000000000000
   - alert: system-cluster-memory-near-limit
     group: system_clusters
@@ -1127,7 +1139,8 @@ alerts:
             args: ["cluster_environmentd_materialize_cloud_cluster_id"]
       datadogQuery: |
         max(last_15m):100 * (
-          max:mz_metrics_resource_usage{metric:heap, cluster_environmentd_materialize_cloud_cluster_id:s*, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          max:mz_metrics_resource_usage{metric:heap AND cluster_environmentd_materialize_cloud_cluster_id:s* AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod}
           / (max:mz_metrics_resource_usage{metric:memory_max} by {namespace,pod} + max:mz_metrics_resource_usage{metric:swap_max} by {namespace,pod})
         ) > 90
 
@@ -1164,7 +1177,7 @@ alerts:
       # No label_replace, so pods are not deduplicated across generations here.
       datadogQuery: |
         min(last_15m):(
-          min:kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter}, phase:Pending, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          min:kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter} AND phase:pending AND %%{excludeEnvironmentFilter}} by {namespace,pod}
         ) > 0
   - alert: environment-pod-pending
     group: environment_health
@@ -1190,7 +1203,7 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         min(last_15m):(
-          max:kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter}, phase:Pending, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          max:kube_pod_status_phase{%%{mzEnvironmentNamespaceFilter} AND phase:pending AND %%{excludeEnvironmentFilter}} by {namespace,pod}
         ) > 0
   - alert: cluster-replica-not-ready
     group: environment_health
@@ -1238,7 +1251,8 @@ alerts:
       # new-group delay instead.
       datadogQuery: |
         avg(last_10m):(
-          max:kube_pod_status_ready{condition:true, pod:*-cluster-*-replica-*, %%{mzEnvironmentNamespaceFilter}, %%{excludeEnvironmentFilter}} by {namespace,pod}
+          max:kube_pod_status_ready{condition:true AND pod:*-cluster-*-replica-* AND %%{mzEnvironmentNamespaceFilter} AND %%{excludeEnvironmentFilter}}
+            by {namespace,pod}
         ) < 0.5
   - alert: certificate-not-ready
     group: environment_health
@@ -1267,7 +1281,7 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         min(last_20m):(
-          max:certmanager_certificate_ready_status{!condition:True, %%{excludeEnvironmentFilter}} by {name,namespace,condition}
+          max:certmanager_certificate_ready_status{NOT condition:true AND %%{excludeEnvironmentFilter}} by {name,namespace,condition}
         ) >= 1
   - alert: console-query-latency
     group: environment_health
@@ -1300,7 +1314,7 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_15m):(
-          p95:mz_time_to_first_row_seconds{instance_id:s2, application_name:web_console, %%{excludeEnvironmentFilter}} by {namespace}
+          p95:mz_time_to_first_row_seconds{instance_id:s2 AND application_name:web_console AND %%{excludeEnvironmentFilter}} by {namespace}
         ) > 10
 
   # --- release health ------------------------------------------------------
@@ -1339,9 +1353,12 @@ alerts:
         )
       # The "previous generation was stable for a day" half needs label_replace
       # and a join, so this covers only the restarting-generation clause.
+      # Datadog keeps a counter's increments, not its running total, so "has
+      # restarted" becomes "restarted in the last day", the age the PromQL
+      # bounds the pod to.
       datadogQuery: |
-        max(last_1m):(
-          max:kube_pod_container_status_restarts_total{container:clusterd} by {namespace,pod}
+        sum(last_1d):(
+          sum:kube_pod_container_status_restarts_total{container:clusterd} by {namespace,pod}.as_count()
         ) > 0
 
   # --- External checkers and services ----------------------------------------
@@ -1402,7 +1419,7 @@ alerts:
             args: ["namespace"]
       datadogQuery: |
         avg(last_5m):(
-          sum:mz_external_calls_count{status:failed} by {connection_type,namespace}.as_rate()
+          sum:mz_external_calls_count{status:failed} by {connection_type,namespace}.as_rate().rollup(sum, 60)
         ) > 0
   - alert: external-uptime-checker-not-calling
     group: external_uptime

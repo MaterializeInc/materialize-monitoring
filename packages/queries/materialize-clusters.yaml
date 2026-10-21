@@ -36,11 +36,12 @@ queries:
     datadogQuery:
       - |
         count_not_null(
-          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}} by {compute_cluster_id}
+          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND compute_cluster_id:%%{mzClusterList}} by {compute_cluster_id}
         )
       - |
         count_not_null(
-          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_cluster_id:s*} by {compute_cluster_id}
+          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND compute_cluster_id:%%{mzClusterList} AND compute_cluster_id:s*}
+            by {compute_cluster_id}
         )
   - id: materialize.clusters.replicas.count
     stability: best-effort
@@ -72,12 +73,14 @@ queries:
     datadogQuery:
       - |
         count_not_null(
-          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}} by {compute_cluster_id,compute_replica_id}
+          avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND compute_cluster_id:%%{mzClusterList} AND compute_replica_id:%%{mzReplicaList}}
+            by {compute_cluster_id,compute_replica_id}
         )
       - |
         default_zero(
           count_not_null(
-            avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}, !compute_replica_name:r1} by {compute_cluster_id,compute_replica_id}
+            avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND compute_cluster_id:%%{mzClusterList} AND compute_replica_id:%%{mzReplicaList} AND NOT compute_replica_name:r1}
+              by {compute_cluster_id,compute_replica_id}
           )
         )
   - id: materialize.clusters.replicas.sizes
@@ -92,11 +95,13 @@ queries:
       count by (size) (
         %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
       )
-    # Datadog aggregates once, so the count-within-a-grouping has no direct
-    # form. This sums the 0/1 gauge instead, which counts *ready* replicas per
-    # size.
+    # The group-by count counts the replica series per size, as `count by` does.
     datadogQuery: |
-      sum:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}} by {size}
+      count(
+        max:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND compute_cluster_id:%%{mzClusterList} AND compute_replica_id:%%{mzReplicaList}}
+          by {compute_cluster_id,compute_replica_id,size},
+        {size}
+      )
     instant: true
   - id: materialize.clusters.info
     stability: best-effort
@@ -113,6 +118,6 @@ queries:
     promQL: |
       %%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id=~"%%{mzClusterList}", compute_replica_id=~"%%{mzReplicaList}"}
     datadogQuery: |
-      avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter}, compute_cluster_id:%%{mzClusterList}, compute_replica_id:%%{mzReplicaList}}
+      avg:%%{mzSqlPrefix}compute_cluster_status{%%{mzEnvironmentFilter} AND compute_cluster_id:%%{mzClusterList} AND compute_replica_id:%%{mzReplicaList}}
         by {compute_cluster_id,compute_cluster_name,compute_replica_id,compute_replica_name,size,mz_version}
     instant: true

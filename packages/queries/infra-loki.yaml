@@ -101,6 +101,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_canary_missing_entries_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.health.canary.entries
     stability: experimental
@@ -125,6 +127,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_canary_entries_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.health.canary.latency
     stability: experimental
@@ -166,6 +170,11 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:loki_canary_response_latency_seconds{app_instance:loki AND $lokiNamespace}
+      - |
+        p99:loki_canary_response_latency_seconds{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.health.canary.losses
     stability: experimental
@@ -214,6 +223,11 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:loki_canary_missing_entries_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
+      - |
+        sum:loki_canary_spot_check_missing_entries_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.health.up
     stability: experimental
@@ -243,6 +257,8 @@ queries:
           container=~"$lokiComponent"
         }
       )
+    datadogQuery: |
+      max:up{app_instance:loki AND $lokiNamespace AND $lokiComponent} by {container,service}
 
   - id: infra.loki.health.request_errors
     stability: experimental
@@ -283,6 +299,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_request_duration_seconds_count{app_instance:loki AND $lokiNamespace AND $lokiComponent AND status_code:5*}.as_rate().rollup(sum, 60)
+        / sum:loki_request_duration_seconds_count{app_instance:loki AND $lokiNamespace AND $lokiComponent}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.health.client_errors
     stability: experimental
@@ -331,6 +350,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_request_duration_seconds_count{app_instance:loki AND $lokiNamespace AND $lokiComponent AND status_code:4*}.as_rate().rollup(sum, 60)
+        / sum:loki_request_duration_seconds_count{app_instance:loki AND $lokiNamespace AND $lokiComponent}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.health.request_failures
     stability: experimental
@@ -355,6 +377,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_request_duration_seconds_count{app_instance:loki AND $lokiNamespace AND $lokiComponent AND status_code:error}
+        by {container}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.health.request_latency
     stability: experimental
@@ -386,6 +411,9 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:loki_request_duration_seconds{app_instance:loki AND $lokiNamespace AND $lokiComponent AND NOT route:*tail* AND NOT route:/schedulerpb.schedulerforquerier/querierloop}
+        by {route}
 
   - id: infra.loki.health.restarts
     stability: experimental
@@ -409,11 +437,14 @@ queries:
           %%{range}
         )
       ) > 0
+    datadogQuery: |
+      cutoff_min(sum:kube_pod_container_status_restarts_total{$lokiNamespace AND pod:loki-*} by {pod}.as_count(), 1e-9)
 
   # --- overview: alerts --------------------------------------------------------
   # Selected by the rules' `component` label rather than by name, so a new rule
   # labelled `loki` appears without a dashboard change. The rules' own
   # selectors span every namespace, so the namespace picker cannot narrow these.
+  # No Datadog form: Datadog alerts are monitors, not a series.
   - id: infra.loki.health.alerts_firing
     stability: experimental
     description:
@@ -519,7 +550,6 @@ queries:
           )
         )
       )
-
   - id: infra.loki.health.alerts
     stability: experimental
     description:
@@ -550,7 +580,6 @@ queries:
           "instance", "", "instance", "thanos-ruler|loki-ruler"
         )
       )
-
   - id: infra.loki.health.alert_history
     stability: experimental
     description:
@@ -591,6 +620,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_distributor_lines_received_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.write.bytes
     stability: experimental
@@ -614,6 +645,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_distributor_bytes_received_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.write.discarded
     stability: experimental
@@ -643,6 +676,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_discarded_samples_total{app_instance:loki AND $lokiNamespace} by {reason}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.write.discarded_bytes
     stability: experimental
@@ -665,6 +700,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_discarded_bytes_total{app_instance:loki AND $lokiNamespace} by {reason}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.write.streams
     stability: experimental
@@ -689,6 +726,8 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    datadogQuery: |
+      sum:loki_ingester_memory_streams{app_instance:loki AND $lokiNamespace} by {pod}
 
   - id: infra.loki.write.chunks_in_memory
     stability: experimental
@@ -709,6 +748,8 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    datadogQuery: |
+      sum:loki_ingester_memory_chunks{app_instance:loki AND $lokiNamespace} by {pod}
 
   - id: infra.loki.write.chunks_flushed
     stability: experimental
@@ -731,6 +772,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_ingester_chunks_flushed_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.write.chunk_utilization
     stability: experimental
@@ -773,6 +816,11 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:loki_ingester_chunk_utilization{app_instance:loki AND $lokiNamespace}
+      - |
+        p10:loki_ingester_chunk_utilization{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.write.chunk_age
     stability: experimental
@@ -816,6 +864,11 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:loki_ingester_chunk_age_seconds{app_instance:loki AND $lokiNamespace}
+      - |
+        p99:loki_ingester_chunk_age_seconds{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.write.wal_disk
     stability: experimental
@@ -837,6 +890,8 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    datadogQuery: |
+      max:loki_ingester_wal_disk_usage_percent{app_instance:loki AND $lokiNamespace} by {pod}
 
   - id: infra.loki.write.wal_disk_full
     stability: experimental
@@ -859,6 +914,8 @@ queries:
           %%{range}
         )
       )
+    datadogQuery: |
+      sum:loki_ingester_wal_disk_full_failures_total{app_instance:loki AND $lokiNamespace} by {pod}.as_count()
 
   - id: infra.loki.write.wal_replay
     stability: experimental
@@ -879,6 +936,8 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    datadogQuery: |
+      max:loki_ingester_wal_replay_active{app_instance:loki AND $lokiNamespace} by {pod}
 
   - id: infra.loki.write.push_latency
     stability: experimental
@@ -921,6 +980,11 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:loki_request_duration_seconds{app_instance:loki AND $lokiNamespace AND route IN (loki_api_v1_push,api_prom_push,/logproto.pusher/push)}
+      - |
+        p99:loki_request_duration_seconds{app_instance:loki AND $lokiNamespace AND route IN (loki_api_v1_push,api_prom_push,/logproto.pusher/push)}
 
   # --- reads: query path -------------------------------------------------------
   - id: infra.loki.read.query_rate
@@ -948,6 +1012,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_request_duration_seconds_count{app_instance:loki AND $lokiNamespace AND container:query-frontend AND route:loki_api_v1_*}
+        by {route}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.read.query_latency
     stability: experimental
@@ -1011,6 +1078,13 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:loki_request_duration_seconds{app_instance:loki AND $lokiNamespace AND container:query-frontend AND route:loki_api_v1_* AND NOT route:*tail*}
+      - |
+        p90:loki_request_duration_seconds{app_instance:loki AND $lokiNamespace AND container:query-frontend AND route:loki_api_v1_* AND NOT route:*tail*}
+      - |
+        p99:loki_request_duration_seconds{app_instance:loki AND $lokiNamespace AND container:query-frontend AND route:loki_api_v1_* AND NOT route:*tail*}
 
   - id: infra.loki.read.queue_duration
     stability: experimental
@@ -1053,6 +1127,11 @@ queries:
             )
           )
         )
+    datadogQuery:
+      - |
+        p50:loki_query_scheduler_queue_duration_seconds{app_instance:loki AND $lokiNamespace}
+      - |
+        p99:loki_query_scheduler_queue_duration_seconds{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.read.queries_in_flight
     stability: experimental
@@ -1072,6 +1151,8 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    datadogQuery: |
+      sum:loki_query_frontend_queries_in_progress{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.read.bytes_processed
     stability: experimental
@@ -1097,6 +1178,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_logql_querystats_bytes_processed_per_seconds_sum{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.read.cache_requests
     stability: experimental
@@ -1119,6 +1202,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      per_second(sum:loki_cache_fetched_keys{app_instance:loki AND $lokiNamespace} by {name}.rollup(max, 60))
 
   - id: infra.loki.read.cache_hit_rate
     stability: experimental
@@ -1155,6 +1240,9 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      per_second(sum:loki_cache_hits{app_instance:loki AND $lokiNamespace} by {name}.rollup(max, 60))
+        / per_second(sum:loki_cache_fetched_keys{app_instance:loki AND $lokiNamespace} by {name}.rollup(max, 60))
 
   - id: infra.loki.read.memcached_memory
     stability: experimental
@@ -1188,6 +1276,9 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    datadogQuery: |
+      sum:memcached_current_bytes{app_instance:loki AND $lokiNamespace} by {service}
+        / sum:memcached_limit_bytes{app_instance:loki AND $lokiNamespace} by {service}
 
   # --- storage: object store, index, compaction, retention ---------------------
   - id: infra.loki.store.operations
@@ -1212,6 +1303,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_objstore_bucket_operations_total{app_instance:loki AND $lokiNamespace} by {operation}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.store.failures
     stability: experimental
@@ -1239,6 +1332,8 @@ queries:
           %%{interval}
         )
       )
+    datadogQuery: |
+      sum:loki_objstore_bucket_operation_failures_total{app_instance:loki AND $lokiNamespace} by {operation}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.store.latency
     stability: experimental
@@ -1264,6 +1359,8 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:loki_objstore_bucket_operation_duration_seconds{app_instance:loki AND $lokiNamespace} by {operation}
 
   - id: infra.loki.store.index_sync
     stability: experimental
@@ -1299,6 +1396,11 @@ queries:
             %%{interval}
           )
         )
+    datadogQuery:
+      - |
+        sum:loki_tsdb_shipper_tables_sync_operation_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
+      - |
+        sum:loki_tsdb_shipper_tables_upload_operation_total{app_instance:loki AND $lokiNamespace}.as_rate().rollup(sum, 60)
 
   - id: infra.loki.store.index_wait
     stability: experimental
@@ -1326,6 +1428,8 @@ queries:
           )
         )
       )
+    datadogQuery: |
+      p99:loki_tsdb_shipper_query_wait_time_seconds{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.store.retention_age
     stability: experimental
@@ -1354,6 +1458,10 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    # Datadog has no `time()`, so this is the raw timestamp of the last
+    # successful retention run rather than the age derived from it.
+    datadogQuery: |
+      max:loki_compactor_apply_retention_last_successful_run_timestamp_seconds{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.store.compaction_age
     stability: experimental
@@ -1378,6 +1486,10 @@ queries:
           namespace=~"$lokiNamespace"
         }
       )
+    # Datadog has no `time()`, so this is the raw timestamp of the last
+    # successful compaction rather than the age derived from it.
+    datadogQuery: |
+      max:loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{app_instance:loki AND $lokiNamespace}
 
   - id: infra.loki.store.compaction_runs
     stability: experimental
@@ -1400,6 +1512,8 @@ queries:
           %%{range}
         )
       )
+    datadogQuery: |
+      sum:loki_boltdb_shipper_compact_tables_operation_total{app_instance:loki AND $lokiNamespace} by {status}.as_count()
 
   - id: infra.loki.store.deletes_pending
     stability: experimental
@@ -1429,6 +1543,11 @@ queries:
             namespace=~"$lokiNamespace"
           }
         )
+    datadogQuery:
+      - |
+        sum:loki_compactor_pending_delete_requests_count{app_instance:loki AND $lokiNamespace}
+      - |
+        max:loki_compactor_oldest_pending_delete_request_age_seconds{app_instance:loki AND $lokiNamespace}
 
   # --- logs: what Loki itself said ---------------------------------------------
   - id: infra.loki.logs.stream

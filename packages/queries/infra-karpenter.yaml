@@ -54,6 +54,12 @@ queries:
         max by (name) (operator_nodepool_status_condition_count{type="Ready", status!="True"}) == 1
       )
       or 0 * count(max by (name) (operator_nodepool_status_condition_count{type="Ready"}))
+    datadogQuery: |
+      default_zero(
+        count_nonzero(
+          max:operator_nodepool_status_condition_count{type:ready AND NOT status:true} by {name}
+        )
+      )
 
   - id: infra.karpenter.health.nodes
     stability: experimental
@@ -65,6 +71,11 @@ queries:
     promQL: |
       count(
         max by (node_name) (karpenter_nodes_allocatable{resource_type="cpu", nodepool!="", nodepool=~"$karpenterNodePool"})
+      )
+    datadogQuery: |
+      count_not_null(
+        max:karpenter_nodes_allocatable{resource_type:cpu AND nodepool:* AND $karpenterNodePool}
+          by {node_name}
       )
 
   - id: infra.karpenter.health.pods_unplaceable
@@ -82,6 +93,8 @@ queries:
         the constraint.
     promQL: |
       max(karpenter_scheduler_unschedulable_pods_count{controller="provisioner"})
+    datadogQuery: |
+      max:karpenter_scheduler_unschedulable_pods_count{controller:provisioner}
 
   - id: infra.karpenter.health.launch_errors
     stability: experimental
@@ -97,6 +110,8 @@ queries:
     promQL: |
       sum(increase(karpenter_cloudprovider_errors_total{method="Create"}%%{range}))
       or 0 * max(karpenter_build_info)
+    datadogQuery: |
+      default_zero(sum:karpenter_cloudprovider_errors_total{method:create}.as_count())
     instant: true
 
   - id: infra.karpenter.health.disrupted
@@ -113,6 +128,8 @@ queries:
     promQL: |
       sum(increase(karpenter_nodeclaims_disrupted_total{nodepool=~"$karpenterNodePool"}%%{range}))
       or 0 * max(karpenter_build_info)
+    datadogQuery: |
+      default_zero(sum:karpenter_nodeclaims_disrupted_total{$karpenterNodePool}.as_count())
     instant: true
 
   - id: infra.karpenter.health.synced
@@ -129,6 +146,8 @@ queries:
         the error rates.
     promQL: |
       max(karpenter_cluster_state_synced)
+    datadogQuery: |
+      max:karpenter_cluster_state_synced{*}
 
   - id: infra.karpenter.health.version
     stability: experimental
@@ -136,6 +155,8 @@ queries:
       summary: The Karpenter version running.
     promQL: |
       max by (version) (karpenter_build_info)
+    datadogQuery: |
+      max:karpenter_build_info{*} by {version}
     instant: true
 
   # --- Overview: capacity ---------------------------------------------------------
@@ -146,6 +167,12 @@ queries:
     promQL: |
       count by (nodepool) (
         max by (node_name, nodepool) (karpenter_nodes_allocatable{resource_type="cpu", nodepool!="", nodepool=~"$karpenterNodePool"})
+      )
+    datadogQuery: |
+      count(
+        max:karpenter_nodes_allocatable{resource_type:cpu AND nodepool:* AND $karpenterNodePool}
+          by {node_name,nodepool},
+        {nodepool}
       )
 
   - id: infra.karpenter.nodepools.cpu
@@ -164,6 +191,11 @@ queries:
         max by (nodepool) (karpenter_nodepools_usage{resource_type="cpu", nodepool=~"$karpenterNodePool"})
       - |
         max by (nodepool) (karpenter_nodepools_limit{resource_type="cpu", nodepool=~"$karpenterNodePool"})
+    datadogQuery:
+      - |
+        max:karpenter_nodepools_usage{resource_type:cpu AND $karpenterNodePool} by {nodepool}
+      - |
+        max:karpenter_nodepools_limit{resource_type:cpu AND $karpenterNodePool} by {nodepool}
 
   - id: infra.karpenter.nodepools.memory
     stability: experimental
@@ -177,6 +209,11 @@ queries:
         max by (nodepool) (karpenter_nodepools_usage{resource_type="memory", nodepool=~"$karpenterNodePool"})
       - |
         max by (nodepool) (karpenter_nodepools_limit{resource_type="memory", nodepool=~"$karpenterNodePool"})
+    datadogQuery:
+      - |
+        max:karpenter_nodepools_usage{resource_type:memory AND $karpenterNodePool} by {nodepool}
+      - |
+        max:karpenter_nodepools_limit{resource_type:memory AND $karpenterNodePool} by {nodepool}
 
   - id: infra.karpenter.utilization
     stability: experimental
@@ -193,6 +230,9 @@ queries:
         not to be disrupted.
     promQL: |
       max by (resource_type) (karpenter_cluster_utilization_percent{resource_type=~"cpu|memory|pods"}) / 100
+    datadogQuery: |
+      max:karpenter_cluster_utilization_percent{resource_type IN (cpu,memory,pods)}
+        by {resource_type} / 100
 
   - id: infra.karpenter.conditions
     stability: experimental
@@ -211,6 +251,12 @@ queries:
       max by (kind, name, type, status, reason) (
         operator_status_condition_count{kind=~"NodePool|EC2NodeClass"}
       ) == 1
+    datadogQuery: |
+      cutoff_min(
+        max:operator_status_condition_count{kind IN (nodepool,ec2nodeclass)}
+          by {kind,name,type,status,reason},
+        1
+      )
     instant: true
 
   # --- Provisioning ---------------------------------------------------------------
@@ -225,6 +271,9 @@ queries:
       sum by (nodepool, reason) (
         rate(karpenter_nodeclaims_created_total{nodepool=~"$karpenterNodePool"}%%{interval})
       ) * 3600
+    datadogQuery: |
+      sum:karpenter_nodeclaims_created_total{$karpenterNodePool}
+        by {nodepool,reason}.as_rate().rollup(sum, 60) * 3600
 
   - id: infra.karpenter.provisioning.errors
     stability: experimental
@@ -245,6 +294,8 @@ queries:
       sum by (error, method) (
         rate(karpenter_cloudprovider_errors_total%%{interval})
       ) * 3600
+    datadogQuery: |
+      sum:karpenter_cloudprovider_errors_total{*} by {error,method}.as_rate().rollup(sum, 60) * 3600
 
   - id: infra.karpenter.provisioning.offerings
     stability: experimental
@@ -266,6 +317,12 @@ queries:
       sum by (instance_type, capacity_type) (
         max by (instance_type, capacity_type, zone) (karpenter_cloudprovider_instance_type_offering_available{capacity_type!="reserved"})
       )
+    datadogQuery: |
+      sum(
+        max:karpenter_cloudprovider_instance_type_offering_available{NOT capacity_type:reserved}
+          by {instance_type,capacity_type,zone},
+        {instance_type,capacity_type}
+      )
 
   - id: infra.karpenter.provisioning.pods_waiting
     stability: experimental
@@ -279,6 +336,11 @@ queries:
         max(karpenter_scheduler_unschedulable_pods_count{controller="provisioner"})
       - |
         max by (controller) (karpenter_scheduler_queue_depth)
+    datadogQuery:
+      - |
+        max:karpenter_scheduler_unschedulable_pods_count{controller:provisioner}
+      - |
+        max:karpenter_scheduler_queue_depth{*} by {controller}
 
   - id: infra.karpenter.provisioning.startup
     stability: experimental
@@ -298,6 +360,13 @@ queries:
         histogram_quantile(0.5, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))
       - |
         histogram_quantile(0.99, sum by (le) (increase(karpenter_pods_provisioning_startup_duration_seconds_bucket[1h])))
+    # Datadog has no trailing window, so each quantile is over an hour-long bucket
+    # rather than the hour before each point.
+    datadogQuery:
+      - |
+        p50:karpenter_pods_provisioning_startup_duration_seconds{*}.rollup(3600)
+      - |
+        p99:karpenter_pods_provisioning_startup_duration_seconds{*}.rollup(3600)
 
   - id: infra.karpenter.provisioning.stages
     stability: experimental
@@ -316,6 +385,12 @@ queries:
           increase(operator_nodeclaim_status_condition_transition_seconds_bucket{type=~"Launched|Registered|Initialized", karpenter_sh_nodepool=~"$karpenterNodePool"}[1h])
         )
       )
+    # The NodeClaim families carry the pool as `karpenter_sh_nodepool`, so the
+    # variable is spliced in by value. Each quantile is over an hour-long bucket
+    # rather than the hour before each point.
+    datadogQuery: |
+      p99:operator_nodeclaim_status_condition_transition_seconds{type IN (launched,registered,initialized) AND karpenter_sh_nodepool:$karpenterNodePool.value}
+        by {type}.rollup(3600)
 
   - id: infra.karpenter.provisioning.scheduling_duration
     stability: experimental
@@ -329,6 +404,8 @@ queries:
       histogram_quantile(0.99,
         sum by (controller, le) (rate(karpenter_scheduler_scheduling_duration_seconds_bucket%%{interval}))
       )
+    datadogQuery: |
+      p99:karpenter_scheduler_scheduling_duration_seconds{*} by {controller}
 
   - id: infra.karpenter.provisioning.cloud_latency
     stability: experimental
@@ -341,6 +418,8 @@ queries:
       histogram_quantile(0.99,
         sum by (method, le) (rate(karpenter_cloudprovider_duration_seconds_bucket%%{interval}))
       )
+    datadogQuery: |
+      p99:karpenter_cloudprovider_duration_seconds{*} by {method}
 
   # --- Disruption -----------------------------------------------------------------
   - id: infra.karpenter.disruption.disrupted
@@ -356,6 +435,9 @@ queries:
       sum by (nodepool, reason) (
         rate(karpenter_nodeclaims_disrupted_total{nodepool=~"$karpenterNodePool"}%%{interval})
       ) * 3600
+    datadogQuery: |
+      sum:karpenter_nodeclaims_disrupted_total{$karpenterNodePool}
+        by {nodepool,reason}.as_rate().rollup(sum, 60) * 3600
 
   - id: infra.karpenter.disruption.decisions
     stability: experimental
@@ -368,6 +450,9 @@ queries:
       sum by (reason, decision) (
         rate(karpenter_voluntary_disruption_decisions_total%%{interval})
       ) * 3600
+    datadogQuery: |
+      sum:karpenter_voluntary_disruption_decisions_total{*}
+        by {reason,decision}.as_rate().rollup(sum, 60) * 3600
 
   - id: infra.karpenter.disruption.eligible
     stability: experimental
@@ -379,6 +464,8 @@ queries:
         disruption; _Why Disruption Is Blocked_ says by what.
     promQL: |
       max by (reason) (karpenter_voluntary_disruption_eligible_nodes)
+    datadogQuery: |
+      max:karpenter_voluntary_disruption_eligible_nodes{*} by {reason}
 
   - id: infra.karpenter.disruption.budget
     stability: experimental
@@ -391,6 +478,8 @@ queries:
         nodes are already being disrupted.
     promQL: |
       min by (nodepool, reason) (karpenter_nodepools_allowed_disruptions{nodepool=~"$karpenterNodePool"})
+    datadogQuery: |
+      min:karpenter_nodepools_allowed_disruptions{$karpenterNodePool} by {nodepool,reason}
 
   - id: infra.karpenter.disruption.blocked
     stability: experimental
@@ -442,6 +531,8 @@ queries:
         and the node is not removed until the budget allows it.
     promQL: |
       sum by (code) (rate(karpenter_nodes_eviction_requests_total%%{interval})) * 60
+    datadogQuery: |
+      sum:karpenter_nodes_eviction_requests_total{*} by {code}.as_rate().rollup(sum, 60) * 60
 
   - id: infra.karpenter.disruption.termination
     stability: experimental
@@ -456,6 +547,11 @@ queries:
       histogram_quantile(0.99,
         sum by (le) (increase(operator_nodeclaim_termination_duration_seconds_bucket{karpenter_sh_nodepool=~"$karpenterNodePool"}[1h]))
       )
+    # The NodeClaim families carry the pool as `karpenter_sh_nodepool`, so the
+    # variable is spliced in by value. Each quantile is over an hour-long bucket
+    # rather than the hour before each point.
+    datadogQuery: |
+      p99:operator_nodeclaim_termination_duration_seconds{karpenter_sh_nodepool:$karpenterNodePool.value}.rollup(3600)
 
   - id: infra.karpenter.disruption.consolidation_timeouts
     stability: experimental
@@ -468,6 +564,9 @@ queries:
       sum by (consolidation_type) (
         rate(karpenter_voluntary_disruption_consolidation_timeouts_total%%{interval})
       ) * 3600
+    datadogQuery: |
+      sum:karpenter_voluntary_disruption_consolidation_timeouts_total{*}
+        by {consolidation_type}.as_rate().rollup(sum, 60) * 3600
 
   - id: infra.karpenter.nodes.age
     stability: experimental
@@ -482,6 +581,9 @@ queries:
       max by (node_name, nodepool, instance_type, zone) (
         karpenter_nodes_current_lifetime_seconds{nodepool!="", nodepool=~"$karpenterNodePool"}
       )
+    datadogQuery: |
+      max:karpenter_nodes_current_lifetime_seconds{nodepool:* AND $karpenterNodePool}
+        by {node_name,nodepool,instance_type,zone}
     instant: true
 
   # --- Interruptions --------------------------------------------------------------
@@ -501,6 +603,9 @@ queries:
       sum by (message_type) (
         rate(karpenter_interruption_received_messages_total%%{interval})
       ) * 3600
+    datadogQuery: |
+      sum:karpenter_interruption_received_messages_total{*}
+        by {message_type}.as_rate().rollup(sum, 60) * 3600
 
   - id: infra.karpenter.interruption.queue_delay
     stability: experimental
@@ -516,6 +621,10 @@ queries:
       histogram_quantile(0.99,
         sum by (le) (increase(karpenter_interruption_message_queue_duration_seconds_bucket[1h]))
       )
+    # Datadog has no trailing window, so each quantile is over an hour-long bucket
+    # rather than the hour before each point.
+    datadogQuery: |
+      p99:karpenter_interruption_message_queue_duration_seconds{*}.rollup(3600)
 
   # --- Controller -----------------------------------------------------------------
   - id: infra.karpenter.controller.reconcile_errors
@@ -532,6 +641,12 @@ queries:
       sum by (controller) (
         rate(controller_runtime_reconcile_errors_total{app="karpenter"}%%{interval})
       ) * 60 > 0
+    datadogQuery: |
+      cutoff_min(
+        sum:controller_runtime_reconcile_errors_total{app:karpenter}
+          by {controller}.as_rate().rollup(sum, 60) * 60,
+        1e-9
+      )
 
   - id: infra.karpenter.controller.workqueue
     stability: experimental
@@ -542,6 +657,8 @@ queries:
         A queue that grows and does not drain: that controller is behind.
     promQL: |
       max by (name) (workqueue_depth{app="karpenter"}) > 0
+    datadogQuery: |
+      cutoff_min(max:workqueue_depth{app:karpenter} by {name}, 1e-9)
 
   - id: infra.karpenter.controller.aws_errors
     stability: experimental
@@ -564,6 +681,12 @@ queries:
       sum by (exported_service, action, code) (
         rate(aws_sdk_go_request_total{app="karpenter", code!~"2..|412"}%%{interval})
       ) * 60 > 0
+    datadogQuery: |
+      cutoff_min(
+        sum:aws_sdk_go_request_total{app:karpenter AND NOT code:2* AND NOT code:412}
+          by {exported_service,action,code}.as_rate().rollup(sum, 60) * 60,
+        1e-9
+      )
 
   - id: infra.karpenter.controller.kube_errors
     stability: experimental
@@ -579,6 +702,12 @@ queries:
       sum by (method, code) (
         rate(client_go_request_total{app="karpenter", code!~"2.."}%%{interval})
       ) * 60 > 0
+    datadogQuery: |
+      cutoff_min(
+        sum:client_go_request_total{app:karpenter AND NOT code:2*}
+          by {method,code}.as_rate().rollup(sum, 60) * 60,
+        1e-9
+      )
 
   - id: infra.karpenter.controller.leader
     stability: experimental
@@ -589,6 +718,8 @@ queries:
         its counters, and Karpenter spends a few seconds syncing its state.
     promQL: |
       max by (pod) (leader_election_master_status{app="karpenter"})
+    datadogQuery: |
+      max:leader_election_master_status{app:karpenter} by {pod}
 
   - id: infra.karpenter.controller.cpu
     stability: experimental
@@ -599,6 +730,9 @@ queries:
       sum by (pod) (
         rate(container_cpu_usage_seconds_total{container="controller", pod=~"karpenter-.+"}%%{interval})
       )
+    datadogQuery: |
+      sum:container_cpu_usage_seconds_total{container:controller AND pod:karpenter-*}
+        by {pod}.as_rate().rollup(sum, 60)
 
   - id: infra.karpenter.controller.memory
     stability: experimental
@@ -613,6 +747,12 @@ queries:
         max by (pod) (container_memory_working_set_bytes{container="controller", pod=~"karpenter-.+"})
       - |
         max by (pod) (kube_pod_container_resource_limits{container="controller", pod=~"karpenter-.+", resource="memory"})
+    datadogQuery:
+      - |
+        max:container_memory_working_set_bytes{container:controller AND pod:karpenter-*} by {pod}
+      - |
+        max:kube_pod_container_resource_limits{container:controller AND pod:karpenter-* AND resource:memory}
+          by {pod}
 
   # --- Events and logs ------------------------------------------------------------
   - id: infra.karpenter.events.rate_by_reason
