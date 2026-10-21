@@ -11,7 +11,13 @@
   runtime. Renovate bumps the version through the annotation above it.
   Both scripts must run before window load, when Mermaid replaces the diagram
   source; see assets/mermaid-zoom.js.
+
+  Ships the select-all button on pages with a highlighted code block, and the
+  expand-all and collapse-all buttons on pages with at least
+  $detailsToggleThreshold <details> blocks. A page with only a couple reads
+  fine without them.
 */}}
+{{- $detailsToggleThreshold := 5 }}
 {{- if strings.Contains .Content "class='replaceable'" }}
   {{- with resources.Get "replaceables.js" | resources.Minify }}
 <script>{{ .Content | safeJS }}</script>
@@ -25,6 +31,16 @@
 <script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}"></script>
   {{- end }}
   {{- with resources.Get "mermaid-zoom.js" | resources.Minify }}
+<script>{{ .Content | safeJS }}</script>
+  {{- end }}
+{{- end }}
+{{- if strings.Contains .Content `class="highlight"` }}
+  {{- with resources.Get "code-select.js" | resources.Minify }}
+<script>{{ .Content | safeJS }}</script>
+  {{- end }}
+{{- end }}
+{{- if ge (strings.Count "<details" .Content) $detailsToggleThreshold }}
+  {{- with resources.Get "details-toggle.js" | resources.Minify }}
 <script>{{ .Content | safeJS }}</script>
   {{- end }}
 {{- end }}
