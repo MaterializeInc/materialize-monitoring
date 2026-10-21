@@ -26,7 +26,7 @@ and for what has shipped, see the [Changelog](/materialize-monitoring/preview/re
 * [Installing via Terraform](/materialize-monitoring/preview/renovate-zip-9-x/getting-started/terraform/) — the recommended path: observability comes up with the cluster.
 * [Installing via Helm](/materialize-monitoring/preview/renovate-zip-9-x/getting-started/helm/) — the full-fidelity surface, for when Terraform is not how you deploy.
 * [Dependencies](/materialize-monitoring/preview/renovate-zip-9-x/getting-started/dependencies/) — what has to exist in the cluster before any of it installs.
-* [Production Best Practices](/materialize-monitoring/preview/renovate-zip-9-x/operating/production-best-practices/) — the checklist before this runs anywhere that matters.
+* [Production Best Practices](/materialize-monitoring/preview/renovate-zip-9-x/operating/production-best-practices/checklist/) — the checklist before this runs anywhere that matters.
 
 ## How it works
 
@@ -47,7 +47,7 @@ It appears in the sidebar because the section exists, and the [Roadmap](/materia
 
 ## Operating the stack
 
-* [Production Best Practices](/materialize-monitoring/preview/renovate-zip-9-x/operating/production-best-practices/) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.
+* [Production Best Practices](/materialize-monitoring/preview/renovate-zip-9-x/operating/production-best-practices/checklist/) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.
 * [Securing](/materialize-monitoring/preview/renovate-zip-9-x/operating/securing/) — network policy, in-cluster TLS, and exposing Grafana.
 * [Upgrading](/materialize-monitoring/preview/renovate-zip-9-x/operating/upgrading/) and [Uninstalling](/materialize-monitoring/preview/renovate-zip-9-x/operating/uninstalling/) — including the teardown ordering that avoids a finalizer deadlock.
 * [o11y Troubleshooting](/materialize-monitoring/preview/renovate-zip-9-x/operating/o11y-troubleshooting/) — when the monitoring itself is the thing that is broken.
