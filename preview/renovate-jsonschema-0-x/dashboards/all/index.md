@@ -47,7 +47,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/env-top.json?xxhash=32634134048c665f" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-jsonschema-0-x/dashboards/grafana/env-top.json?xxhash=49ca0f374a896929" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
