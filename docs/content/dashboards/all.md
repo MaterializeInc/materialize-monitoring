@@ -9,7 +9,12 @@ The dashboards come in two families: those scoped to a Materialize environment (
 The `infra-*` dashboards that watch the monitoring stack itself, rather than anything it collects, are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
-If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
+If you install the dashboards charts, you don't need to download anything.
+Each chart installs every dashboard it carries by default,
+and the [Grafana Operator]({{< relref "grafana/grafana-operator.md" >}}) path keeps them in sync rather than importing a point-in-time copy.
+`materialize-monitoring-dashboards` carries the `env-*` dashboards,
+`materialize-monitoring-dashboards-meta` carries the dashboards in the **Meta Observability** folder,
+and `materialize-monitoring-dashboards-infra` carries the rest of the `infra-*` dashboards.
 Download them when you are putting them into a Grafana you run yourself; [Importing Dashboards]({{< relref "grafana/importing.md" >}}) covers the ways to do that.
 
 ## Formats

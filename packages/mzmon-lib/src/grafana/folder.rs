@@ -16,16 +16,24 @@
 //!
 //! Grafana reads that annotation as a folder **UID**, and a UID is not something
 //! this crate can know — it depends on the release the dashboard is installed
-//! into. So what is rendered here is a **name, not a UID**: the chart's
-//! `dashboards.config.grafana.folders` is keyed by exactly these strings, and
-//! `templates/dashboards/grafana-operator/dashboards.yaml` rewrites the
-//! annotation to the real UID on the way past, the same way it rewrites
+//! into. So what is rendered here is a **name, not a UID**: the umbrella chart's
+//! `dashboards.config.grafana.folders` is keyed by exactly these strings, and each
+//! dashboards chart's `templates/dashboards.yaml` rewrites the annotation to the
+//! UID from its `grafana.folderUids` on the way past, the same way it rewrites
 //! `apiVersion`. A dashboard whose name matches no key has the annotation removed
 //! rather than rewritten, and lands at the root.
 //!
-//! Adding a variant here therefore means adding the matching key to the chart's
-//! `folders` map. `charts/materialize-monitoring/tests/folders_test.yaml` is what
-//! notices if the two disagree.
+//! The folder also decides which chart ships the dashboard. There is one
+//! `materialize-monitoring-dashboards*` chart per folder, and `make dashboards`
+//! renders each with `gen-dashboards --folder`. Nothing renders [`Folder::Root`],
+//! so a dashboard left there ships in no chart; a test in `mz_dashboards` refuses
+//! one.
+//!
+//! Adding a variant here therefore means adding the matching key to the umbrella
+//! chart's `folders` map, and either a chart to carry it or a Makefile change
+//! that renders it into an existing one.
+//! `charts/materialize-monitoring/tests/folders_test.yaml` is what notices if the
+//! folder keys disagree.
 
 use serde::{Deserialize, Serialize};
 

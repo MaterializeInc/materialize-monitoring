@@ -12,10 +12,11 @@
 //!
 //! Two consumers, one command:
 //!
-//! * `--format yaml` into `charts/materialize-monitoring/pre-rendered/dashboards/grafana/`,
-//!   which the Helm chart globs by filename stem.
+//! * `--format yaml` into each `charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/`,
+//!   which that Helm chart globs by filename stem. There is one chart per Grafana
+//!   folder, so the Makefile renders each with `--folder`.
 //! * `--format json` into `docs/assets/dashboards/grafana/`, which the docsite
-//!   offers for download.
+//!   offers for download. One tree for every folder.
 //!
 //! Both trees are checked in, so the render is deterministic — see
 //! `mz_dashboards::grafana::render`. Repeated runs over unchanged sources produce
@@ -28,6 +29,7 @@
 
 use anyhow::Context;
 use mz_dashboards::grafana::{self, Options, render};
+use mzmon_lib::grafana::folder::Folder;
 use mzmon_lib::query::QueryRegistry;
 use std::path::PathBuf;
 
@@ -43,6 +45,28 @@ impl From<OutputFormat> for render::Format {
         match format {
             OutputFormat::Yaml => render::Format::Yaml,
             OutputFormat::Json => render::Format::Json,
+        }
+    }
+}
+
+/// A Grafana folder, mirroring `mzmon_lib::grafana::folder::Folder` at the CLI
+/// boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum FolderArg {
+    Materialize,
+    Infra,
+    #[value(name = "meta-o11y")]
+    MetaO11y,
+    Root,
+}
+
+impl From<FolderArg> for Folder {
+    fn from(folder: FolderArg) -> Self {
+        match folder {
+            FolderArg::Materialize => Folder::Materialize,
+            FolderArg::Infra => Folder::Infra,
+            FolderArg::MetaO11y => Folder::MetaO11y,
+            FolderArg::Root => Folder::Root,
         }
     }
 }
@@ -63,6 +87,14 @@ pub struct GenDashboardsArgs {
     /// Specific dashboard(s) to render by filename stem. Defaults to all.
     #[arg(long)]
     dashboard: Vec<String>,
+
+    /// Render only the dashboards filed in these Grafana folders. Defaults to all.
+    ///
+    /// Each `materialize-monitoring-dashboards*` chart carries one folder's
+    /// dashboards, so this is what routes a render to its chart. Combines with
+    /// `--dashboard` as an intersection.
+    #[arg(long, value_enum)]
+    folder: Vec<FolderArg>,
 
     /// SQL-exporter metric prefix. `mz_` self-managed, `v2_mz_` on Cloud.
     #[arg(long, default_value = "mz_")]
@@ -133,9 +165,24 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
             .with_context(|| format!("creating output dir {}", output_dir.display()))?;
     }
 
+    let folders: Vec<String> = args
+        .folder
+        .iter()
+        .map(|folder| Folder::from(*folder).to_string())
+        .collect();
+
     let mut stale = Vec::new();
+    let mut rendered_any = false;
     for dashboard in selected {
-        let rendered = render::render(dashboard, &options, &registry, format)
+        // Built before filtering, because the folder is a property of the
+        // built dashboard rather than of its registry entry.
+        let resource = (dashboard.render)(&options, &registry)
+            .with_context(|| format!("rendering {}", dashboard.name))?;
+        if !folders.is_empty() && !folders.iter().any(|folder| folder == resource.folder()) {
+            continue;
+        }
+        rendered_any = true;
+        let rendered = render::serialize(dashboard.name, &resource, format)
             .with_context(|| format!("rendering {}", dashboard.name))?;
         let path = output_dir.join(format!("{}.{}", dashboard.name, format.extension()));
 
@@ -159,6 +206,21 @@ pub fn gen_dashboards(args: GenDashboardsArgs) -> anyhow::Result<()> {
 
         std::fs::write(&path, &rendered).with_context(|| format!("writing {}", path.display()))?;
         println!("wrote   {}", path.display());
+    }
+
+    // A folder that selects nothing would leave its chart empty, which the chart
+    // only refuses at install time. A typo or an emptied folder is cheaper to
+    // hear about here.
+    if !rendered_any {
+        anyhow::bail!(
+            "no dashboard matched --folder {}{}",
+            folders.join(", "),
+            if args.dashboard.is_empty() {
+                String::new()
+            } else {
+                format!(" and --dashboard {}", args.dashboard.join(", "))
+            }
+        );
     }
 
     if !stale.is_empty() {

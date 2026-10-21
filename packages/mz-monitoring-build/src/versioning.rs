@@ -151,20 +151,20 @@ pub(crate) struct Component {
     /// assets when this component is published.
     #[serde(default)]
     pub(crate) artifacts: Vec<String>,
-    /// Helm chart directory this component publishes, when it is not
-    /// `charts/<component name>`.
+    /// Helm chart directories this component publishes, when they are not the
+    /// single `charts/<component name>`.
     ///
     /// Read by the release workflow rather than by this binary, and declared
     /// here so the field is part of the manifest's schema rather than a key
     /// serde would silently discard. `dashboards` is the case that needs it: it
-    /// ships `charts/materialize-monitoring-dashboards` under a component name
-    /// that predates the chart.
+    /// ships three `charts/materialize-monitoring-dashboards*` charts under a
+    /// component name that predates them.
     #[serde(default)]
     #[allow(
         dead_code,
-        reason = "read by .github/workflows/publish-release.yaml, not by this binary"
+        reason = "read by .github/workflows/publish-release.yaml and a test, not by this binary"
     )]
-    pub(crate) chart: Option<String>,
+    pub(crate) charts: Vec<String>,
 }
 
 /// A semantic version `vMAJOR.MINOR.PATCH`. Field order makes the derived `Ord`
@@ -1180,7 +1180,7 @@ mod tests {
             content_exclude: strs(content_exclude),
             dependencies: strs(dependencies),
             artifacts: Vec::new(),
-            chart: None,
+            charts: Vec::new(),
         }
     }
 
@@ -1951,6 +1951,36 @@ mod tests {
             charts += 1;
         }
         assert!(charts > 0, "no Chart.yaml in any component's version_paths");
+    }
+
+    /// The release workflow packages and pushes each directory in a component's
+    /// `charts`, falling back to `charts/<component>`, while `version_paths` is
+    /// what a release bumps. The two have to name the same charts: one published
+    /// but not versioned goes out at a version it never had, and one versioned
+    /// but not published is bumped and never released.
+    #[test]
+    fn every_versioned_chart_is_published() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let comps = load_components(&root.join("packages/components.yaml")).unwrap();
+        for (name, comp) in &comps {
+            let versioned: std::collections::BTreeSet<&str> = comp
+                .version_paths
+                .iter()
+                .filter_map(|vp| vp.strip_suffix("/Chart.yaml"))
+                .collect();
+            let fallback = format!("charts/{name}");
+            let published: std::collections::BTreeSet<&str> = if !comp.charts.is_empty() {
+                comp.charts.iter().map(String::as_str).collect()
+            } else if root.join(&fallback).join("Chart.yaml").is_file() {
+                [fallback.as_str()].into()
+            } else {
+                Default::default()
+            };
+            assert_eq!(
+                versioned, published,
+                "{name}: the charts it versions and the charts it publishes differ"
+            );
+        }
     }
 
     // ---- pyproject_name / rewrite_lock_version --------------------------

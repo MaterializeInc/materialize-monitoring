@@ -307,19 +307,29 @@ helm install mzmon oci://ghcr.io/materializeinc/helm-charts/materialize-monitori
   --timeout 15m
 ```
 
-The dashboards are a third chart, and the main chart doesn't install them.
-Without this release, Grafana comes up with its data sources and folders but no dashboards:
+The dashboards ship in charts of their own, one per Grafana folder, and the main chart doesn't install them.
+Without these releases, Grafana comes up with its data sources and folders but no dashboards:
 
 ```bash
 helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
   --namespace monitoring \
   --version X.Y.Z
+helm install mzmon-dashboards-infra oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards-infra \
+  --namespace monitoring \
+  --version X.Y.Z
+helm install mzmon-dashboards-meta oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards-meta \
+  --namespace monitoring \
+  --version X.Y.Z
 ```
 
-Its defaults match a `materialize-monitoring` release named `mzmon`.
+The first carries the Materialize environment dashboards, the second the platform underneath it, and the third the monitoring stack itself.
+Install the ones you want.
+Their defaults match a `materialize-monitoring` release named `mzmon`.
 For a different release name, see [Importing dashboards via Grafana Operator](../../dashboards/grafana/grafana-operator/#importing-dashboards-via-grafana-operator).
 
-Pin `--version` on each. The charts have separate lifecycles, so they don't share a version.
+Pin `--version` on each.
+The CRDs chart, the main chart, and the dashboards charts have separate lifecycles, so they don't share a version.
+The dashboards charts share one version among themselves.
 For the pairs that are tested together, see [Compatibility](../../reference/compatibility/).
 
 A few flags earn their place:

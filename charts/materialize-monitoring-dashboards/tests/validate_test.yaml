@@ -57,11 +57,13 @@ tests:
           count: 0
 
   # An empty selection installs nothing while reporting success, which is far
-  # more often a mistyped pattern than an intent.
-  - it: should refuse a selection that matches nothing
+  # more often a mistyped pattern than an intent. Each dashboards chart carries a
+  # different set, so the message says which this one has — a pattern written for
+  # another of them is the likeliest way to get here.
+  - it: should refuse a selection that matches nothing, naming what it carries
     set:
       selected:
         - nope-*
     asserts:
       - failedTemplate:
-          errorPattern: "matches none of the dashboards"
+          errorPattern: "matches none of the dashboards materialize-monitoring-dashboards carries, which are: .*env-top"

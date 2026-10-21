@@ -36,13 +36,21 @@ jobs:
       # a change to the generator or a panel can't merge with stale output. Uses
       # `git status` (not `git diff`) so a new-but-uncommitted render is caught too,
       # not just modifications to already-tracked files.
+      #
+      # All three dashboards charts' trees, because each renders one folder: a
+      # dashboard that changes folder leaves one chart and lands in another, and
+      # only checking both sides catches a half-committed move.
       - name: rendered dashboards are up to date
         run: |
-          chart_dir=charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana
-          docs_dir=docs/assets/dashboards/grafana
-          if [ -n "$(git status --porcelain -- "$chart_dir" "$docs_dir")" ]; then
+          paths=(
+            charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana
+            charts/materialize-monitoring-dashboards-infra/pre-rendered/dashboards/grafana
+            charts/materialize-monitoring-dashboards-meta/pre-rendered/dashboards/grafana
+            docs/assets/dashboards/grafana
+          )
+          if [ -n "$(git status --porcelain -- "${paths[@]}")" ]; then
             echo "::error::Rendered dashboards are stale or uncommitted. Run 'make dashboards' locally and commit."
-            git status --porcelain -- "$chart_dir" "$docs_dir"
+            git status --porcelain -- "${paths[@]}"
             exit 1
           fi
 

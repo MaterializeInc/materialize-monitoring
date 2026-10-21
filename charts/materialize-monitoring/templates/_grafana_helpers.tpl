@@ -274,9 +274,10 @@ Two scopes, because the safe one depends on what this release owns.
 
 **`instance`** (the default) selects everything pointed at *this* Grafana, by the
 same labels the resources carry and their `instanceSelector` matches. That
-deliberately reaches beyond this release: `materialize-monitoring-dashboards` is
-a release of its own whose `GrafanaManifest`s carry the operator's finalizer, and
-nothing in its own teardown runs when this chart is the one being removed. Take
+deliberately reaches beyond this release: the `materialize-monitoring-dashboards*`
+charts are releases of their own whose `GrafanaManifest`s carry the operator's
+finalizer, and nothing in their own teardown runs when this chart is the one being
+removed. Take
 grafana-operator away without clearing them and they wedge in `Terminating` with
 no remover.
 

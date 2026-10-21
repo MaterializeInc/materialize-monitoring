@@ -1,4 +1,4 @@
-You have successfully installed the Materialize Monitoring dashboards.
+You have successfully installed the Materialize Monitoring dashboards from {{ $.Chart.Name }}.
 
 {{- $ns := include "mzmon-dashboards.namespace" $ }}
 {{- $dashboards := include "mzmon-dashboards.dashboards" $ | fromYamlArray }}

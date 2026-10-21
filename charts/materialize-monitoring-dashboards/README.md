@@ -11,8 +11,8 @@ To update: edit `values.yaml` (or `README.md.gotmpl`), then run
 
 # materialize-monitoring-dashboards
 
-Grafana dashboards for Materialize Monitoring.
-Installs the bundled dashboard set into a Grafana provisioned by the
+Grafana dashboards for Materialize Monitoring: the Materialize environment set.
+Installs the `env-*` dashboards into a Grafana provisioned by the
 materialize-monitoring chart. Installs nothing else.
 
 ![Version: 0.19.0](https://img.shields.io/badge/Version-0.19.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0](https://img.shields.io/badge/AppVersion-0.0.0-informational?style=flat-square)
@@ -20,24 +20,36 @@ materialize-monitoring chart. Installs nothing else.
 ## TL;DR
 
 ```bash
-helm repo add materialize https://materializeinc.github.io/materialize-monitoring
-helm install mzmon-dashboards materialize/materialize-monitoring-dashboards \
+helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
   --namespace monitoring
 ```
 
-Install this *after* `materialize-monitoring`, into the same namespace, with the
-defaults matching a release named `mzmon`.
+Install this *after* `materialize-monitoring`, into the same namespace.
+The defaults match a release of that chart named `mzmon`.
 
-## Why this is a separate chart
+## The dashboards charts
 
-Helm stores each release as a Kubernetes Secret, and a Secret may not exceed
-1 MiB. The rendered dashboards are the largest thing the stack ships by an order
-of magnitude, and the set outgrew that budget — `helm upgrade` on the umbrella
-chart began failing outright rather than degrading.
+The dashboards ship in one chart per Grafana folder, as the following table shows.
+The charts take the same values and install the same way, and differ only in the dashboards they carry.
 
-Splitting them out gives the dashboards a budget of their own and gives the
-umbrella chart back its headroom. It also means a dashboard change no longer
-rolls the whole stack's release.
+| Chart | Folder | Dashboards |
+| --- | --- | --- |
+| `materialize-monitoring-dashboards` | `materialize` | The Materialize environment, `env-*` |
+| `materialize-monitoring-dashboards-infra` | `infra` | The platform underneath it: nodes, networking, autoscaling, cloud services, and the platform's logs and events |
+| `materialize-monitoring-dashboards-meta` | `meta-o11y` | The monitoring stack itself: Alloy, Loki, and Thanos |
+
+Install the ones you want.
+The Terraform module installs all of them.
+
+## Why these are separate charts
+
+Helm stores each release as a Kubernetes Secret, and a Secret may not exceed 1 MiB.
+The rendered dashboards are the largest thing the stack ships by an order of magnitude.
+They first outgrew the umbrella chart, where `helm upgrade` began failing outright rather than degrading,
+and then came close to outgrowing a single dashboards chart of their own.
+
+Splitting them gives each set a budget of its own and keeps the umbrella chart's headroom.
+It also means a dashboard change no longer rolls the whole stack's release.
 
 ## What stays in `materialize-monitoring`
 
@@ -48,47 +60,44 @@ Everything a dashboard is filed *into*:
 | `Grafana` instance | `materialize-monitoring` |
 | `GrafanaDatasource` (Thanos, Loki) | `materialize-monitoring` |
 | `GrafanaFolder` | `materialize-monitoring` |
-| `GrafanaManifest` (the dashboards) | **this chart** |
+| `GrafanaManifest` (the dashboards) | the dashboards charts |
 
 ## Pointing it at the other release
 
-This chart has no dependency on `materialize-monitoring` and cannot read its
-values, so **every reference to it is a value you set**. Three matter:
+This chart has no dependency on `materialize-monitoring` and cannot read its values, so **every reference to it is a value you set**.
+Three matter:
 
-- **`grafana.instanceSelector`** must match the labels that release put on its
-  `Grafana` resource — `monitoring.materialize.cloud/grafana-instance: mzmon` by
-  default, plus anything in its `connections.grafana.labels`.
+- **`grafana.instanceSelector`** must match the labels that release put on its `Grafana` resource.
+  That is `monitoring.materialize.cloud/grafana-instance: mzmon` by default, plus anything in its `connections.grafana.labels`.
 - **`grafana.folderUids`** maps a folder *name* to the UID that release created.
-  The umbrella chart derives each as `<its fullname>-<folder key>`, so a release
-  named `mzmon` gives `mzmon-infra` and so on.
-- **`grafana.allowCrossNamespaceImport`** is required when the `Grafana`
-  resource lives in a different namespace than this release — including under
-  the umbrella chart's `split-namespace` profile.
+  The umbrella chart derives each as `<its fullname>-<folder key>`, so a release named `mzmon` gives `mzmon-infra` and so on.
+  One map with every folder in it serves every dashboards chart.
+- **`grafana.allowCrossNamespaceImport`** is required when the `Grafana` resource lives in a different namespace than this release.
+  That includes the umbrella chart's `split-namespace` profile.
 
-The umbrella chart's install notes print the folder UIDs it created, which is
-the quickest way to fill in the second.
+The umbrella chart's install notes print the folder UIDs it created, which is the quickest way to fill in the second.
 
 ## Uninstalling
 
 **Uninstall this release before `materialize-monitoring`.**
 
-grafana-operator holds `operator.grafana.com/finalizer` on every
-`GrafanaManifest` it reconciles. The umbrella chart's `pre-delete` hook clears
-only the resources carrying *its own* release label — deliberately, so two
-releases sharing a namespace cannot delete each other's — so nothing in its
-teardown removes these. Take the operator away first and they wedge in
-`Terminating` with no remover:
+grafana-operator holds `operator.grafana.com/finalizer` on every `GrafanaManifest` it reconciles.
+The umbrella chart's `pre-delete` hook clears only the resources carrying *its own* release label.
+That is deliberate, so two releases sharing a namespace cannot delete each other's,
+but it means nothing in its teardown removes these.
+Take the operator away first and they wedge in `Terminating` with no remover:
 
 ```bash
-helm uninstall mzmon-dashboards --namespace monitoring --wait
-helm uninstall mzmon            --namespace monitoring --wait
+helm uninstall mzmon-dashboards       --namespace monitoring --wait
+helm uninstall mzmon-dashboards-infra --namespace monitoring --wait
+helm uninstall mzmon-dashboards-meta  --namespace monitoring --wait
+helm uninstall mzmon                  --namespace monitoring --wait
 ```
 
-The Terraform module handles this on its own: the dashboards release declares a
-dependency on the main one, and Terraform destroys in reverse dependency order.
+The Terraform module handles this on its own: each dashboards release declares a dependency on the main one,
+and Terraform destroys in reverse dependency order.
 
-If you already hit the wedged state, reinstall or scale up grafana-operator and
-the finalizers clear on their own.
+If you already hit the wedged state, reinstall or scale up grafana-operator and the finalizers clear on their own.
 
 ## Requirements
 Kubernetes: `>=1.27.0-0`
@@ -116,10 +125,10 @@ How the dashboards reach Grafana.
       <td class="helm-value-desc">Grafana deployment mode. Only `operator` is supported here.
 The umbrella chart's `standalone` mode provisions dashboards through the
 Grafana chart's own sidecar, which reads ConfigMaps rather than
-`GrafanaManifest` resources — and the 1 MiB object ceiling that forced this
-split applies to a ConfigMap just as hard. A `standalone` install therefore
-does not use this chart at all; the render refuses rather than emitting
-resources nothing will read.
+`GrafanaManifest` resources — and the 1 MiB object ceiling that forced the
+dashboards out of that chart applies to a ConfigMap just as hard. A
+`standalone` install therefore does not use this chart at all; the render
+refuses rather than emitting resources nothing will read.
 </td>
     </tr>
     <tr>
@@ -185,15 +194,19 @@ Folder UIDs, by the folder name a dashboard asks for.
 **The join between this chart and the folders the umbrella chart creates.**
 
 Each rendered dashboard carries its placement as a `grafana.app/folder`
-annotation naming a folder by *name* — `infra`, `materialize`, `meta-o11y`,
-which are the variants of `Folder` in
+annotation naming a folder by *name* — `materialize`, `infra`, or
+`meta-o11y`, which are the variants of `Folder` in
 `packages/mzmon-lib/src/grafana/folder.rs`. A folder's **UID** is not
 knowable at render time because it depends on the release, so this map
 supplies it and the chart rewrites the annotation on the way to the operator.
 
+Every dashboard in this chart is filed in `materialize`, so that is the only
+entry the default needs. Entries for the other two folders are harmless,
+which lets one map serve all three dashboards charts.
+
 The umbrella chart derives each UID as `<its fullname>-<folder key>`, giving
-the defaults below for a release named `mzmon`. Where that release set an
-`existingUid` for a folder, put that UID here instead.
+the default below for a release named `mzmon`. Where that release set an
+`existingUid` for the folder, put that UID here instead.
 
 **A name with no entry here has its annotation dropped rather than passed
 through.** Grafana would otherwise read the name as a UID, find nothing, and
@@ -210,19 +223,21 @@ this map is therefore a supported way to file everything at the root.
       <td class="helm-value-type">list</td>
       <td class="helm-value-default"><pre>
 [
-  "env-*",
-  "infra-*"
+  "*"
 ]</pre>
 </td>
       <td class="helm-value-desc">Which dashboards to install, as filename-stem patterns.
-Matched against the rendered dashboards this chart carries. `env-*` is the
-Materialize-scoped family and `infra-*` the cluster-scoped one; see the
+Matched against the rendered dashboards this chart carries, so the default
+installs all of them. See the
 [dashboard reference](https://materializeinc.github.io/materialize-monitoring/dashboards/)
 for what each stem is.
 
 Narrowing this is the supported way to hold a dashboard back — `env-upgrade`
 depends on operator instrumentation that not every Materialize version has,
 for instance.
+To hold back every dashboard this chart carries, set `grafana.enabled: false`
+or do not install the chart; a selection that matches nothing is refused as a
+likely typo.
 </td>
     </tr>
     <tr>

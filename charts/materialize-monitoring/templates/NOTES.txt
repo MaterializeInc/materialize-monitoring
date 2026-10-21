@@ -168,10 +168,12 @@ Grafana Operator is installed and reconciles dashboards and datasources into Gra
     - {{ . }}
     {{- end }}
 
-  The dashboards themselves ship in a chart of their own. Install it against the
-  folder UIDs above:
-    helm install {{ $.Release.Name }}-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
+  The dashboards themselves ship in three charts of their own, one per folder.
+  Install them against the folder UIDs above:
+    {{- range $suffix := list "" "-infra" "-meta" }}
+    helm install {{ $.Release.Name }}-dashboards{{ $suffix }} oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards{{ $suffix }} \
       --namespace {{ include "mzmon.namespace" $ }}
+    {{- end }}
   {{- end }}
   {{- $thanosDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "thanos" ) }}
   {{- $lokiDs := include "mzmon.grafana.datasource.enabled" ( dict "root" $ "name" "loki" ) }}

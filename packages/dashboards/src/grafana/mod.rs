@@ -314,4 +314,23 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn every_dashboard_is_filed_in_a_folder() {
+        // The folder is also the chart: `make dashboards` renders each
+        // `materialize-monitoring-dashboards*` chart with `gen-dashboards --folder`,
+        // one folder apiece. Nothing renders the root, so a dashboard left there
+        // would ship in no chart at all.
+        let options = Options::default();
+        let registry = queries::test_registry();
+        for dashboard in ALL {
+            let resource = (dashboard.render)(&options, registry).expect("render");
+            assert_ne!(
+                resource.folder(),
+                "root",
+                "{} is filed at the root, which no dashboards chart carries",
+                dashboard.name
+            );
+        }
+    }
 }

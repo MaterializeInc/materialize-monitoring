@@ -159,6 +159,14 @@ jobs:
         run: |
           helm lint charts/materialize-monitoring
           helm lint charts/materialize-monitoring-crds
+          helm lint charts/materialize-monitoring-dashboards
+          helm lint charts/materialize-monitoring-dashboards-infra
+          helm lint charts/materialize-monitoring-dashboards-meta
+      # The three dashboards charts carry identical templates, because Helm
+      # cannot share one across charts without a dependency. This fails when an
+      # edit reached one copy and not the others.
+      - name: dashboards chart templates are in sync
+        run: make dashboards-charts-check
       - name: helm-docs is up to date
         # Regenerate then assert no diff. Detects stale chart README or
         # docsite values reference. helm-docs version comes from go.mod.
