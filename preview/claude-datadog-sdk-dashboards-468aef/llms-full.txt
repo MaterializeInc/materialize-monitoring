@@ -35597,9 +35597,9 @@ Four claims here are load-bearing and easy to soften by accident:
   1. No Datadog dashboard renders under charts/. Grafana's dashboards are the only ones that live in the cluster,
      and every file in a chart counts against the release's size ceiling. Shaped by the author, 2026-10-20.
   2. Names are a SHOULD. A panel that shows ids is correct and shippable; names are an improvement on it.
-  3. The arithmetic join's matching rules are not documented by Datadog (checked 2026-10-20). What this doc says
-     about it comes from a join the author built in the Datadog UI. Re-test rather than assume, and record what
-     the tests show in "How the arithmetic join behaves".
+  3. Datadog does not document the arithmetic join's matching rules (checked 2026-10-20). "How the arithmetic join
+     behaves" records what the query API did on 2026-10-21, probed read-only. Datadog can change its query engine
+     without notice, so re-probe rather than assume, and update the table with what the probes show.
   4. A PromQL endpoint, Thanos by default, is present even when Datadog is a destination, because the tenant-scoped
      read path depends on it. Do not design for an install that sends metrics only to Datadog.
 
@@ -35641,7 +35641,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 
 - **The dashboards ship as downloadable JSON on the docs site, never in a chart.** The docs site's `download-dashboards` shortcode already has a Datadog row that reads `docs/assets/dashboards/datadog/NAME.json`. The Grafana dashboards are the only ones that live in the cluster.
 - **The backend builds on the models in `datadog-api-client`, Datadog's official Rust client.** The crate is generated from Datadog's OpenAPI spec. The workspace already builds its HTTP stack, so the added cost is compiling the models.
-- **Names, where a panel shows them, come from formula arithmetic.** A formula such as `a * (b * 0 + 1)`, with `b` an `_info` query grouped by the id and the name, keeps `a`'s values and carries `b`'s extra tags. It's Datadog's counterpart to `* on (id) group_left (name)`.
+- **Names, where a panel shows them, come from formula arithmetic.** A formula such as `a * (b * 0 + 1)`, with `b` an `_info` query grouped by the id and the name, keeps `a`'s values and carries `b`'s extra tags. It's Datadog's counterpart to `* on (id) group_left (name)`, and it's an inner join, so a series with no `_info` row drops out of the panel.
 - **The join matches on tag names, so both sides have to spell the id and the environment the same way.** Datadog can't rename a tag inside a query. The relabel rules from the label-vocabulary design give both sides the canonical names, and names in Datadog wait on them.
 - **The `_info` series have to reach Datadog.** Two of the three aren't in the metric tier list today, so the Datadog destination's default tier drops them. Each `_info` series that does reach Datadog is a custom metric.
 - **Reference tables stay an option, outside the first version.** They solve names without sending `_info` series, at the price of a sync component, an application key, and a join shape that Datadog doesn't publish for dashboards.
@@ -35803,18 +35803,29 @@ No composite key is needed.
 ### How the arithmetic join behaves
 
 Datadog's documentation doesn't describe how a formula matches series between queries with different group-bys, as of 2026-10-20.
-The following table lists what the design depends on, and what is known about each:
+The following table records what Datadog's query API did on 2026-10-21, probed read-only with a test install's Kubernetes metrics.
+The timeseries endpoint backs the timeseries widget, and the scalar endpoint backs the query value, table, and toplist widgets.
+Both endpoints behaved the same.
 
-| Behavior | What the design needs | Known |
-|---|---|---|
-| A series on the left with no match on the right | Kept, so a panel never loses a series to a missing `_info` row | Untested |
-| One left series matching two right series | Two result series, one per name, as across a rename | Untested |
-| A right series with no point at a timestamp | The left point kept or interpolated | Datadog interpolates gauges by default. An `_info` series is scraped every interval, so a gap is normally one interval |
-| The join in every widget the set uses | Timeseries, query value, toplist, and table | Seen in a table widget |
-| Formulas that already do arithmetic | The join added to the panel's own formula | Datadog can't do arithmetic between formulas, so the join goes into the same formula, as in `(a / c) * (b * 0 + 1)` |
+| Behavior | Result |
+|---|---|
+| Group keys that differ | Rejected with HTTP 400, "Series to be aligned must have group keys that match…", unless one query's group-by keys equal the other's or are a subset of them |
+| Tags on the result | The larger of the two group-by sets |
+| A left series with no match on the right | Dropped. With `b` filtered to one namespace, 3 of `a`'s 174 series remained |
+| A left series that matches several right series | One result series per match. `a` grouped by `namespace` alone fanned out to the 174 `(namespace, pod)` series of `b` |
+| A right series with no point at a timestamp | No point in the result. Every series with partial coverage over the window, 22 of them, went null exactly where `b` did |
+| A filter on a tag only the right side carries | Filters the result. With `b` filtered to one node, the result held that node's 34 pods |
+| The join inside a formula that does its own arithmetic | Works. `(a / c) * (b * 0 + 1)` returned all 174 series |
+| Two formulas with different group keys in one table | Their rows don't line up. Each formula filled 174 of 348 rows |
 
-The first dashboard's port settles each untested row in a test organization, and this section records the results.
-If an unmatched series turns out to be dropped, a panel that joins names loses series whenever an `_info` row is missing, and that panel ships with ids instead.
+The results settle the following rules for the design:
+
+- **A mismatched id fails loudly.** A query pair that spells the id differently is rejected rather than joined on the tags it shares, so a panel can't show another cluster's name.
+- **The join is an inner join.** A joined panel loses every series that has no `_info` row. A panel joins names only where its `_info` family covers every id its query returns, and otherwise shows ids.
+- **A rename splits a series in two.** The id matches the old name until the rename and the new name after it, and each result series is null outside its own name's lifetime.
+- **A name filter works.** A dashboard variable on the `_info` query's name tag narrows the panel to that name, which makes the **[Could]** story possible.
+- **A table joins every column or none.** Every formula in a table widget needs the same group keys, so a table that shows names joins each of its columns.
+- **The `_info` query aggregates in space.** Grouping `b` with `max:` collapses identical rows from two producers, such as two environmentd pods during a rollout.
 
 ### What the join needs from the series
 
@@ -35822,6 +35833,7 @@ The join needs the following from the series that reach Datadog:
 
 Matching tag names
 : Datadog can't rename a tag inside a query, so an id has to carry the same tag name on both sides.
+  A pair that doesn't is rejected with HTTP 400, so the mismatch shows up as an error rather than as wrong names.
   Today it doesn't: `mz_cluster_info` names a cluster `cluster_id` where the series it names say `instance_id`, and `mz_object_info` says `global_id` where they say `collection_id`.
   The relabel rules in [DEP-349](https://linear.app/materializeinc/issue/DEP-349) copy each alias to its canonical name in the shipped monitors, on both sides.
   Names in Datadog wait on them.
@@ -35839,6 +35851,7 @@ The `_info` families at the destination's tier
 : Tier extraction treats the enrichment functions as the identity, so `mz_object_info` and `mz_replica_info` aren't in the tier list.
   The fix is for extraction to count the `_info` family an enrichment function reads, at the importance of the query that reads it.
   Each `_info` series in Datadog is a custom metric, one per catalog object, cluster, or replica, and the Datadog dashboards page says so.
+  The join is an inner join, so a panel joined to a family that doesn't reach Datadog shows nothing at all.
 
 ### One enrichment declaration, two realizations
 
@@ -35850,6 +35863,7 @@ The `datadogQuery` templates gain the same `functions` list.
 The Datadog rendering context implements each function as a hidden `_info` query and a factor on the panel's formula.
 `mzObjectName` over `collection_id`, for example, adds `b: max:mz_object_info{…} by {…,collection_id,object_name}` and turns the formula `F` into `(F) * (b * 0 + 1)`.
 A panel that shows names says so once, in its registry entry, and both backends follow it.
+Because the join drops unmatched series, the Datadog context renders a panel's join only where its `_info` family covers every id the query returns.
 
 ## Other ways to get names
 
@@ -35867,7 +35881,8 @@ They're outside the first version, for the following reasons:
 - **An unpublished shape.** Datadog's spec describes the join for monitors, in `MonitorFormulaAndFunctionAggregateAugmentedQueryDefinition`, and has no variant for it among the dashboard widget queries. The shape would have to come from a UI export.
 - **Shared tables.** A join names one table, so every install in an organization would write to the same tables, each deleting only its own rows.
 
-Reference tables become worth their cost if the arithmetic join drops unmatched series, if the custom metrics for `_info` series cost too much, or if a cluster has to be picked by name.
+The arithmetic join drops series that have no `_info` row, and the monitor spec offers reference-table joins of type `left`, which keep them.
+Reference tables become worth their cost if too many panels fall back to ids for that reason, or if the custom metrics for the `_info` series cost too much.
 
 ### Pre-joined recording rules
 
@@ -35964,6 +35979,7 @@ Extending that check to the Datadog output makes a crate bump that changes the r
 
 A render can't prove that Datadog accepts the JSON.
 Datadog's v1 API has no validate-only dashboard endpoint, so proving acceptance means creating each dashboard in a test organization, reading it back, and deleting it.
+The same job runs each widget's queries through the query API, which rejects a mismatched join with HTTP 400.
 That check runs on a schedule, because it needs credentials that pull requests from forks don't get.
 
 ## Chart-side prerequisites
@@ -35986,7 +36002,7 @@ None of it is ticketed yet.
 
 The following tests cover the design:
 
-- **Join behavior.** In a test organization, a panel joined to an `_info` query is checked for each row of [How the arithmetic join behaves](#how-the-arithmetic-join-behaves): an unmatched series, a rename inside the range, and each widget type the set uses.
+- **Join behavior.** The scheduled job re-runs the probes behind [How the arithmetic join behaves](#how-the-arithmetic-join-behaves), so a change in Datadog's matching rules fails a check rather than a customer's panel.
 - **Two environments, one organization.** Two environments with the same catalog ids send to one test organization, and each panel keeps them apart, with or without names.
 - **Formula rewriting.** A unit test renders a registry query with `mzObjectName` and asserts the hidden `_info` query and the formula factor, including a formula that already does arithmetic.
 - **Tier list.** The rendered `metric-tiers.yaml` names every `_info` family that an enrichment function reads.
@@ -35994,7 +36010,7 @@ The following tests cover the design:
 - **Parity.** The ledger compares every Datadog dashboard's manifest with its Grafana counterpart's, and a fixture with an unlisted difference makes it fail.
 - **Renders.** Snapshot tests for each Datadog dashboard, as `packages/dashboards/tests/` holds for the Grafana ones.
 - **API acceptance.** The scheduled job creates, reads back, and deletes every dashboard in a test organization.
-- **Live data.** Every ported `datadogQuery` returns data against a test install that sends to Datadog.
+- **Live data.** Every ported `datadogQuery` returns data against a test install that sends to Datadog, and every joined panel returns the same series as its query without the join.
 
 ## Documentation to update
 
@@ -36008,8 +36024,9 @@ The following tests cover the design:
 
 ## Open questions
 
-- [ ] **What does the arithmetic join do at its edges?** An unmatched series, a many-to-many match, and each widget type are untested. See [How the arithmetic join behaves](#how-the-arithmetic-join-behaves).
-- [ ] **Can a template variable on the `_info` query's name tag filter the joined result?** If the join drops unmatched series, filtering `b` by name filters the panel, which is the **[Could]** story.
+- [x] ~~**What does the arithmetic join do at its edges?**~~ Settled by probing the query API on 2026-10-21. See [How the arithmetic join behaves](#how-the-arithmetic-join-behaves).
+- [x] ~~**Can a template variable on the `_info` query's name tag filter the joined result?**~~ Yes. A filter on a tag that only the `_info` query carries filters the panel.
+- [ ] **Which ids does each `_info` family not cover?** A joined panel loses their series. Transient collections, and environments older than the release that added `mz_object_info`, are the candidates to check.
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
 - [ ] **Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
