@@ -321,7 +321,7 @@ Use the following page for the convention it gets right:
 - **`docs/content/reference/stability.md`:** the reference for RFC 2119 keywords on a normative page.
   It's written in the third person, so don't take its voice as a model.
 
-`operating/troubleshooting-materialize.md` and `operating/production-best-practices.md` show what to fix when you touch them:
+`operating/troubleshooting-materialize.md` and the `operating/production-best-practices/` pages show what to fix when you touch them:
 em-dash asides that carry a second claim, and dramatized stakes.
 Their second person is correct.
 They're accurate and useful; they aren't style references.

@@ -30,7 +30,7 @@ and for what has shipped, see the [Changelog]({{< relref "reference/changelog.md
 * [Installing via Terraform]({{< relref "getting-started/terraform.md" >}}) — the recommended path: observability comes up with the cluster.
 * [Installing via Helm]({{< relref "getting-started/helm.md" >}}) — the full-fidelity surface, for when Terraform is not how you deploy.
 * [Dependencies]({{< relref "getting-started/dependencies.md" >}}) — what has to exist in the cluster before any of it installs.
-* [Production Best Practices]({{< relref "operating/production-best-practices.md" >}}) — the checklist before this runs anywhere that matters.
+* [Production Best Practices]({{< relref "operating/production-best-practices/checklist.md" >}}) — the checklist before this runs anywhere that matters.
 
 ## How it works
 
@@ -51,7 +51,7 @@ It appears in the sidebar because the section exists, and the [Roadmap]({{< relr
 
 ## Operating the stack
 
-* [Production Best Practices]({{< relref "operating/production-best-practices.md" >}}) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.
+* [Production Best Practices]({{< relref "operating/production-best-practices/checklist.md" >}}) — sizing, retention, replication, disruption budgets, and durability, each tagged by who owns it.
 * [Securing]({{< relref "operating/securing.md" >}}) — network policy, in-cluster TLS, and exposing Grafana.
 * [Upgrading]({{< relref "operating/upgrading.md" >}}) and [Uninstalling]({{< relref "operating/uninstalling.md" >}}) — including the teardown ordering that avoids a finalizer deadlock.
 * [o11y Troubleshooting]({{< relref "operating/o11y-troubleshooting.md" >}}) — when the monitoring itself is the thing that is broken.

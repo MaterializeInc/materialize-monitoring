@@ -162,7 +162,7 @@ helm install mzmon-scratch charts/materialize-monitoring \
   --set tags.default=false --set tags.loki=true
 ```
 
-Give it a different release name so it does not fight the full install. Mind what is *not* release-scoped: the subcharts use static `fullnameOverride`s, so two releases in one namespace will collide on Service and ServiceAccount names. Use a separate namespace when the component you are iterating on has either — which is most of them. See [Namespace layout](../../../operating/production-best-practices/#namespace-layout) for what else assumes one instance per namespace.
+Give it a different release name so it does not fight the full install. Mind what is *not* release-scoped: the subcharts use static `fullnameOverride`s, so two releases in one namespace will collide on Service and ServiceAccount names. Use a separate namespace when the component you are iterating on has either — which is most of them. See [Namespace layout](../../../operating/production-best-practices/stack-wide/#namespace-layout) for what else assumes one instance per namespace.
 
 ## Pre-commit
 

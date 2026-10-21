@@ -7975,7 +7975,7 @@ Everything under `grafana.ini` is passed through to Grafana's own config file
 verbatim, so any section Grafana understands can be set here — see the
 `[auth.generic_oauth]` example on that key.
 
-See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/#grafana)
+See [Production Best Practices > Grafana](https://materializeinc.github.io/materialize-monitoring/operating/production-best-practices/grafana/)
 for the full checklist.
 
 <table class="helm-values">
