@@ -5,7 +5,7 @@ weight: 20261002
 # params.status is Draft (under review), Ready (accepted; work planned or in progress), or Shipped (implemented)
 draft: false
 publishdate: 2026-10-02
-lastmod: 2026-10-02
+lastmod: 2026-10-21
 # custom parameters
 params:
   author: Heather Lapointe
@@ -290,6 +290,7 @@ The consequences depend on the destination:
 | This stack's Alertmanager | `group_by: [alertname, cluster, namespace]` would group an alert on either family across every cluster into one notification, and PagerDuty's `dedup_key` would merge them into one incident |
 | Mimir with HA deduplication on | The HA tracker keys on `cluster` by default, so senders in different Kubernetes clusters look like replicas of one sender, and only one of them has its samples accepted |
 | GMP | GMP sets `cluster` during collection and refuses rules that write it; how it resolves a metric label of that name is untested |
+| Datadog | The Datadog chain does not stamp `cluster` today. The [Datadog dashboards design](https://github.com/MaterializeInc/materialize-monitoring/pull/577) adds the same fill-if-absent stamp, so both families would answer `compute` there too until they move |
 
 No query in the registry reads either family, so moving the label costs nothing today.
 The canonical name is `server_name`, which the CTP transport metrics in `src/service/src/transport/metrics.rs` already use for the same compute-or-storage distinction.
@@ -448,6 +449,7 @@ The join is on `(cluster, environment_id)`, never on `environment_id` alone, for
 | [The tenant-scoped read path](../20260916-tenant-query-api/) | Injects a matcher on the old label | Injects `environment_id`, and `cluster` where the store spans clusters |
 | Log structured metadata | `organization_name`, from the same pod label | `environment_id` beside it, from the new pod label |
 | `kube_pod_labels` ([DEP-253](https://linear.app/materializeinc/issue/DEP-253)) | No Materialize labels | `materialize.cloud/environment-id` in the allowlist, so Kubernetes object metrics join to an environment |
+| Datadog dashboards ([DEP-115](https://linear.app/materializeinc/issue/DEP-115), designed in [#577](https://github.com/MaterializeInc/materialize-monitoring/pull/577)) | No set exists. A panel built from the registry shows ids, because an `_info` metric and the series it names spell the id differently, and Datadog cannot rename a tag inside a query | Names join by formula arithmetic, `a * (b * 0 + 1)`, which matches on tag names. That needs the canonical id on both sides of each join, and `cluster` and `environment_id` on the series Datadog receives |
 
 ### The transition is gated on the operator, not on a relabel
 
