@@ -68,10 +68,10 @@ The modules satisfy the following:
 
 | | |
 |---|---|
-| Object-storage buckets | One per backend, with versioning on |
-| Workload identity | IRSA on AWS, Workload Identity on GCP — no static keys |
+| Object storage | One bucket per backend on AWS and GCP, with versioning on; on Azure, one storage account with a container per backend |
+| Workload identity | One identity per backend: IRSA on AWS, Workload Identity on GCP, a user-assigned managed identity with a federated credential on Azure. No static keys |
 | Version pinning | The module and the chart are one release, so the module ref names the chart version |
-| Retention posture | Bucket lifecycle rules default to off, leaving deletion to each compactor |
+| Retention posture | No bucket expiry by default, leaving deletion to each compactor |
 | Grafana admin secret | Generated and supplied by name |
 | Alloy rollouts | A values hash on both pod templates, so a config change rolls Alloy and an unchanged apply does not |
 
@@ -86,7 +86,7 @@ The following stay yours on any install path:
   [Securing > What is not there yet](../../securing/#gaps).
 - Everything tagged `[operator]`.
 
-Azure has no wrapper module, so an Azure install is a plain `[consumer]` and every item applies.
+On Azure, the module turns on no blob versioning, so the disaster-recovery item under [Data loss](#data-loss) stays yours there in full.
 
 ## Exposure {#exposure}
 
@@ -100,7 +100,7 @@ Skip one of these and someone outside the trust boundary can read your data or c
   The pods are host-networked, which puts them outside pod NetworkPolicy on most CNIs, so this is a security-group or
   firewall question, not a Kubernetes one.
 - [ ] `[consumer]` [Object storage](../../../logs-and-events/storing/#granting-object-storage-access-workload-identity):
-  **(Terraform: automatic on AWS and GCP)** Grant Loki and Thanos bucket access by **workload identity** (IRSA, GKE
+  **(Terraform: automatic)** Grant Loki and Thanos bucket access by **workload identity** (IRSA, GKE
   Workload Identity, or Azure Workload Identity) rather than static keys, and supply any storage secret by reference.
   Static keys are a documented escape hatch only.
   For Thanos, see [Metrics > Storing](../../../metrics/storing/#thanos-object-storage).
@@ -375,7 +375,8 @@ Skip one of these and an ordinary restart, node loss, or upgrade loses telemetry
 - [ ] `[consumer]` `[operator]` [Loki](../../../logs-and-events/storing/): Plan disaster recovery as object versioning,
   cross-region replication, and, for audit, Object Lock (WORM).
   Restoring means repointing at the bucket; there's no native snapshot.
-  The Terraform modules enable **versioning** by default; replication and Object Lock remain yours.
+  The Terraform modules enable **versioning** by default on AWS and GCP, but not on Azure.
+  Replication and Object Lock remain yours on every cloud.
 - [ ] `[operator]` [Grafana](../grafana/#state): **Move Grafana's state off `emptyDir` before anyone depends on it.**
   Use the `grafana-postgres` profile for production, or `grafana-pvc` for a single small instance with no database available.
 - [ ] `[operator]` [Grafana](../grafana/#state): **Back the database up.**

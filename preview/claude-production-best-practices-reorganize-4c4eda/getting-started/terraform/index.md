@@ -25,8 +25,13 @@ One module per cloud creates the storage and identity the stack needs, then inst
 | **Alerting** | Alertmanager with the bundled rules. No receiver until one is configured; see [Alerting](#alerting) |
 | **Grafana state** | A dedicated small PostgreSQL instance, so what users build in the UI survives a restart |
 
-Cloud-side, per backend: one bucket, and one IAM role (AWS) or Google service account with a Workload Identity binding (GCP).
-Plus, unless you turn it off, one small PostgreSQL instance for Grafana — see [Reaching Grafana](#reaching-grafana).
+Cloud-side, each backend gets the following:
+
+- **AWS:** a bucket and an IAM role.
+- **GCP:** a bucket and a Google service account with a Workload Identity binding.
+- **Azure:** a container in a shared storage account, and a user-assigned managed identity with a federated credential.
+
+Unless you turn it off, the module also creates one small PostgreSQL instance for Grafana; see [Reaching Grafana](#reaching-grafana).
 
 Grafana gets an internal L4 load balancer with the rest of the stack on all three clouds. DNS, TLS, and an identity provider are still yours — see [Reaching Grafana](#reaching-grafana).
 
