@@ -372,23 +372,23 @@ main.container {
   }
 }
 
-// Code block select-all button; see assets/code-select.js.
-$code-select-inset: rem(0.8);
-$code-select-padding: rem(0.4);
-$code-select-line-height: 1.4;
+// Code block copy button; see assets/code-copy.js.
+$code-copy-inset: rem(0.8);
+$code-copy-padding: rem(0.4);
+$code-copy-line-height: 1.4;
 
 .highlight {
   position: relative;
 }
 
-.code-select-all {
+.code-copy {
   position: absolute;
-  top: $code-select-inset;
-  right: $code-select-inset;
-  padding: $code-select-padding rem(1.2);
+  top: $code-copy-inset;
+  right: $code-copy-inset;
+  padding: $code-copy-padding rem(1.2);
   font-family: inherit;
   font-size: var(--font-size-smaller);
-  line-height: $code-select-line-height;
+  line-height: $code-copy-line-height;
   // Monokai's foreground and background, not --gray-* variables: chroma
   // renders Monokai in both site themes, so the block is dark either way.
   // The fill is opaque so the code the button sits over doesn't show through.
@@ -408,13 +408,13 @@ $code-select-line-height: 1.4;
 // Out of the way until the reader points at the block, like the Mermaid
 // button.
 @media (hover: hover) {
-  .code-select-all {
+  .code-copy {
     opacity: 0;
     transition: opacity 0.15s;
   }
 
-  .highlight:hover .code-select-all,
-  .code-select-all:focus-visible {
+  .highlight:hover .code-copy,
+  .code-copy:focus-visible {
     opacity: 1;
   }
 }
@@ -424,10 +424,10 @@ $code-select-line-height: 1.4;
 // end of that line for good. The strip is the button's height plus an inset
 // above and below.
 @media (hover: none) {
-  .highlight:has(> .code-select-all) pre {
+  .highlight:has(> .code-copy) pre {
     padding-top: calc(
-      2 * #{$code-select-inset} + 2 * #{$code-select-padding} + 2px +
-        var(--font-size-smaller) * #{$code-select-line-height}
+      2 * #{$code-copy-inset} + 2 * #{$code-copy-padding} + 2px +
+        var(--font-size-smaller) * #{$code-copy-line-height}
     );
   }
 }
@@ -462,7 +462,7 @@ $code-select-line-height: 1.4;
 }
 
 @media print {
-  .code-select-all,
+  .code-copy,
   .details-toggle {
     display: none;
   }

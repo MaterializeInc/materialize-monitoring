@@ -12,7 +12,7 @@
   Both scripts must run before window load, when Mermaid replaces the diagram
   source; see assets/mermaid-zoom.js.
 
-  Ships the select-all button on pages with a highlighted code block, and the
+  Ships the copy button on pages with a highlighted code block, and the
   expand-all and collapse-all buttons on pages with at least
   $detailsToggleThreshold <details> blocks. A page with only a couple reads
   fine without them.
@@ -35,7 +35,7 @@
   {{- end }}
 {{- end }}
 {{- if strings.Contains .Content `class="highlight"` }}
-  {{- with resources.Get "code-select.js" | resources.Minify }}
+  {{- with resources.Get "code-copy.js" | resources.Minify }}
 <script>{{ .Content | safeJS }}</script>
   {{- end }}
 {{- end }}
