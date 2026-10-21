@@ -19,7 +19,7 @@ date: 2026-10-20
         </tr>
         <tr>
           <th>lastmod</th>
-          <td>2026-10-20 00:00:00 &#43;0000 UTC</td>
+          <td>2026-10-21 00:00:00 &#43;0000 UTC</td>
         </tr>
         <tr>
           <th>publishdate</th>
@@ -56,6 +56,9 @@ Four claims here are load-bearing and easy to soften by accident:
   4. A PromQL endpoint, Thanos by default, is present even when Datadog is a destination, because the tenant-scoped
      read path depends on it. Do not design for an install that sends metrics only to Datadog.
 
+The parity ledger compares manifests that the builders record, never the rendered JSON. A shared panel layer waits for the
+ledger to show duplication; do not build it ahead of that.
+
 Reference tables were the first draft's answer for names. They are recorded under "Other ways to get names" as an
 option, with the constraints that research found, so that the work is not repeated.
 
@@ -83,6 +86,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 - **[Should] As an operator,** I want clusters, replicas, and objects shown by name, so that a panel answers "which one" without a lookup in SQL.
 - **[Should] As an operator,** I want a rename to change the name a panel shows without changing the series underneath, so that a rename doesn't reset rates or history.
 - **[Should] As a maintainer,** I want a change in Datadog's API to fail CI rather than a customer's import, so that published dashboard JSON doesn't age out of compatibility.
+- **[Should] As a maintainer,** I want a panel added to one set to fail CI until the other set has it or the gap is listed, so that the two sets don't drift apart unnoticed.
 - **[Could] As an operator who uses Terraform,** I want to manage the downloaded dashboards as Terraform resources, so that I manage them the way I manage the rest of the install.
 - **[Could] As an operator,** I want to pick a cluster by name in a dashboard variable, so that I don't have to know its id.
 
@@ -95,6 +99,7 @@ Priority tags (**Must** / **Should** / **Could**) are relative to the first ship
 - **The `_info` series have to reach Datadog.** Two of the three aren't in the metric tier list today, so the Datadog destination's default tier drops them. Each `_info` series that does reach Datadog is a custom metric.
 - **Reference tables stay an option, outside the first version.** They solve names without sending `_info` series, at the price of a sync component, an application key, and a join shape that Datadog doesn't publish for dashboards.
 - **Thanos is always there.** The tenant-scoped read path makes a PromQL endpoint part of every deployment, Datadog destination or not. That keeps pre-joined recording rules available as an option too.
+- **A parity ledger keeps the two sets in step.** Each backend records a manifest of its panels, their registry queries, kinds, and units, and a test fails on any difference that isn't listed with a reason. A shared panel layer follows only if the ledger shows the two backends repeating one list.
 
 ## Non-goals
 
@@ -339,6 +344,70 @@ Names are a **Should**, and they wait on the canonical labels from [DEP-349](htt
 The `datadogQuery` templates were written for completeness, and the PromQL is the tested half.
 Each panel's Datadog query is checked against live data when it's ported.
 
+## Keeping the two sets in step
+
+The registry already keeps the meaning of the two sets in step, because both backends name each query by its registry id.
+What can still drift is everything around those queries: which panels exist, where they sit, which queries each one reads, and what kind of panel each one is.
+This design checks that with a parity ledger now.
+It moves the panel list into a shared layer only if the ledger shows the two backends repeating it.
+
+### A parity ledger over panel manifests
+
+Each backend produces a manifest of every dashboard it renders.
+The manifest records the following for each panel, in section order:
+
+Slug
+: The panel's stable id. The Grafana builders already give every panel one, as in `.panel("freshness-lag-by-cluster", …)`.
+
+Title
+: The title the panel shows.
+
+Queries
+: The registry ids the panel reads, with any argument that changes what they select, such as a split by replica or by worker.
+
+Kind
+: A broad class of panel: time series, single value, table, or pie.
+
+Unit
+: The unit of the panel's values.
+
+Names
+: Whether the panel joins names, and through which enrichment function.
+
+The builders record the manifest as they build each dashboard.
+Every Grafana query lookup already passes through `Queries::bridge` in `packages/dashboards/src/grafana/queries.rs`, which records the lookups that fail.
+Recording the lookups that succeed, against the panel being built, uses the same mechanism.
+
+A test compares each Datadog dashboard's manifest with its Grafana counterpart's.
+It fails when a panel is in one and not the other, or when the two disagree on a field, unless the difference is listed with its reason.
+The listed differences live in one place, as `ALLOWED` and `ADDED_PANELS` do in `packages/dashboards/tests/env_top_parity.rs`, which compared the Rust `env-top` with its earlier render the same way.
+Typical reasons are a log panel, a query with no `datadogQuery` yet, and a panel kind that Datadog has no counterpart for.
+A long list means the ledger has stopped describing the two sets, and the comparison stops being worth running.
+
+The ledger has the following further uses:
+
+- The Datadog dashboards page renders the listed differences as a table of Grafana panels without a Datadog counterpart, each with its reason.
+- A query that a Datadog panel needs and that has no `datadogQuery` fails the test until someone writes the template or lists the gap.
+
+The ledger doesn't compare layout, sizes, colors, thresholds, legends, links, or transformations.
+Those belong to each format, and comparing them would mostly report noise.
+
+This design considered a structural comparison of the rendered JSON, and rejected it.
+Grafana's grid, rows, field overrides, and transformations share almost nothing with Datadog's layout, groups, formulas, and conditional formats.
+Comparing them would first mean normalizing both into a common shape, and that shape is the manifest, recovered from output after the builders have already discarded it.
+
+### A shared panel layer, if the ledger shows duplication
+
+This design also considered interlacing the two definitions now, with every panel builder rendering per backend, and rejected it.
+The Grafana set is the one that lives in the cluster, and it uses features Datadog has no counterpart for: conditional rows, transformations, data links, log panels, and Grafana-only variable types.
+Rendering every Grafana panel through a Datadog-aware builder would bring Datadog's limits into each one.
+`packages/dashboards/src/lib.rs` also asks for shared structure to grow out of a second backend rather than be designed ahead of one.
+
+If the ledger shows the two backends restating the same panel list, that list moves into a backend-neutral layer.
+The layer holds what the manifest records: sections, slugs, titles, query ids, kinds, units, and name joins.
+Each backend renders from it, and keeps its presentation in its own code, keyed by slug.
+The ledger then reduces to one assertion: every shared panel renders in both backends, or is listed as skipped.
+
 ## Catching API drift
 
 DEP-115 asks for a CI job that runs the SDK at its latest version and surfaces drift.
@@ -358,6 +427,7 @@ None of it is ticketed yet.
 | Item | Why it's needed | Blocking? |
 |---|---|---|
 | **The Datadog backend** under `packages/dashboards/src/datadog/`, with `make datadog-dashboards` rendering into `docs/assets/dashboards/datadog/` and the freshness check in the dashboards workflow | The feature | **Blocking** |
+| **Panel manifests and the parity ledger**: both backends record a manifest as they build, and a test compares them against a list of reasoned differences | Keeps the two sets in step | **Blocking** for the first Datadog dashboard |
 | **The Datadog dashboards page**, rewritten from its placeholder into import steps | Download is the primary way to install the set | **Blocking** |
 | **`cluster` on the Datadog chain**, filled from `CLUSTER_NAME` where it's absent | Environment scoping across Kubernetes clusters, and the Kubernetes-cluster identity every other destination already has | **Blocking** for organizations with several Kubernetes clusters |
 | **`functions` on `datadogQuery` templates**, and a Datadog rendering context that turns the enrichment functions into a hidden `_info` query and a formula factor | How a panel asks for names | Blocking for names |
@@ -374,13 +444,14 @@ The following tests cover the design:
 - **Formula rewriting.** A unit test renders a registry query with `mzObjectName` and asserts the hidden `_info` query and the formula factor, including a formula that already does arithmetic.
 - **Tier list.** The rendered `metric-tiers.yaml` names every `_info` family that an enrichment function reads.
 - **The `cluster` stamp.** helm-unittest asserts that the Datadog chain fills `cluster` only where it's absent.
+- **Parity.** The ledger compares every Datadog dashboard's manifest with its Grafana counterpart's, and a fixture with an unlisted difference makes it fail.
 - **Renders.** Snapshot tests for each Datadog dashboard, as `packages/dashboards/tests/` holds for the Grafana ones.
 - **API acceptance.** The scheduled job creates, reads back, and deletes every dashboard in a test organization.
 - **Live data.** Every ported `datadogQuery` returns data against a test install that sends to Datadog.
 
 ## Documentation to update
 
-- `dashboards/datadog.md`, from "no set exists" to the download and import steps, the distinct `clusterName` per Kubernetes cluster, and the custom-metric cost of the `_info` series.
+- `dashboards/datadog.md`, from "no set exists" to the download and import steps, the distinct `clusterName` per Kubernetes cluster, and the custom-metric cost of the `_info` series. It also gains the ledger's table of Grafana panels without a Datadog counterpart.
 - `dashboards/all.md`, which points Datadog users at the roadmap and at Common Queries.
 - `reference/development/queries/datadog.md`, whose `label_replace` note says Datadog panels can't show names. The arithmetic join shows them once the tag names match.
 - `metrics/storing.md`, whose Datadog destination section gains the `_info` families and their cost.
@@ -395,6 +466,7 @@ The following tests cover the design:
 - [ ] **Is the custom-metric cost of the `_info` series acceptable at the default tier**, or do they belong in a tier an operator opts into?
 - [ ] **Do names wait for all of DEP-349**, or does the Datadog chain alias the few id labels the first set joins on ahead of it?
 - [ ] **When are reference tables worth adding?** [Other ways to get names](#reference-tables) lists the conditions.
+- [ ] **What duplication moves the panel list into a shared layer?** Two or more dashboards whose manifests match panel for panel would be a clear signal, and the threshold is a judgment call.
 - [ ] **Does CI get a Datadog test organization** for the acceptance job and the live-data checks?
 - [ ] **Which dashboards follow `env-top`?** Field Engineering's input, as DEP-115 asks.
 
