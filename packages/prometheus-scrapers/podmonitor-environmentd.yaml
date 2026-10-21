@@ -38,3 +38,73 @@ spec:
     - port: internal-http
       path: /metrics
       relabelings: []
+      # Canonical label names from the label vocabulary (DEP-421). Each rule
+      # copies an alias into its canonical name only where the canonical label
+      # is empty, so a value Materialize emits under the canonical name is never
+      # overwritten. Relabel regexes are fully anchored: "u1;u1" and ";" both
+      # fail to match. The aliases stay until DEP-360 retires them.
+      metricRelabelings:
+        # `instance_id` is "none" on mz_time_to_first_row_seconds, so only a
+        # cluster id is copied.
+        - sourceLabels: [cluster_id, instance_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_id, compute_instance]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [collection_id, global_id]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: collection_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [shard_id, shard]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: shard_id
+          replacement: "$1"
+          action: replace
+        # `name`, `type` and `size` mean other things on other families, such
+        # as a persist shard's name, so these are scoped to the _info family.
+        - sourceLabels: [__name__, cluster_name, name]
+          separator: ";"
+          regex: "mz_cluster_info;;(.+)"
+          targetLabel: cluster_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [__name__, cluster_size, size]
+          separator: ";"
+          regex: "mz_cluster_info;;(.+)"
+          targetLabel: cluster_size
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [__name__, replica_name, name]
+          separator: ";"
+          regex: "mz_replica_info;;(.+)"
+          targetLabel: replica_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [__name__, replica_size, size]
+          separator: ";"
+          regex: "mz_replica_info;;(.+)"
+          targetLabel: replica_size
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [__name__, object_name, name]
+          separator: ";"
+          regex: "mz_object_info;;(.+)"
+          targetLabel: object_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [__name__, object_type, type]
+          separator: ";"
+          regex: "mz_object_info;;(.+)"
+          targetLabel: object_type
+          replacement: "$1"
+          action: replace

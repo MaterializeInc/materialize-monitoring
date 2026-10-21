@@ -454,6 +454,86 @@ pub async fn consensus_recorded(ctx: &Ctx) -> Result<()> {
     .await
 }
 
+/// Selectors for Materialize series that carry a label alias without its
+/// canonical name, one per alias the shipped monitors fill (DEP-421).
+///
+/// The list is `LabelAlias::missing_canonical_selector` over
+/// `mzmon_lib::scrape::label_aliases::LABEL_ALIASES`, copied here so the
+/// assertion binary needs no source tree. A test proves the two still agree.
+pub const LABEL_ALIAS_SELECTORS: &[&str] = &[
+    r#"{__name__=~"(v2_)?mz_.+", instance_id=~"[su][0-9]+", cluster_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", compute_instance=~"[su][0-9]+", cluster_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", compute_cluster_id=~"[su][0-9]+", cluster_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", cluster_environmentd_materialize_cloud_cluster_id=~"[su][0-9]+", cluster_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", cluster_environmentd_materialize_cloud_replica_id=~"[su][0-9]+", replica_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", compute_cluster_name=~".+", cluster_name=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", compute_replica_id=~"[su][0-9]+", replica_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", global_id=~".+", collection_id=""}"#,
+    r#"{__name__=~"(v2_)?mz_.+", shard=~".+", shard_id=""}"#,
+    r#"{__name__="mz_cluster_info", name=~".+", cluster_name=""}"#,
+    r#"{__name__="mz_cluster_info", size=~".+", cluster_size=""}"#,
+    r#"{__name__="mz_replica_info", name=~".+", replica_name=""}"#,
+    r#"{__name__="mz_replica_info", size=~".+", replica_size=""}"#,
+    r#"{__name__="mz_object_info", name=~".+", object_name=""}"#,
+    r#"{__name__="mz_object_info", type=~".+", object_type=""}"#,
+];
+
+/// No Materialize series carries a label alias without its canonical name.
+///
+/// The shipped Materialize monitors copy each alias into its canonical label,
+/// such as `instance_id` into `cluster_id`. A rule that renders and never applies
+/// is invisible to the unit tests, and to every dashboard still written against
+/// the alias. Like [`consensus_recorded`], a stack watching no environment has
+/// no Materialize series and passes.
+pub async fn label_aliases_filled(ctx: &Ctx) -> Result<()> {
+    let target = ServiceTarget::new(QUERY_SERVICE, QUERY_PORT);
+
+    retry_until(
+        "every Materialize series carrying a label alias carries its canonical name",
+        ctx.deadline,
+        ctx.interval,
+        || async {
+            let mut missing = Vec::new();
+            for selector in LABEL_ALIAS_SELECTORS {
+                let query = format!("count by (__name__, job) ({selector})");
+                let series = instant_query(ctx, &target, &query).await?;
+                if series.is_empty() {
+                    continue;
+                }
+                let examples: Vec<String> = series
+                    .iter()
+                    .take(3)
+                    .map(|s| {
+                        let label = |name: &str| {
+                            s.pointer(&format!("/metric/{name}"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("?")
+                                .to_string()
+                        };
+                        format!("{} from {}", label("__name__"), label("job"))
+                    })
+                    .collect();
+                missing.push(format!(
+                    "{selector} matches {} famil(ies), such as {}",
+                    series.len(),
+                    examples.join(", ")
+                ));
+            }
+            if missing.is_empty() {
+                return Ok(());
+            }
+            bail!(
+                "series carry a label alias without its canonical name: {}. Check that the \
+                 Materialize monitors carry the metricRelabelings in packages/prometheus-scrapers, \
+                 and that values do not replace materialize.*.serviceMonitor.metricEndpoints \
+                 without restating them",
+                missing.join("; ")
+            )
+        },
+    )
+    .await
+}
+
 /// Run an instant query and return its result vector.
 /// Run an instant query against a Prometheus-compatible endpoint.
 ///
@@ -502,7 +582,9 @@ fn expect_success(body: &Value) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RENAMED_NAMES, TYPED_NAMES, check_typed_names, sample_value};
+    use super::{
+        LABEL_ALIAS_SELECTORS, RENAMED_NAMES, TYPED_NAMES, check_typed_names, sample_value,
+    };
     use serde_json::json;
 
     fn all_typed() -> Vec<&'static str> {
@@ -553,5 +635,14 @@ mod tests {
     #[test]
     fn a_series_without_a_value_is_none() {
         assert_eq!(sample_value(&json!({"metric": {}})), None);
+    }
+
+    #[test]
+    fn label_alias_selectors_match_the_vocabulary() {
+        let derived: Vec<String> = mzmon_lib::scrape::label_aliases::LABEL_ALIASES
+            .iter()
+            .map(|alias| alias.missing_canonical_selector())
+            .collect();
+        assert_eq!(LABEL_ALIAS_SELECTORS, derived.as_slice());
     }
 }

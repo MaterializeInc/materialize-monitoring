@@ -28,6 +28,7 @@
 //! `from_yaml_str`, inline `#[cfg(test)]` tests per module.
 
 pub mod error;
+pub mod label_aliases;
 pub mod transpile;
 pub mod validate;
 

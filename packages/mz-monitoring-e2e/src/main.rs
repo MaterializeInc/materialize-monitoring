@@ -388,6 +388,15 @@ fn build_trials(runtime: &Arc<Runtime>, ctx: &Arc<Ctx>) -> Vec<Trial> {
         thanos && thanos_ruler && rules,
         checks::thanos::consensus_recorded,
     ));
+    // Passes with no Materialize to watch, like consensus_recorded, so it needs
+    // only the store it queries.
+    trials.push(trial(
+        runtime,
+        ctx,
+        "thanos::label_aliases_filled",
+        thanos,
+        checks::thanos::label_aliases_filled,
+    ));
     trials.push(trial(
         runtime,
         ctx,

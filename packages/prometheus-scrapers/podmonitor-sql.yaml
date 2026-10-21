@@ -38,6 +38,13 @@ spec:
   # the kubelet's several paths. The classic and GMP renders already split the
   # paths into one job each; classic carries the label anyway, and GMP, which
   # has no target relabeling, drops it.
+  #
+  # Every endpoint carries the same `metricRelabelings`: canonical label names
+  # from the label vocabulary (DEP-421). Each rule copies an alias into its
+  # canonical name only where the canonical label is empty, so a value
+  # Materialize emits under the canonical name is never overwritten. Relabel
+  # regexes are fully anchored: "u1;u1" and ";" both fail to match. The aliases
+  # stay until DEP-360 retires them.
   podMetricsEndpoints:
     - port: internal-http
       path: /metrics/mz_compute
@@ -51,6 +58,31 @@ spec:
       relabelings:
         - sourceLabels: [__metrics_path__]
           targetLabel: metrics_path
+      metricRelabelings:
+        - sourceLabels: [cluster_id, instance_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_id, compute_cluster_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_name, compute_cluster_name]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: cluster_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [replica_id, compute_replica_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: replica_id
+          replacement: "$1"
+          action: replace
     - port: internal-http
       path: /metrics/mz_frontier
       basicAuth:
@@ -63,6 +95,31 @@ spec:
       relabelings:
         - sourceLabels: [__metrics_path__]
           targetLabel: metrics_path
+      metricRelabelings:
+        - sourceLabels: [cluster_id, instance_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_id, compute_cluster_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_name, compute_cluster_name]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: cluster_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [replica_id, compute_replica_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: replica_id
+          replacement: "$1"
+          action: replace
     - port: internal-http
       path: /metrics/mz_storage
       basicAuth:
@@ -75,6 +132,31 @@ spec:
       relabelings:
         - sourceLabels: [__metrics_path__]
           targetLabel: metrics_path
+      metricRelabelings:
+        - sourceLabels: [cluster_id, instance_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_id, compute_cluster_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_name, compute_cluster_name]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: cluster_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [replica_id, compute_replica_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: replica_id
+          replacement: "$1"
+          action: replace
     - port: internal-http
       path: /metrics/mz_usage
       basicAuth:
@@ -87,3 +169,28 @@ spec:
       relabelings:
         - sourceLabels: [__metrics_path__]
           targetLabel: metrics_path
+      metricRelabelings:
+        - sourceLabels: [cluster_id, instance_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_id, compute_cluster_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [cluster_name, compute_cluster_name]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: cluster_name
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [replica_id, compute_replica_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: replica_id
+          replacement: "$1"
+          action: replace

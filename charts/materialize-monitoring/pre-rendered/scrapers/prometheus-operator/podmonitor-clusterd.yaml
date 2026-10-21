@@ -28,3 +28,30 @@ spec:
     - port: internal-http
       path: /metrics
       relabelings: []
+      # Canonical label names from the label vocabulary (DEP-421). Each rule
+      # copies an alias into its canonical name only where the canonical label
+      # is empty, so a value Materialize emits under the canonical name is never
+      # overwritten. Relabel regexes are fully anchored: "u1;u1" and ";" both
+      # fail to match. The aliases stay until DEP-360 retires them.
+      #
+      # The ids come from the long-form target labels `podTargetLabels` copies,
+      # because a metric relabeling is the one rule form every flavor renders.
+      metricRelabelings:
+        - sourceLabels: [cluster_id, cluster_environmentd_materialize_cloud_cluster_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: cluster_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [replica_id, cluster_environmentd_materialize_cloud_replica_id]
+          separator: ";"
+          regex: ";([su][0-9]+)"
+          targetLabel: replica_id
+          replacement: "$1"
+          action: replace
+        - sourceLabels: [shard_id, shard]
+          separator: ";"
+          regex: ";(.+)"
+          targetLabel: shard_id
+          replacement: "$1"
+          action: replace

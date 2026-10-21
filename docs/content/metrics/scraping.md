@@ -70,6 +70,44 @@ Without it, the four endpoints' `up` and `scrape_*` series are one series writte
 A copy of the `PodMonitor` that replaces its endpoints keeps that relabeling on each of them.
 The Classic and Google Cloud Managed Prometheus configs scrape each path as its own job, so their `job` label already differs.
 
+### Canonical label names {#canonical-labels}
+
+Materialize spells some ids and names more than one way.
+A cluster id is `instance_id` on most environmentd metrics, `compute_cluster_id` on the SQL endpoints, and `cluster_environmentd_materialize_cloud_cluster_id` on clusterd metrics.
+Every scrape config here copies each of those labels into one canonical name, such as `cluster_id`, and keeps the original beside it.
+A copy is made only where the canonical label is absent, so a value Materialize emits under the canonical name is never overwritten.
+A copy adds no series.
+
+Each canonical label is copied from the following labels:
+
+`cluster_id`
+: `instance_id`, `compute_instance`, `compute_cluster_id`, and `cluster_environmentd_materialize_cloud_cluster_id`, where the value is a cluster id
+
+`replica_id`
+: `compute_replica_id` and `cluster_environmentd_materialize_cloud_replica_id`
+
+`cluster_name`
+: `compute_cluster_name`, and `name` on `mz_cluster_info`
+
+`cluster_size`
+: `size` on `mz_cluster_info`
+
+`replica_name` and `replica_size`
+: `name` and `size` on `mz_replica_info`
+
+`object_name` and `object_type`
+: `name` and `type` on `mz_object_info`
+
+`collection_id`
+: `global_id`
+
+`shard_id`
+: `shard`
+
+Write new queries against the canonical names, because the labels they're copied from are deprecated.
+A copy of a `PodMonitor` that replaces its endpoints keeps their `metricRelabelings`, or its series lack the canonical labels.
+clusterd's `up` and `scrape_*` series carry only the long-form ids, because metric relabeling doesn't apply to them.
+
 ### Which Prometheus Distribution Am I Using?
 
 An easy way to check if you are using Prometheus Operator is to see

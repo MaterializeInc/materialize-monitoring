@@ -720,6 +720,11 @@ materialize:
       # -- Override for default labels to copy from the pod into metrics
       targetLabels: []
       # -- Override for default metric endpoints
+      # The defaults carry `metricRelabelings` that copy label aliases into their
+      # canonical names, such as `instance_id` into `cluster_id`. A replacement
+      # restates them from
+      # `pre-rendered/scrapers/prometheus-operator/podmonitor-environmentd.yaml`, or its series
+      # lack the canonical labels.
       metricEndpoints: []
   environmentdSQL:
     # -- ServiceMonitor/PodMonitor configuration for environmentd-sql
@@ -734,6 +739,11 @@ materialize:
       # The defaults share one port, so each copies `__metrics_path__` into
       # `metrics_path` with a `relabelings` entry. A replacement keeps that on
       # every endpoint, or their `up` and `scrape_*` series collide.
+      # The defaults carry `metricRelabelings` that copy label aliases into their
+      # canonical names, such as `instance_id` into `cluster_id`. A replacement
+      # restates them from
+      # `pre-rendered/scrapers/prometheus-operator/podmonitor-sql.yaml`, or its series
+      # lack the canonical labels.
       metricEndpoints: []
     secret:
       create: true
@@ -748,8 +758,16 @@ materialize:
       # -- Override for default selector
       selector: {}
       # -- Override for default labels to copy from the pod into metrics
+      # The default `metricRelabelings` fill `cluster_id` and `replica_id` from
+      # the `cluster.environmentd.materialize.cloud/cluster-id` and `replica-id`
+      # labels copied here, so a replacement keeps both.
       targetLabels: []
       # -- Override for default metric endpoints
+      # The defaults carry `metricRelabelings` that copy label aliases into their
+      # canonical names, such as `instance_id` into `cluster_id`. A replacement
+      # restates them from
+      # `pre-rendered/scrapers/prometheus-operator/podmonitor-clusterd.yaml`, or its series
+      # lack the canonical labels.
       metricEndpoints: []
   # -- Where Materialize runs: `self-managed` or `cloud`. Decides the prefix the alerting rules expect on SQL-backed metrics (`mz_`, or Cloud's `v2_mz_`).
   deploymentMode: self-managed

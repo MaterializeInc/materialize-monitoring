@@ -10,7 +10,7 @@ lastmod: 2026-10-21
 params:
   author: Heather Lapointe
   agent: Claude Opus 5.5
-  status: "Draft"
+  status: "Ready"
 ---
 
 # A Label Vocabulary for Materialize Metrics
@@ -717,8 +717,9 @@ Tracked in the same milestone, gated on design acceptance in [DEP-346](https://l
 |---|---|---|
 | **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The single source every other row generates from | **Blocking** |
 | **The `cluster` move and the `honeycomb` drop** on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)) | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
-| **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so clusterd's ids cannot reach `cluster_id` without it | **Blocking** for clusterd |
-| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The aliases themselves | **Blocking** |
+| **The initial metric aliases**, written by hand into the monitor sources ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) | Canonical names on every series before the generator exists. clusterd's ids reach `cluster_id` and `replica_id` from the long-form target labels, which works in every flavor | ✅ Done |
+| **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so once the long-form keys leave it, clusterd's ids reach `cluster_id` only through a target alias | **Blocking** for retiring the long-form ids |
+| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | Generates the hand-written aliases from `labels.yaml`, and the reserved moves and drops | **Blocking** |
 | **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
 | **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
 | **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |

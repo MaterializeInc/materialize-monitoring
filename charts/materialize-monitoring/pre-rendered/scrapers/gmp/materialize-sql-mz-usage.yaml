@@ -16,6 +16,39 @@ spec:
     path: /metrics/mz_usage
     basicAuth:
       username: mz_support
+    metricRelabeling:
+    - sourceLabels:
+      - cluster_id
+      - instance_id
+      separator: ;
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_id
+      - compute_cluster_id
+      separator: ;
+      targetLabel: cluster_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - cluster_name
+      - compute_cluster_name
+      separator: ;
+      targetLabel: cluster_name
+      regex: ;(.+)
+      replacement: $1
+      action: replace
+    - sourceLabels:
+      - replica_id
+      - compute_replica_id
+      separator: ;
+      targetLabel: replica_id
+      regex: ;([su][0-9]+)
+      replacement: $1
+      action: replace
   targetLabels:
     fromPod:
     - from: materialize.cloud/organization-name

@@ -747,7 +747,7 @@ mod tests {
     //     (no `namespaces:` on the SD config).
     // ========================================================
 
-    use crate::scrape::test_support::{assert_jobs, fixture};
+    use crate::scrape::test_support::{assert_jobs, fixture, without_metric_relabelings};
 
     /// Core PodMonitor spec: one label, one endpoint, no path. Pins the selector
     /// `keep` shape, the port `keep`, and the namespace/pod/container relabels.
@@ -796,7 +796,9 @@ mod tests {
     /// `metrics_path`. (Real `podmonitor-environmentd.yaml` fixture.)
     #[test]
     fn pod_monitor_environmentd_fixture() {
-        let monitor = Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap();
+        let monitor = without_metric_relabelings(
+            Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap(),
+        );
         assert_jobs(
             monitor.transpile(),
             r#"
@@ -1016,7 +1018,9 @@ mod tests {
     /// the missing `interval` is defaulted.
     #[test]
     fn pod_monitor_environmentd_to_gmp() {
-        let monitor = Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap();
+        let monitor = without_metric_relabelings(
+            Monitor::from_yaml_str(fixture("podmonitor-environmentd")).unwrap(),
+        );
         let resources = monitor.to_gmp().unwrap();
         assert_eq!(resources.len(), 1);
         assert_serializes_to(
