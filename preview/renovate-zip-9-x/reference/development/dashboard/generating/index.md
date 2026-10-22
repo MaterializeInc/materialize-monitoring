@@ -94,11 +94,12 @@ reading dashboards back.
 mz-monitoring-build gen-dashboards --output-dir <dir> --format yaml
 ```
 
-`--list` enumerates what is available, `--dashboard <stem>` renders one, `--format json` emits the docsite shape, and
+`--list` enumerates what is available, `--dashboard <stem>` renders one, `--folder <name>` renders only the dashboards
+filed in that Grafana folder, `--format json` emits the docsite shape, and
 ### Two copies, one review
 
-Every dashboard is written twice: `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` for the chart, and
-`docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
+Every dashboard is written twice: `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` for the dashboards chart that
+carries its folder, and `docs/assets/dashboards/grafana/<stem>.json` for the docsite's download.
 Same content, two serializations — so a one-line panel change shows up as two diffs and only one of them is worth
 reading.
 
@@ -116,12 +117,36 @@ over both trees — collapsing a diff cannot hide a stale file.
 metric-to-usage index rather than a second one, so its diff is the only place a tier change is visible.
 
 `--check` compares against what is on disk without writing (exiting non-zero if they differ).
-`make dashboards` wires the two shipped output trees; see
+`make dashboards` wires the shipped output trees, one per dashboards chart plus the docsite's; see
 [SDKs and Schemas](/materialize-monitoring/preview/renovate-zip-9-x/reference/development/dashboard/sdks/#rendering) for the determinism guarantees.
+
+### Which chart a dashboard ships in
+
+A dashboard's Grafana folder decides its chart.
+Each `materialize-monitoring-dashboards*` chart carries one folder's dashboards, and `make dashboards` renders each with
+`gen-dashboards --folder`, as the following table shows:
+
+| Folder | `Folder` variant | Chart |
+|---|---|---|
+| `materialize` | `Folder::Materialize` | `materialize-monitoring-dashboards` |
+| `infra` | `Folder::Infra` | `materialize-monitoring-dashboards-infra` |
+| `meta-o11y` | `Folder::MetaO11y` | `materialize-monitoring-dashboards-meta` |
+
+So you pick a new dashboard's chart by passing `.folder(...)` to its builder, and moving a dashboard between charts is a
+one-line change.
+A dashboard left at `Folder::Root` ships in no chart, and `every_dashboard_is_filed_in_a_folder` in
+`packages/dashboards/src/grafana/mod.rs` fails on one.
+The `DASHBOARDS_CHARTS` and `DASHBOARDS_FOLDER_*` variables in the `Makefile` hold the mapping.
+
+The charts share their templates through `charts/_dashboards-common`, a library chart named `dashboards-common`.
+Each declares it as a dependency and carries it as `charts/dashboards-common`, a symlink to that directory, so its own
+`templates/` is a few one-line includes.
+The README template the charts render their `README.md` from lives there too.
+For the Helm behavior around the symlink, see the `chart-development` skill.
 
 ## The size ceiling on dashboard delivery
 
-**The dashboards ship in a chart of their own, and this is why.**
+**The dashboards ship in charts of their own, one per folder, and this is why.**
 
 Helm stores each release as a Kubernetes Secret, and a Secret's data may not exceed 1 MiB.
 The rendered dashboards are the largest thing this repository produces by an order of magnitude — over a megabyte of
@@ -139,14 +164,12 @@ Measured on a reference install, where the umbrella release had 36,202 bytes of 
 It is the same 1 MiB object ceiling the Terraform design doc
 [flagged for the ConfigMap sidecar path](/materialize-monitoring/preview/renovate-zip-9-x/reference/development/design-docs/20260803-terraform-modules/); that note
 assumed the grafana-operator path had room, which stopped being true.
-A `standalone` Grafana provisions dashboards through that sidecar, which is why the dashboards chart refuses that mode
+A `standalone` Grafana provisions dashboards through that sidecar, which is why the dashboards charts refuse that mode
 rather than emitting resources nothing can carry.
 
-**What the split does not fix is the trajectory.**
-Each release now has roughly 400 KB of headroom, and the rendered dashboards remain the fastest-growing artifact here —
-so this buys a generation of dashboards rather than solving delivery.
-Shrinking the rendered output is the next lever, and the one that would stop the problem recurring is moving dashboards
-out of the release payload altogether.
+**What the split did not fix was the trajectory.**
+The dashboards release started with roughly 600 KB of headroom, and the rendered dashboards remain the
+fastest-growing artifact here.
 
 A dashboard's own size is worth knowing when adding one: `infra-alloy` is 344 KB, `env-top` 335 KB, `infra-nodes`
 246 KB, `infra-loki` 167 KB, `env-logs` 37 KB.
@@ -158,8 +181,22 @@ The three external-dependency dashboards — `env-persist` (122 KB), `env-consen
 By the time `infra-thanos` (235 KB) landed, other changes had taken the release to 840,860 bytes, and `infra-thanos` took it to 914,352, 87%, measured the same way.
 Other changes then took it to 943,776, and the alerts rows on `infra-loki`, `infra-alloy`, and `env-top` took it to 966,728, 92%.
 Filling `infra-net`'s Cloud Networking tab took `infra-net` from 143 KB to 230 KB and the release to 990,664 bytes, 94%, measured the same way.
-That leaves about 58 KB of headroom, which is less than one more dashboard the size of `infra-thanos` needs.
-For the options, see [the issue tracking the dashboards release size](https://linear.app/materializeinc/issue/DEP-392).
+That left about 58 KB of headroom, less than one more dashboard the size of `infra-thanos` needs.
+
+So the dashboards split again, one chart per Grafana folder
+([DEP-392](https://linear.app/materializeinc/issue/DEP-392)).
+Estimated the same way, the following table gives each chart's release size after that split:
+
+| Chart | Dashboards | Bytes | Share of the ceiling |
+|---|---|---|---|
+| `materialize-monitoring-dashboards` | `env-*` | 382,408 | 36% |
+| `materialize-monitoring-dashboards-infra` | the platform | 373,500 | 36% |
+| `materialize-monitoring-dashboards-meta` | Alloy, Loki, and Thanos | 282,320 | 27% |
+
+A new dashboard lands in the chart for its folder, so watch that chart's size.
+A meta-monitoring dashboard adds about 70 KB to `-meta`.
+Shrinking the rendered output is the next lever, and the one that would stop the problem recurring is moving dashboards
+out of the release payload altogether.
 `selected` is what an operator narrows to hold one back.
 
 ## Pushing dashboards to Grafana

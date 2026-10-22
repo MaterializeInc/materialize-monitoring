@@ -87,14 +87,21 @@ You need the following:
    The install output warns about every production setting the profile turns off.
    Read past those for anything else.
 
-1. Install the dashboards, which are a chart of their own:
+1. Install the dashboards, which ship in charts of their own, one per Grafana folder:
 
    ```bash
    helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
      --namespace monitoring --version VERSION
+   helm install mzmon-dashboards-infra oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards-infra \
+     --namespace monitoring --version VERSION
+   helm install mzmon-dashboards-meta oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards-meta \
+     --namespace monitoring --version VERSION
    ```
 
-   Each chart has its own version, so replace `VERSION` in each command.
+   The dashboards charts share one version, but the other charts each have their own,
+   so replace `VERSION` in each command.
+   Skip any dashboards chart you don't want:
+   `-infra` carries the platform dashboards, and `-meta` carries the ones that watch the monitoring stack itself.
 
 1. Check that the pods are running and that the dashboards reached Grafana:
 
@@ -155,6 +162,8 @@ Its header has the commands for the two Secrets it reads.
 Uninstall the releases in the reverse order you installed them:
 
 ```bash
+helm uninstall mzmon-dashboards-meta --namespace monitoring
+helm uninstall mzmon-dashboards-infra --namespace monitoring
 helm uninstall mzmon-dashboards --namespace monitoring
 helm uninstall mzmon --namespace monitoring
 helm uninstall mzmon-crds --namespace monitoring
