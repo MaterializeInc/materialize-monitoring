@@ -21,6 +21,13 @@ keywords:
   - monitoring
   - grafana
   - dashboards
+dependencies:
+  # The templates shared by the dashboards charts. `charts/dashboards-common` is a
+  # symlink to `charts/_dashboards-common`, which `helm package` follows, so the
+  # packaged chart carries its own copy and needs no `helm dependency build`.
+  - name: dashboards-common
+    version: 0.1.0
+    repository: file://../_dashboards-common
 annotations:
   artifacthub.io/changes: |
     - kind: changed
@@ -54,7 +61,8 @@ annotations:
 # `GrafanaManifest` resources and nothing else; the `Grafana` instance, the
 # datasources and the folders stay in the umbrella chart, because those are the
 # things a dashboard is filed *into* rather than part of the dashboards
-# themselves. Their `templates/` are identical copies -- see `_helpers.tpl`.
+# themselves. Their templates live in the `dashboards-common` library chart,
+# `charts/_dashboards-common`, which each carries as a symlinked dependency.
 #
 # Versioning
 # ----------

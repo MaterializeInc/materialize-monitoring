@@ -354,40 +354,32 @@ charts/materialize-monitoring-crds/README.md: \
 		--ignore-non-descriptions
 
 # Generate each dashboards chart's README.md from values.yaml + the README
-# template. The three charts share one template, which reads the chart's name.
+# template they share, which lives in the dashboards-common library chart and
+# reads the chart's name.
+DASHBOARDS_README_TEMPLATE = charts/_dashboards-common/README.md.gotmpl
+
 $(DASHBOARDS_CHARTS:%=charts/%/README.md): charts/%/README.md: \
 		charts/%/values.yaml \
 		charts/%/Chart.yaml \
 		tools/chartlib/helm-docs-lib.gotmpl \
-		charts/%/README.md.gotmpl
+		$(DASHBOARDS_README_TEMPLATE)
 	$(HELM_DOCS) \
 		--chart-search-root charts/$* \
 		--template-files ../../tools/chartlib/helm-docs-lib.gotmpl \
-		--template-files README.md.gotmpl \
+		--template-files ../../$(DASHBOARDS_README_TEMPLATE) \
 		--output-file README.md \
 		--sort-values-order file \
 		--log-level debug \
 		--ignore-non-descriptions
 
-# Do any necessary generation for these charts
-$(DASHBOARDS_CHARTS:%=charts/%): charts/%: charts/%/README.md charts/%/pre-rendered/dashboards/grafana
-	touch "$@"
+# Do any necessary generation for these charts. The dashboards-common library is
+# a prerequisite because each chart bundles it, through its
+# `charts/dashboards-common` symlink, when it is packaged.
+DASHBOARDS_COMMON_SOURCES = $(shell find charts/_dashboards-common -type f)
 
-# The three dashboards charts carry identical templates/ and README.md.gotmpl,
-# copied from materialize-monitoring-dashboards — Helm cannot share a template
-# across charts without a dependency, and a dependency is what the split avoids.
-# This is what notices a copy that was not made.
-dashboards-charts-check:
-	@for chart in $(filter-out materialize-monitoring-dashboards,$(DASHBOARDS_CHARTS)); do \
-		for path in templates README.md.gotmpl; do \
-			diff -r "charts/materialize-monitoring-dashboards/$$path" "charts/$$chart/$$path" || { \
-				echo "charts/$$chart/$$path differs from charts/materialize-monitoring-dashboards/$$path." \
-					"Edit the copy in materialize-monitoring-dashboards, then copy it to the other dashboards charts."; \
-				exit 1; \
-			}; \
-		done; \
-	done
-.PHONY: dashboards-charts-check
+$(DASHBOARDS_CHARTS:%=charts/%): charts/%: \
+		charts/%/README.md charts/%/pre-rendered/dashboards/grafana $(DASHBOARDS_COMMON_SOURCES)
+	touch "$@"
 
 HELM_VERSION_materialize-monitoring-dashboards = $(shell yq e '.version' charts/materialize-monitoring-dashboards/Chart.yaml)
 charts/materialize-monitoring-dashboards-$(HELM_VERSION_materialize-monitoring-dashboards).tgz: charts/materialize-monitoring-dashboards

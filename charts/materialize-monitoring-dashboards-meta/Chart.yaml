@@ -23,6 +23,13 @@ keywords:
   - grafana
   - dashboards
   - meta-monitoring
+dependencies:
+  # The templates shared by the dashboards charts. `charts/dashboards-common` is a
+  # symlink to `charts/_dashboards-common`, which `helm package` follows, so the
+  # packaged chart carries its own copy and needs no `helm dependency build`.
+  - name: dashboards-common
+    version: 0.1.0
+    repository: file://../_dashboards-common
 annotations:
   artifacthub.io/changes: |
     - kind: added

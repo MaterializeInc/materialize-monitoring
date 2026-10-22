@@ -140,10 +140,11 @@ A dashboard left at `Folder::Root` ships in no chart, and `every_dashboard_is_fi
 `packages/dashboards/src/grafana/mod.rs` fails on one.
 The `DASHBOARDS_CHARTS` and `DASHBOARDS_FOLDER_*` variables in the `Makefile` hold the mapping.
 
-The charts carry identical `templates/` and `README.md.gotmpl`, because Helm can't share a template across charts
-without a dependency.
-Edit the copies in `materialize-monitoring-dashboards` and copy them to the other charts.
-`make dashboards-charts-check`, which the lint workflow runs, fails while they differ.
+The charts share their templates through `charts/_dashboards-common`, a library chart named `dashboards-common`.
+Each declares it as a dependency and carries it as `charts/dashboards-common`, a symlink to that directory, so its own
+`templates/` is a few one-line includes.
+The README template the charts render their `README.md` from lives there too.
+For the Helm behavior around the symlink, see the `chart-development` skill.
 
 ## The size ceiling on dashboard delivery
 

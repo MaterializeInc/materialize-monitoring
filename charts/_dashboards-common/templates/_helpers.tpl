@@ -1,15 +1,18 @@
 {{/*
-Helm template helpers.
+Helm template helpers shared by the dashboards charts.
 
-Deliberately a local copy rather than anything shared with the umbrella chart:
-Helm has no way to import a `.tpl` across charts without making one a dependency
-of the other, and a dependency is exactly what the split exists to avoid.
+This is the `dashboards-common` library chart. `materialize-monitoring-dashboards`
+and its `-infra` and `-meta` siblings each declare it as a dependency and carry it
+as `charts/dashboards-common`, a symlink to `charts/_dashboards-common`; `helm
+package` follows the link, so every packaged chart bundles its own copy.
 
-The same goes for the three dashboards charts — `materialize-monitoring-dashboards`
-and its `-infra` and `-meta` siblings — which carry byte-identical `templates/`
-and differ only in their values and their dashboards. Edit the copy in
-`materialize-monitoring-dashboards` and copy it across;
-`make dashboards-charts-check` fails while they differ.
+Not shared with the umbrella chart. Helm has no way to import a `.tpl` across
+charts without making one a dependency of the other, and a dependency on the
+umbrella chart is exactly what the dashboards split exists to avoid.
+
+Every template here runs with the including chart's root context, so `$.Chart`,
+`$.Values`, and `$.Files` are that chart's: its name, its values, and its own
+`pre-rendered/` tree.
 
 Prefixed `mzmon-dashboards.` rather than `mzmon.`, so these never collide with the
 umbrella chart's helpers if some future install renders both in one release.

@@ -137,8 +137,8 @@ resolves through an explicit `grafana.folderUids` map the dashboards charts cann
 Why, and what it costs: [the size ceiling on dashboard
 delivery](../../../docs/content/reference/development/dashboard/generating.md#the-size-ceiling-on-dashboard-delivery).
 
-The charts carry identical `templates/` and `README.md.gotmpl`. Edit the copies in
-`materialize-monitoring-dashboards`, copy them across, and let `make dashboards-charts-check` confirm.
+The charts' templates and README template live in the `dashboards-common` library chart,
+`charts/_dashboards-common`, which each carries as a `charts/dashboards-common` symlink. Edit them there.
 
 The charts are **not** components of their own — they belong to the existing `dashboards` component, so
 `packages/dashboards/`, `packages/queries/` and every dashboards chart bump together.
