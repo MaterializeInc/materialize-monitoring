@@ -43,7 +43,7 @@
                       "aggregator": "last",
                       "data_source": "metrics",
                       "name": "query1",
-                      "query": "count_not_null( avg:mz_compute_cluster_status{$environment, compute_cluster_id:*} by {compute_cluster_id} )"
+                      "query": "count_not_null( avg:mz_compute_cluster_status{$environment AND compute_cluster_id:*} by {compute_cluster_id} )"
                     }
                   ],
                   "response_format": "scalar"
@@ -70,7 +70,7 @@
                       "aggregator": "last",
                       "data_source": "metrics",
                       "name": "query1",
-                      "query": "count_not_null( avg:mz_compute_cluster_status{$environment, compute_cluster_id:*, compute_cluster_id:s*} by {compute_cluster_id} )"
+                      "query": "count_not_null( avg:mz_compute_cluster_status{$environment AND compute_cluster_id:* AND compute_cluster_id:s*} by {compute_cluster_id} )"
                     }
                   ],
                   "response_format": "scalar"
@@ -97,7 +97,7 @@
                       "aggregator": "last",
                       "data_source": "metrics",
                       "name": "query1",
-                      "query": "count_not_null( avg:mz_compute_cluster_status{$environment, compute_cluster_id:*, compute_replica_id:*} by {compute_cluster_id,compute_replica_id} )"
+                      "query": "count_not_null( avg:mz_compute_cluster_status{$environment AND compute_cluster_id:* AND compute_replica_id:*} by {compute_cluster_id,compute_replica_id} )"
                     }
                   ],
                   "response_format": "scalar"
@@ -124,7 +124,7 @@
                       "aggregator": "last",
                       "data_source": "metrics",
                       "name": "query1",
-                      "query": "default_zero( count_not_null( avg:mz_compute_cluster_status{$environment, compute_cluster_id:*, compute_replica_id:*, !compute_replica_name:r1} by {compute_cluster_id,compute_replica_id} ) )"
+                      "query": "default_zero( count_not_null( avg:mz_compute_cluster_status{$environment AND compute_cluster_id:* AND compute_replica_id:* AND NOT compute_replica_name:r1} by {compute_cluster_id,compute_replica_id} ) )"
                     }
                   ],
                   "response_format": "scalar"
