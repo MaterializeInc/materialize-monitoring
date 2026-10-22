@@ -120,7 +120,8 @@ Channels in the docs for worked examples.
   `route` options. Empty means no alert reaches anybody.
 - `routes` — `root` for the top-level route's grouping and timing, and `extra` for routes ahead
   of the preset's severity routes, in Alertmanager's own format. Every bundled alert carries an
-  `audience` label, `platform` or `workload`, which is the usual thing an extra route matches.
+  `audience` label, `platform`, `workload` or `development`, which is the usual thing an extra
+  route matches.
 - `inhibit_rules`, `time_intervals`, `global` — Alertmanager's own blocks, verbatim.
 - `templates` — notification templates keyed by file name, each ending in `.tmpl`.
 - `default_templates` — make the chart's notification templates every receiver's default (the
@@ -279,7 +280,7 @@ Note that the CRDs forbid turning this back off in place; the resource has to be
     <tr>
       <td class="tf-var-name"><a name="dashboards_chart_version" href="#dashboards_chart_version">dashboards_<wbr>chart_<wbr>version</a></td>
         <td class="tf-var-type"><code>string</code></td>
-      <td class="tf-var-desc">Version of the materialize-monitoring-dashboards chart. Read from its `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own.</td>
+      <td class="tf-var-desc">Version of the three dashboards charts, which share one version stream. Read from each chart's `Chart.yaml` when null, like `chart_version`. Tracked separately because the dashboards ship on a version stream of their own.</td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
@@ -289,17 +290,19 @@ Note that the CRDs forbid turning this back off in place; the resource has to be
 
 Null derives the label the main chart puts on its own `Grafana` resource, which is correct
 unless that release narrowed the selector through `connections.grafana.labels` in
-`additional_values` — the dashboards chart cannot read that, so set the same map here.
+`additional_values` — the dashboards charts cannot read that, so set the same map here.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
     <tr>
       <td class="tf-var-name"><a name="dashboards_selected" href="#dashboards_selected">dashboards_<wbr>selected</a></td>
         <td class="tf-var-type"><code>list(string)</code></td>
-      <td class="tf-var-desc">Dashboard filename-stem patterns to install, matched against the set the chart carries.
+      <td class="tf-var-desc">Dashboard filename-stem patterns to install, matched against every dashboard in the three
+dashboards charts.
 
-Null leaves the chart's own default, which is every dashboard. Narrow it to hold one back —
-`env-upgrade` depends on operator instrumentation that not every Materialize version has.
+Null leaves the charts' own default, which is every dashboard. Narrow it to hold one back —
+`env-upgrade` depends on operator instrumentation that not every Materialize version has. A
+dashboards chart the patterns match nothing in is not installed.
 </td>
         <td class="tf-var-default"><code>&{}</code></td>
     </tr>
@@ -344,12 +347,14 @@ that disagrees with `site` fails at the intake rather than at plan time.
     <tr>
       <td class="tf-var-name"><a name="enable_dashboards" href="#enable_dashboards">enable_<wbr>dashboards</a></td>
         <td class="tf-var-type"><code>bool</code></td>
-      <td class="tf-var-desc">Install the materialize-monitoring-dashboards chart.
+      <td class="tf-var-desc">Install the dashboards charts: materialize-monitoring-dashboards for the Materialize
+environment, materialize-monitoring-dashboards-infra for the platform underneath it, and
+materialize-monitoring-dashboards-meta for the monitoring stack itself.
 
-The dashboards are a Helm release of their own because Helm stores a release in a Kubernetes
-Secret and a Secret may not exceed 1 MiB, which the rendered set had grown past. The module
-installs it against the folders and Grafana instance the main release creates, so the two stay
-in step without either having to discover the other.
+The dashboards are Helm releases of their own, one per Grafana folder, because Helm stores a
+release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set had
+grown past. The module installs them against the folders and Grafana instance the main release
+creates, so they stay in step without either side having to discover the other.
 
 Set false when dashboards are managed elsewhere — a platform team's own Grafana provisioning,
 or a GitOps pipeline that owns them.

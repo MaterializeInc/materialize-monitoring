@@ -160,7 +160,7 @@ helm install mzmon-scratch charts/materialize-monitoring \
   --set tags.default=false --set tags.loki=true
 ```
 
-Give it a different release name so it does not fight the full install. Mind what is *not* release-scoped: the subcharts use static `fullnameOverride`s, so two releases in one namespace will collide on Service and ServiceAccount names. Use a separate namespace when the component you are iterating on has either — which is most of them. See [Namespace layout](../../../operating/production-best-practices/#namespace-layout) for what else assumes one instance per namespace.
+Give it a different release name so it does not fight the full install. Mind what is *not* release-scoped: the subcharts use static `fullnameOverride`s, so two releases in one namespace will collide on Service and ServiceAccount names. Use a separate namespace when the component you are iterating on has either — which is most of them. See [Namespace layout](../../../operating/production-best-practices/stack-wide/#namespace-layout) for what else assumes one instance per namespace.
 
 ## Pre-commit
 
@@ -223,6 +223,12 @@ The [`render-link`](https://github.com/MaterializeInc/materialize-monitoring/blo
 
 So a Linear link inside `docs/content/` needs no manual "(internal)" marker.
 Anything else an external reader cannot reach — internal infrastructure repos, dashboards, runbooks — does: mark it `(internal)` where the surrounding text does not already make it obvious.
+
+**Code block and collapsible section controls are automatic.**
+Every highlighted code block gets a **Copy** button.
+A page with five or more `<details>` blocks gets **Expand all** and **Collapse all** buttons under its title.
+You don't add anything to a page for either.
+The [`inject/body.html`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/docs/layouts/_partials/docs/inject/body.html) partial sets the threshold.
 
 **Never commit customer information.**
 No customer names, organization or environment identifiers, or other customer-identifying details, anywhere in the repo. Keep examples generic.

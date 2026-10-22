@@ -50,10 +50,15 @@ An alert belongs in the file for the people who act on it.
 | `materialize-workload-alerts.yaml` | `workload` | What runs on the deployment: user clusters' freshness, hydration and sizing, and the sources feeding them |
 | `infra-alerts.yaml` | `platform` | The Kubernetes platform under Materialize, and the monitoring stack |
 | `infra-log-alerts.yaml` | `platform` | The monitoring stack, detected in its own log lines where its metrics travel the path that is failing |
+| `dev-alerts.yaml` | `development` | Conditions the stack has already contained, for the people who write the software behind them: log lines too long to store |
 
 Each file sets `audience` for all of its alerts with `alertLabels`, and an alert MAY set its own.
-`gen-rules` rejects an alert whose `audience` is not `platform` or `workload`.
-A route matches on the label to send the two to different people.
+`gen-rules` rejects an alert whose `audience` is not `platform`, `workload`, or `development`.
+A route matches on the label to send each to different people.
+
+A `development` alert is for a condition with nothing to fix in the running deployment, because the stack has already contained it.
+The people who can remove the cause are the ones who write the software.
+Every alert in `dev-alerts.yaml` is `severity: notice`, set for the whole file with `alertLabels`, so no preset pages on one.
 
 Who acts on a signal can depend on the cluster it comes from.
 A user cluster falling behind is the workload owner's to fix, and a system cluster falling behind is the platform's.
@@ -162,7 +167,7 @@ A materialized view on a refresh schedule lags by up to its interval between ref
 |---|---|
 | The name is kebab-case, and the group snake_case | Names become a committed surface |
 | `severity` is `critical`, `warning` or `notice`, and `component` is set | The routing presets route by severity; an unknown one has no class |
-| `audience` is `platform` or `workload` | Routes match on it; a missing one sends the alert to neither audience's receiver |
+| `audience` is `platform`, `workload`, or `development` | Routes match on it; a missing one sends the alert to no audience's receiver |
 | `for` and `keepFiringFor` are Prometheus durations | promtool would reject the file, and the ruler with it |
 | The query exists and has exactly one expression, PromQL or LogQL and not both | A rule is one expression, and its language decides which ruler evaluates it |
 | A registry file's alerts are all PromQL or all LogQL | Each file installs as one `PrometheusRule` named after it, and one object cannot be for both rulers |

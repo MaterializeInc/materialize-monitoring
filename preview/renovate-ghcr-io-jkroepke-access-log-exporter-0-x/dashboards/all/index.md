@@ -9,7 +9,12 @@ The dashboards come in two families: those scoped to a Materialize environment (
 The `infra-*` dashboards that watch the monitoring stack itself, rather than anything it collects, are filed in the **Meta Observability** folder.
 Each one below has its own download links and its own compatibility annotations.
 
-If you are installing the `materialize-monitoring-dashboards` chart, you do not need to download anything — its `selected` defaults to `["env-*", "infra-*"]`, which is all of them, and the [Grafana Operator](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
+If you install the dashboards charts, you don't need to download anything.
+Each chart installs every dashboard it carries by default,
+and the [Grafana Operator](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/grafana-operator/) path keeps them in sync rather than importing a point-in-time copy.
+`materialize-monitoring-dashboards` carries the `env-*` dashboards,
+`materialize-monitoring-dashboards-meta` carries the dashboards in the **Meta Observability** folder,
+and `materialize-monitoring-dashboards-infra` carries the rest of the `infra-*` dashboards.
 Download them when you are putting them into a Grafana you run yourself; [Importing Dashboards](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/importing/) covers the ways to do that.
 
 ## Formats
@@ -30,7 +35,10 @@ Selecting it will show the current version.
 
 The high-level summary, and the one to open first.
 Its six tabs — Summary, Kubernetes Workloads, Connections / Activity, Cluster Objects / Replicas, Compute Objects, and Sources and Sinks — are there to catch the more obvious problems and point at what needs a closer look, rather than to answer any one of them in depth.
-It reads metrics only, and scopes to one environment at a time, with further pickers for namespace, cluster, and replica.
+The Summary tab counts the alerts firing about the environment beside its health numbers.
+Below them, it lists every alert firing or pending in the environment's namespace.
+Each alert's name links to its entry under [Common Alerts](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/reference/common-alerts/).
+It reads metrics only, and scopes to one environment at a time, with further pickers for cluster and replica.
 
 <table class="download-dashboards">
   <thead>
@@ -44,7 +52,7 @@ It reads metrics only, and scopes to one environment at a time, with further pic
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/env-top.json?xxhash=204980476eb7d58d" download="mz-mon-env-top.json"><code>env-top.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/env-top.json?xxhash=49ca0f374a896929" download="mz-mon-env-top.json"><code>env-top.json</code></a>
         <br /><small>UID <code>mz-mon-env-top</code></small>
       </td>
       <td>
@@ -355,8 +363,13 @@ The Security tab is split the same way and for the same reason.
 Which NetworkPolicy objects exist comes from kube-state-metrics and is available everywhere; which packets a policy actually dropped can only come from the CNI.
 A cluster showing policies and no enforcement metrics has not demonstrated that any of them work.
 
-Cloud Networking is partly stubbed.
-The Kubernetes side of a load balancer — that one was created, and the address it was given — is real; what the load balancer is doing lives at the cloud provider, and collecting it is tracked on the [roadmap](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/reference/development/roadmap/#dashboards).
+Cloud Networking reads the network around the cluster from both sides.
+Kubernetes says which load balancers were created and the address each was given, on every cluster.
+The cloud provider says whether a load balancer has a healthy backend and what it carries,
+and whether the NAT gateway pods leave through is running out of source ports.
+That half comes from the gateway's [provider pulls](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/metrics/collecting/cloud-provider-metrics/),
+for the load balancers and NAT gateways named in values, and each pull's rows render only where it runs.
+A NAT gateway out of source ports makes a Materialize source stall and reconnect with no cause inside the cluster, and this tab is where it shows.
 
 <table class="download-dashboards">
   <thead>
@@ -370,7 +383,7 @@ The Kubernetes side of a load balancer — that one was created, and the address
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-net.json?xxhash=c22c126400b39cc0" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-net.json?xxhash=f52b9ba00175c817" download="mz-mon-infra-net.json"><code>infra-net.json</code></a>
         <br /><small>UID <code>mz-mon-infra-net</code></small>
       </td>
       <td>
@@ -534,11 +547,13 @@ It needs the Karpenter ServiceMonitor, which the self-managed Terraform's `karpe
 These dashboards watch the monitoring stack rather than anything it collects.
 Their subject can take its own instrumentation down with it, so an empty panel on any of them can mean the component that would have reported a problem is the one that failed.
 Every panel states its own empty-state text for that reason.
+An alert count reads zero only while the rulers that evaluate its alerts are evaluating and writing back, and is empty otherwise.
 
 ### Loki Meta Monitoring (`infra-loki`)
 
 Whether the log store is healthy, and which half of it broke if not, across five tabs: Overview, Writes, Reads, Storage, and Logs.
-The Overview tab leads with scrape health and with the canary, which writes a line and reads it back and is the only end-to-end check on the store.
+The Overview tab leads with any alert about Loki firing or pending now, then with scrape health and with the canary.
+The canary writes a line and reads it back, and is the only end-to-end check on the store.
 It needs both a metrics and a logs datasource.
 
 <table class="download-dashboards">
@@ -553,7 +568,7 @@ It needs both a metrics and a logs datasource.
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-loki.json?xxhash=421483051414961b" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-loki.json?xxhash=827b126dc804ff37" download="mz-mon-infra-loki.json"><code>infra-loki.json</code></a>
         <br /><small>UID <code>mz-mon-infra-loki</code></small>
       </td>
       <td>
@@ -579,6 +594,7 @@ It needs both a metrics and a logs datasource.
 ### Alloy Meta Monitoring (`infra-alloy`)
 
 Whether telemetry collection is healthy, and which stage of it broke if not, across eight tabs: Overview, Log Pipeline, Metric Pipeline, Ingest, Components, Resources, Events, and Logs.
+The Overview tab leads with any alert about collection firing or pending now, such as a lost scrape target or a gateway refusing what it scraped.
 The two pipeline tabs follow the data: a log line from a node through the agent and the gateway into Loki, and a sample from a scrape target through the gateway into each metrics destination.
 Ingest covers what other senders push into the gateway over log push, Prometheus remote write, and OTLP, including remote-write senders' own view of their queues.
 Components covers configuration loads, uptime, pipeline health, and the gateway's clustering; Resources measures each collector against its CPU, memory, and `GOMEMLIMIT` limits; Events is what Kubernetes reported about the collectors' pods and workloads, and about the configuration-validation Jobs that run before every install and upgrade.
@@ -600,7 +616,7 @@ The gateway scrapes Alloy's own metrics and forwards Alloy's own logs, so a dash
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-alloy.json?xxhash=8cb9672b042d3952" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-alloy.json?xxhash=81db788da01e37fb" download="mz-mon-infra-alloy.json"><code>infra-alloy.json</code></a>
         <br /><small>UID <code>mz-mon-infra-alloy</code></small>
       </td>
       <td>
@@ -651,7 +667,7 @@ The Logs tab reads Loki rather than Thanos, so it keeps working, and it is where
     <tr>
       <td>Grafana 12 and 13<br /><small>dashboard schema v2</small></td>
       <td>
-        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-thanos.json?xxhash=b9f52ef81c6dfa94" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
+        <a href="/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/dashboards/grafana/infra-thanos.json?xxhash=6688a4724f357287" download="mz-mon-infra-thanos.json"><code>infra-thanos.json</code></a>
         <br /><small>UID <code>mz-mon-infra-thanos</code></small>
       </td>
       <td>

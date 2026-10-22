@@ -172,8 +172,10 @@ Chart components are additionally published to GitHub Packages as **OCI artifact
 The same `helm package` output is pushed with `helm push charts/<chart>-<version>.tgz oci://ghcr.io/materializeinc/helm-charts`, landing at `ghcr.io/materializeinc/helm-charts/<chart>` (the chart name becomes the repository, the chart version the OCI tag).
 
 **`<chart>` is not always `<component>`.**
-A component's chart directory comes from its `chart` key in `packages/components.yaml`, falling back to `charts/<component>`, and the tarball is named after the chart's own `name` rather than the component.
-`dashboards` is the case that needs both: it ships `charts/materialize-monitoring-dashboards` under a component name that predates the chart.
+A component's chart directories come from its `charts` key in `packages/components.yaml`, falling back to `charts/<component>`,
+and each tarball is named after its chart's own `name` rather than the component.
+`dashboards` is the case that needs both: it ships the `charts/materialize-monitoring-dashboards*` charts under a component name that predates them,
+and its release packages and pushes all of them at the component's version.
 GitHub Packages speaks **only** the OCI distribution protocol — there is no classic HTTP (`index.yaml`) Helm repository — which is consistent with how this chart already sources its own subcharts over `oci://ghcr.io/...`.
 
 Consumers install directly from the registry, no `helm repo add` needed:

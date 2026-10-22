@@ -7,7 +7,7 @@
 
 What has to exist before `materialize-monitoring` installs, and who provides it.
 
-Almost everything on this page is the `[consumer]` half of the [shared responsibility model](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/operating/production-best-practices/#shared-responsibility-model): cloud resources, secrets, and cluster facilities the chart consumes **by name** but never creates.
+Almost everything on this page is the `[consumer]` half of the [shared responsibility model](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/operating/production-best-practices/checklist/#shared-responsibility-model): cloud resources, secrets, and cluster facilities the chart consumes **by name** but never creates.
 That is worth walking before the first install rather than after, because the common failure mode is not a rejected install — it is a chart that renders cleanly and a workload that crash-loops or sits `Pending` minutes later.
 
 > [!TIP]
@@ -201,7 +201,7 @@ These are properties of the cluster rather than things you install. Each one pro
 Thanos Receive and Loki's ingesters spread **hard** across zones (`DoNotSchedule`), so that an un-spread pod goes `Pending` and the autoscaler provisions the missing zone.
 
 On a cluster whose nodes carry **no zone label, or only one zone**, those pods stay `Pending` permanently.
-Apply `profiles/no-zone-spread.values.yaml` — see [Production Best Practices](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/operating/production-best-practices/#thanos-few-zones).
+Apply `profiles/no-zone-spread.values.yaml` — see [Production Best Practices](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/operating/production-best-practices/stack-wide/#fewer-than-two-zones).
 
 ### Kubelet certificates {#kubelet-certificates}
 
@@ -234,7 +234,7 @@ What stays yours on that path:
 * **DNS, TLS, and an identity provider** for Grafana.
 * **The `materialize-sql-monitor` Secret**, if you want the SQL-derived metrics.
 * **Cluster shape** — zone labels, a StorageClass the nodes can attach, capacity for the sizing tier you pick.
-* **Rolling Alloy after a pipeline or filter change.** The module hashes the composed values to do this for you; on the Helm path it is yours, and it is the one place the chart cannot own its own rollout. See [Production Best Practices](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/operating/production-best-practices/#collection-alloy).
+* **Rolling Alloy after a pipeline or filter change.** The module hashes the composed values to do this for you; on the Helm path it is yours, and it is the one place the chart cannot own its own rollout. See [Production Best Practices](/materialize-monitoring/preview/renovate-ghcr-io-jkroepke-access-log-exporter-0-x/operating/production-best-practices/alloy/#restart-after-a-config-change).
 
 ## Next steps
 
