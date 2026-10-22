@@ -1,0 +1,27 @@
+apiVersion: v2
+name: dashboards-common
+description: |
+  Templates shared by the Materialize Monitoring dashboards charts. A library
+  chart: it renders nothing on its own.
+type: library
+version: 0.1.0
+home: https://github.com/MaterializeInc/materialize-monitoring
+sources:
+  - https://github.com/MaterializeInc/materialize-monitoring
+maintainers:
+  - name: Materialize
+    email: support@materialize.com
+    url: https://materialize.com
+
+# Shared by `materialize-monitoring-dashboards`, `-infra`, and `-meta`, which each
+# declare it as a dependency and carry it as `charts/dashboards-common`, a
+# symlink to this directory. Never published on its own: `helm package` follows
+# the symlink, so each dashboards chart's archive bundles a copy. Its version is
+# therefore only the constraint those charts declare, and moves only when a
+# change here needs them to require it.
+#
+# The directory starts with `_` to mark it as no chart of its own; the symlinks
+# must not. Helm's chart loader skips any directory under `charts/` whose name
+# starts with `_` or `.`, so a symlink named `_dashboards-common` would be
+# silently ignored, and the chart's name lacks the `_` for the same reason: a
+# `helm dependency build` would name its archive after it.

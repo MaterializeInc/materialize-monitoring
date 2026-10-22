@@ -104,45 +104,53 @@ from.
 
 ## Dashboard inventory
 
-| Artifact stem | Module | UID | Title |
-|---|---|---|---|
-| `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview |
-| `env-logs` | `grafana/env_logs/` | `mz-mon-env-logs` | Materialize Logs and Events |
-| `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade |
-| `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events |
-| `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail |
-| `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking |
-| `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring |
-| `infra-alloy` | `grafana/infra_alloy/` | `mz-mon-infra-alloy` | Alloy Meta Monitoring |
-| `infra-thanos` | `grafana/infra_thanos/` | `mz-mon-infra-thanos` | Thanos Meta Monitoring |
-| `env-persist` | `grafana/env_persist/` | `mz-mon-env-persist` | Materialize Persist (Storage) |
-| `env-consensus` | `grafana/env_consensus/` | `mz-mon-env-consensus` | Materialize Consensus (Metadata) |
-| `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider |
-| `infra-autoscaling` | `grafana/infra_autoscaling/` | `mz-mon-infra-autoscaling` | Infrastructure Autoscaling |
-| `infra-karpenter` | `grafana/infra_karpenter/` | `mz-mon-infra-karpenter` | Karpenter |
+The Chart column names the `materialize-monitoring-dashboards` chart that ships each one, by its suffix.
 
-Each is rendered to `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
+| Artifact stem | Module | UID | Title | Chart |
+|---|---|---|---|---|
+| `env-top` | `grafana/env_top/` | `mz-mon-env-top` | Materialize Environment Overview | (main) |
+| `env-logs` | `grafana/env_logs/` | `mz-mon-env-logs` | Materialize Logs and Events | (main) |
+| `env-upgrade` | `grafana/env_upgrade/` | `mz-mon-env-upgrade` | Materialize Upgrade | (main) |
+| `infra-logs` | `grafana/infra_logs/` | `mz-mon-infra-logs` | Infrastructure Logs and Events | `-infra` |
+| `infra-nodes` | `grafana/infra_nodes/` | `mz-mon-infra-nodes` | Infrastructure Node Detail | `-infra` |
+| `infra-net` | `grafana/infra_networking/` | `mz-mon-infra-net` | Infrastructure Networking | `-infra` |
+| `infra-loki` | `grafana/infra_loki/` | `mz-mon-infra-loki` | Loki Meta Monitoring | `-meta` |
+| `infra-alloy` | `grafana/infra_alloy/` | `mz-mon-infra-alloy` | Alloy Meta Monitoring | `-meta` |
+| `infra-thanos` | `grafana/infra_thanos/` | `mz-mon-infra-thanos` | Thanos Meta Monitoring | `-meta` |
+| `env-persist` | `grafana/env_persist/` | `mz-mon-env-persist` | Materialize Persist (Storage) | (main) |
+| `env-consensus` | `grafana/env_consensus/` | `mz-mon-env-consensus` | Materialize Consensus (Metadata) | (main) |
+| `infra-cloud` | `grafana/infra_cloud/` | `mz-mon-infra-cloud` | Infrastructure Cloud Provider | `-infra` |
+| `infra-autoscaling` | `grafana/infra_autoscaling/` | `mz-mon-infra-autoscaling` | Infrastructure Autoscaling | `-infra` |
+| `infra-karpenter` | `grafana/infra_karpenter/` | `mz-mon-infra-karpenter` | Karpenter | `-infra` |
+
+Each is rendered to `charts/<chart>/pre-rendered/dashboards/grafana/<stem>.yaml` (chart) and
 `docs/assets/dashboards/grafana/<stem>.json` (docsite). **One file per dashboard** — there was a second, `gcp-`
 prefixed set until the clouds stopped differing in panel content, which left it recording nothing but its own name.
 The `cloud` render option, the `--cloud` / `--prefix` flags and the `target-cloud` annotation went with it.
 
-**The dashboards ship in a chart of their own**, `materialize-monitoring-dashboards`, and render into
-`charts/materialize-monitoring-dashboards/pre-rendered/`. `selected` lives there too — it is no longer
-`dashboards.selected`. Folders, datasources and the `Grafana` instance stayed in the umbrella chart, so a folder name
-resolves through an explicit `grafana.folderUids` map the dashboards chart cannot derive.
+**The dashboards ship in charts of their own, one per Grafana folder.**
+`materialize-monitoring-dashboards` carries `materialize`, `-infra` carries `infra`, and `-meta` carries `meta-o11y`.
+**The folder you pass to `.folder(...)` is the chart a dashboard ships in**: `make dashboards` renders each chart with
+`gen-dashboards --folder`, and `Folder::Root` ships nowhere, which a test refuses. `selected` lives in each chart, not
+in the umbrella chart. Folders, datasources and the `Grafana` instance stayed in the umbrella chart, so a folder name
+resolves through an explicit `grafana.folderUids` map the dashboards charts cannot derive.
 Why, and what it costs: [the size ceiling on dashboard
 delivery](../../../docs/content/reference/development/dashboard/generating.md#the-size-ceiling-on-dashboard-delivery).
 
-The chart is **not** a component of its own — it belongs to the existing `dashboards` component, so
-`packages/dashboards/`, `packages/queries/` and the chart bump together.
+The charts' templates and README template live in the `dashboards-common` library chart,
+`charts/_dashboards-common`, which each carries as a `charts/dashboards-common` symlink. Edit them there.
 
-**`env-upgrade` is installed by default**, because `selected` defaults to `["env-*", "infra-*"]` and the stem
-matches. So does every dashboard in the table above.
+The charts are **not** components of their own — they belong to the existing `dashboards` component, so
+`packages/dashboards/`, `packages/queries/` and every dashboards chart bump together.
+
+**`env-upgrade` is installed by default**, because each chart's `selected` defaults to `["*"]`. So does every
+dashboard in the table above.
 While the operator-side instrumentation is unreleased it degrades unevenly, and the split is worth knowing: **Generations
 works fully** (every panel reads metrics that predate the change, and the blue/green split comes from pod names), Events
 keeps its Kubernetes Activity row, and Reconciliation is empty apart from its two pre-existing gauges. `MIN_MZ_VERSION`
 in `env_upgrade/mod.rs` is `v26.41.0` and must stay in step with the Materialize row of
-`docs/content/reference/compatibility.md`. Narrow `dashboards.selected` to `["env-top"]` to hold it back.
+`docs/content/reference/compatibility.md`. To hold it back, list the other `env-*` stems in the `selected` of
+`materialize-monitoring-dashboards`.
 
 The live UID diverged from the codified one before `mz-mon-env-top` became authoritative — see
 [UID selection and behavior](../../../docs/content/reference/development/dashboard/generating.md#uid-selection-and-behavior).
@@ -491,8 +499,9 @@ These things about it are not re-derivable by reading the modules:
 - **The upstream mixin dashboards were read and not ported.** They run without recording rules, but scope by job
   alone and read five metric names Thanos 0.42 does not publish. The module doc of `infra_thanos/mod.rs` lists them.
 
-At 235 KB rendered, it took the dashboards release to 87% of the Secret ceiling. The alerts rows on `infra-loki`,
-`infra-alloy` and `env-top` took it from 90% to 92%; DEP-392 tracks the room the next dashboards need.
+At 235 KB rendered, it took the single dashboards release to 87% of the Secret ceiling, and later changes took it to
+94%. That is what split the dashboards into a chart per folder (DEP-392); `-meta`, which carries this one, sits at
+about 27%.
 
 ## The external-dependency dashboards
 

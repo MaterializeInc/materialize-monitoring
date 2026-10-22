@@ -1,0 +1,207 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: bundled dashboards
+chart:
+  version: 1.2.3
+  appVersion: 4.5.6
+release:
+  name: test-mon
+  revision: 5
+  namespace: test-monitoring
+templates:
+  - templates/dashboards.yaml
+tests:
+  # `selected` is a list of *patterns* globbed against the pre-rendered tree, so
+  # a new dashboard ships the moment its artifact lands under a matching stem.
+  # That is convenient and completely silent, which is why it is worth
+  # asserting: nothing else would notice a stem that stopped matching, an
+  # artifact that stopped being written, or one rendered into the wrong chart.
+  - it: should ship every dashboard the default patterns select
+    asserts:
+      - hasDocuments:
+          count: 3
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-meta-infra-loki-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-meta-infra-alloy-dashboard
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-meta-infra-thanos-dashboard
+
+  # The resource names must NOT collide with the ones the umbrella chart used to
+  # create (`mzmon-<stem>-dashboard`), nor with the ones
+  # `materialize-monitoring-dashboards` created while it carried these
+  # (`mzmon-dashboards-<stem>-dashboard`). Helm refuses an object owned by
+  # another release, so a collision would make the install order load-bearing.
+  - it: should not reuse the resource names an earlier release created
+    asserts:
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-infra-loki-dashboard
+        not: true
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-infra-loki-dashboard
+        not: true
+
+  # Every dashboard is selected by default. Narrowing is the supported way to
+  # hold one back, so the pattern list has to actually narrow.
+  - it: should install only what the patterns match
+    set:
+      selected:
+        - infra-loki
+    asserts:
+      - hasDocuments:
+          count: 1
+      - containsDocument:
+          any: true
+          apiVersion: grafana.integreatly.org/v1beta1
+          kind: GrafanaManifest
+          name: mzmon-dashboards-meta-infra-loki-dashboard
+
+  - it: should template nothing when dashboards are disabled
+    set:
+      grafana.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The render names its folder (`meta-o11y`); the chart rewrites that to the
+  # UID from `folderUids`, the same way it rewrites `apiVersion`. Assert the
+  # rewrite happened at all — a passthrough would leave the bare name here,
+  # which Grafana would read as a UID and fail to resolve.
+  - it: should resolve each dashboard's folder to a configured UID
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-alloy-dashboard
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-thanos-dashboard
+
+  # One `folderUids` map serves all three dashboards charts, so entries for the
+  # other charts' folders have to be harmless here.
+  - it: should ignore folder UIDs for folders it does not carry
+    set:
+      grafana.folderUids:
+        materialize: mzmon-materialize
+        infra: mzmon-infra
+        meta-o11y: mzmon-meta-o11y
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: mzmon-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+
+  # The whole point of resolving in the chart rather than at render time: the UID
+  # is a value, and the dashboards follow it without being re-rendered. This is
+  # what an install against a differently-named umbrella release sets.
+  - it: should follow the folder UID it is given
+    set:
+      grafana.folderUids.meta-o11y: other-release-meta-o11y
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+          value: other-release-meta-o11y
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+
+  # A render naming a folder this chart was not told about would otherwise ship a
+  # name where Grafana expects a UID. Dropping it is the honest version of what
+  # Grafana does with it anyway.
+  - it: should drop the annotation when the folder has no UID
+    set:
+      # Null removes the key on merge; a replacement map would be merged *into*
+      # the defaults and leave the entry in place.
+      grafana.folderUids.meta-o11y: null
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["grafana.app/folder"]
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+      # The other annotations are untouched by the rewrite.
+      - equal:
+          path: spec.template.metadata.annotations["monitoring.materialize.cloud/min-mz-version"]
+          value: v26.24.0
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+
+  # Everything this chart cannot discover is a value, and each one is a silent
+  # failure when wrong: the wrong selector pushes the dashboards into someone
+  # else's Grafana, and the wrong API version produces manifests the operator
+  # applies and Grafana cannot read.
+  - it: should carry the instance selector it is given
+    set:
+      grafana.instanceSelector.matchLabels:
+        monitoring.materialize.cloud/grafana-instance: elsewhere
+    asserts:
+      - equal:
+          path: spec.instanceSelector.matchLabels["monitoring.materialize.cloud/grafana-instance"]
+          value: elsewhere
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+
+  - it: should rewrite the dashboard API version onto every manifest
+    set:
+      grafana.apiTarget: dashboard.grafana.app/v2beta1
+    asserts:
+      - equal:
+          path: spec.template.apiVersion
+          value: dashboard.grafana.app/v2beta1
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+
+  # Not inferred here, unlike in the umbrella chart, which could compare two
+  # namespaces it rendered itself. This chart knows only its own, so the value is
+  # the only thing standing between a split-namespace install and dashboards that
+  # never find their Grafana.
+  - it: should allow cross-namespace import only when told to
+    asserts:
+      - notExists:
+          path: spec.allowCrossNamespaceImport
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard
+
+  - it: should set cross-namespace import when told to
+    set:
+      grafana.allowCrossNamespaceImport: true
+    asserts:
+      - equal:
+          path: spec.allowCrossNamespaceImport
+          value: true
+        documentSelector:
+          path: metadata.name
+          value: mzmon-dashboards-meta-infra-loki-dashboard

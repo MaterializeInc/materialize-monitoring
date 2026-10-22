@@ -118,22 +118,33 @@ A healthy instance shows the resolved URL and no error conditions.
 
 ## Importing Dashboards via Grafana Operator
 
-The dashboards are a **separate chart**, `materialize-monitoring-dashboards`, installed as its own release beside
-`materialize-monitoring`.
+The dashboards ship in **separate charts**, one per Grafana folder, each installed as its own release beside `materialize-monitoring`.
 Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB, which the rendered set outgrew.
+
+The following table lists the charts and the dashboards each carries:
+
+| Chart | Folder | Dashboards |
+|---|---|---|
+| `materialize-monitoring-dashboards` | `materialize` | The Materialize environment, `env-*` |
+| `materialize-monitoring-dashboards-infra` | `infra` | The platform underneath it: nodes, networking, autoscaling, cloud services, and the platform's logs and events |
+| `materialize-monitoring-dashboards-meta` | `meta-o11y` | The monitoring stack itself: Alloy, Loki, and Thanos |
+
+Install the ones you want:
 
 ```bash
 helm install mzmon-dashboards oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards \
   --namespace monitoring
+helm install mzmon-dashboards-infra oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards-infra \
+  --namespace monitoring
+helm install mzmon-dashboards-meta oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-dashboards-meta \
+  --namespace monitoring
 ```
 
-Its defaults match a `materialize-monitoring` release named `mzmon` installed with *its* defaults.
-Where either differs, three values move with it — the chart cannot read the other release's values, so each is
-spelled out:
+Their defaults match a `materialize-monitoring` release named `mzmon` installed with *its* defaults.
+The charts can't read the other release's values, so where either differs, you spell out the values that move with it.
+All of the charts take the same values, so one values file serves them all:
 
 ```yaml
-selected:
-  - env-*
 grafana:
   enabled: true
   mode: operator
@@ -146,8 +157,11 @@ grafana:
     meta-o11y: mzmon-meta-o11y
 ```
 
-Each pattern in `selected` is globbed against the pre-rendered dashboards in the chart, and each match becomes a
-`GrafanaManifest` resource.
+Each chart uses the `folderUids` entry for its own folder and ignores the rest.
+
+`selected` narrows what a chart installs.
+It defaults to `["*"]`, and each pattern in it is globbed against the pre-rendered dashboards in that chart.
+Each match becomes a `GrafanaManifest` resource.
 
 Inspect what was created:
 
@@ -159,7 +173,8 @@ The dashboard then appears in Grafana within one `resyncPeriod` (5m by default).
 
 ### Overriding the target instance
 
-To push dashboards somewhere other than the `Grafana` resource this chart creates, set an explicit selector:
+To push dashboards somewhere other than the `Grafana` resource the `materialize-monitoring` chart creates, set an explicit selector in two places.
+The folders take it from the `materialize-monitoring` release:
 
 ```yaml
 dashboards:
@@ -169,9 +184,19 @@ dashboards:
         instanceSelector:
           matchLabels:
             dashboards.materialize.com/instance: platform-grafana
-        # Required if that instance lives in another namespace — the chart only
+        # Required if that instance lives in another namespace. The chart only
         # infers this for instances it creates itself.
         allowCrossNamespaceImport: true
+```
+
+The dashboards take it from each dashboards chart's own values:
+
+```yaml
+grafana:
+  instanceSelector:
+    matchLabels:
+      dashboards.materialize.com/instance: platform-grafana
+  allowCrossNamespaceImport: true
 ```
 
 If you don't want the chart's own `Grafana` resource alongside yours, also set `connections.grafana.enabled: false`.
@@ -179,15 +204,15 @@ If you don't want the chart's own `Grafana` resource alongside yours, also set `
 ### Folders
 
 The dashboards are filed into folders rather than dropped at the root of the Grafana.
-The **`materialize-monitoring` chart** creates three, as `GrafanaFolder` resources, from
-`dashboards.config.grafana.folders` — they stay there rather than moving with the dashboards, because a folder is what
-a dashboard is filed into rather than part of it:
+The **`materialize-monitoring` chart** creates the folders as `GrafanaFolder` resources, from `dashboards.config.grafana.folders`.
+They stay there rather than moving with the dashboards, because a folder is what a dashboard is filed into rather than part of it.
+Each folder's dashboards ship in a dashboards chart of their own, as the following table shows:
 
-| Folder | Holds |
-|---|---|
-| **Materialize** | The `env-*` dashboards — Materialize itself. |
-| **Infrastructure** | The `infra-*` dashboards — the platform underneath it. |
-| **Meta Observability** | Nested under Infrastructure. For the monitoring stack watching itself. |
+| Folder | Holds | Chart |
+|---|---|---|
+| **Materialize** | Materialize itself: the `env-*` dashboards | `materialize-monitoring-dashboards` |
+| **Infrastructure** | The platform underneath Materialize | `materialize-monitoring-dashboards-infra` |
+| **Meta Observability** | The monitoring stack watching itself: `infra-alloy`, `infra-loki`, and `infra-thanos`. Nested under Infrastructure | `materialize-monitoring-dashboards-meta` |
 
 ```bash
 kubectl get grafanafolder -n monitoring
@@ -197,8 +222,8 @@ Placement travels **with** the dashboard, not with the manifest: each render car
 naming the folder it belongs in.
 Grafana reads that annotation as a folder **UID**, and a UID depends on the release, so it is not something the render
 can know.
-What the render writes is the folder's *name* — `materialize`, `infra`, `meta-o11y` — and the chart rewrites it to the
-real UID on the way to the operator, exactly as it rewrites `apiVersion`:
+What the render writes is the folder's *name*: `materialize`, `infra`, or `meta-o11y`.
+The dashboards chart rewrites it to the real UID from its `grafana.folderUids` on the way to the operator, exactly as it rewrites `apiVersion`:
 
 ```yaml
 # in the pre-rendered dashboard              # in the GrafanaManifest the operator applies
@@ -209,8 +234,9 @@ So the UID is free to move — under a different release name, or onto a folder 
 the dashboards follow it without being re-rendered.
 
 What is not free to move is the **name**.
-It is the one string the render and the chart must agree on, and renaming a key under `folders` drops the annotation
+It is the one string the render and the charts must agree on, and renaming a key under `folders` drops the annotation
 from every dashboard that names it, leaving them at the root.
+The name also decides which dashboards chart carries a dashboard, because each chart carries one folder's dashboards.
 Adopt an existing folder with `existingUid` rather than renaming the key:
 
 ```yaml

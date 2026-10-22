@@ -1,12 +1,21 @@
 {{/*
-Helm template helpers.
+Helm template helpers shared by the dashboards charts.
 
-Deliberately a local copy rather than anything shared with the umbrella chart:
-Helm has no way to import a `.tpl` across charts without making one a dependency
-of the other, and a dependency is exactly what the split exists to avoid.
+This is the `dashboards-common` library chart. `materialize-monitoring-dashboards`
+and its `-infra` and `-meta` siblings each declare it as a dependency and carry it
+as `charts/dashboards-common`, a symlink to `charts/_dashboards-common`; `helm
+package` follows the link, so every packaged chart bundles its own copy.
 
-Prefixed `mzmon-dashboards.` — the chart's own name — so the two never collide if
-some future install renders both in one release.
+Not shared with the umbrella chart. Helm has no way to import a `.tpl` across
+charts without making one a dependency of the other, and a dependency on the
+umbrella chart is exactly what the dashboards split exists to avoid.
+
+Every template here runs with the including chart's root context, so `$.Chart`,
+`$.Values`, and `$.Files` are that chart's: its name, its values, and its own
+`pre-rendered/` tree.
+
+Prefixed `mzmon-dashboards.` rather than `mzmon.`, so these never collide with the
+umbrella chart's helpers if some future install renders both in one release.
 */}}
 
 {{- define "mzmon-dashboards.name" -}}
@@ -169,12 +178,20 @@ cleanly and be read by nothing.
 {{- /*
 A selection that matches nothing installs nothing while reporting success, which
 is far more often a mistyped pattern than an intent.
+
+The message lists what this chart does carry, because each dashboards chart
+carries a different set — a pattern written for one of the others matches nothing
+here, and the list is what says so.
 */}}
 {{- define "mzmon-dashboards.validate.selection" }}
   {{- $errors := list }}
   {{- if ( include "mzmon-dashboards.enabled" $ ) }}
     {{- if not ( include "mzmon-dashboards.dashboards" $ | fromYamlArray ) }}
-      {{- $errors = append $errors ( printf "selected (%s) matches none of the dashboards this chart carries. Patterns are filename stems — `env-*`, `infra-*` — matched against pre-rendered/dashboards/grafana/." ( join ", " $.Values.selected ) ) }}
+      {{- $carried := list }}
+      {{- range $path, $_ := $.Files.Glob "pre-rendered/dashboards/grafana/*.yaml" }}
+        {{- $carried = append $carried ( base $path | trimSuffix ".yaml" ) }}
+      {{- end }}
+      {{- $errors = append $errors ( printf "selected (%s) matches none of the dashboards %s carries, which are: %s. Patterns are filename stems, matched against pre-rendered/dashboards/grafana/." ( join ", " $.Values.selected ) $.Chart.Name ( join ", " $carried ) ) }}
     {{- end }}
   {{- end }}
   {{- dict "errors" $errors "warnings" list | toYaml }}

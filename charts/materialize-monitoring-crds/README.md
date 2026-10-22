@@ -19,8 +19,8 @@ This does not install any additional resources other than CRDs.
 ## TL;DR
 
 ```bash
-helm repo add materialize https://materializeinc.github.io/materialize-monitoring
-helm install mz-mon-crds materialize/materialize-monitoring-crds
+helm install mzmon-crds oci://ghcr.io/materializeinc/helm-charts/materialize-monitoring-crds \
+  --namespace monitoring
 ```
 
 Install this before `materialize-monitoring`, and install that chart with

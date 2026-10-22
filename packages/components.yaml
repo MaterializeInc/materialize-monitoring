@@ -56,10 +56,10 @@ components:
       - repo-common
     artifacts:
       # Anchored on the version digit rather than left open: `materialize-monitoring*`
-      # also matches the `-crds` and `-dashboards` tarballs, which belong to other
-      # components. In CI only one chart is packaged per run so the loose form
-      # resolved to one file anyway, but a local `make charts` builds all three and
-      # would attach the other two to this component's release.
+      # also matches the `-crds` and `-dashboards*` tarballs, which belong to other
+      # components. In CI only one component's charts are packaged per run, but a
+      # local `make charts` builds every chart and would attach the others to this
+      # component's release.
       - charts/materialize-monitoring-[0-9]*.tgz
 
   # Optional CRDs
@@ -76,15 +76,19 @@ components:
     artifacts:
       - charts/materialize-monitoring-crds-*.tgz
 
-  # The dashboards: their sources, their rendered output, and the chart that
-  # ships them — one component, because they are one thing.
+  # The dashboards: their sources, their rendered output, and the three charts
+  # that ship them — one component, because they are one thing.
   #
-  # The chart could have had a component of its own, like the CRDs chart does.
-  # It does not, because the coupling is total in a way the CRDs chart's is not:
-  # this chart carries nothing *but* the rendered dashboards, so every change to
-  # one is a change to the other and two version streams would move in lockstep
-  # while pretending to be independent. The CRDs chart tracks upstream CRDs on
-  # their own cadence, which is why that one is genuinely separate.
+  # The charts could have had components of their own, like the CRDs chart does.
+  # They do not, because the coupling is total in a way the CRDs chart's is not:
+  # these charts carry nothing *but* the rendered dashboards, so every change to
+  # one is a change to the other, and most source changes reach more than one
+  # chart. Separate version streams would move in lockstep while pretending to be
+  # independent. The CRDs chart tracks upstream CRDs on their own cadence, which
+  # is why that one is genuinely separate.
+  #
+  # One stream also means one version names a set of dashboards charts that were
+  # rendered together, which is what the Terraform module installs.
   dashboards:
     changelog: true
     # Retitled when the chart folded in, the same way `materialize-monitoring`
@@ -101,28 +105,41 @@ components:
     #
     # See `reference/development/releasing.md` for the procedure.
     title: "Dashboards (Helm chart)"
-    # The chart's version is the component's. `packages/dashboards` is a
-    # workspace crate inheriting `version.workspace`, so it contributes no
-    # version file of its own — the chart is the only one here.
+    # The charts' version is the component's, and all three bump together.
+    # `packages/dashboards` is a workspace crate inheriting `version.workspace`,
+    # so it contributes no version file of its own.
     version_paths:
       - charts/materialize-monitoring-dashboards/Chart.yaml
-    # The chart this component publishes. Read by the release workflow, which
-    # would otherwise assume `charts/<component name>` and find nothing.
-    chart: charts/materialize-monitoring-dashboards
+      - charts/materialize-monitoring-dashboards-infra/Chart.yaml
+      - charts/materialize-monitoring-dashboards-meta/Chart.yaml
+    # The charts this component publishes. Read by the release workflow, which
+    # would otherwise assume `charts/<component name>` and find nothing. A test
+    # in `versioning.rs` holds this to the same charts as `version_paths`.
+    charts:
+      - charts/materialize-monitoring-dashboards
+      - charts/materialize-monitoring-dashboards-infra
+      - charts/materialize-monitoring-dashboards-meta
     content_paths:
       - packages/queries/
       - packages/dashboards/
-      # The chart, including the generated output under its `pre-rendered/`.
+      # The charts, including the generated output under their `pre-rendered/`.
       # Not excluded the way the umbrella chart excludes its own: there the
       # generated tree belongs to another component, here it belongs to this one.
       - charts/materialize-monitoring-dashboards/
+      - charts/materialize-monitoring-dashboards-infra/
+      - charts/materialize-monitoring-dashboards-meta/
+      # The library chart the three bundle. Never published on its own, so it
+      # has no version path; a change here ships in the dashboards charts.
+      - charts/_dashboards-common/
       - tools/chartlib/
     dependencies:
       - mzmon-lib
       - repo-common
     artifacts:
+      # One pattern for the three charts' tarballs: every
+      # `materialize-monitoring-dashboards*` tarball is this component's.
       - charts/materialize-monitoring-dashboards-*.tgz
-      - charts/materialize-monitoring-dashboards/pre-rendered/dashboards/**/*.yaml
+      - charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/**/*.yaml
       - docs/assets/dashboards/**/*.json
 
   pipelines:

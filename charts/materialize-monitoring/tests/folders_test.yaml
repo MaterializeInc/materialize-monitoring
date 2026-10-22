@@ -11,10 +11,11 @@ templates:
   - templates/grafana-folders.yaml
 tests:
   # The keys are the contract with the renders: `mzmon_lib::grafana::folder::Folder`
-  # spells `materialize`, `infra` and `meta-o11y`, and the `materialize-monitoring-dashboards` chart resolves
-  # a render's name through the same helper that names the folders here. A key
-  # renamed on one side only leaves those dashboards at the root, which is silent
-  # in the cluster — this is where it is not silent.
+  # spells `materialize`, `infra` and `meta-o11y`, and each
+  # `materialize-monitoring-dashboards*` chart resolves a render's name to the UID
+  # this chart derives here. A key renamed on one side only leaves those
+  # dashboards at the root, which is silent in the cluster — this is where it is
+  # not silent.
   - it: should create a folder for every name a dashboard can carry
     asserts:
       - equal:

@@ -208,24 +208,33 @@ For Loki that is `loki.networkPolicy.ingress.namespaceSelector`, which admits cl
 
 ## Dashboards
 
-**The dashboards are a chart of their own**, `materialize-monitoring-dashboards`, installed as a separate release
-beside `materialize-monitoring`.
-Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB; the rendered set outgrew that, which
-made `helm upgrade` on the umbrella chart fail outright rather than degrade.
-What stays in the umbrella chart is everything a dashboard is filed *into* — the `Grafana` instance, its datasources,
-and the folders.
+**The dashboards ship in charts of their own**, one per Grafana folder,
+each installed as a separate release beside `materialize-monitoring`.
+The following table lists them:
 
-Dashboards are **pre-rendered** into that chart, not generated at template time.
-Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders them to
-`charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/*.yaml`.
-The chart embeds them with `.Files.Get`.
+| Chart | Folder | Dashboards |
+|---|---|---|
+| `materialize-monitoring-dashboards` | `materialize` | The Materialize environment, `env-*` |
+| `materialize-monitoring-dashboards-infra` | `infra` | The platform underneath it |
+| `materialize-monitoring-dashboards-meta` | `meta-o11y` | The monitoring stack itself |
+
+Helm stores a release in a Kubernetes Secret and a Secret may not exceed 1 MiB.
+The rendered set outgrew that in the umbrella chart, which made `helm upgrade` fail outright rather than degrade,
+and came close to outgrowing a single dashboards chart after that.
+What stays in the umbrella chart is everything a dashboard is filed *into*: the `Grafana` instance, its datasources, and the folders.
+
+Dashboards are **pre-rendered** into those charts, not generated at template time.
+Sources live in `packages/dashboards/` (Rust), and `make dashboards` renders each chart's folder to
+`charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/*.yaml`.
+Each chart embeds its own with `.Files.Get`.
 See [Dashboards as Code](../../../reference/development/dashboard/overview/) for the authoring workflow.
 
-Which dashboards get installed is controlled by glob patterns, in the dashboards chart's own values:
+Which dashboards get installed is controlled by glob patterns, in each dashboards chart's own values.
+The charts take the same values:
 
 ```yaml
 selected:
-  - env-*
+  - "*"
 grafana:
   enabled: true
   mode: operator
@@ -243,8 +252,9 @@ grafana:
 ```
 
 **Nothing in that block is auto-detected.**
-The dashboards chart has no dependency on the umbrella chart and cannot read its values, so each reference to one of
+The dashboards charts have no dependency on the umbrella chart and can't read its values, so each reference to one of
 its resources is a value you set.
+Each chart uses the `folderUids` entry for its own folder and ignores the others.
 The umbrella chart's install notes print the folder UIDs it created, which is the quickest way to fill in the last of
 them.
 
@@ -266,17 +276,17 @@ The UIDs themselves come from the `GrafanaFolder` resources the umbrella chart c
 `dashboards.config.grafana.folders`.
 See [Folders](../grafana-operator/#folders).
 
-Every dashboard in the registry is rendered, and `selected` decides which of them a release installs.
-Every stem starts `env-` or `infra-`, so the default patterns install them all; [Available Dashboards](../../all/) describes each.
+Every dashboard in the registry is rendered into the chart for its folder, and `selected` decides which of them a release installs.
+The default pattern installs everything a chart carries; [Available Dashboards](../../all/) describes each dashboard.
 These are the ones with something to know before narrowing it:
 
-- **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), matched by the default `env-*` pattern.
-- **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), also matched by the default pattern.
+- **Materialize Environment Overview** (`env-top` → `mz-mon-env-top`), in `materialize-monitoring-dashboards`.
+- **Materialize Logs and Events** (`env-logs` → `mz-mon-env-logs`), in `materialize-monitoring-dashboards`.
   Loki only — it defines no metrics datasource, so it keeps working when the metrics pipeline is the thing being
   investigated.
   Needs no particular Materialize version: everything it reads is produced by the monitoring stack rather than by
   Materialize.
-- **Infrastructure Logs and Events** (`infra-logs` → `mz-mon-infra-logs`), matched by the default `infra-*` pattern.
+- **Infrastructure Logs and Events** (`infra-logs` → `mz-mon-infra-logs`), in `materialize-monitoring-dashboards-infra`.
   The first of the `infra-*` family: the monitoring stack's own logs, the Kubernetes system components, and the node
   journal — which no `env-*` dashboard can show, since journal lines carry no namespace.
   Loki only, like `env-logs`.
@@ -286,7 +296,7 @@ These are the ones with something to know before narrowing it:
   volume, and `materialize-environment` alone out-logs every other namespace, so leaving it in would make the volume
   panels a picture of Materialize rather than of the platform underneath it.
   Turn it off to compare the two side by side.
-- **Infrastructure Node Detail** (`infra-nodes` → `mz-mon-infra-nodes`), also matched by the default `infra-*` pattern.
+- **Infrastructure Node Detail** (`infra-nodes` → `mz-mon-infra-nodes`), in `materialize-monitoring-dashboards-infra`.
   Everything about one node: what it is, how hard it is working, how much of it the scheduler has already promised, and
   what it and Kubernetes have said about it.
   The node picker is single-select on purpose — a machine's measurements averaged across a fleet make every panel
@@ -301,21 +311,21 @@ These are the ones with something to know before narrowing it:
   discovered from `kube_node_info`, so a broken metrics path leaves `$node` empty and the journal and event queries
   match nothing.
   `infra-logs` is the dashboard to reach for in that case — it is Loki-only by design.
-- **Infrastructure Autoscaling** (`infra-autoscaling` → `mz-mon-infra-autoscaling`), matched by the default `infra-*` pattern.
+- **Infrastructure Autoscaling** (`infra-autoscaling` → `mz-mon-infra-autoscaling`), in `materialize-monitoring-dashboards-infra`.
   Its Node Pools tab groups nodes by labels that kube-state-metrics publishes only when its
   `metricLabelsAllowlist` names them.
   The bundled kube-state-metrics names them; an install that brings its own needs the same allowlist, or that tab
   reads empty.
-- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), also matched by the default `infra-*` pattern.
+- **Karpenter** (`infra-karpenter` → `mz-mon-infra-karpenter`), in `materialize-monitoring-dashboards-infra`.
   It has data only on EKS, and only where Karpenter's ServiceMonitor is applied; everywhere else each tab shows one
   row saying why it is empty.
   Leave it out of `selected` on GKE and AKS if that row is noise.
-- **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), also matched by the default pattern.
+- **Materialize Upgrade** (`env-upgrade` → `mz-mon-env-upgrade`), in `materialize-monitoring-dashboards`.
   Its Events tab reads Kubernetes events out of Loki; its Generations and Reconciliation tabs read metrics out of
   Thanos.
   Both halves need a Materialize operator new enough to emit them — see the `min-mz-version` annotation on the
   rendered dashboard — and render empty against an older one.
-  Narrow the dashboards chart's `selected` to `["env-top"]` to leave it out.
+  To leave it out, list the other `env-*` stems in the `selected` of `materialize-monitoring-dashboards`.
 
 ### Instance selection
 
@@ -345,8 +355,8 @@ Both the `Grafana` resource and the selector pick the addition up.
 A `GrafanaManifest` only matches a `Grafana` in its **own namespace** unless `allowCrossNamespaceImport` is set.
 The chart infers it: the flag is emitted only when the `Grafana` resource lands somewhere other than the release
 namespace, which is what happens under `split-namespace`.
-Set `allowCrossNamespaceImport` explicitly — in both charts — when pointing `instanceSelector` at an
-instance the chart did not create.
+Set `allowCrossNamespaceImport` explicitly in the umbrella chart and in every dashboards chart when pointing
+`instanceSelector` at an instance the umbrella chart did not create.
 
 > [!WARNING]
 > The CRDs forbid turning `allowCrossNamespaceImport` back off in place — the resource has to be recreated.

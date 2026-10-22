@@ -19,7 +19,7 @@ install time (`templates/alerts/prometheusrules.yaml`).
 
 `rules/loki/` holds the log-derived rules, one file per registry file, which `templates/alerts/lokirules.yaml` loads.
 `rules/thanos/` is an empty placeholder, and nothing generates into it.
-The rendered dashboards live in the dashboards chart, under `charts/materialize-monitoring-dashboards/pre-rendered/`.
+The rendered dashboards live in the dashboards charts, under `charts/materialize-monitoring-dashboards*/pre-rendered/`.
 
 The chart's templates load these files via `{{ .Files.Get }}` because
 Helm restricts that directive to the chart directory itself.

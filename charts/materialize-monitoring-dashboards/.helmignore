@@ -1,0 +1,7 @@
+# The README template the dashboards charts share. It lives in the
+# dashboards-common library, which this chart bundles through its
+# `charts/dashboards-common` symlink, so without this line every packaged chart
+# and every release Secret would carry a copy. helm-docs reads it from the
+# library directory instead. The library's own .helmignore would not help: Helm
+# reads only the .helmignore of the chart being packaged.
+charts/dashboards-common/README.md.gotmpl

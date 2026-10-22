@@ -1,8 +1,8 @@
 apiVersion: v2
 name: materialize-monitoring-dashboards
 description: |
-  Grafana dashboards for Materialize Monitoring.
-  Installs the bundled dashboard set into a Grafana provisioned by the
+  Grafana dashboards for Materialize Monitoring: the Materialize environment set.
+  Installs the `env-*` dashboards into a Grafana provisioned by the
   materialize-monitoring chart. Installs nothing else.
 type: application
 version: 0.19.0
@@ -21,42 +21,63 @@ keywords:
   - monitoring
   - grafana
   - dashboards
+dependencies:
+  # The templates shared by the dashboards charts. `charts/dashboards-common` is a
+  # symlink to `charts/_dashboards-common`, which `helm package` follows, so the
+  # packaged chart carries its own copy and needs no `helm dependency build`.
+  - name: dashboards-common
+    version: 0.1.0
+    repository: file://../_dashboards-common
 annotations:
   artifacthub.io/changes: |
-    - kind: added
-      description: Split the Grafana dashboards out of the umbrella chart.
+    - kind: changed
+      description: >-
+        Moved the infrastructure and meta-monitoring dashboards to the
+        materialize-monitoring-dashboards-infra and
+        materialize-monitoring-dashboards-meta charts.
 
 # Why this is a chart of its own
 # -----------------------------
 # Helm stores each release as a Kubernetes Secret, and a Secret may not exceed
-# 1 MiB. The rendered dashboards are the largest thing the umbrella chart ships
-# by an order of magnitude -- the set is over a megabyte of YAML before Helm's
-# own encoding -- and adding a seventh crossed the limit, so `helm upgrade`
-# began failing outright on the default `dashboards.selected`.
+# 1 MiB. The rendered dashboards are the largest thing the stack ships by an
+# order of magnitude -- the full set is about 3 MB of YAML before Helm's own
+# encoding -- so they ship apart from the umbrella chart, and a dashboard change
+# no longer rolls the whole stack's release.
 #
-# Splitting them out gives the dashboards a budget of their own, and gives the
-# umbrella chart back the headroom it had before dashboards grew into it. It
-# also means a dashboard change no longer rolls the whole stack's release.
+# And not as one chart, but three, one per Grafana folder:
 #
-# This chart has **no dependencies**, by design. It creates `GrafanaManifest`
-# resources and nothing else; the `Grafana` instance, the datasources and the
-# folders stay in the umbrella chart, because those are the things a dashboard
-# is filed *into* rather than part of the dashboards themselves.
+#   materialize-monitoring-dashboards        `materialize`  env-* dashboards
+#   materialize-monitoring-dashboards-infra  `infra`        the platform underneath
+#   materialize-monitoring-dashboards-meta   `meta-o11y`    the monitoring stack itself
+#
+# One chart carrying all fourteen came to an estimated 990 KB as a release, 94% of
+# the limit, and the next dashboard would have failed `helm upgrade` the same
+# way the umbrella chart once did. The folder is the cut because it is already
+# the dashboard's own statement of what it is about, so a new dashboard picks
+# its chart by picking its folder -- `make dashboards` renders each chart with
+# `gen-dashboards --folder`.
+#
+# These charts have **no dependencies**, by design. They create
+# `GrafanaManifest` resources and nothing else; the `Grafana` instance, the
+# datasources and the folders stay in the umbrella chart, because those are the
+# things a dashboard is filed *into* rather than part of the dashboards
+# themselves. Their templates live in the `dashboards-common` library chart,
+# `charts/_dashboards-common`, which each carries as a symlinked dependency.
 #
 # Versioning
 # ----------
-# This chart's version stream is the **`dashboards` component** in
-# `packages/components.yaml`, and this file is that component's only version
-# file. So the stream covers the chart *and* its sources -- `packages/dashboards`
-# and `packages/queries` -- which is the honest shape: the chart carries nothing
-# but what those render, so a change to either is a change to both.
+# All three charts share one version stream: the **`dashboards` component** in
+# `packages/components.yaml`, which lists each `Chart.yaml` as a version file.
+# The stream covers the charts *and* their sources -- `packages/dashboards` and
+# `packages/queries` -- which is the honest shape: the charts carry nothing but
+# what those render, and most source changes reach more than one of them.
 #
-# That component predates the chart and had no version file at all until this one
-# arrived; its stream lived only in `CHANGELOG.md`. The version below therefore
-# starts at the component's released version rather than at 0.1.0 -- it is
-# adopting a stream already in flight, not beginning one.
+# That component predates the charts and had no version file at all until this
+# one arrived; its stream lived only in `CHANGELOG.md`. The version below
+# therefore started at the component's released version rather than at 0.1.0,
+# and the `-infra` and `-meta` charts joined it at the version this one had.
 #
-# A component of its own was the alternative, and was rejected: two streams
-# tracking one set of contents would move in lockstep while claiming to be
-# independent. The CRDs chart is separate for the opposite reason -- it tracks
-# upstream CRDs on a cadence nothing here controls.
+# A component per chart was the alternative, and was rejected: streams tracking
+# one set of sources would move in lockstep while claiming to be independent.
+# The CRDs chart is separate for the opposite reason -- it tracks upstream CRDs
+# on a cadence nothing here controls.
