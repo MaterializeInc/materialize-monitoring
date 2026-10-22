@@ -791,6 +791,11 @@ materialize-operator:
     # -- Override for default labels to copy from the pod into metrics
     targetLabels: []
     # -- Override for default metric endpoints
+    # The defaults carry `metricRelabelings` that copy label aliases into their
+    # canonical names, such as `instance_id` into `cluster_id`. A replacement
+    # restates them from
+    # `pre-rendered/scrapers/prometheus-operator/podmonitor-materialize-operator.yaml`,
+    # or its series lack the canonical labels.
     metricEndpoints: []
 
 
