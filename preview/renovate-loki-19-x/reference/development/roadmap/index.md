@@ -132,7 +132,7 @@ This supersedes the earlier plan to expose a Prometheus endpoint for customers t
 
 One canonical label vocabulary for Materialize's metrics, a reserved-label list, and an authoritative environment key.
 The key is `environment_id` from `Materialize.spec.environmentId`, with `environment_name` on `mz_environment_info`.
-Designed in *A Label Vocabulary for Materialize Metrics*, in review as [#445].
+Designed in [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/).
 The work lands in two passes, ordered so that consumers never observe the second.
 This repository's monitors first fill the canonical labels where they are empty, and Materialize then adopts the names upstream behind a label lint.
 
@@ -301,7 +301,7 @@ Its adapters are therefore the ones this repository can test end to end.
 | [DEP-225] Sizing (Day 1) | ⬜ |
 | [DEP-378] `infra-pods`: one workload's health, logs and metrics | ⬜ |
 | [DEP-379] Meta-monitoring for Grafana, Thanos and Alertmanager | ⬜ |
-| [DEP-115] A Datadog dashboard set | ⬜ |
+| [DEP-115] A Datadog dashboard set, starting with `env-top`, downloaded from the docs site as JSON. Names join from the `_info` series by formula arithmetic after [DEP-349]. Designed in [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | ⬜ |
 | [DEP-217] A Google Cloud Monitoring dashboard set | ⬜ |
 | [DEP-218] A Honeycomb dashboard set | ⬜ |
 | [DEP-325] `infra-*` variables that reference variables those dashboards never define | ⬜ |
@@ -374,8 +374,9 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 | [Call-Home](../design-docs/20260917-call-home-self-managed/) | Ready | [Call-home from self-managed](#call-home-from-self-managed) |
 | [Monitoring Materialize's External Dependencies](../design-docs/20260920-external-dependency-monitoring/) | Ready | [External dependencies](#external-dependencies) |
 | [Secret Filtering](../design-docs/20260924-log-secret-filtering/) | Ready | [Secret filtering](#secret-filtering) |
-| A Label Vocabulary for Materialize Metrics | Draft, in review as [#445] | [Metric label standardization](#metric-label-standardization) |
+| [A Label Vocabulary for Materialize Metrics](../design-docs/20261002-metric-label-vocabulary/) | Draft | [Metric label standardization](#metric-label-standardization) |
 | Cost visibility with OpenCost | Draft, in review as [#365] | [Collection](#collection) |
+| [Datadog dashboards from the query registry](../design-docs/20261020-datadog-dashboards/) | Draft | [Dashboards](#dashboards) |
 
 [adopt]: https://linear.app/materializeinc/project/adopt-materialize-monitoring-in-cloud-cce4b8af4db8/overview
 [clom]: https://linear.app/materializeinc/project/metrics-for-cloud-070c13ddba6a/overview
@@ -385,7 +386,6 @@ A design moves to **Shipped** when the rows it owns on this page are gone.
 [oo]: https://linear.app/materializeinc/project/operational-observability-abf9af76c03a/overview
 
 [#365]: https://github.com/MaterializeInc/materialize-monitoring/pull/365
-[#445]: https://github.com/MaterializeInc/materialize-monitoring/pull/445
 
 [CLO-55]: https://linear.app/materializeinc/issue/CLO-55
 [CLO-76]: https://linear.app/materializeinc/issue/CLO-76

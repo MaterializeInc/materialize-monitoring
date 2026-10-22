@@ -128,12 +128,12 @@ Grafana's roles govern the Grafana UI, not the data behind it.
 Every datasource is queryable by anyone who can reach Grafana, so a Viewer still reads every metric in Thanos and every log in the tenant — the Explore view alone is enough.
 
 The hard isolation boundary is the **install**, not the role.
-See [Tenancy & auth](../../../operating/production-best-practices/#9-tenancy--auth) for what that means for the logging backend, and [Datasources](../architecture/#datasources) for what each one exposes.
+See [Tenancy & auth](../../../operating/production-best-practices/loki/#tenancy) for what that means for the logging backend, and [Datasources](../architecture/#datasources) for what each one exposes.
 
 ## See also
 
 * [Reaching Grafana](../architecture/#reaching-grafana) — expose it before you need any of this, and TLS before that.
-* [Production Best Practices > Grafana](../../../operating/production-best-practices/#3-authentication-and-authorization) — the checklist form.
+* [Production Best Practices > Grafana](../../../operating/production-best-practices/checklist/#exposure) — the checklist form.
 * [Configure authentication](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/) (official) — every provider, in depth.
 * [Configure Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) (official) — every `grafana.ini` key.
 
