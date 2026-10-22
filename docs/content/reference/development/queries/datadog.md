@@ -247,7 +247,8 @@ Where a query hits one of the following gaps, the `datadogQuery` carries the clo
 This also removes the pod-start grace periods from several alerts, where the monitor's new-data delay stands in.
 
 **`label_replace`.** Datadog can't rename or extract a tag value.
-An id-to-name join through `mz_cluster_info` or `mz_object_info` needs the id tag to have the same name on both sides, which it doesn't on every family yet.
+An id-to-name join through `mz_cluster_info` or `mz_object_info` needs the id tag to have the same name on both sides.
+The shipped monitors give it one: every series carries the canonical id, such as `cluster_id` beside `instance_id`, so a join written against the [canonical names](../../../../metrics/scraping/#canonical-labels) matches.
 `materialize.environmentd.pod_pending_critical` also loses its generation-suffix deduplication.
 
 **Joins Datadog can't match.** An [arithmetic join](#arithmetic-joins) needs the matched tags to have the same name on both sides, and one side's tags to be a subset of the other's.
