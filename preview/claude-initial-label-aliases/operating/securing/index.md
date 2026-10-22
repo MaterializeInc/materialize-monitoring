@@ -6,7 +6,7 @@
 # Securing materialize-monitoring
 
 This page reads across the whole stack: what its trust boundaries are, what it is allowed to do in your cluster, where credentials live, and what is not built yet.
-Per-component configuration lives in [Production Best Practices](../production-best-practices/), which is organized by backend; this page is organized by the question you are actually asking.
+The [production checklist](../production-best-practices/checklist/) covers the same ground ordered by what goes wrong if you skip an item, and the pages beside it explain each component; this page is organized by the question you are actually asking.
 
 Everything here describes the chart's defaults.
 The [Terraform modules](../../getting-started/terraform/) are one `[consumer]` implementation of them and close a few of the open items on their own; those are marked where they apply.
@@ -89,17 +89,17 @@ This is upstream behavior in the Materialize product, not something this chart c
 See [Scraping](../../metrics/scraping/#authenticating-the-sql-metrics-endpoint) for the Secret it implies.
 
 Every workload now ships a NetworkPolicy, on by default.
-[Production Best Practices > Network policies](../production-best-practices/#network-policies) has the per-component table, the reasoning behind the ingress/egress asymmetry, and the three limits worth knowing — chiefly that a NetworkPolicy does nothing unless your CNI enforces it, and that `kindnet` does not.
+[Production Best Practices > Network policies](../production-best-practices/stack-wide/#network-policies) has the per-component table, the reasoning behind the ingress/egress asymmetry, and the three limits worth knowing — chiefly that a NetworkPolicy does nothing unless your CNI enforces it, and that `kindnet` does not.
 
 - [ ] `[operator]` **Confirm your CNI enforces NetworkPolicy.** Cilium and Calico do. If yours does not, everything in the table above is reachable from any pod in the cluster and the policies are documentation.
 - [ ] `[operator]` Narrow the ingest ports if your cluster has no workloads that legitimately push telemetry. They are open to the whole cluster by default precisely because usually it does.
 
 ### The stack → outside
 
-- [ ] `[consumer]` **(Terraform: automatic on AWS and GCP)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
+- [ ] `[consumer]` **(Terraform: automatic)** Use **workload identity** for object storage — IRSA, GKE Workload Identity, or Azure Workload Identity — rather than static keys. See [Logs & Events > Storing](../../logs-and-events/storing/#granting-object-storage-access-workload-identity) and [Metrics > Storing](../../metrics/storing/#thanos-object-storage).
 - [ ] `[consumer]` Give Alertmanager a **workload identity** for Amazon SNS rather than static keys, scoped to `sns:Publish` on its topics. It is the only notification integration a cloud identity can authorize; the rest read a credential from the `alertmanager-receivers` Secret. See [Alert Channels > Cloud provider services](../../alerting/channels/#cloud).
 - [ ] `[operator]` Narrow the `0.0.0.0/0` egress rules where your infrastructure gives you something tighter — a VPC endpoint's CIDR, or Cilium's `toFQDNs`. The chart cannot derive the API server's or the object store's address, so it ships the broad form and says so.
-- [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/#11-security--credentials) covers the symptom in detail.
+- [ ] `[operator]` Remember the credential endpoint, not just the bucket. Workload identity fetches a token from STS (or the GCP/Azure equivalent) on `443`, and a policy that covers the bucket but not the token endpoint hangs the component at startup rather than failing it. This is the single most common NetworkPolicy mistake in this stack; [Loki's checklist](../production-best-practices/loki/#object-storage-egress) covers the symptom in detail.
 
 ## Cluster permissions the stack holds {#rbac}
 
@@ -140,7 +140,7 @@ webhook URL, a PagerDuty routing key, an SMTP password — unless `alerting.asse
 Receivers read their credentials through `_file` fields from a mounted Secret instead; see [Alert Channels >
 Credentials](../../alerting/channels/#credentials).
 
-- [ ] `[consumer]` Provision every Secret in the namespace the **pod** runs in, which under [`split-namespace`](../production-best-practices/#namespace-layout) is not the release namespace.
+- [ ] `[consumer]` Provision every Secret in the namespace the **pod** runs in, which under [`split-namespace`](../production-best-practices/stack-wide/#namespace-layout) is not the release namespace.
 - [ ] `[operator]` **Rotate the Grafana admin password** after an identity provider is configured, or disable the account. It is a generated password in a Secret, and it bypasses SSO.
 - [ ] `[operator]` Prefer file-mounted credential material over environment variables for anything that renews. An env-var PEM is read once at process start, so renewal does not take effect until every pod restarts.
 
@@ -158,10 +158,10 @@ Two workloads deviate in other ways, and both are deliberate:
 
 Two consequences follow from those deviations, and the second is the one that surprises people:
 
-1. **`hostNetwork` puts node-exporter outside pod NetworkPolicy** on most CNIs, so port `9100` is guarded by the node firewall and nothing Kubernetes enforces. See [Exposure](../production-best-practices/#exposure).
+1. **`hostNetwork` puts node-exporter outside pod NetworkPolicy** on most CNIs, so port `9100` is guarded by the node firewall and nothing Kubernetes enforces. See [Exposure](../production-best-practices/node-exporter/#exposure).
 2. **The release namespace cannot run under Pod Security Admission `baseline` or `restricted` as shipped.** Baseline forbids `hostPath` volumes and host namespaces, and the two DaemonSets need both, so the namespace has to be labelled `privileged`. Nothing else in the stack needs it.
 
-- [ ] `[operator]` **Give the DaemonSets their own namespace if you want PSA above `privileged` for the rest.** [`split-namespace`](../production-best-practices/#namespace-layout) is the mechanism; the backends, Grafana and the gateway are all `baseline`-clean today. Note that support for that layout is best-effort, and that it changes the workload-identity subject and the NetworkPolicy selectors along with it.
+- [ ] `[operator]` **Give the DaemonSets their own namespace if you want PSA above `privileged` for the rest.** [`split-namespace`](../production-best-practices/stack-wide/#namespace-layout) is the mechanism; the backends, Grafana and the gateway are all `baseline`-clean today. Note that support for that layout is best-effort, and that it changes the workload-identity subject and the NetworkPolicy selectors along with it.
 - [x] `[chart]` **`RuntimeDefault` seccomp on every workload.**
   Several subcharts ship an empty pod `securityContext`.
   The chart sets one for grafana-operator, Thanos, metrics-server, node-exporter and the Alloy pre-validate job, and sets seccomp on the Alloy containers directly.
@@ -177,7 +177,7 @@ Two consequences follow from those deviations, and the second is the one that su
 
 Every image is pinned by registry, repository and tag — in this chart's `values.yaml` where the cadence matters enough to own, in a subchart's defaults otherwise.
 Repointing at a mirror or a hardened rebuild is a values change: four overlays under `profiles/registry/` do it for the whole stack at once, including the pull-secret wiring.
-See [Images and registries](../production-best-practices/#images-and-registries) for the vendors and the UID hazard that makes a careless swap crash-loop.
+See [Images and registries](../production-best-practices/stack-wide/#images-and-registries) for the vendors and the UID hazard that makes a careless swap crash-loop.
 
 - [ ] `[operator]` **Pin Grafana plugin versions (`name@version`), or bake them into an image.** `grafana.plugins` downloads from `grafana.com` at every pod start — a startup dependency on a third party, and a way for a plugin to change underneath a pinned Grafana. A validator warns on an unpinned entry.
 - [x] `[chart]` **Bundled datasource plugins stay at the image's versions.**
@@ -196,7 +196,7 @@ Data that reaches the stack is stored as it arrives.
 - [ ] `[operator]` **Keep secrets out of logs at the source.** The pipeline ships no redaction stage today ([DEP-220](https://linear.app/materializeinc/issue/DEP-220)), so a token an application logs is a token in Loki, searchable for the tenant's full retention.
 - [ ] `[operator]` **Set retention deliberately.** It is the only bound on how long anything that did leak stays queryable. Retention and compaction are covered in [Logs & Events > Storing](../../logs-and-events/storing/) and [Metrics > Storing](../../metrics/storing/).
 - [ ] `[consumer]` Enable server-side encryption and access logging on the buckets. The Terraform modules enable versioning; encryption policy is yours, and bucket versioning means a deleted object is not necessarily gone.
-- [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/#9-tenancy--auth).
+- [ ] `[operator]` Remember that **isolation within a Loki tenant is label-based**, not enforced. Per-environment separation via `environment_id` is a query convention; the hard boundary is a separate install. See [Tenancy & auth](../production-best-practices/loki/#tenancy).
 
 ## Certificates {#certificates}
 
@@ -249,7 +249,7 @@ certificates:
 Setting both is an error — component certificates can reference only one issuer, so one of the two things you asked for would silently not happen.
 
 - [ ] `[operator]` **Prefer an issuer scoped to this stack over the cluster's general-purpose one.** None of the receiving components implement per-client authorization, so the whole authorization decision is "is this signed by the CA we trust". Reusing a `ClusterIssuer` that signs for every workload in the cluster reduces mTLS to "has any certificate" — real, and much narrower than it sounds. See [What a certificate means](#rbac) for why the trust domain is the security property.
-- [ ] `[operator]` **Use `kind: ClusterIssuer` if you run [split-namespace](../production-best-practices/#namespace-layout).** A namespaced `Issuer` signs only for `Certificate` resources in its own namespace, so components elsewhere sit `Pending` forever. The render refuses that combination rather than letting you find out.
+- [ ] `[operator]` **Use `kind: ClusterIssuer` if you run [split-namespace](../production-best-practices/stack-wide/#namespace-layout).** A namespaced `Issuer` signs only for `Certificate` resources in its own namespace, so components elsewhere sit `Pending` forever. The render refuses that combination rather than letting you find out.
 - [ ] `[operator]` **A bootstrapped `ClusterIssuer`'s CA Secret lands in cert-manager's namespace, not yours.** cert-manager reads a `ca` issuer's Secret from its *cluster resource namespace* (`cert-manager` by default), so the chart renders the CA `Certificate` there. Override with `certificates.internal.selfSigned.caSecretNamespace` if your cert-manager uses a different one; get it wrong and the issuer sits `False` with `secret not found` while the Secret is one namespace over.
 
 ### The SAN ladder, and why `clusterDomain` matters
@@ -411,8 +411,8 @@ The design for the first three is written up in the [TLS and authentication desi
 
 ## See also
 
-- [Production Best Practices](../production-best-practices/) — the per-component checklists these items read across.
-- [Network policies](../production-best-practices/#network-policies) — the full per-component policy table.
+- [Production Best Practices](../production-best-practices/checklist/) — the per-component checklists these items read across.
+- [Network policies](../production-best-practices/stack-wide/#network-policies) — the full per-component policy table.
 - [Grafana > Authentication](../../dashboards/grafana/auth/) — identity providers, role mapping, and the break-glass path.
 - [Grafana > Reaching Grafana](../../dashboards/grafana/architecture/#reaching-grafana) — exposure options and the allowlist convention.
 - [Logs & Events > Storing](../../logs-and-events/storing/) — object storage, workload identity, and retention for logs.

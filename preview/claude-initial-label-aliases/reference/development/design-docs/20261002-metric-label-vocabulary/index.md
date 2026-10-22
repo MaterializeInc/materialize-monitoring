@@ -500,7 +500,9 @@ If a fleet ever needs both keys at once, the fragment can render either, and the
 | Recording rules | Whatever reads the recorded name | Rejected. A rename needs no arithmetic, and a recorded copy doubles the series. The [external-dependency design](../20260920-external-dependency-monitoring/#a-normalized-contract-with-flavor-native-passthrough) chose recording rules because its mapping needed ratios and unit conversion; this one does not |
 | `label_replace` at query time | One query | Today's answer. It puts the cost on every consumer, which is the cost being removed |
 
-The per-target placement has one cost: a rule appears in every monitor that needs it.
+The per-target placement has one cost: a rule appears in every monitor.
+Every alias renders on every Materialize monitor, whether or not that monitor's process emits it.
+A rule whose alias is absent does nothing, and the rule keeps working if Materialize moves a metric from one process to another.
 Generating the rules from one file makes the replication free, and keeps a cross-cutting rule from becoming the one monitor that forgot it.
 
 ### Four rule forms
@@ -559,41 +561,37 @@ It adds index entries and bytes per series, which is the whole of the cost.
 ### One vocabulary file
 
 The vocabulary lives in `packages/prometheus-scrapers/labels.yaml`, owned by the Prometheus Scrapers component, because that is the component whose output changes.
-A sketch of the shape:
+Its schema is `packages/mzmon-lib/schemas/scrape/mzmon-labels.schema.yaml`.
+The file holds only what something reads, in the following shape:
 
 ```yaml
-reserved:
-  - name: cluster
-    claimedBy: [this stack, gmp, mimir-ha, kube-prometheus]
+monitors: [environmentd, clusterd, materialize-operator]
 canonical:
   - name: cluster_id
-    meaning: Materialize cluster id
-    joinsTo: mz_clusters.id
-    valuePattern: "[su][0-9]+"
-    fromPodLabel: cluster.environmentd.materialize.cloud/cluster-id
+    values: "[su][0-9]+"
     aliases:
       - label: instance_id
-        deprecatedIn: "x.y.z"
-      - label: compute_instance
-        deprecatedIn: "x.y.z"
+        deprecatedIn: "1.6.0"
       - label: cluster_environmentd_materialize_cloud_cluster_id
-        deprecatedIn: "x.y.z"
-  - name: server_name
-    aliases:
-      - label: cluster
-        reserved: true
+        deprecatedIn: "1.6.0"
   - name: cluster_name
     aliases:
       - label: name
         families: [mz_cluster_info]
-drop:
-  - label: honeycomb
+        deprecatedIn: "1.6.0"
 ```
 
-The transpiler renders each monitor's rules from it, in every flavor.
-The query-registry build reads it to reject a query matching on a retired alias or on a reserved label.
-The docsite renders the customer-facing label contract from it.
-The upstream lint reads the `reserved` and `canonical` sections.
+`gen-scrape-configs` renders every alias into every endpoint of the monitors that `monitors` names, in every flavor.
+The docsite renders the list of canonical labels from it.
+
+The following fields wait for their first reader:
+
+- `meaning` and `joinsTo`, for the customer-facing label contract in [DEP-356](https://linear.app/materializeinc/issue/DEP-356).
+- `reserved` and `drop`, until more than clusterd's `cluster` move and `honeycomb` drop in [DEP-347](https://linear.app/materializeinc/issue/DEP-347) need rendering.
+- `fromPodLabel`, with target-alias rendering in [DEP-349](https://linear.app/materializeinc/issue/DEP-349).
+
+The query-registry check in DEP-356 reads the same file to reject a query matching on a retired alias or on a reserved label.
+The upstream lint in [DEP-352](https://linear.app/materializeinc/issue/DEP-352) takes a published copy rather than reading this repository.
 
 ### The three flavors
 
@@ -738,11 +736,11 @@ Tracked in the same milestone, gated on design acceptance in [DEP-346](https://l
 
 | Item | Why it is needed | Blocking? |
 |---|---|---|
-| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | The single source every other row generates from | **Blocking** |
+| **`labels.yaml`** and its schema under `packages/mzmon-lib/schemas/`, with the aliases and their deprecation versions ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) | The single source every other row generates from | ✅ Done |
 | **The `cluster` move and the `honeycomb` drop** on the clusterd monitor ([DEP-347](https://linear.app/materializeinc/issue/DEP-347)) | A live defect with no consumer to migrate. Can land by hand ahead of the generator | **Blocking**, and first |
-| **The initial metric aliases**, written by hand into the monitor sources ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) | Canonical names on every series before the generator exists. clusterd's ids reach `cluster_id` and `replica_id` from the long-form target labels, which works in every flavor | ✅ Done |
+| **Metric-alias rendering** into `metricRelabelings` on every Materialize monitor, in every flavor ([DEP-421](https://linear.app/materializeinc/issue/DEP-421)) | The aliases themselves. clusterd's ids reach `cluster_id` and `replica_id` from the long-form target labels, which works in every flavor | ✅ Done |
 | **Target-alias rendering** in the transpiler, per flavor ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | `podTargetLabels` cannot rename, so once the long-form keys leave it, clusterd's ids reach `cluster_id` only through a target alias | **Blocking** for retiring the long-form ids |
-| **Metric-alias, reserved-move and drop rendering** into `metricRelabelings` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | Generates the hand-written aliases from `labels.yaml`, and the reserved moves and drops | **Blocking** |
+| **Reserved-move and drop rendering** from `labels.yaml` ([DEP-349](https://linear.app/materializeinc/issue/DEP-349)) | Generates the reserved moves and drops once there is more than DEP-347's one of each | Not blocking |
 | **GMP render refuses what it cannot express** — dropped target relabelings and rules on protected labels ([DEP-350](https://linear.app/materializeinc/issue/DEP-350)) | A silently dropped rule is a flavor-specific empty dashboard | **Blocking** for the GMP flavor |
 | **Environment target alias** from `materialize.cloud/environment-id` to `environment_id` on every Materialize monitor ([DEP-351](https://linear.app/materializeinc/issue/DEP-351)) | Puts the key on every series once the operator sets the pod label; a no-op before | **Blocking** for the environment key |
 | **Environment switch**: `%%{mzEnvironmentFilter}`, the environment and namespace pickers on `mz_environment_info`, and `mzEnvironmentName` through the info join ([DEP-354](https://linear.app/materializeinc/issue/DEP-354)) | Step 4 of [the environment transition](#the-transition-is-gated-on-the-operator-not-on-a-relabel) | **Blocking** for retiring `materialize_cloud_organization_*`; waits on the operator floor |

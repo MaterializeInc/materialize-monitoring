@@ -407,7 +407,7 @@ The Thanos ServiceAccount is `thanos-thanos` (a deterministic `fullnameOverride`
 </span></span><span style="display:flex;"><span>  }}
 </span></span><span style="display:flex;"><span>}</span></span></code></pre></div><blockquote class='book-hint info'>
 <p>The default assumes the release is installed into <code>monitoring</code>.
-Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the <code>:sub</code> is <code>system:serviceaccount:thanos:thanos-thanos</code> instead.</p></blockquote><p><em>Permissions policy</em> — least-privilege to the single bucket. <code>DeleteObject</code> is required (the compactor rewrites and deletes blocks during compaction/downsampling):</p>
+Under <a href="../../operating/production-best-practices/stack-wide/#namespace-layout">split namespaces</a>, the <code>:sub</code> is <code>system:serviceaccount:thanos:thanos-thanos</code> instead.</p></blockquote><p><em>Permissions policy</em> — least-privilege to the single bucket. <code>DeleteObject</code> is required (the compactor rewrites and deletes blocks during compaction/downsampling):</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
 </span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;Statement&#34;</span>: [
 </span></span><span style="display:flex;"><span>    { <span style="color:#f92672">&#34;Effect&#34;</span>: <span style="color:#e6db74">&#34;Allow&#34;</span>, <span style="color:#f92672">&#34;Action&#34;</span>: [<span style="color:#e6db74">&#34;s3:ListBucket&#34;</span>, <span style="color:#e6db74">&#34;s3:GetBucketLocation&#34;</span>], <span style="color:#f92672">&#34;Resource&#34;</span>: <span style="color:#e6db74">&#34;arn:aws:s3:::&lt;bucket&gt;&#34;</span> },
@@ -436,7 +436,7 @@ Under <a href="../../operating/production-best-practices/#namespace-layout">spli
 </span></span></span><span style="display:flex;"><span>  --role<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;roles/iam.workloadIdentityUser&#34;</span> <span style="color:#ae81ff">\
 </span></span></span><span style="display:flex;"><span>  --member<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;serviceAccount:&lt;project&gt;.svc.id.goog[monitoring/thanos-thanos]&#34;</span></span></span></code></pre></div><blockquote class='book-hint info'>
 <p>The default assumes the release is installed into <code>monitoring</code>.
-Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, use <code>--member=&quot;serviceAccount:&lt;project&gt;.svc.id.goog[thanos/thanos-thanos]&quot;</code> here.</p></blockquote></li>
+Under <a href="../../operating/production-best-practices/stack-wide/#namespace-layout">split namespaces</a>, use <code>--member=&quot;serviceAccount:&lt;project&gt;.svc.id.goog[thanos/thanos-thanos]&quot;</code> here.</p></blockquote></li>
 <li>
 <p>Annotate the ServiceAccount:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">thanos</span>:
@@ -459,7 +459,7 @@ Under <a href="../../operating/production-best-practices/#namespace-layout">spli
 <p>Create a <strong>federated identity credential</strong> on that identity — subject <strong>must match Thanos&rsquo;s namespace/ServiceAccount</strong> (<code>system:serviceaccount:monitoring:thanos-thanos</code>), audience <code>api://AzureADTokenExchange</code>.</p>
 <blockquote class='book-hint info'>
 <p>The default assumes the release is installed into <code>monitoring</code>.
-Under <a href="../../operating/production-best-practices/#namespace-layout">split namespaces</a>, the subject is <code>system:serviceaccount:thanos:thanos-thanos</code> instead.</p></blockquote></li>
+Under <a href="../../operating/production-best-practices/stack-wide/#namespace-layout">split namespaces</a>, the subject is <code>system:serviceaccount:thanos:thanos-thanos</code> instead.</p></blockquote></li>
 <li>
 <p>Annotate the ServiceAccount and label the pods so the webhook injects the token:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-yaml" data-lang="yaml"><span style="display:flex;"><span><span style="color:#f92672">thanos</span>:
@@ -493,7 +493,7 @@ Downsampling keeps long-range queries cheap: a year-wide query reads 1h blocks, 
 Each Receive replica uploads its own copy of every block it holds, labelled with `receive_replica`.
 The Compactor deduplicates on that label (`--deduplication.replica-label=receive_replica`), so compacted blocks hold one copy of each series rather than one per replica.
 The same flag enables vertical compaction, which merges the short overlaps Receive writes across a restart instead of halting on them.
-See [Retention & compaction](../../operating/production-best-practices/#thanos-retention-compaction) for the upgrade caveats.
+See [Retention & compaction](../../operating/production-best-practices/thanos/#thanos-retention-compaction) for the upgrade caveats.
 
 ### Components
 

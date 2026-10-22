@@ -70,7 +70,7 @@ Three follow that split deliberately:
 
 - **`deployment-operations`** is mostly pointers into [o11y Troubleshooting](../../../operating/o11y-troubleshooting/),
   [Uninstalling](../../../operating/uninstalling/), and
-  [Production Best Practices](../../../operating/production-best-practices/).
+  [Production Best Practices](../../../operating/production-best-practices/checklist/).
   What it keeps for itself is the *habits* — name the cluster explicitly, assert on recent data rather than any data,
   treat a green `helm upgrade` as no evidence a change took effect.
 - **`platform-development`** keeps the reasoning that has no natural operator-facing home: why the module fans values

@@ -74,35 +74,85 @@ The Classic and Google Cloud Managed Prometheus configs scrape each path as its 
 
 Materialize spells some ids and names more than one way.
 A cluster id is `instance_id` on most environmentd metrics, `compute_cluster_id` on the SQL endpoints, and `cluster_environmentd_materialize_cloud_cluster_id` on clusterd metrics.
-Every scrape config here copies each of those labels into one canonical name, such as `cluster_id`, and keeps the original beside it.
+Every scrape config here copies each of those labels into one canonical name, such as `cluster_id`, on every Materialize monitor, and keeps the original beside it.
 A copy is made only where the canonical label is absent, so a value Materialize emits under the canonical name is never overwritten.
 A copy adds no series.
 
-Each canonical label is copied from the following labels:
+Each canonical label is copied from the following labels, as [`labels.yaml`](https://github.com/MaterializeInc/materialize-monitoring/blob/main/packages/prometheus-scrapers/labels.yaml) lists them:
 
-`cluster_id`
-: `instance_id`, `compute_instance`, `compute_cluster_id`, and `cluster_environmentd_materialize_cloud_cluster_id`, where the value is a cluster id
+<dl class="label-aliases">
+  <dt id="label-cluster_id"><code>cluster_id</code></dt>
+  <dd>
+    Copied from
+      <code>instance_id</code>
+      (deprecated in 1.6.0),
+      <code>compute_instance</code>
+      (deprecated in 1.6.0),
+      <code>compute_cluster_id</code>
+      (deprecated in 1.6.0),
+      <code>cluster_environmentd_materialize_cloud_cluster_id</code>
+      (deprecated in 1.6.0), where the value matches <code>[su][0-9]&#43;</code>.
+  </dd>
+  <dt id="label-replica_id"><code>replica_id</code></dt>
+  <dd>
+    Copied from
+      <code>compute_replica_id</code>
+      (deprecated in 1.6.0),
+      <code>cluster_environmentd_materialize_cloud_replica_id</code>
+      (deprecated in 1.6.0), where the value matches <code>[su][0-9]&#43;</code>.
+  </dd>
+  <dt id="label-cluster_name"><code>cluster_name</code></dt>
+  <dd>
+    Copied from
+      <code>compute_cluster_name</code>
+      (deprecated in 1.6.0),
+      <code>name</code> on <code>mz_cluster_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-cluster_size"><code>cluster_size</code></dt>
+  <dd>
+    Copied from
+      <code>size</code> on <code>mz_cluster_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-replica_name"><code>replica_name</code></dt>
+  <dd>
+    Copied from
+      <code>name</code> on <code>mz_replica_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-replica_size"><code>replica_size</code></dt>
+  <dd>
+    Copied from
+      <code>size</code> on <code>mz_replica_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-object_name"><code>object_name</code></dt>
+  <dd>
+    Copied from
+      <code>name</code> on <code>mz_object_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-object_type"><code>object_type</code></dt>
+  <dd>
+    Copied from
+      <code>type</code> on <code>mz_object_info</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-collection_id"><code>collection_id</code></dt>
+  <dd>
+    Copied from
+      <code>global_id</code>
+      (deprecated in 1.6.0).
+  </dd>
+  <dt id="label-shard_id"><code>shard_id</code></dt>
+  <dd>
+    Copied from
+      <code>shard</code>
+      (deprecated in 1.6.0).
+  </dd>
+</dl>
 
-`replica_id`
-: `compute_replica_id` and `cluster_environmentd_materialize_cloud_replica_id`
-
-`cluster_name`
-: `compute_cluster_name`, and `name` on `mz_cluster_info`
-
-`cluster_size`
-: `size` on `mz_cluster_info`
-
-`replica_name` and `replica_size`
-: `name` and `size` on `mz_replica_info`
-
-`object_name` and `object_type`
-: `name` and `type` on `mz_object_info`
-
-`collection_id`
-: `global_id`
-
-`shard_id`
-: `shard`
 
 Write new queries against the canonical names, because the labels they're copied from are deprecated.
 A copy of a `PodMonitor` that replaces its endpoints keeps their `metricRelabelings`, or its series lack the canonical labels.
@@ -247,7 +297,7 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     <tr>
       <td>clusterd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-clusterd.yaml?xxhash=d73cc150c6ef02c3" download="clusterd-d73cc150c6ef02c3.yaml"><code>podmonitor-clusterd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-clusterd.yaml?xxhash=71a4a158fe9f00ca" download="clusterd-71a4a158fe9f00ca.yaml"><code>podmonitor-clusterd.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -265,19 +315,19 @@ setup or a less-common manual Grafana Alloy `prometheus.operator` setup.
     <tr>
       <td>environmentd</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-environmentd.yaml?xxhash=7cb9fb2406b313a7" download="environmentd-7cb9fb2406b313a7.yaml"><code>podmonitor-environmentd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-environmentd.yaml?xxhash=5d8260a46712e25a" download="environmentd-5d8260a46712e25a.yaml"><code>podmonitor-environmentd.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-operator</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-materialize-operator.yaml?xxhash=64335808148e4ef8" download="materialize-operator-64335808148e4ef8.yaml"><code>podmonitor-materialize-operator.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-materialize-operator.yaml?xxhash=9aa2d98647b26c02" download="materialize-operator-9aa2d98647b26c02.yaml"><code>podmonitor-materialize-operator.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql</td>
       <td>monitoring.coreos.com/v1/PodMonitor</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=50442faa27e7c898" download="materialize-sql-50442faa27e7c898.yaml"><code>podmonitor-sql.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/prometheus-operator/podmonitor-sql.yaml?xxhash=877469b446904928" download="materialize-sql-877469b446904928.yaml"><code>podmonitor-sql.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -336,7 +386,7 @@ These are placed into your Prometheus configuration (prometheus.yml) as a single
     <tr>
       <td>scrape_config</td>
       <td>Classic ScrapeConfig</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/classic/scrape_config.yaml?xxhash=91a4f9f90ea25dec" download="scrape_config-91a4f9f90ea25dec.yaml"><code>scrape_config.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/classic/scrape_config.yaml?xxhash=268953895fe04e50" download="scrape_config-268953895fe04e50.yaml"><code>scrape_config.yaml</code></a></td>
     </tr>
   </tbody>
 </table>
@@ -366,7 +416,7 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
     <tr>
       <td>clusterd</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/clusterd.yaml?xxhash=eddc9e8cbc14c90d" download="clusterd-eddc9e8cbc14c90d.yaml"><code>clusterd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/clusterd.yaml?xxhash=7f1f7dde8e057381" download="clusterd-7f1f7dde8e057381.yaml"><code>clusterd.yaml</code></a></td>
     </tr>
       
     <tr>
@@ -396,37 +446,37 @@ These are PodMonitoring resources specifically for [Google Cloud Managed Service
     <tr>
       <td>environmentd</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/environmentd.yaml?xxhash=c390192d8f76a51a" download="environmentd-c390192d8f76a51a.yaml"><code>environmentd.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/environmentd.yaml?xxhash=a76d0a0070bc8dae" download="environmentd-a76d0a0070bc8dae.yaml"><code>environmentd.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-operator</td>
       <td>monitoring.googleapis.com/v1/PodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-operator.yaml?xxhash=d216820a50b4ec53" download="materialize-operator-d216820a50b4ec53.yaml"><code>materialize-operator.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-operator.yaml?xxhash=ea1eb3848383dc08" download="materialize-operator-ea1eb3848383dc08.yaml"><code>materialize-operator.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-compute</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-compute.yaml?xxhash=fba05144875d3568" download="materialize-sql-mz-compute-fba05144875d3568.yaml"><code>materialize-sql-mz-compute.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-compute.yaml?xxhash=0f7efa55286948ca" download="materialize-sql-mz-compute-0f7efa55286948ca.yaml"><code>materialize-sql-mz-compute.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-frontier</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-frontier.yaml?xxhash=f2e40f77e2f36b95" download="materialize-sql-mz-frontier-f2e40f77e2f36b95.yaml"><code>materialize-sql-mz-frontier.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-frontier.yaml?xxhash=1ed7675feca674c5" download="materialize-sql-mz-frontier-1ed7675feca674c5.yaml"><code>materialize-sql-mz-frontier.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-storage</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-storage.yaml?xxhash=7bea26abb582fcec" download="materialize-sql-mz-storage-7bea26abb582fcec.yaml"><code>materialize-sql-mz-storage.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-storage.yaml?xxhash=685715878b214006" download="materialize-sql-mz-storage-685715878b214006.yaml"><code>materialize-sql-mz-storage.yaml</code></a></td>
     </tr>
       
     <tr>
       <td>materialize-sql-mz-usage</td>
       <td>monitoring.googleapis.com/v1/ClusterPodMonitoring</td>
-      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-usage.yaml?xxhash=b6e70dc3105b02b7" download="materialize-sql-mz-usage-b6e70dc3105b02b7.yaml"><code>materialize-sql-mz-usage.yaml</code></a></td>
+      <td><a href="/materialize-monitoring/preview/claude-initial-label-aliases/prometheus-scrapers/gmp/materialize-sql-mz-usage.yaml?xxhash=c0be82b87c43b574" download="materialize-sql-mz-usage-c0be82b87c43b574.yaml"><code>materialize-sql-mz-usage.yaml</code></a></td>
     </tr>
   </tbody>
 </table>

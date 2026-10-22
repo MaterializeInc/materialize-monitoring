@@ -44,9 +44,41 @@ scrape_configs:
   metric_relabel_configs:
   - source_labels:
     - cluster_id
+    - instance_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - compute_instance
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - compute_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
     - cluster_environmentd_materialize_cloud_cluster_id
     separator: ;
     target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
     regex: ;([su][0-9]+)
     replacement: $1
     action: replace
@@ -56,6 +88,76 @@ scrape_configs:
     separator: ;
     target_label: replica_id
     regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_name
+    - compute_cluster_name
+    separator: ;
+    target_label: cluster_name
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_name
+    - name
+    separator: ;
+    target_label: cluster_name
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_size
+    - size
+    separator: ;
+    target_label: cluster_size
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_name
+    - name
+    separator: ;
+    target_label: replica_name
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_size
+    - size
+    separator: ;
+    target_label: replica_size
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_name
+    - name
+    separator: ;
+    target_label: object_name
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_type
+    - type
+    separator: ;
+    target_label: object_type
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
     replacement: $1
     action: replace
   - source_labels:
@@ -256,18 +358,42 @@ scrape_configs:
     replacement: $1
     action: replace
   - source_labels:
-    - collection_id
-    - global_id
+    - cluster_id
+    - compute_cluster_id
     separator: ;
-    target_label: collection_id
-    regex: ;(.+)
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
     replacement: $1
     action: replace
   - source_labels:
-    - shard_id
-    - shard
+    - cluster_id
+    - cluster_environmentd_materialize_cloud_cluster_id
     separator: ;
-    target_label: shard_id
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - cluster_environmentd_materialize_cloud_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_name
+    - compute_cluster_name
+    separator: ;
+    target_label: cluster_name
     regex: ;(.+)
     replacement: $1
     action: replace
@@ -325,6 +451,22 @@ scrape_configs:
     regex: mz_object_info;;(.+)
     replacement: $1
     action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - shard_id
+    - shard
+    separator: ;
+    target_label: shard_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
 - job_name: podMonitor/materialize-operator/metrics
   metrics_path: /metrics
   kubernetes_sd_configs:
@@ -363,6 +505,133 @@ scrape_configs:
   - source_labels:
     - __meta_kubernetes_pod_label_cluster_environmentd_materialize_cloud_replica_id
     target_label: cluster_environmentd_materialize_cloud_replica_id
+  metric_relabel_configs:
+  - source_labels:
+    - cluster_id
+    - instance_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - compute_instance
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - compute_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - cluster_environmentd_materialize_cloud_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - cluster_environmentd_materialize_cloud_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_name
+    - compute_cluster_name
+    separator: ;
+    target_label: cluster_name
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_name
+    - name
+    separator: ;
+    target_label: cluster_name
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_size
+    - size
+    separator: ;
+    target_label: cluster_size
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_name
+    - name
+    separator: ;
+    target_label: replica_name
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_size
+    - size
+    separator: ;
+    target_label: replica_size
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_name
+    - name
+    separator: ;
+    target_label: object_name
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_type
+    - type
+    separator: ;
+    target_label: object_type
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - shard_id
+    - shard
+    separator: ;
+    target_label: shard_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
 - job_name: podMonitor/materialize-sql/mz-compute
   metrics_path: /metrics/mz_compute
   basic_auth:
@@ -417,9 +686,41 @@ scrape_configs:
     action: replace
   - source_labels:
     - cluster_id
+    - compute_instance
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
     - compute_cluster_id
     separator: ;
     target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - cluster_environmentd_materialize_cloud_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - cluster_environmentd_materialize_cloud_replica_id
+    separator: ;
+    target_label: replica_id
     regex: ;([su][0-9]+)
     replacement: $1
     action: replace
@@ -432,11 +733,73 @@ scrape_configs:
     replacement: $1
     action: replace
   - source_labels:
-    - replica_id
-    - compute_replica_id
+    - __name__
+    - cluster_name
+    - name
     separator: ;
-    target_label: replica_id
-    regex: ;([su][0-9]+)
+    target_label: cluster_name
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_size
+    - size
+    separator: ;
+    target_label: cluster_size
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_name
+    - name
+    separator: ;
+    target_label: replica_name
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_size
+    - size
+    separator: ;
+    target_label: replica_size
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_name
+    - name
+    separator: ;
+    target_label: object_name
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_type
+    - type
+    separator: ;
+    target_label: object_type
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - shard_id
+    - shard
+    separator: ;
+    target_label: shard_id
+    regex: ;(.+)
     replacement: $1
     action: replace
 - job_name: podMonitor/materialize-sql/mz-frontier
@@ -493,9 +856,41 @@ scrape_configs:
     action: replace
   - source_labels:
     - cluster_id
+    - compute_instance
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
     - compute_cluster_id
     separator: ;
     target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - cluster_environmentd_materialize_cloud_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - cluster_environmentd_materialize_cloud_replica_id
+    separator: ;
+    target_label: replica_id
     regex: ;([su][0-9]+)
     replacement: $1
     action: replace
@@ -508,11 +903,73 @@ scrape_configs:
     replacement: $1
     action: replace
   - source_labels:
-    - replica_id
-    - compute_replica_id
+    - __name__
+    - cluster_name
+    - name
     separator: ;
-    target_label: replica_id
-    regex: ;([su][0-9]+)
+    target_label: cluster_name
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_size
+    - size
+    separator: ;
+    target_label: cluster_size
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_name
+    - name
+    separator: ;
+    target_label: replica_name
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_size
+    - size
+    separator: ;
+    target_label: replica_size
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_name
+    - name
+    separator: ;
+    target_label: object_name
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_type
+    - type
+    separator: ;
+    target_label: object_type
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - shard_id
+    - shard
+    separator: ;
+    target_label: shard_id
+    regex: ;(.+)
     replacement: $1
     action: replace
 - job_name: podMonitor/materialize-sql/mz-storage
@@ -569,9 +1026,41 @@ scrape_configs:
     action: replace
   - source_labels:
     - cluster_id
+    - compute_instance
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
     - compute_cluster_id
     separator: ;
     target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - cluster_environmentd_materialize_cloud_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - cluster_environmentd_materialize_cloud_replica_id
+    separator: ;
+    target_label: replica_id
     regex: ;([su][0-9]+)
     replacement: $1
     action: replace
@@ -584,11 +1073,73 @@ scrape_configs:
     replacement: $1
     action: replace
   - source_labels:
-    - replica_id
-    - compute_replica_id
+    - __name__
+    - cluster_name
+    - name
     separator: ;
-    target_label: replica_id
-    regex: ;([su][0-9]+)
+    target_label: cluster_name
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_size
+    - size
+    separator: ;
+    target_label: cluster_size
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_name
+    - name
+    separator: ;
+    target_label: replica_name
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_size
+    - size
+    separator: ;
+    target_label: replica_size
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_name
+    - name
+    separator: ;
+    target_label: object_name
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_type
+    - type
+    separator: ;
+    target_label: object_type
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - shard_id
+    - shard
+    separator: ;
+    target_label: shard_id
+    regex: ;(.+)
     replacement: $1
     action: replace
 - job_name: podMonitor/materialize-sql/mz-usage
@@ -645,9 +1196,41 @@ scrape_configs:
     action: replace
   - source_labels:
     - cluster_id
+    - compute_instance
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
     - compute_cluster_id
     separator: ;
     target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - cluster_id
+    - cluster_environmentd_materialize_cloud_cluster_id
+    separator: ;
+    target_label: cluster_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - compute_replica_id
+    separator: ;
+    target_label: replica_id
+    regex: ;([su][0-9]+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - replica_id
+    - cluster_environmentd_materialize_cloud_replica_id
+    separator: ;
+    target_label: replica_id
     regex: ;([su][0-9]+)
     replacement: $1
     action: replace
@@ -660,11 +1243,73 @@ scrape_configs:
     replacement: $1
     action: replace
   - source_labels:
-    - replica_id
-    - compute_replica_id
+    - __name__
+    - cluster_name
+    - name
     separator: ;
-    target_label: replica_id
-    regex: ;([su][0-9]+)
+    target_label: cluster_name
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - cluster_size
+    - size
+    separator: ;
+    target_label: cluster_size
+    regex: mz_cluster_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_name
+    - name
+    separator: ;
+    target_label: replica_name
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - replica_size
+    - size
+    separator: ;
+    target_label: replica_size
+    regex: mz_replica_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_name
+    - name
+    separator: ;
+    target_label: object_name
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - __name__
+    - object_type
+    - type
+    separator: ;
+    target_label: object_type
+    regex: mz_object_info;;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - collection_id
+    - global_id
+    separator: ;
+    target_label: collection_id
+    regex: ;(.+)
+    replacement: $1
+    action: replace
+  - source_labels:
+    - shard_id
+    - shard
+    separator: ;
+    target_label: shard_id
+    regex: ;(.+)
     replacement: $1
     action: replace
 - job_name: mz-kubelet-cadvisor
