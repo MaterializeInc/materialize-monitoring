@@ -204,7 +204,7 @@ Each output has one consumer:
 
 | Output | Consumer | Make target |
 | --- | --- | --- |
-| `--format yaml` into `charts/materialize-monitoring-dashboards/pre-rendered/dashboards/grafana/` | the dashboards Helm chart, which globs by filename stem | `charts/…/dashboards/grafana` |
+| `--format yaml --folder <name>` into each `charts/materialize-monitoring-dashboards*/pre-rendered/dashboards/grafana/` | the dashboards Helm chart for that folder, which globs by filename stem | `charts/…/dashboards/grafana` |
 | `--format json` into `docs/assets/dashboards/grafana/` | the docsite, which offers the file for download | `docs/assets/dashboards/grafana` |
 | `--flavor datadog` into `docs/assets/dashboards/datadog/` | the docsite, which offers the file beside the Grafana one of the same stem | `docs/assets/dashboards/datadog` |
 
